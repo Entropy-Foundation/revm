@@ -43,6 +43,11 @@ pub trait Database {
     /// Gets account code by its hash.
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error>;
 
+    /// Returns whether the account has any storage. Default implementation assumes no storage.
+    fn has_storage(&mut self, _address: Address) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+
     /// Gets storage value of address at index.
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error>;
 
@@ -74,6 +79,11 @@ pub trait DatabaseRef {
     /// Gets account code by its hash.
     fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error>;
 
+    /// Returns whether the account has any storage. Default implementation assumes no storage.
+    fn has_storage_ref(&self, _address: Address) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+
     /// Gets storage value of address at index.
     fn storage_ref(&self, address: Address, index: U256) -> Result<U256, Self::Error>;
 
@@ -103,6 +113,11 @@ impl<T: DatabaseRef> Database for WrapDatabaseRef<T> {
     #[inline]
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
         self.0.code_by_hash_ref(code_hash)
+    }
+
+    #[inline]
+    fn has_storage(&mut self, address: Address) -> Result<bool, Self::Error> {
+        self.0.has_storage_ref(address)
     }
 
     #[inline]
