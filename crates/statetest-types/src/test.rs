@@ -1,7 +1,8 @@
 use revm::{
     context::tx::TxEnv,
-    primitives::{Address, Bytes, HashMap, TxKind, B256},
+    primitives::{Address, Bytes, HashMap, TxKind, B256, U256},
 };
+use core::str::FromStr;
 use serde::Deserialize;
 
 use crate::{
@@ -104,7 +105,8 @@ impl Test {
             gas_limit: unit.transaction.gas_limit[self.indexes.gas].saturating_to(),
             data: unit.transaction.data[self.indexes.data].clone(),
             nonce: u64::try_from(unit.transaction.nonce).unwrap(),
-            value: unit.transaction.value[self.indexes.value],
+            value: U256::from_str(&unit.transaction.value[self.indexes.value])
+                .expect("state tests provide valid transaction values"),
             access_list: unit
                 .transaction
                 .access_lists
