@@ -30,11 +30,11 @@ use primitives::Bytes;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LegacyAnalyzedBytecode {
     /// Bytecode with 33 zero bytes padding
-    bytecode: Bytes,
+    pub bytecode: Bytes,
     /// Original bytes length
-    original_len: usize,
+    pub original_len: usize,
     /// Jump table
-    jump_table: JumpTable,
+    pub jump_table: JumpTable,
 }
 
 impl Default for LegacyAnalyzedBytecode {
