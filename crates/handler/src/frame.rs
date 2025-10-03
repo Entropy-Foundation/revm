@@ -351,10 +351,16 @@ where
         // warm load account.
         context.journal_mut().load_account(created_address)?;
 
+        let address_has_storage = context
+            .journal_mut()
+            .db_mut()
+            .has_storage(created_address)?;
+
         // Create account, transfer funds and make the journal checkpoint.
         let checkpoint = match context.journal_mut().create_account_checkpoint(
             inputs.caller,
             created_address,
+            address_has_storage,
             inputs.value,
             spec,
         ) {
@@ -474,10 +480,16 @@ where
         // Load account so it needs to be marked as warm for access list.
         context.journal_mut().load_account(created_address)?;
 
+        let address_has_storage = context
+            .journal_mut()
+            .db_mut()
+            .has_storage(created_address)?;
+
         // Create account, transfer funds and make the journal checkpoint.
         let checkpoint = match context.journal_mut().create_account_checkpoint(
             inputs.caller,
             created_address,
+            address_has_storage,
             inputs.value,
             spec,
         ) {

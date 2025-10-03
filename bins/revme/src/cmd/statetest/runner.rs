@@ -6,7 +6,6 @@ use context::either::Either;
 use database::State;
 use indicatif::{ProgressBar, ProgressDrawTarget};
 use inspector::{inspectors::TracerEip3155, InspectCommitEvm};
-use primitives::U256;
 use revm::{
     bytecode::Bytecode,
     context::{block::BlockEnv, cfg::CfgEnv, tx::TxEnv},
@@ -17,7 +16,8 @@ use revm::{
     },
     database_interface::EmptyDB,
     primitives::{
-        eip4844::TARGET_BLOB_GAS_PER_BLOCK_CANCUN, hardfork::SpecId, keccak256, Bytes, TxKind, B256,
+        eip4844::TARGET_BLOB_GAS_PER_BLOCK_CANCUN, hardfork::SpecId, keccak256, Bytes, TxKind,
+        B256, U256,
     },
     Context, ExecuteCommitEvm, MainBuilder, MainContext,
 };
@@ -29,6 +29,7 @@ use std::{
     fmt::Debug,
     io::stderr,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -373,7 +374,7 @@ pub fn execute_test_suite(
                     .clone();
 
                 tx.nonce = u64::try_from(unit.transaction.nonce).unwrap();
-                tx.value = unit.transaction.value[test.indexes.value];
+                tx.value = U256::from_str(&unit.transaction.value[test.indexes.value]).unwrap();
 
                 tx.access_list = unit
                     .transaction
