@@ -1,10 +1,10 @@
+//! BLS12-381 G1 add precompile. More details in [`g1_add`]
 use super::crypto_backend::{encode_g1_point, p1_add_affine, read_g1_no_subgroup_check};
 use super::utils::remove_g1_padding;
 use crate::bls12_381_const::{
     G1_ADD_ADDRESS, G1_ADD_BASE_GAS_FEE, G1_ADD_INPUT_LENGTH, PADDED_G1_LENGTH,
 };
 use crate::{PrecompileError, PrecompileOutput, PrecompileResult, PrecompileWithAddress};
-use primitives::Bytes;
 
 /// [EIP-2537](https://eips.ethereum.org/EIPS/eip-2537#specification) BLS12_G1ADD precompile.
 pub const PRECOMPILE: PrecompileWithAddress = PrecompileWithAddress(G1_ADD_ADDRESS, g1_add);
@@ -14,7 +14,7 @@ pub const PRECOMPILE: PrecompileWithAddress = PrecompileWithAddress(G1_ADD_ADDRE
 /// Output is an encoding of addition operation result - single G1 point (`128`
 /// bytes).
 /// See also: <https://eips.ethereum.org/EIPS/eip-2537#abi-for-g1-addition>
-pub(super) fn g1_add(input: &Bytes, gas_limit: u64) -> PrecompileResult {
+pub fn g1_add(input: &[u8], gas_limit: u64) -> PrecompileResult {
     if G1_ADD_BASE_GAS_FEE > gas_limit {
         return Err(PrecompileError::OutOfGas);
     }
@@ -30,7 +30,7 @@ pub(super) fn g1_add(input: &Bytes, gas_limit: u64) -> PrecompileResult {
     let [b_x, b_y] = remove_g1_padding(&input[PADDED_G1_LENGTH..])?;
 
     // NB: There is no subgroup check for the G1 addition precompile because the time to do the subgroup
-    // check would be more than the time it takes to to do the g1 addition.
+    // check would be more than the time it takes to do the g1 addition.
     //
     // Users should be careful to note whether the points being added are indeed in the right subgroup.
     let a_aff = &read_g1_no_subgroup_check(a_x, a_y)?;

@@ -1,3 +1,5 @@
+//! KZG point evaluation precompile added in [`EIP-4844`](https://eips.ethereum.org/EIPS/eip-4844)
+//! For more details check [`run`] function.
 use crate::{Address, PrecompileError, PrecompileOutput, PrecompileResult, PrecompileWithAddress};
 cfg_if::cfg_if! {
     if #[cfg(feature = "c-kzg")] {
@@ -6,13 +8,19 @@ cfg_if::cfg_if! {
         use kzg_rs::{Bytes32, Bytes48, KzgProof};
     }
 }
-use primitives::{hex_literal::hex, Bytes};
+use primitives::hex_literal::hex;
 use sha2::{Digest, Sha256};
 
+/// KZG point evaluation precompile, containing address and function to run.
 pub const POINT_EVALUATION: PrecompileWithAddress = PrecompileWithAddress(ADDRESS, run);
 
+/// Address of the KZG point evaluation precompile.
 pub const ADDRESS: Address = crate::u64_to_address(0x0A);
+
+/// Gas cost of the KZG point evaluation precompile.
 pub const GAS_COST: u64 = 50_000;
+
+/// Versioned hash version for KZG.
 pub const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
 
 /// `U256(FIELD_ELEMENTS_PER_BLOB).to_be_bytes() ++ BLS_MODULUS.to_bytes32()`
@@ -29,7 +37,7 @@ pub const RETURN_VALUE: &[u8; 64] = &hex!(
 /// | versioned_hash |  z  |  y  | commitment | proof |
 /// |     32         | 32  | 32  |     48     |   48  |
 /// with z and y being padded 32 byte big endian values
-pub fn run(input: &Bytes, gas_limit: u64) -> PrecompileResult {
+pub fn run(input: &[u8], gas_limit: u64) -> PrecompileResult {
     if gas_limit < GAS_COST {
         return Err(PrecompileError::OutOfGas);
     }
@@ -67,6 +75,7 @@ pub fn kzg_to_versioned_hash(commitment: &[u8]) -> [u8; 32] {
     hash
 }
 
+/// Verify KZG proof.
 #[inline]
 pub fn verify_kzg_proof(commitment: &Bytes48, z: &Bytes32, y: &Bytes32, proof: &Bytes48) -> bool {
     cfg_if::cfg_if! {
@@ -81,12 +90,14 @@ pub fn verify_kzg_proof(commitment: &Bytes48, z: &Bytes32, y: &Bytes32, proof: &
     }
 }
 
+/// Convert a slice to an array of a specific size.
 #[inline]
 #[track_caller]
 pub fn as_array<const N: usize>(bytes: &[u8]) -> &[u8; N] {
     bytes.try_into().expect("slice with incorrect length")
 }
 
+/// Convert a slice to a 32 byte big endian array.
 #[inline]
 #[track_caller]
 pub fn as_bytes32(bytes: &[u8]) -> &Bytes32 {
@@ -94,6 +105,7 @@ pub fn as_bytes32(bytes: &[u8]) -> &Bytes32 {
     unsafe { &*as_array::<32>(bytes).as_ptr().cast() }
 }
 
+/// Convert a slice to a 48 byte big endian array.
 #[inline]
 #[track_caller]
 pub fn as_bytes48(bytes: &[u8]) -> &Bytes48 {
@@ -120,7 +132,7 @@ mod tests {
 
         let expected_output = hex!("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
         let gas = 50000;
-        let output = run(&input.into(), gas).unwrap();
+        let output = run(&input, gas).unwrap();
         assert_eq!(output.gas_used, gas);
         assert_eq!(output.bytes[..], expected_output);
     }

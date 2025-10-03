@@ -1,13 +1,23 @@
+//! EOF bytecode.
+//!
+//! Contains body, header and raw bytes.
+//!
+//! Also contains verification logic and pretty printer.
 mod body;
 mod code_info;
 mod decode_helpers;
 mod header;
+/// Pritty printer for the EOF bytecode. Enabled by `std` feature.
 pub mod printer;
+/// Verification logic for the EOF bytecode.
 pub mod verification;
 
 pub use body::EofBody;
 pub use code_info::CodeInfo;
-pub use header::EofHeader;
+pub use header::{
+    EofHeader, CODE_SECTION_SIZE, CONTAINER_SECTION_SIZE, KIND_CODE, KIND_CODE_INFO,
+    KIND_CONTAINER, KIND_DATA, KIND_TERMINAL,
+};
 pub use verification::*;
 
 use core::cmp::min;
@@ -30,8 +40,12 @@ pub static EOF_MAGIC_BYTES: Bytes = bytes!("ef00");
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Eof {
+    /// Header of the EOF container
     pub header: EofHeader,
+    /// Body of the EOF container
     pub body: EofBody,
+    /// Raw bytes of the EOF container. Chunks of raw Bytes are used in Body to reference
+    /// parts of code, data and container sections.
     pub raw: Bytes,
 }
 
@@ -141,6 +155,28 @@ pub enum EofDecodeError {
     DanglingData,
     /// Invalid code info data
     InvalidCodeInfo,
+    /// Invalid code info input value
+    InvalidCodeInfoInputValue {
+        /// Number of inputs
+        value: u8,
+    },
+    /// Invalid code info input value
+    InvalidCodeInfoOutputValue {
+        /// Number of outputs
+        value: u8,
+    },
+    /// Invalid code info input value
+    InvalidCodeInfoMaxIncrementValue {
+        /// MaxIncrementValue
+        value: u16,
+    },
+    /// Invalid code info input value can't be greater than [`primitives::STACK_LIMIT`]
+    InvalidCodeInfoStackOverflow {
+        /// Number of inputs
+        inputs: u8,
+        /// Max stack increment
+        max_stack_increment: u16,
+    },
     /// Invalid code info size
     InvalidCodeInfoSize,
     /// Invalid EOF magic number
@@ -156,7 +192,10 @@ pub enum EofDecodeError {
     /// Invalid data kind
     InvalidDataKind,
     /// Invalid kind after code
-    InvalidKindAfterCode,
+    InvalidKindAfterCode {
+        /// Invalid unexpected kind type.
+        invalid_kind: u8,
+    },
     /// Mismatch of code and info sizes
     MismatchCodeAndInfoSize,
     /// There should be at least one size
@@ -182,6 +221,25 @@ impl fmt::Display for EofDecodeError {
             Self::MissingBodyWithoutData => "Short body while processing EOF",
             Self::DanglingData => "Body size is more than specified in the header",
             Self::InvalidCodeInfo => "Invalid types section data",
+            Self::InvalidCodeInfoInputValue { value } => {
+                return write!(f, "Invalid code info input value: {}", value);
+            }
+            Self::InvalidCodeInfoOutputValue { value } => {
+                return write!(f, "Invalid code info output value: {}", value);
+            }
+            Self::InvalidCodeInfoMaxIncrementValue { value } => {
+                return write!(f, "Invalid code info max increment value: {}", value);
+            }
+            Self::InvalidCodeInfoStackOverflow {
+                inputs,
+                max_stack_increment,
+            } => {
+                return write!(
+                    f,
+                    "Invalid code info stack overflow: inputs: {}, max_stack_increment: {}",
+                    inputs, max_stack_increment
+                );
+            }
             Self::InvalidCodeInfoSize => "Invalid types section size",
             Self::InvalidEOFMagicNumber => "Invalid EOF magic number",
             Self::InvalidEOFVersion => "Invalid EOF version",
@@ -189,7 +247,9 @@ impl fmt::Display for EofDecodeError {
             Self::InvalidCodeKind => "Invalid number for code kind",
             Self::InvalidTerminalByte => "Invalid terminal code",
             Self::InvalidDataKind => "Invalid data kind",
-            Self::InvalidKindAfterCode => "Invalid kind after code",
+            Self::InvalidKindAfterCode { invalid_kind } => {
+                return write!(f, "Invalid kind after code: {}", invalid_kind);
+            }
             Self::MismatchCodeAndInfoSize => "Mismatch of code and types sizes",
             Self::NonSizes => "There should be at least one size",
             Self::ShortInputForSizes => "Missing size",
@@ -213,26 +273,27 @@ mod test {
 
     #[test]
     fn decode_eof() {
-        let bytes = bytes!("ef000101000402000100010400000000800000fe");
+        let bytes = bytes!("ef00010100040200010001ff00000000800000fe");
         let eof = Eof::decode(bytes.clone()).unwrap();
         assert_eq!(bytes, eof.encode_slow());
     }
 
     #[test]
     fn decode_eof_dangling() {
+        //0xEF000101 | u16  | 0x02 | u16 | u16 * cnum | 0x03 | u16 | cnum* u32 | 0xff | u16 | 0x00
         let test_cases = [
             (
-                bytes!("ef000101000402000100010400000000800000fe"),
+                bytes!("ef00010100040200010001ff00000000800000fe"),
                 bytes!("010203"),
                 false,
             ),
             (
-                bytes!("ef000101000402000100010400000000800000fe"),
+                bytes!("ef00010100040200010001ff00000000800000fe"),
                 bytes!(""),
                 false,
             ),
             (
-                bytes!("ef000101000402000100010400000000800000"),
+                bytes!("ef00010100040200010001ff00000000800000"),
                 bytes!(""),
                 true,
             ),
@@ -256,7 +317,8 @@ mod test {
 
     #[test]
     fn data_slice() {
-        let bytes = bytes!("ef000101000402000100010400000000800000fe");
+        //0xEF000101 | u16  | 0x02 | u16 | u16 * cnum | 0x03 | u16 | cnum* u32 | 0xff | u16 | 0x00
+        let bytes = bytes!("ef00010100040200010001ff00000000800000fe");
         let mut eof = Eof::decode(bytes.clone()).unwrap();
         eof.body.data_section = bytes!("01020304");
         assert_eq!(eof.data_slice(0, 1), &[0x01]);

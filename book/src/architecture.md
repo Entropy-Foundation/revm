@@ -4,12 +4,12 @@ REVM is a flexible implementation of the Ethereum Virtual Machine (EVM). It foll
 execution specs](https://github.com/ethereum/execution-specs).
 
 You can use REVM in two main ways:
-1. Run regular Ethereum transactions using a Execution API
-2. Create your own custom version of the EVM (for Layer 2 solutions or other chains) using EVM framework
+1. Run regular Ethereum transactions using an Execution API
+2. Create your own custom version of the EVM (for Layer 2 solutions or other chains) using the EVM framework
 
-To see usage examples you can check the [examples folder](https://github.com/bluealloy/revm/tree/main/examples). Other than documentation, examples are main resource to see and learn about Revm.
+To see usage examples you can check the [examples folder](https://github.com/bluealloy/revm/tree/main/examples). Other than documentation, examples are the main resource to see and learn about Revm.
 
-The main [`revm`](https://crates.io/crates/revm) library combines all crates into one package and reexports them, standalone library are useful if there is need to import functionality with smaller scope. You can see overview of revm crates in [crates folder](https://github.com/bluealloy/revm/tree/main/crates).
+The main [`revm`](https://crates.io/crates/revm) library combines all crates into one package and reexports them, standalone libraries are useful if there is a need to import functionality with smaller scope. You can see an overview of all revm crates in the [crates folder](https://github.com/bluealloy/revm/tree/main/crates).
 
 REVM works in `no_std` environments which means it can be used in zero-knowledge virtual machines (zkVMs) and it is the standard library in that use case. It also has very few external dependencies.
 
@@ -30,13 +30,13 @@ let out = evm.transact(tx);
 
 And [`Context`](https://docs.rs/revm-context/latest/revm_context/context/struct.Context.html) contains data used in execution:
 * Environment data, the data that is known before execution starts are [`Transaction`](https://docs.rs/revm-context-interface/latest/revm_context_interface/transaction/trait.Transaction.html), [`Block`](https://docs.rs/revm-context-interface/latest/revm_context_interface/block/trait.Block.html), [`Cfg`](https://docs.rs/revm-context-interface/latest/revm_context_interface/cfg/trait.Cfg.html).
-* [`Journal`](https://docs.rs/revm-context-interface/latest/revm_context_interface/journaled_state/trait.JournalTr.html) is place where internal state is stored. Internal state is returned after execution ends.
-   * And `Database` is a interface that allows fetching external data that is needed in runtime. That data are account, storage and bytecode. When loaded they are stored in [`Journal`](https://docs.rs/revm-context-interface/latest/revm_context_interface/journaled_state/trait.JournalTr.html) 
+* [`Journal`](https://docs.rs/revm-context-interface/latest/revm_context_interface/journaled_state/trait.JournalTr.html) is the place where internal state is stored. Internal state is returned after execution ends.
+   * And `Database` is an interface that allows fetching external data that is needed at runtime. That data are account, storage and bytecode. When loaded they are stored in [`Journal`](https://docs.rs/revm-context-interface/latest/revm_context_interface/journaled_state/trait.JournalTr.html) 
 
 REVM provides four ways to execute transactions through traits (API):
 
-* `transact(tx)` and `replay()` are function of [`ExecuteEvm`](https://docs.rs/revm-handler/latest/revm_handler/evm/trait.ExecuteEvm.html) trait that allow execution transactions. They return the status of execution with reason, changed state and in case of failed execution an error.
-* `transact_commit(tx)` and `replay_commit()` are part of [`ExecuteCommitEvm`](https://docs.rs/revm-handler/latest/revm_handler/evm/trait.ExecuteCommitEvm.html) that internally commits the state diff to the database and returns status of execution. Database is required to support `DatabaseCommit` trait.
+* `transact(tx)` and `replay()` are function of [`ExecuteEvm`](https://docs.rs/revm-handler/latest/revm_handler/api/trait.ExecuteEvm.html) trait that allow execution transactions. They return the status of execution with reason, changed state and in case of failed execution an error.
+* `transact_commit(tx)` and `replay_commit()` are part of [`ExecuteCommitEvm`](https://docs.rs/revm-handler/latest/revm_handler/api/trait.ExecuteCommitEvm.html) that internally commits the state diff to the database and returns status of execution. Database is required to support `DatabaseCommit` trait.
 * `inspect()`, `inspect_replay(tx)` and a few others are part of [`InspectEvm`](https://docs.rs/revm-inspector/latest/revm_inspector/trait.InspectEvm.html) trait that allow execution with inspection. This is how tracers are called.
 * `inspect_commit()`,`inspect_replay_commit(tx)` are part of the [`InspectCommitEvm`](https://docs.rs/revm-inspector/latest/revm_inspector/trait.InspectCommitEvm.html) trait that extends `InspectEvm` to allow committing state diff after tracing.
 
@@ -51,7 +51,7 @@ let _ = evm.inspect_with_tx(tx);
 
 To learn how to build your own custom EVM:
 - Check out the [example-my-evm](https://github.com/bluealloy/revm/tree/main/examples/my_evm) guide
-- Look at [op-revm](https://github.com/bluealloy/revm/tree/main/crates/optimism) to see how Optimism uses REVM
+- Look at [op-revm](https://github.com/bluealloy/revm/tree/main/crates/op-revm) to see how Optimism uses REVM
 
 Each trait needed to build custom EVM has detailed documentation explaining how it works and is worth reading.
 
