@@ -321,10 +321,16 @@ impl EthFrame<EthInterpreter> {
         // warm load account.
         context.journal_mut().load_account(created_address)?;
 
+        let address_has_storage = context
+            .journal_mut()
+            .db_mut()
+            .has_storage(created_address)?;
+
         // Create account, transfer funds and make the journal checkpoint.
         let checkpoint = match context.journal_mut().create_account_checkpoint(
             inputs.caller,
             created_address,
+            address_has_storage,
             inputs.value,
             spec,
         ) {
@@ -360,7 +366,6 @@ impl EthFrame<EthInterpreter> {
         );
         Ok(ItemOrResult::Item(this.consume()))
     }
-
     /// Initializes a frame with the given context and precompiles.
     pub fn init_with_context<
         CTX: ContextTr,

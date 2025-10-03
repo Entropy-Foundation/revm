@@ -30,7 +30,7 @@ pub struct TransactionParts {
     #[serde(default, deserialize_with = "deserialize_maybe_empty")]
     pub to: Option<Address>,
     /// Ether value to transfer (multiple variants for different test cases)
-    pub value: Vec<U256>,
+    pub value: Vec<String>,
     /// Maximum fee per gas (EIP-1559 transactions)
     pub max_fee_per_gas: Option<U256>,
     /// Maximum priority fee per gas (EIP-1559 transactions)
