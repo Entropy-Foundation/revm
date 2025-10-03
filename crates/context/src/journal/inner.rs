@@ -380,6 +380,7 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         &mut self,
         caller: Address,
         target_address: Address,
+        address_has_storage: bool,
         balance: U256,
         spec_id: SpecId,
     ) -> Result<JournalCheckpoint, TransferError> {
@@ -398,11 +399,14 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         let target_acc = self.state.get_mut(&target_address).unwrap();
         let last_journal = &mut self.journal;
 
-        // New account can be created if:
-        // Bytecode is not empty.
-        // Nonce is not zero
-        // Account is not precompile.
-        if target_acc.info.code_hash != KECCAK_EMPTY || target_acc.info.nonce != 0 {
+        // New account can be created only if:
+        // Bytecode is empty.
+        // Nonce is zero.
+        // Storage is empty.
+        if target_acc.info.code_hash != KECCAK_EMPTY
+            || target_acc.info.nonce != 0
+            || address_has_storage
+        {
             self.checkpoint_revert(checkpoint);
             return Err(TransferError::CreateCollision);
         }
