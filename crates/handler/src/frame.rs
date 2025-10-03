@@ -346,10 +346,13 @@ where
         // warm load account.
         context.journal().load_account(created_address)?;
 
+        let address_has_storage = context.journal().db().has_storage(created_address)?;
+
         // Create account, transfer funds and make the journal checkpoint.
         let checkpoint = match context.journal().create_account_checkpoint(
             inputs.caller,
             created_address,
+            address_has_storage,
             inputs.value,
             spec,
         ) {
@@ -466,10 +469,13 @@ where
         // Load account so it needs to be marked as warm for access list.
         context.journal().load_account(created_address)?;
 
+        let address_has_storage = context.journal().db().has_storage(created_address)?;
+
         // Create account, transfer funds and make the journal checkpoint.
         let checkpoint = match context.journal().create_account_checkpoint(
             inputs.caller,
             created_address,
+            address_has_storage,
             inputs.value,
             spec,
         ) {

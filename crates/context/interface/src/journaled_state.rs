@@ -168,6 +168,7 @@ pub trait JournalTr {
         &mut self,
         caller: Address,
         address: Address,
+        address_has_storage: bool,
         balance: U256,
         spec_id: SpecId,
     ) -> Result<JournalCheckpoint, TransferError>;
