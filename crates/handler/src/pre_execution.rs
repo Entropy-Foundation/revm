@@ -156,6 +156,7 @@ pub fn validate_against_state_and_deduct_caller<
         .info
         .balance
         .saturating_sub(gas_balance_spending);
+
     if is_balance_check_disabled {
         // Make sure the caller's balance is at least the value of the transaction.
         new_balance = new_balance.max(tx.value());

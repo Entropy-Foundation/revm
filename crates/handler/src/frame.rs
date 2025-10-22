@@ -297,7 +297,6 @@ impl EthFrame<EthInterpreter> {
         if caller_info.balance < inputs.value {
             return return_error(InstructionResult::OutOfFunds);
         }
-        
         let old_nonce = caller_info.nonce;
         if !is_automation {
             // Increase nonce of caller and check if it overflows
@@ -377,7 +376,6 @@ impl EthFrame<EthInterpreter> {
         ItemOrResult<FrameToken, FrameResult>,
         ContextError<<<CTX as ContextTr>::Db as Database>::Error>,
     > {
-        
         // TODO cleanup inner make functions
         let FrameInit {
             depth,
