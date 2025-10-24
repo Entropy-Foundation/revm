@@ -114,6 +114,7 @@ pub fn validate_against_state_and_deduct_caller<
 >(
     context: &mut CTX,
 ) -> Result<(), ERROR> {
+    let automation_mode = context.cfg().is_automation_mode();
     let basefee = context.block().basefee() as u128;
     let blob_price = context.block().blob_gasprice().unwrap_or_default();
     let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
@@ -166,12 +167,14 @@ pub fn validate_against_state_and_deduct_caller<
     caller_account.mark_touch();
     caller_account.info.balance = new_balance;
 
-    // Bump the nonce for calls. Nonce for CREATE will be bumped in `make_create_frame`.
-    if tx.kind().is_call() {
-        // Nonce is already checked
-        caller_account.info.nonce = caller_account.info.nonce.saturating_add(1);
+    if !automation_mode {
+        // Bump the nonce for calls. Nonce for CREATE will be bumped in `make_create_frame`.
+        if tx.kind().is_call() {
+            // Nonce is already checked
+            caller_account.info.nonce = caller_account.info.nonce.saturating_add(1);
+        }
     }
-
+    
     journal.caller_accounting_journal_entry(tx.caller(), old_balance, tx.kind().is_call());
     Ok(())
 }
