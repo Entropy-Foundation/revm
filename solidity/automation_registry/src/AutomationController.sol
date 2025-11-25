@@ -1,0 +1,756 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+import {CommonUtils} from "./CommonUtils.sol";
+import {LibController} from "./LibController.sol";
+
+import {IAutomationController} from "./IAutomationController.sol";
+import {IAutomationRegistry} from "./IAutomationRegistry.sol";
+import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {PausableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol";
+import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
+
+contract AutomationController is IAutomationController, Ownable2StepUpgradeable, PausableUpgradeable, UUPSUpgradeable {
+    using EnumerableSet for EnumerableSet.UintSet;
+    using CommonUtils for *;
+    using LibController for *;
+
+    /// @dev Defines the cycle state, used to update the registry.
+    uint8 constant SUSPENDED = 0;
+    uint8 constant FINISHED = 1;
+
+    LibController.AutomationCycleInfo internal cycleInfo;
+    IAutomationRegistry public registry;
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+  
+    /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
+    event TaskCancelledCapacitySurpassed(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 fee,
+        uint128 automationFeeCapForCycle,
+        bytes32 registrationHash
+    );
+
+    /// @notice Emitted when a task is removed due to insufficient balance.
+    event TaskCancelledInsufficentBalance(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 fee,
+        uint256 balance,
+        bytes32 registration_hash
+    );
+
+    /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
+    event TaskCycleFeeWithdraw(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 fee
+    );
+
+    /// @notice Emitted when the cycle state transitions.
+    event AutomationCycleEvent(
+        uint64 indexed index,
+        CommonUtils.CycleState indexed state,
+        uint64 startTime,
+        uint64 durationSecs,
+        CommonUtils.CycleState indexed oldState
+    );
+    
+    /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
+    event ActiveTasks(uint256[] indexed taskIndexes);
+    
+    /// @notice Event emitted on cycle transition containing removed task indexes.
+    event RemovedTasks(uint64[] indexed taskIndexes);
+
+    /// @notice Event emitted when on a new cycle inconsistent state of the registry has been identified.
+    /// When automation is in suspended state, there are no tasks expected.
+    event ErrorInconsistentSuspendedState();
+
+    /// @notice Emitted when the registry smart contract address is updated.
+    event RegistryUpdated(address indexed oldRegistryAddress, address indexed newRegistryAddress);
+    
+    
+    /// @dev Disables the initialization for the implementation contract.
+    constructor() {
+        _disableInitializers();
+    }
+    
+    /// @notice Initializes the configuration parameters of the contract, can only be called once.
+    /// @param _registry Address of the registry smart contract.
+    function initialize(address _registry) public initializer {
+        registry = IAutomationRegistry(_registry);
+
+        (CommonUtils.CycleState state, uint64 cycleId) = registry.isAutomationEnabled() ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
+
+        cycleInfo.initializeCycle(
+            cycleId,
+            uint64(block.timestamp),
+            registry.cycleDurationSecs(),
+            state
+        ); 
+
+        __Ownable2Step_init();
+        __Pausable_init();
+    }
+
+    /// @notice Called by the VM on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
+    /// @param _cycleIndex Index of the cycle.
+    /// @param _taskIndexes Array of task index to be processed.
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
+        // Check caller is VM
+        if (msg.sender != registry.getVM()) { revert CallerNotVM(); }
+        
+        CommonUtils.CycleState state = cycleInfo.state(); 
+
+        if(state == CommonUtils.CycleState.FINISHED) {
+            onCycleTransition(_cycleIndex, _taskIndexes);
+        } else {
+            if(state != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+            onCycleSuspend(_cycleIndex, _taskIndexes);
+        }
+    }
+
+    /// @notice It will be triggered for automation registry caused by `supra_governance::reconfiguration` or DKG finalization
+    /// to update the automation registry state depending on SUPRA_NATIVE_AUTOMATION feature flag state.
+    /// If registry is not fully initialized nothing is done.
+    /// If native automation feature is disabled and automation cycle in STARTED state,
+    /// then automation lifecycle is suspended immediately. And detached managment will
+    /// initiate reprocessing of the available tasks which will end up in refund and cleanup actions.
+    /// Otherwise suspention is postponed until the end of the transition state.
+    /// Nothing will be done if automation cycle was already suspended, i.e. in READY state.
+    /// If native automation feature is enabled and automation lifecycle has been in READY state, then lifecycle is restarted.
+    function onNewCycle() public {
+        CommonUtils.CycleState state = cycleInfo.state(); 
+
+        // Check if automation is enabled
+        if (registry.isAutomationEnabled()) {
+            // If the lifecycle has been suspended and we are recovering from it, then we update config from buffer and
+            // then start a new cycle directly.
+            // Unless we are in READY state, the feature flag being enabled will not have any effect.
+            // All the other states mean that we are in the middle of previous transition, which should end
+            // before reenabling the feature.
+            if (state == CommonUtils.CycleState.READY) {
+                if(registry.totalTasks() > 0) {
+                    emit ErrorInconsistentSuspendedState();
+                } else {
+                    updateConfigFromBuffer();
+                    moveToStartedState();
+                }
+            }
+
+
+            // We do not update config here, as due to feature being disabled, cycle ends early so it is expected
+            // that the current fee-parameters will be used to calculate automation-fee for refund for a cycle
+            // that has been kept short.
+            // So the confing should remain intact.
+        } else if (state == CommonUtils.CycleState.STARTED) {
+            tryMoveToSuspendedState();
+        } else if (state == CommonUtils.CycleState.FINISHED && cycleInfo.ifTransitionStateExists()) {
+            if (!isTransitionInProgress()) {
+                // Just entered cycle-end phase, and meanwhile also feature has been disabled so it is safe to move to suspended state.
+                tryMoveToSuspendedState();
+            }
+            // Otherwise wait of the cycle transition to end and then feature flag value will be taken into account.
+        }
+        // If in already SUSPENDED state or in READY state then do nothing.
+    }
+
+    /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
+    function monitorCycleEnd() public {
+        if (!registry.isAutomationEnabled()) {
+            return;
+        }
+
+        // TO_DO
+        // assert_automation_cycle_management_support();
+
+        if(cycleInfo.state() != CommonUtils.CycleState.STARTED || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
+            return;
+        }
+        
+        onCycleEndInternal();
+    }
+    
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Traverses the list of the tasks and based on the task state and expiry information either charges or drops the task after refunding eligable fees.
+    /// Tasks are checked not to be processed more than once.
+    /// This function should be called only if registry is in FINISHED state, meaning a normal cycle transition is happening.
+    /// After processing all input tasks, intermediate transition state is updated and transition end is checked (whether all expected tasks has been processed already).
+    /// In case if transition end is detected a start of the new cycle is given (if during trasition period suspention is not requested) and corresponding event is emitted.
+    /// @param _cycleIndex Cycle index of the new cycle to which the transition is being done.
+    /// @param _taskIndexes Array of task indexes to be processed.
+    function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
+        if(_taskIndexes.length == 0) { return; }
+        if(cycleInfo.state() != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+        
+        // Check if transition state exists
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+        if(cycleInfo.index() + 1 != _cycleIndex) { revert InvalidInputCycleIndex(); }
+
+        LibController.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
+        
+        cycleInfo.transitionState.lockedFees += intermediateState.cycleLockedFees;
+        cycleInfo.setGasCommittedForNextCycle(cycleInfo.gasCommittedForNextCycle() + intermediateState.gasCommittedForNextCycle);        
+        cycleInfo.setSysGasCommittedForNextCycle(cycleInfo.sysGasCommittedForNextCycle() + intermediateState.sysGasCommittedForNextCycle);
+        
+        updateCycleTransitionStateFromFinished();
+        if(intermediateState.removedTasks.length > 0) {
+            emit RemovedTasks(intermediateState.removedTasks);
+        }
+    }
+
+    /// @notice Traverses the list of the tasks and refunds automation(if not PENDING) and deposit fees for all tasks and removes from registry.
+    /// This function is called only if automation feature is disabled, i.e. cycle is in SUSPENDED state.
+    /// After processing input set of tasks the end of suspention process is checked(i.e. all expected tasks have been processed).
+    /// In case if end is identified, the registry state is update to READY and corresponding event is emitted.
+    /// @param _cycleIndex Input cycle index of the cycle being suspended.
+    /// @param _taskIndexes Array of task indexes to be processed.
+    function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
+        if(_taskIndexes.length > 0) {
+            if(cycleInfo.state() != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+            if(cycleInfo.index() != _cycleIndex) { revert InvalidInputCycleIndex(); }
+            // Check if transition state exists
+            if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+
+            uint64 currentTime = uint64(block.timestamp);
+            uint256 cycleLockedFees = registry.getCycleLockedFees();
+            
+            // Sort task indexes as order is important
+            uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+            uint64[] memory removedTasks = new uint64[](taskIndexes.length);
+            uint64 removedCounter;
+            for (uint i = 0; i < taskIndexes.length; i++) {
+                if(registry.ifTaskExists(taskIndexes[i])) {
+                    registry.removeTask(taskIndexes[i], false);
+                    removedTasks[removedCounter++] = taskIndexes[i];
+
+                    markTaskProcessed(taskIndexes[i]);
+
+                    // Nothing to refund for GST tasks
+                    if(registry.isUST(taskIndexes[i])) { 
+                        cycleLockedFees = registry.refundTaskFees(
+                            taskIndexes[i],
+                            currentTime,
+                            cycleLockedFees
+                        );       
+                    }
+                }
+            }
+        
+            updateCycleTransitionStateFromSuspended();
+            // FIX: removedtasks include removed tasks or those refund_task_fees?
+            emit RemovedTasks(removedTasks);
+        }
+    }
+
+    /// @notice Traverses all input task indexes and either drops or tries to charge automation fee if possible.
+    /// @param _taskIndexes Input task indexes.
+    /// @return intermediateState Returns the intermediate state.
+    function dropOrChargeTasks(
+        uint64[] memory _taskIndexes
+    ) private returns (LibController.IntermediateStateOfCycleChange memory intermediateState) { 
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 currentCycleEndTime = currentTime + cycleInfo.newCycleDuration();
+
+        // Sort task indexes to charge automation fees in their chronological order
+        uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+
+        uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
+        uint256 removedCount;
+
+        // Process each active task and calculate fee for the cycle for the tasks
+        for (uint256 i = 0; i < taskIndexes.length; i++) {
+            LibController.TransitionResult memory result = dropOrChargeTask(
+                taskIndexes[i],
+                currentTime,
+                currentCycleEndTime
+            );
+
+            if (result.isRemoved) {
+                removedBuffer[removedCount] = taskIndexes[i];
+                removedCount += 1; 
+            }
+
+            intermediateState.gasCommittedForNextCycle += result.gas;
+            intermediateState.sysGasCommittedForNextCycle += result.sysGas;
+            intermediateState.cycleLockedFees += result.fees;
+        }
+
+        uint64[] memory removedTasks = new uint64[](removedCount);
+        for (uint256 j = 0; j < removedCount; j++) {
+            removedTasks[j] = removedBuffer[j];
+        }
+        intermediateState.removedTasks = removedTasks;
+    }
+
+    /// @notice Drops or charges the input task. If the task is already processed or missing from the registry then nothing is done.
+    /// @param _taskIndex Task index to be dropped or charged.
+    /// @param _currentTime Current time.
+    /// @param _currentCycleEndTime End time of the current cycle.
+    /// @return result Returns the TransitionResult.
+    function dropOrChargeTask(
+        uint64 _taskIndex,
+        uint64 _currentTime,
+        uint64 _currentCycleEndTime
+    ) private returns (LibController.TransitionResult memory result){
+        if(registry.ifTaskExists(_taskIndex)) {
+            markTaskProcessed(_taskIndex);
+
+            bool isUST = registry.isUST(_taskIndex);
+            CommonUtils.TaskDetails memory task = registry.getTaskDetails(_taskIndex);
+            
+            // Task is cancelled or expired
+            if(task.state == CommonUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
+                if(isUST) {
+                    registry.refundDepositAndDrop(_taskIndex, task.owner, task.lockedFeeForNextCycle, task.lockedFeeForNextCycle);
+                } else {
+                    // Remove the task from registry and system registry
+                    registry.removeTask(_taskIndex, true);
+                }
+                result.isRemoved = true;
+            } else if(!isUST) {
+                // Active GST
+                // Governance submitted tasks are not charged
+
+                result.sysGas += task.maxGasAmount;
+                registry.updateTaskState(_taskIndex, CommonUtils.TaskState.ACTIVE);
+            } else {
+                // Active UST
+
+                uint128 registryMaxGasCap = registry.getRegistryMaxGasCap();
+
+                uint128 fee = registry.calculateTaskFee(
+                    task.state,
+                    task.expiryTime,
+                    task.maxGasAmount,
+                    cycleInfo.newCycleDuration(),
+                    _currentTime,
+                    cycleInfo.automationFeePerSec(),
+                    registryMaxGasCap
+                );
+
+                // If the task reached this phase that means it is a valid active task for the new cycle.
+                // During cleanup all expired tasks has been removed from the registry but the state of the tasks is not updated.
+                // As here we need to distinguish new tasks from already existing active tasks,
+                // as the fee calculation for them will be different based on their active duration in the cycle.
+                // For more details see calculateTaskFee function.
+                registry.updateTaskState(_taskIndex, CommonUtils.TaskState.ACTIVE);
+
+                (bool isRemoved, uint128 gas, uint128 fees) = tryWithdrawTaskAutomationFee(
+                    _taskIndex,
+                    task.owner,
+                    task.maxGasAmount,
+                    task.expiryTime,
+                    task.lockedFeeForNextCycle,
+                    fee,
+                    _currentCycleEndTime,
+                    task.automationFeeCapForCycle,
+                    task.txHash
+                );
+
+                if(isRemoved) { result.isRemoved = true; }
+                if(gas > 0) { result.gas = gas; }
+                if(fees > 0) { result.fees = fees; }
+            }
+        }
+    }
+
+    /// @notice Marks a task as processed.
+    /// @param _taskIndex Index of the task to be marked as processed.
+    function markTaskProcessed(uint64 _taskIndex) private {
+        uint64 nextTaskIndexPosition = cycleInfo.nextTaskIndexPosition(); 
+
+        if(nextTaskIndexPosition >= cycleInfo.transitionState.expectedTasksToBeProcessed.length()) { revert InconsistentTransitionState(); }
+        uint64 expectedTask = uint64(cycleInfo.transitionState.expectedTasksToBeProcessed.at(nextTaskIndexPosition));
+
+        if(expectedTask != _taskIndex) { revert OutOfOrderTaskProcessingRequest(); } 
+        cycleInfo.setNextTaskIndexPosition(nextTaskIndexPosition + 1);  
+    }
+
+    /// @notice Helper function to withdraw automation task fees for an active task.
+    /// @param _taskIndex Index of the task.
+    /// @param _owner Owner of the task.
+    /// @param _maxGasAmount Max gas amount of the task.
+    /// @param _expiryTime Expiry time of the task.
+    /// @param _lockedFeeForNextCycle Locked fees of the task.
+    /// @param _fee Fees to be charged for the task. 
+    /// @param _currentCycleEndTime End time of the current cycle.
+    /// @param _automationFeeCapForCycle Max automation fee for a cycle to be paid.
+    /// @param _regHash Tx hash of the task.
+    /// @return Bool representing if the task was removed.
+    /// @return Amount to add to gasCommittedForNextCycle 
+    /// @return Amount to add to cycleLockedFees 
+    function tryWithdrawTaskAutomationFee(
+        uint64 _taskIndex,
+        address _owner,
+        uint128 _maxGasAmount,
+        uint64 _expiryTime,
+        uint128 _lockedFeeForNextCycle,
+        uint128 _fee,
+        uint64 _currentCycleEndTime,
+        uint128 _automationFeeCapForCycle,
+        bytes32 _regHash
+    ) private returns (bool, uint128, uint128) {
+        // Remove the automation task if the cycle fee cap is exceeded.
+        // It might happen that task has been expired by the time charging is being done.
+        // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
+        
+        bool isRemoved;
+        uint128 gas;
+        uint128 fees;
+        if(_fee > _automationFeeCapForCycle) {
+            registry.refundDepositAndDrop(
+                _taskIndex,
+                _owner,
+                _lockedFeeForNextCycle, 
+                _lockedFeeForNextCycle
+            );
+            isRemoved = true;
+
+            emit TaskCancelledCapacitySurpassed(
+                _taskIndex,
+                _owner,
+                _fee,
+                _automationFeeCapForCycle,
+                _regHash
+            );
+        } else {
+            uint256 userBalance = IERC20(registry.supraERC20()).balanceOf(_owner);
+            if(userBalance < _fee) {
+                // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
+                registry.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
+                registry.removeTask(_taskIndex, false);
+                isRemoved = true;
+
+                emit TaskCancelledInsufficentBalance(
+                    _taskIndex,
+                    _owner,
+                    _fee,
+                    userBalance,
+                    _regHash
+                );
+            } else {
+                if(_fee != 0)  {
+                    // Charge the fee    
+                    bool sent = IERC20(registry.supraERC20()).transferFrom(_owner, address(registry), _fee);
+                    if (!sent) { revert TransferFailed(); }
+
+                    fees = _fee;
+                }
+              
+                emit TaskCycleFeeWithdraw(
+                    _taskIndex,
+                    _owner,
+                    _fee
+                );
+
+                // Calculate gas commitment for the next cycle only for valid active tasks
+                if (_expiryTime > _currentCycleEndTime) {
+                    gas = _maxGasAmount;
+                }
+            }
+        }
+
+        return (isRemoved, gas, fees);
+    }
+
+    /// @notice Updates the cycle state if the transition is identified to be finalized.
+    /// From FINISHED state we always move to the next cycle and in STARTED state.
+    /// But if it happened so that there was a suspension during cycle transition which was ignored, then immediately cycle state is updated to suspended.
+    /// Expectation will be that native layer catches this double transition and issues refund for the new cycle fees which will not be proceeded further in any case.
+    function updateCycleTransitionStateFromFinished() private {
+        // Check if transition state exists
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+
+        bool transitionFinalized = isTransitionFinalized();
+        if (transitionFinalized) {
+            registry.updateRegistryState(
+                cycleInfo.sysGasCommittedForNextCycle(),
+                cycleInfo.gasCommittedForNextCycle(),
+                cycleInfo.gasCommittedForNewCycle(),
+                cycleInfo.transitionState.lockedFees,
+                FINISHED
+            );
+    
+            // Set current timestamp as cycle start time
+            // Increment the cycle and update the state to STARTED
+            moveToStartedState();
+            if(registry.getTotalActiveTasks() > 0 ) {
+                uint256[] memory activeTasks = registry.getAllActiveTaskIds();
+                emit ActiveTasks(activeTasks);
+            }
+    
+            // Check if automation is disabled
+            if (!registry.isAutomationEnabled()) {
+                tryMoveToSuspendedState();
+            }
+        }
+    }   
+
+    /// @notice Updates the cycle state if the transition is identified to be finalized.
+    /// As transition happens from suspended state and while transition was in progress
+    ///    - if the feature was enabled back, then the transition will happen direclty to STARTED state,
+    ///    - otherwise the transition will be done to the READY state.
+    ///
+    /// In both cases config will be updated. In this case we will make sure to keep the consistency of state
+    /// when transition to READY state happens through paths
+    ///  - Started -> Suspended -> Ready
+    ///  - or Started-> {Finished, Suspended} -> Ready
+    ///  - or Started -> Finished -> {Started, Suspended}
+    function updateCycleTransitionStateFromSuspended() private {
+        // Check if transition state exists
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+        if(!isTransitionFinalized()) {
+            return; 
+        }
+        
+        registry.updateRegistryState(0, 0, 0, 0, SUSPENDED);
+
+        // Check if automation is enabled
+        if (registry.isAutomationEnabled()) {
+            // Update the config in case if transition flow is STARTED -> SUSPENDED-> STARTED.
+            // to reflect new configs for the new cycle if it has been updated during SUSPENDED state processing
+            updateConfigFromBuffer();
+            moveToStartedState();
+        } else {
+            moveToReadyState();
+        }
+    }
+
+    /// @notice Transition to suspended state is expected to be called
+    ///   a) when cycle is active and in progress
+    ///     - here we simply move to suspended state so native layer can start requesting tasks processing
+    ///       which will end up in refunds and cleanup. Note that refund will be done based on total gas-committed
+    ///       for the current cycle defined at the begining for the cycle, and using current automation fee parameters
+    ///   b) when cycle has just finished and there was another transaction causing feature suspension
+    ///     - as this both events happen in scope of the same block, then we will simply update the state to suspended
+    ///       and the native layer should identify the transition and request processing of the all available tasks.
+    ///       Note that in this case automation fee refund will not be expected and suspention and cycle end matched and
+    ///       no fee was yet charged to be refunded.
+    ///       So the duration for refund and automation-fee-per-second for refund will be 0
+    ///   c) when cycle transition was in progress and there was a feature suspension, but it could not be applied,
+    ///      and postponed till the cycle transition concludes
+    /// In all the cases if there are no tasks in registry the state will be updated directly to READY state.
+    function tryMoveToSuspendedState() private {
+        if(registry.totalTasks() == 0) {
+            // Registry is empty move to ready state directly
+            updateCycleStateTo(CommonUtils.CycleState.READY);
+        } else if (!cycleInfo.ifTransitionStateExists()) {
+            uint64 currentTime = uint64(block.timestamp);
+
+            uint64 startTime = cycleInfo.startTime(); 
+            uint64 cycleDuration = cycleInfo.durationSecs();
+            uint64 cycleEndTime = startTime + cycleDuration;
+
+            if(currentTime < startTime) { revert InvalidRegistryState(); }
+            if(currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
+            if(cycleInfo.state() != CommonUtils.CycleState.STARTED) { revert InvalidRegistryState(); }
+
+            // FIX: need to fix function to sort
+            uint256[] memory expected_tasks_to_be_processed = registry.getTaskIdList().sortUint256();
+
+            cycleInfo.setRefundDuration(cycleEndTime - currentTime);
+            cycleInfo.setNewCycleDuration(cycleDuration);
+            cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCurrentCycleInternal());
+            cycleInfo.setGasCommittedForNewCycle(0);
+            cycleInfo.setGasCommittedForNextCycle(0);
+            cycleInfo.setSysGasCommittedForNextCycle(0);
+            cycleInfo.transitionState.lockedFees = 0;
+            cycleInfo.setNextTaskIndexPosition(0);
+
+            updateExpectedTasks(expected_tasks_to_be_processed);
+            cycleInfo.setTransitionStateExists(true);
+            
+            updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
+        } else {
+            if(cycleInfo.state() != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+            if(isTransitionInProgress()) { revert InvalidRegistryState(); }
+
+            // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
+            // So the tasks sent for refund, will get only deposit refunded.  
+            cycleInfo.setRefundDuration(0);
+            cycleInfo.setAutomationFeePerSec(0);
+            cycleInfo.setGasCommittedForNewCycle(0);
+            
+            updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
+        }
+    }
+
+    /// @notice Transitions cycle state to the READY state. 
+    function moveToReadyState() private {
+        // If the cycle duration updated has been identified during transtion, then the transition state is kept
+        // with reset values except new cycle duration to have it properly set for the next new cycle.
+        // This may happen in case if cycle was ended and feature-flag has been disbaled before any task has
+        // been processed for the cycle transition.
+        // Note that we want to have consistent data in ready state which says that the cycle pointed in the ready state
+        // has been finished/summerized, and we are ready to start the next new cycle, and all the cycle information should
+        // match the finalized/summerized cycle since its start, including cycle duration.
+
+        // Check if transition state exists
+        if(cycleInfo.ifTransitionStateExists()) {
+            if (cycleInfo.newCycleDuration() == cycleInfo.durationSecs()) {
+                // Delete transition state
+                cycleInfo.transitionState.expectedTasksToBeProcessed.clear();
+                delete cycleInfo.transitionState;
+                cycleInfo.setTransitionStateExists(false);
+            } else {
+                // Reset all except new cycle duration
+                cycleInfo.setRefundDuration(0);  
+                cycleInfo.setAutomationFeePerSec(0);
+                cycleInfo.setGasCommittedForNewCycle(0);
+                cycleInfo.setGasCommittedForNextCycle(0);
+                cycleInfo.setSysGasCommittedForNextCycle(0);
+                cycleInfo.transitionState.lockedFees = 0;
+                cycleInfo.setNextTaskIndexPosition(0);
+                cycleInfo.transitionState.expectedTasksToBeProcessed.clear();
+            }
+        }
+        updateCycleStateTo(CommonUtils.CycleState.READY);
+    }
+
+    /// @notice Transitions cycle state to the STARTED state. 
+    function moveToStartedState() private {
+        cycleInfo.setIndex(cycleInfo.index() + 1);
+
+        cycleInfo.setStartTime(uint64(block.timestamp));
+
+        // Check if the transition state exists
+        if(cycleInfo.ifTransitionStateExists()) {
+            cycleInfo.setDurationSecs(cycleInfo.newCycleDuration());
+        }
+
+        updateCycleStateTo(CommonUtils.CycleState.STARTED);
+    }
+
+    /// @notice Updates the state of the cycle.
+    /// @param _state Input state to update cycle state with.
+    function updateCycleStateTo(CommonUtils.CycleState _state) private {
+        CommonUtils.CycleState oldState = cycleInfo.state();
+        cycleInfo.setState(uint8(_state));
+
+        emit AutomationCycleEvent (
+            cycleInfo.index(),
+            cycleInfo.state(),
+            cycleInfo.startTime(),
+            cycleInfo.durationSecs(),
+            oldState
+        );
+    }
+
+    /// @notice Helper function to update the expected tasks of the transition state.
+    function updateExpectedTasks(uint256[] memory _expectedTasks) private {
+        cycleInfo.transitionState.expectedTasksToBeProcessed.clear();
+
+        for (uint256 i = 0; i < _expectedTasks.length; i++) {
+            cycleInfo.transitionState.expectedTasksToBeProcessed.add(_expectedTasks[i]);
+        }
+    }
+
+    /// @notice Helper function called when cycle end is identified.
+    function onCycleEndInternal() private {
+        if(registry.totalTasks() == 0) {
+            // Registry is empty update config buffer and move to STARTED state directly
+            updateConfigFromBuffer();
+            moveToStartedState();
+        } else {
+            // FIX sortUint256
+            uint256[] memory expected_tasks_to_be_processed = registry.getTaskIdList().sortUint256();
+
+            cycleInfo.setRefundDuration(0);
+            cycleInfo.setNewCycleDuration(cycleInfo.durationSecs());
+            cycleInfo.setAutomationFeePerSec(0);
+            cycleInfo.setGasCommittedForNewCycle(registry.getGasCommittedForNextCycle());
+            cycleInfo.setGasCommittedForNextCycle(0);
+            cycleInfo.setSysGasCommittedForNextCycle (0);
+            cycleInfo.transitionState.lockedFees = 0;
+            cycleInfo.setNextTaskIndexPosition(0);
+            
+            updateExpectedTasks(expected_tasks_to_be_processed);
+            cycleInfo.setTransitionStateExists(true);
+            
+            // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.
+            updateConfigFromBuffer();
+
+            // Calculate automation fee per second for the new cycle only after configuration is updated.
+            // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
+            // and will be used to charge tasks during transition process.
+            cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
+            updateCycleStateTo(CommonUtils.CycleState.FINISHED);
+        }
+    }
+    
+    /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
+    function updateConfigFromBuffer() private {
+        if(registry.ifConfigBufferExists()) {
+            registry.applyPendingConfig();
+
+            uint64 cycleDurationSecs = registry.getBufferCycleDurationSecs();
+            // Check if transition state exists
+            if (cycleInfo.ifTransitionStateExists()) {
+                cycleInfo.setNewCycleDuration(cycleDurationSecs); 
+            } else {
+                cycleInfo.setDurationSecs(cycleDurationSecs);
+            }
+        }
+    }
+
+    /// @notice Checks if the cycle transition is finalized.
+    /// @return Bool representing if the cycle transition is finalized.
+    function isTransitionFinalized() private view returns (bool) {
+        return cycleInfo.transitionState.expectedTasksToBeProcessed.length() == cycleInfo.nextTaskIndexPosition();
+    }
+
+    /// @notice Checks if the cycle transition is in progress.
+    /// @return Bool representing if the cycle transition is in progress.
+    function isTransitionInProgress() private view returns (bool) {
+        return cycleInfo.nextTaskIndexPosition() != 0;
+    }
+    
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Returns the current cycle state.
+    /// @return Current cycle state.
+    function getCycleState() public view returns (uint8) {
+        return uint8(cycleInfo.state());
+    }
+
+    /// @notice Returns the state, start time and duration of the current cycle. 
+    /// @return State of the cycle.
+    /// @return Start time of the cycle.
+    /// @return Duration of the cycle.
+    function getCycleInfo() public view returns (CommonUtils.CycleState, uint64, uint64) {
+        return (cycleInfo.state(), cycleInfo.startTime(), cycleInfo.durationSecs());
+    }
+
+    /// @notice Returns the refund duration and automation fee per sec of the transtition state.
+    /// @return Refund duration
+    /// @return Automation fee per sec
+    function getTransitionInfo() public view returns (uint64, uint128) {
+        return (cycleInfo.refundDuration(), cycleInfo.automationFeePerSec());
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    
+    /// @notice Function to update the registry smart contract address.
+    /// @param _registry Address of the registry smart contract.
+    function setRegistry(address _registry) public onlyOwner {
+        if (_registry == address(0)) { revert InvalidAddress(); }
+        address oldRegistry = address(registry);
+        registry = IAutomationRegistry(_registry);
+        
+        emit RegistryUpdated(oldRegistry, _registry);
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Helper function that reverts when 'msg.sender' is not authorized to upgrade the contract.
+    /// @dev called by 'upgradeTo' and 'upgradeToAndCall' in UUPSUpgradeable
+    /// @dev must be called by 'owner'
+    /// @param newImplementation address of the new implementation
+    function _authorizeUpgrade(address newImplementation) internal virtual override onlyOwner{ }
+}
