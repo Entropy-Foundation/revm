@@ -8,11 +8,13 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     
-    /// Custom errors
+    /// @notice Error thrown if user has insufficient balance.
     error InsufficientBalance();
-    error InvalidAddress();
+    /// @notice Error thrown if 0 is passed as amount.
     error InvalidAmount();
+    /// @notice Error thrown if tokens are sent to the token contract itself.
     error InvalidTransfer();
+    /// @notice Error thrown if low level call fails.
     error TransferFailed();
 
     /// @notice Emitted when native token is deposited.
@@ -40,7 +42,7 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     }
 
     /// @notice Withdraw native token → Burn ERC20Supra 1:1
-    /// @param _amount to withdraw.
+    /// @param _amount Amount of native tokens to withdraw.
     function withdraw(uint256 _amount) external {
         if (_amount == 0) revert InvalidAmount();
         if (balanceOf(msg.sender) < _amount) revert InsufficientBalance();
@@ -53,7 +55,7 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
         emit Withdrawal(msg.sender, _amount);
     }    
 
-    /// @notice Fallback deposit support: allow users to send native token directly.
+    /// @notice Allows a user to send native tokens directly.
     receive() external payable {
         if (msg.value == 0) revert InvalidAmount();
         

@@ -43,7 +43,6 @@ library LibRegistry {
     function createRegistryConfig(
         uint128 _nextCycleRegistryMaxGasCap,
         uint128 _nextCycleSysRegistryMaxGasCap,
-        address _controller,
         bool _registrationEnabled,
         bool _automationEnabled,
         address _vm,
@@ -56,8 +55,8 @@ library LibRegistry {
             uint256(_nextCycleSysRegistryMaxGasCap);
 
         // Pack controller (address) | registrationEnabled (bool at bit 95) | automationEnabled (bool at bit 94)
+        // Sets controller as address(0)
         rcfg.controller_registrationEnabled_automationEnabled = 
-            (uint256(uint160(_controller)) << 96) |
             (_registrationEnabled ? (uint256(1) << 95) : 0) |
             (_automationEnabled ? (uint256(1) << 94) : 0);
 
@@ -494,13 +493,10 @@ library LibRegistry {
         s.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value);
     }
 
-
     /// @notice Deposit and fee related accounting.
     struct Deposit {
         uint256 totalDepositedAutomationFees;
         address coldWallet;
-        // uint256 totalLockedFees;                    // TO_DO
-        // mapping(uint64 => uint256) taskLockedFees;  // TO_DO
     }
 
     /// @notice Struct representing a stopped task.

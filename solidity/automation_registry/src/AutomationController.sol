@@ -165,9 +165,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             return;
         }
 
-        // TO_DO
-        // assert_automation_cycle_management_support();
-
         if(cycleInfo.state() != CommonUtils.CycleState.STARTED || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
             return;
         }
@@ -243,7 +240,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             }
         
             updateCycleTransitionStateFromSuspended();
-            // FIX: removedtasks include removed tasks or those refund_task_fees?
             emit RemovedTasks(removedTasks);
         }
     }
@@ -317,7 +313,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // Active GST
                 // Governance submitted tasks are not charged
 
-                result.sysGas += task.maxGasAmount;
+                result.sysGas = task.maxGasAmount;
                 registry.updateTaskState(_taskIndex, CommonUtils.TaskState.ACTIVE);
             } else {
                 // Active UST
@@ -341,7 +337,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // For more details see calculateTaskFee function.
                 registry.updateTaskState(_taskIndex, CommonUtils.TaskState.ACTIVE);
 
-                (bool isRemoved, uint128 gas, uint128 fees) = tryWithdrawTaskAutomationFee(
+                (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
                     _taskIndex,
                     task.owner,
                     task.maxGasAmount,
@@ -352,10 +348,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                     task.automationFeeCapForCycle,
                     task.txHash
                 );
-
-                if(isRemoved) { result.isRemoved = true; }
-                if(gas > 0) { result.gas = gas; }
-                if(fees > 0) { result.fees = fees; }
             }
         }
     }
@@ -551,7 +543,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             if(currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
             if(cycleInfo.state() != CommonUtils.CycleState.STARTED) { revert InvalidRegistryState(); }
 
-            // FIX: need to fix function to sort
             uint256[] memory expected_tasks_to_be_processed = registry.getTaskIdList().sortUint256();
 
             cycleInfo.setRefundDuration(cycleEndTime - currentTime);
@@ -658,7 +649,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             updateConfigFromBuffer();
             moveToStartedState();
         } else {
-            // FIX sortUint256
             uint256[] memory expected_tasks_to_be_processed = registry.getTaskIdList().sortUint256();
 
             cycleInfo.setRefundDuration(0);

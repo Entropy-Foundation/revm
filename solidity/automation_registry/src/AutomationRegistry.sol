@@ -183,11 +183,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @param _congestionBaseFeeWeiPerSec Base fee per second for the full capacity of the automation registry when the congestion threshold is exceeded.
     /// @param _congestionExponent The congestion fee increases exponentially based on this value, ensuring higher fees as the registry approaches full capacity.
     /// @param _taskCapacity Maximum number of tasks that the registry can hold.
-    /// @param _cycleDurationSecs Automation cycle duration in secods
+    /// @param _cycleDurationSecs Automation cycle duration in seconds.
     /// @param _sysTaskDurationCapSecs Maximum allowable duration (in seconds) from the registration time that a system automation task can run.
     /// @param _sysRegistryMaxGasCap Maximum gas allocation for system automation tasks per cycle.
     /// @param _sysTaskCapacity Maximum number of system tasks that the registry can hold.
-    /// @param _controller Address of the AutomationController.
+    /// @param _vm Address for the VM.
+    /// @param _supraERC20 Address of the ERC20Supra contract.
     function initialize(
         uint64 _taskDurationCapSecs,
         uint64 _registryMaxGasCap,
@@ -201,12 +202,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         uint64 _sysTaskDurationCapSecs,
         uint64 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity,
-        address _controller,
         address _vm,
         address _supraERC20
     ) public initializer {
-        // FIX: initialization of cycle and _cycleDurationSecs should be assigned to cycle duration
-
         validateConfigParameters(
             _taskDurationCapSecs,
             _registryMaxGasCap,
@@ -218,7 +216,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
             _sysRegistryMaxGasCap,
             _sysTaskCapacity
         );
-        if(_controller == address(0)) { revert InvalidAddress(); }
         if(_vm == address(0)) { revert InvalidAddress(); }
         if(_supraERC20 == address(0)) { revert InvalidAddress(); }
 
@@ -240,7 +237,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         regConfig = LibRegistry.createRegistryConfig(
             _registryMaxGasCap,
             _sysRegistryMaxGasCap,
-            _controller,
             true,
             true,
             _vm,
@@ -1367,7 +1363,27 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         return getCycleLockedFees() + getTotalDepositedAutomationFees();
     }    
 
-    // TO_DO: get_task_details_bulk
+    /// @notice Retrieves the details of automation tasks by their task index. Skips a task if it doesn't exist.
+    /// @param _taskIndexes Input task indexes to get details of.
+    /// @return Task details of the tasks that exist.
+    function getTaskDetailsBulk(uint64[] memory _taskIndexes) public view returns (CommonUtils.TaskDetails[] memory) {
+        uint256 count = _taskIndexes.length;
+        CommonUtils.TaskDetails[] memory temp =  new CommonUtils.TaskDetails[](count);
+        uint256 exists;
+
+        for (uint256 i = 0; i < count; i++) {
+            if(ifTaskExists(_taskIndexes[i])) {
+                temp[exists] = regState.tasks[_taskIndexes[i]].getTaskDetails();
+                exists += 1; 
+            }
+        }
+
+        CommonUtils.TaskDetails[] memory taskDetails =  new CommonUtils.TaskDetails[](exists);
+        for (uint256 i = 0; i < exists; i++) {
+            taskDetails[i] = temp[i];            
+        }
+        return taskDetails;
+    }
 
     /// @notice Returns all the automation tasks available in the registry.
     function getTaskIdList() public view returns (uint256[] memory) {
@@ -1394,9 +1410,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         return regState.currentIndex;
     }
 
-    /// @notice Returns the details of a task.
+    /// @notice Returns the details of a task. Reverts if task doesn't exist.
     /// @param _taskIndex Task index to get details for.
     function getTaskDetails(uint64 _taskIndex) public view returns (CommonUtils.TaskDetails memory) {
+        if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         return regState.tasks[_taskIndex].getTaskDetails();
     }
     
