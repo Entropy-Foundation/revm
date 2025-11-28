@@ -2,8 +2,8 @@ use crate::evm::FrameTr;
 use crate::item_or_result::FrameInitOrResult;
 use crate::{precompile_provider::PrecompileProvider, ItemOrResult};
 use crate::{CallFrame, CreateFrame, FrameData, FrameResult};
-use context::Transaction;
 use context::result::FromStringError;
+use context::Transaction;
 use context_interface::context::ContextError;
 use context_interface::local::{FrameToken, OutFrame};
 use context_interface::ContextTr;
@@ -11,7 +11,6 @@ use context_interface::{
     journaled_state::{JournalCheckpoint, JournalTr},
     Cfg, Database,
 };
-use precompile::PrecompileId;
 use core::cmp::min;
 use derive_where::derive_where;
 use interpreter::interpreter_action::FrameInit;
@@ -23,11 +22,12 @@ use interpreter::{
     FrameInput, Gas, InputsImpl, InstructionResult, Interpreter, InterpreterAction,
     InterpreterResult, InterpreterTypes, SharedMemory,
 };
+use precompile::PrecompileId;
 use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
 };
-use primitives::{Address, B256, Bytes, U256, keccak256};
+use primitives::{keccak256, Address, Bytes, B256, U256};
 use state::Bytecode;
 use std::borrow::ToOwned;
 use std::boxed::Box;
@@ -193,14 +193,15 @@ impl EthFrame<EthInterpreter> {
         };
         let is_static = inputs.is_static;
         let gas_limit = inputs.gas_limit;
-        
+
         if let Some(tx_hash_addr) = PrecompileId::TxHash.mainnet_address() {
             if inputs.bytecode_address == tx_hash_addr {
                 let tx_hash = ctx.tx().tx_hash();
-                interpreter_input.input = CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
+                interpreter_input.input =
+                    CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
             }
         }
-       
+
         if let Some(result) = precompiles
             .run(
                 ctx,
@@ -227,7 +228,7 @@ impl EthFrame<EthInterpreter> {
             .load_account_code(inputs.bytecode_address)?;
 
         let mut code_hash = account.info.code_hash();
-        let mut bytecode = account.info.code.clone().unwrap_or_default(); 
+        let mut bytecode = account.info.code.clone().unwrap_or_default();
 
         if let Bytecode::Eip7702(eip7702_bytecode) = bytecode {
             let account = &ctx
@@ -316,7 +317,7 @@ impl EthFrame<EthInterpreter> {
                 .journal_mut()
                 .nonce_bump_journal_entry(inputs.caller);
         }
-        
+
         // Create address
         let mut init_code_hash = None;
         let created_address = match inputs.scheme {

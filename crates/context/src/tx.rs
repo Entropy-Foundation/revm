@@ -228,7 +228,7 @@ impl Transaction for TxEnv {
     fn max_priority_fee_per_gas(&self) -> Option<u128> {
         self.gas_priority_fee
     }
-    
+
     fn tx_hash(&self) -> B256 {
         self.tx_hash
     }
@@ -384,9 +384,9 @@ impl TxEnvBuilder {
 
     /// Set the transaction hash
     pub fn tx_hash(mut self, tx_hash: B256) -> Self {
-    self.tx_hash = tx_hash;
-    self
-}
+        self.tx_hash = tx_hash;
+        self
+    }
 
     /// Set the authorization list
     pub fn authorization_list(

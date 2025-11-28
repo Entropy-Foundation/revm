@@ -71,7 +71,7 @@ pub trait Transaction {
     fn nonce(&self) -> u64;
 
     /// Transaction hash (32 bytes).
-    /// 
+    ///
     /// Note : Common field for all transactions.
     fn tx_hash(&self) -> B256;
 

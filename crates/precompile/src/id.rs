@@ -176,7 +176,7 @@ impl PrecompileId {
                 } else {
                     crate::secp256r1::P256VERIFY_OSAKA
                 }
-            },
+            }
             Self::TxHash => crate::tx_hash::TX_HASH,
             Self::Custom(_) => return None,
         };

@@ -187,7 +187,7 @@ impl<T: Transaction> Transaction for OpTransaction<T> {
     fn authorization_list(&self) -> impl Iterator<Item = Self::Authorization<'_>> {
         self.base.authorization_list()
     }
-    
+
     fn tx_hash(&self) -> B256 {
         self.base.tx_hash()
     }
