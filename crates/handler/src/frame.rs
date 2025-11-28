@@ -2,6 +2,7 @@ use crate::evm::FrameTr;
 use crate::item_or_result::FrameInitOrResult;
 use crate::{precompile_provider::PrecompileProvider, ItemOrResult};
 use crate::{CallFrame, CreateFrame, FrameData, FrameResult};
+use context::Transaction;
 use context::result::FromStringError;
 use context_interface::context::ContextError;
 use context_interface::local::{FrameToken, OutFrame};
@@ -10,6 +11,7 @@ use context_interface::{
     journaled_state::{JournalCheckpoint, JournalTr},
     Cfg, Database,
 };
+use precompile::PrecompileId;
 use core::cmp::min;
 use derive_where::derive_where;
 use interpreter::interpreter_action::FrameInit;
@@ -25,7 +27,7 @@ use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
 };
-use primitives::{keccak256, Address, Bytes, U256};
+use primitives::{Address, B256, Bytes, U256, keccak256};
 use state::Bytecode;
 use std::borrow::ToOwned;
 use std::boxed::Box;
@@ -169,7 +171,6 @@ impl EthFrame<EthInterpreter> {
 
         // Create subroutine checkpoint
         let checkpoint = ctx.journal_mut().checkpoint();
-
         // Touch address. For "EIP-158 State Clear", this will erase empty accounts.
         if let CallValue::Transfer(value) = inputs.value {
             // Transfer value from caller to called account
@@ -183,7 +184,7 @@ impl EthFrame<EthInterpreter> {
             }
         }
 
-        let interpreter_input = InputsImpl {
+        let mut interpreter_input = InputsImpl {
             target_address: inputs.target_address,
             caller_address: inputs.caller,
             bytecode_address: Some(inputs.bytecode_address),
@@ -192,7 +193,14 @@ impl EthFrame<EthInterpreter> {
         };
         let is_static = inputs.is_static;
         let gas_limit = inputs.gas_limit;
-
+        
+        if let Some(tx_hash_addr) = PrecompileId::TxHash.mainnet_address() {
+            if inputs.bytecode_address == tx_hash_addr {
+                let tx_hash = ctx.tx().tx_hash();
+                interpreter_input.input = CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
+            }
+        }
+       
         if let Some(result) = precompiles
             .run(
                 ctx,
@@ -219,7 +227,7 @@ impl EthFrame<EthInterpreter> {
             .load_account_code(inputs.bytecode_address)?;
 
         let mut code_hash = account.info.code_hash();
-        let mut bytecode = account.info.code.clone().unwrap_or_default();
+        let mut bytecode = account.info.code.clone().unwrap_or_default(); 
 
         if let Bytecode::Eip7702(eip7702_bytecode) = bytecode {
             let account = &ctx

@@ -44,6 +44,8 @@ pub enum PrecompileId {
     Bls12MapFp2ToGp2,
     /// ECDSA signature verification over the secp256r1 elliptic curve (also known as P-256 or prime256v1).
     P256Verify,
+    /// Transaction hash precompile.
+    TxHash,
     /// Custom precompile identifier.
     Custom(Cow<'static, str>),
 }
@@ -78,6 +80,7 @@ impl PrecompileId {
             Self::Bls12MapFpToGp1 => address!("0x0000000000000000000000000000000000000010"),
             Self::Bls12MapFp2ToGp2 => address!("0x0000000000000000000000000000000000000011"),
             Self::P256Verify => address!("0x0000000000000000000000000000000000000012"),
+            Self::TxHash => address!("0x0000000000000000000000000000000053555000"),
             Self::Custom(_) => return None,
         };
         Some(address)
@@ -104,6 +107,7 @@ impl PrecompileId {
             Self::Bls12MapFpToGp1 => "BLS12_MAP_FP_TO_G1",
             Self::Bls12MapFp2ToGp2 => "BLS12_MAP_FP2_TO_G2",
             Self::P256Verify => "P256VERIFY",
+            Self::TxHash => "TX_HASH",
             Self::Custom(a) => a.as_ref(),
         }
     }
@@ -172,7 +176,8 @@ impl PrecompileId {
                 } else {
                     crate::secp256r1::P256VERIFY_OSAKA
                 }
-            }
+            },
+            Self::TxHash => crate::tx_hash::TX_HASH,
             Self::Custom(_) => return None,
         };
 

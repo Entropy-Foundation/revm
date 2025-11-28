@@ -70,6 +70,11 @@ pub trait Transaction {
     /// Note : Common field for all transactions.
     fn nonce(&self) -> u64;
 
+    /// Transaction hash (32 bytes).
+    /// 
+    /// Note : Common field for all transactions.
+    fn tx_hash(&self) -> B256;
+
     /// Transaction kind. It can be Call or Create.
     ///
     /// Kind is applicable for: Legacy, EIP-2930, EIP-1559
