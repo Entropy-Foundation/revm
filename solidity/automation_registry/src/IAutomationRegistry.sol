@@ -6,6 +6,8 @@ import {LibRegistry} from "./LibRegistry.sol";
 
 interface IAutomationRegistry {
     // Custom errors
+    error AddressCannotBeEOA();
+    error AddressCannotBeZero();
     error AddressAlreadyExists();
     error AddressDoesNotExist();
     error CallerNotController();
@@ -13,7 +15,6 @@ interface IAutomationRegistry {
     error GasCommittedExceedsMaxGasCap();
     error InsufficientFeeCapForCycle();
     error InsufficentValueSent();
-    error InvalidAddress();
     error InvalidAuxDataLength();
     error InvalidExpiryTime();
     error InvalidGasPriceCap();

@@ -9,10 +9,9 @@ import {IAutomationController} from "./IAutomationController.sol";
 import {IAutomationRegistry} from "./IAutomationRegistry.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
-import {PausableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, PausableUpgradeable, UUPSUpgradeable {
+contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUPSUpgradeable {
     using EnumerableSet for *;
     using CommonUtils for *;
     using LibRegistry for *;
@@ -69,10 +68,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     );
     
     /// @notice Emitted when an account is authorized as submitter for system tasks.
-    event AuthorizationGranted(address indexed account, uint256 timestamp);
+    event AuthorizationGranted(address indexed account, uint256 indexed timestamp);
     
     /// @notice Emitted when authorization is revoked for an account to submit system tasks.
-    event AuthorizationRevoked(address indexed account, uint256 timestamp);
+    event AuthorizationRevoked(address indexed account, uint256 indexed timestamp);
 
     /// @notice Emitted when task registration is enabled.
     event TaskRegistrationEnabled(bool indexed status);
@@ -94,14 +93,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
 
     /// @notice Emitted when a new config is added.
     event ConfigBufferUpdated(
-        LibRegistry.ConfigDetails pendingConfig
+        LibRegistry.ConfigDetails indexed pendingConfig
     );
 
     /// @notice Emitted when the cold wallet address is updated.
-    event ColdWalletUpdated(address indexed oldColdWallet, address indexed  newColdWallet);
+    event ColdWalletUpdated(address indexed oldColdWallet, address indexed newColdWallet);
 
-    /// @notice Emitted when the controller smart contract address is updated. 
-    event ControllerUpdated(address indexed oldController, address indexed newController);
+    /// @notice Emitted when the automation controller smart contract address is updated. 
+    event AutomationControllerUpdated(address indexed oldController, address indexed newController);
     
     /// @notice Emitted when the registry fees is withdrawn by the admin.
     event RegistryFeeWithdrawn(address indexed coldWallet, uint256 indexed feesWithdrawn);
@@ -156,15 +155,15 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: MODIFIERS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Modifier to assert that controller contract is the caller.
+    /// @dev Modifier to assert that automation controller contract is the caller.
     modifier onlyController() {
-        if(msg.sender != regConfig.controller()) { revert CallerNotController(); }
+        if(msg.sender != regConfig.automationController()) { revert CallerNotController(); }
         _;
     }
 
     /// @dev Modifier to assert that either controller or registry contract is the caller.
     modifier onlyRegistryAndController() {
-        if(msg.sender != regConfig.controller() && msg.sender != address(this)) { revert UnauthorizedCaller(); }
+        if(msg.sender != regConfig.automationController() && msg.sender != address(this)) { revert UnauthorizedCaller(); }
         _;
     }
 
@@ -191,16 +190,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @param _supraERC20 Address of the ERC20Supra contract.
     function initialize(
         uint64 _taskDurationCapSecs,
-        uint64 _registryMaxGasCap,
-        uint64 _automationBaseFeeWeiPerSec,
-        uint64 _flatRegistrationFeeWei,
+        uint128 _registryMaxGasCap,
+        uint128 _automationBaseFeeWeiPerSec,
+        uint128 _flatRegistrationFeeWei,
         uint8 _congestionThresholdPercentage,
-        uint64 _congestionBaseFeeWeiPerSec,
+        uint128 _congestionBaseFeeWeiPerSec,
         uint8 _congestionExponent,
         uint16 _taskCapacity,
         uint64 _cycleDurationSecs,
         uint64 _sysTaskDurationCapSecs,
-        uint64 _sysRegistryMaxGasCap,
+        uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity,
         address _vm,
         address _supraERC20
@@ -216,8 +215,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
             _sysRegistryMaxGasCap,
             _sysTaskCapacity
         );
-        if(_vm == address(0)) { revert InvalidAddress(); }
-        if(_supraERC20 == address(0)) { revert InvalidAddress(); }
+        if(_vm == address(0)) revert AddressCannotBeZero();
+
+        if(_supraERC20 == address(0)) revert AddressCannotBeZero();
+        if(!_supraERC20.isContract()) revert AddressCannotBeEOA();
 
         LibRegistry.Config memory config = LibRegistry.createConfig(
             _registryMaxGasCap,
@@ -245,7 +246,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         );
 
         __Ownable2Step_init();
-        __Pausable_init();
+        __Ownable_init(msg.sender);
     }
 
     /// @notice Function used to register a user task for automation.
@@ -272,7 +273,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
 
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
-        if(IAutomationController(regConfig.controller()).getCycleState() != 1) { revert CycleNotStarted(); }
+        if(IAutomationController(regConfig.automationController()).getCycleState() != 1) { revert CycleNotStarted(); }
 
         if(totalTasks() >= regConfig.taskCapacity()) { revert TaskCapacityReached(); }
 
@@ -280,13 +281,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         uint64 regTime = uint64(block.timestamp);
         uint64 startTime;
         uint64 durationSecs;
-        ( , startTime, durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        ( , startTime, durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         validateTaskDuration(regTime, _expiryTime, LibRegistry.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
 
         address payloadTarget;
         (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
-        if(payloadTarget == address(0)) { revert InvalidAddress(); }
+        if(payloadTarget == address(0)) { revert AddressCannotBeZero(); }
+        if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
         if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
         if(_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
         if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
@@ -350,7 +352,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
 
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
-        if(IAutomationController(regConfig.controller()).getCycleState() != 1) { revert CycleNotStarted(); }
+        if(IAutomationController(regConfig.automationController()).getCycleState() != 1) { revert CycleNotStarted(); }
 
         if(totalSystemTasks() >= regConfig.sysTaskCapacity()) { revert TaskCapacityReached(); }
 
@@ -359,13 +361,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         uint64 regTime = uint64(block.timestamp);
         uint64 startTime;
         uint64 durationSecs;
-        (, startTime, durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        (, startTime, durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         validateTaskDuration(regTime, _expiryTime, LibRegistry.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
 
         address payloadTarget;
         (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
-        if( payloadTarget == address(0)) { revert InvalidAddress(); }
+        if( payloadTarget == address(0)) { revert AddressCannotBeZero(); }
+        if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
         if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
         if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
 
@@ -412,7 +415,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
@@ -465,7 +468,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
 
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
@@ -509,7 +512,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
 
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
@@ -627,7 +630,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
@@ -686,13 +689,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @notice Helper function to validate the registry configuration parameters.
     function validateConfigParameters(
         uint64 _taskDurationCapSecs,
-        uint64 _registryMaxGasCap,
+        uint128 _registryMaxGasCap,
         uint8 _congestionThresholdPercentage,
         uint8 _congestionExponent,
         uint16 _taskCapacity,
         uint64 _cycleDurationSecs,
         uint64 _sysTaskDurationCapSecs,
-        uint64 _sysRegistryMaxGasCap,
+        uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity
     ) private pure {
         if(_taskDurationCapSecs <= _cycleDurationSecs) { revert InvalidTaskDuration(); }
@@ -1107,7 +1110,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         uint256 cycleLockedFees;
         // Do not attempt fee refund if remaining duration is 0
 
-        (uint64 refundDuration, uint128 automationFeePerSec) = IAutomationController(regConfig.controller()).getTransitionInfo();
+        (uint64 refundDuration, uint128 automationFeePerSec) = IAutomationController(regConfig.automationController()).getTransitionInfo();
 
         if (task.state != CommonUtils.TaskState.PENDING && refundDuration != 0) {
             uint128 registryMaxGasCap = getRegistryMaxGasCap();
@@ -1167,16 +1170,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @notice Function to update the registry configuration parameters.
     function updateConfig(
         uint64 _taskDurationCapSecs,
-        uint64 _registryMaxGasCap,
-        uint64 _automationBaseFeeWeiPerSec,
-        uint64 _flatRegistrationFeeWei,
+        uint128 _registryMaxGasCap,
+        uint128 _automationBaseFeeWeiPerSec,
+        uint128 _flatRegistrationFeeWei,
         uint8 _congestionThresholdPercentage,
-        uint64 _congestionBaseFeeWeiPerSec,
+        uint128 _congestionBaseFeeWeiPerSec,
         uint8 _congestionExponent,
         uint16 _taskCapacity,
         uint64 _cycleDurationSecs,
         uint64 _sysTaskDurationCapSecs,
-        uint64 _sysRegistryMaxGasCap,
+        uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity
     ) public onlyOwner {
         validateConfigParameters(
@@ -1276,7 +1279,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @notice Function to update the VM address.
     /// @param _vm New address for VM.
     function setVM(address _vm) public onlyOwner {
-        if(_vm == address(0)) { revert InvalidAddress(); }
+        if(_vm == address(0)) { revert AddressCannotBeZero(); }
 
         address oldVM = regConfig.vm;
         regConfig.vm = _vm;
@@ -1287,7 +1290,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @notice Function to update the SupraERC20 address.
     /// @param _supraERC20 New address for SupraERC20.
     function setSupraERC20(address _supraERC20) public onlyOwner {
-        if(_supraERC20 == address(0)) { revert InvalidAddress(); }
+        if(_supraERC20 == address(0)) { revert AddressCannotBeZero(); }
+        if(!_supraERC20.isContract()) { revert AddressCannotBeEOA(); }
 
         address oldSupraERC20 = regConfig.supraERC20;
         regConfig.supraERC20 = _supraERC20;
@@ -1314,7 +1318,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @notice Function to update the cold wallet address.
     /// @param _coldWallet Address for the new cold wallet.
     function setColdWallet(address _coldWallet) public onlyOwner {
-        if(_coldWallet == address(0)) { revert InvalidAddress(); }
+        if(_coldWallet == address(0)) { revert AddressCannotBeZero(); }
 
         address oldColdWallet = deposit.coldWallet;
         deposit.coldWallet = _coldWallet;
@@ -1322,18 +1326,24 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         emit ColdWalletUpdated(oldColdWallet, _coldWallet);
     }
 
-    /// @notice Function to update the controller smart contract address. 
-    /// @param _controller Address of the controller smart contact.
-    function setController(address _controller) public onlyOwner {
-        if (_controller == address(0)) { revert InvalidAddress();  }
-        address oldController = regConfig.controller();
-        regConfig.setController(_controller);
+    /// @notice Function to update the automation controller smart contract address. 
+    /// @param _controller Address of the automation controller smart contact.
+    function setAutomationController(address _controller) public onlyOwner {
+        if (_controller == address(0)) { revert AddressCannotBeZero();  }
+        if(!_controller.isContract()) { revert AddressCannotBeEOA(); }
 
-        emit ControllerUpdated(oldController, _controller);
+        address oldController = regConfig.automationController();
+        regConfig.setAutomationController(_controller);
+
+        emit AutomationControllerUpdated(oldController, _controller);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
+    function getConfig() public view returns (LibRegistry.ConfigDetails memory) {
+        return regConfig.config.getConfig();
+    }
+
     /// @notice Returns the cold wallet address.
     function getColdWallet() public view returns (address) {
         return deposit.coldWallet;
@@ -1347,6 +1357,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     /// @notice Returns the SupraERC20 address.
     function supraERC20() public view returns (address) {
         return regConfig.supraERC20;
+    }
+
+    function getAutomationController() public view returns (address) {
+        return regConfig.automationController();
     }
 
     /// @notice Returns if automation is enabled.
@@ -1391,8 +1405,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     }
 
     /// @notice Returns the registry max gas cap for the next cycle.    
-    function getNextCycleRegistryMaxGasCap()  public view returns (uint128) {
+    function getNextCycleRegistryMaxGasCap() public view returns (uint128) {
         return regConfig.nextCycleRegistryMaxGasCap();
+    }
+
+    /// @notice Returns the system registry max gas cap for the next cycle.    
+    function getNextCycleSysRegistryMaxGasCap() public view returns (uint128) {
+        return regConfig.nextCycleSysRegistryMaxGasCap();
     }
 
     /// @notice Returns the number of total tasks.
@@ -1486,6 +1505,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         return regConfig.registryMaxGasCap();
     }
 
+    /// @notice Returns the system registry max gas cap configured.
+    function getSysRegistryMaxGasCap() public view returns (uint128) {
+        return regConfig.sysRegistryMaxGasCap();
+    }
+
     /// @notice Returns the automationBaseFeeWeiPerSec configured.
     function getAutomationBaseFeeWeiPerSec() public view returns (uint128) {
         return regConfig.automationBaseFeeWeiPerSec();
@@ -1533,6 +1557,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
     function ifConfigBufferExists() public view returns (bool) {
         return configBuffer.ifExists; 
     }
+
+    function getPendingConfig() public view returns (LibRegistry.ConfigDetails memory) {
+        return configBuffer.pendingConfig.getConfig();
+    }
     
     /// @notice Returns the cycle duration of config buffer.
     function getBufferCycleDurationSecs() public view returns (uint64) {
@@ -1553,7 +1581,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, Pau
         uint128 _taskOccupancy,
         uint128 _committedOccupancy
     ) public view returns (uint128) {
-        ( , , uint64 durationSecs) = IAutomationController(regConfig.controller()).getCycleInfo();
+        ( , , uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
         return estimateAutomationFeeWithCommittedOccupancyInternal(
             _taskOccupancy,
             _committedOccupancy,

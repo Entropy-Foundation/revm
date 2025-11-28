@@ -89,7 +89,7 @@ library LibRegistry {
     }
 
     // controller (address) | registrationEnabled (bool) [stored at bit 95] | automationEnabled (bool) [stored at bit 94]
-    function controller(RegistryConfig storage r) internal view returns (address) {
+    function automationController(RegistryConfig storage r) internal view returns (address) {
         return address(uint160(r.controller_registrationEnabled_automationEnabled >> 96));
     }
 
@@ -101,7 +101,7 @@ library LibRegistry {
         return (r.controller_registrationEnabled_automationEnabled >> 94) & 1 != 0;
     }
 
-    function setController(RegistryConfig storage r, address _controller) internal {
+    function setAutomationController(RegistryConfig storage r, address _controller) internal {
         // clear top 160 bits
         r.controller_registrationEnabled_automationEnabled &= ~((uint256(type(uint160).max)) << 96);
 

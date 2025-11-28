@@ -4,29 +4,47 @@ pragma solidity 0.8.24;
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IAutomationController} from "./IAutomationController.sol";
+import {CommonUtils} from "./CommonUtils.sol";
 
 contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
+    using CommonUtils for address;
+
     address public automationController;
-    address public vm;
-    
-    error CallerNotVM();
+
+    error AddressCannotBeEOA();
+    error AddressCannotBeZero();
+
+    /// @notice Emitted when the address for automation controller smart contract is updated.
+    /// @param oldController Address of the old automation controller.
+    /// @param newController Address of the new automation controller.
+    event AutomationControllerUpdated(address indexed oldController, address indexed newController);
 
     /// @dev Disables the initialization for the implementation contract.
     constructor() {
         _disableInitializers();
     }
 
-    function initialize(address _automationController, address _vm) public initializer {
-        automationController = _automationController;
-        vm = _vm;
-
+    /// @notice Initializes the owner of the contract.
+    function initialize() public initializer {
         __Ownable2Step_init();
+        __Ownable_init(msg.sender);
     }
 
+    /// @notice Sets the address for the automation controller smart contract.
+    /// @param _controller Address of the automation controller smart contract.
+    function setAutomationController(address _controller) public onlyOwner {
+        if (!_controller.isContract()) revert AddressCannotBeEOA();
+        if (_controller == address(0)) revert AddressCannotBeZero();
+
+        address oldController = automationController;
+        automationController = _controller;
+
+        emit AutomationControllerUpdated(oldController, automationController);
+    }
+
+    /// @notice Calls the monitorCycleEnd function in AutomationController.
     function monitorCycleEnd() public {
-        if (msg.sender != vm) { revert CallerNotVM(); }
-        
-        // IAutomationController(automationController).monitorCycleEnd();
+        IAutomationController(automationController).monitorCycleEnd();
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

@@ -9,10 +9,9 @@ import {IAutomationController} from "./IAutomationController.sol";
 import {IAutomationRegistry} from "./IAutomationRegistry.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
-import {PausableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract AutomationController is IAutomationController, Ownable2StepUpgradeable, PausableUpgradeable, UUPSUpgradeable {
+contract AutomationController is IAutomationController, Ownable2StepUpgradeable, UUPSUpgradeable {
     using EnumerableSet for EnumerableSet.UintSet;
     using CommonUtils for *;
     using LibController for *;
@@ -23,6 +22,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     LibController.AutomationCycleInfo internal cycleInfo;
     IAutomationRegistry public registry;
+    address public blockMeta;
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
   
@@ -81,9 +81,17 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     
     /// @notice Initializes the configuration parameters of the contract, can only be called once.
     /// @param _registry Address of the registry smart contract.
-    function initialize(address _registry) public initializer {
-        registry = IAutomationRegistry(_registry);
+    /// @param _blockMeta Address of the blockmeta smart contract.
+    function initialize(address _registry, address _blockMeta) public initializer {
+        if (_registry == address(0)) { revert AddressCannotBeZero(); }
+        if (!_registry.isContract()) { revert AddressCannotBeEOA(); }
 
+        if (_blockMeta == address(0)) { revert AddressCannotBeZero(); }
+        if (!_blockMeta.isContract()) { revert AddressCannotBeEOA(); }
+
+        registry = IAutomationRegistry(_registry);
+        blockMeta = _blockMeta;
+        
         (CommonUtils.CycleState state, uint64 cycleId) = registry.isAutomationEnabled() ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
 
         cycleInfo.initializeCycle(
@@ -94,7 +102,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         ); 
 
         __Ownable2Step_init();
-        __Pausable_init();
+        __Ownable_init(msg.sender);
     }
 
     /// @notice Called by the VM on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
@@ -161,6 +169,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
     function monitorCycleEnd() public {
+        if (msg.sender != blockMeta) { revert CallerNotBlockMeta(); }
         if (!registry.isAutomationEnabled()) {
             return;
         }
@@ -729,7 +738,9 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @notice Function to update the registry smart contract address.
     /// @param _registry Address of the registry smart contract.
     function setRegistry(address _registry) public onlyOwner {
-        if (_registry == address(0)) { revert InvalidAddress(); }
+        if (_registry == address(0)) { revert AddressCannotBeZero(); }
+        if (!_registry.isContract()) { revert AddressCannotBeEOA(); }
+        
         address oldRegistry = address(registry);
         registry = IAutomationRegistry(_registry);
         
