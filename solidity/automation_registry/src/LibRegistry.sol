@@ -12,12 +12,6 @@ library LibRegistry {
     uint256 private constant MAX_UINT64 = type(uint64).max;
     uint256 private constant MAX_UINT16 = type(uint16).max;
     uint256 private constant MAX_UINT8 = type(uint8).max;
-
-    /// @notice Enum describing task type.
-    enum TaskType {
-        UST,
-        GST
-    }
     
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ConfigBuffer :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 

@@ -238,7 +238,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                     markTaskProcessed(taskIndexes[i]);
 
                     // Nothing to refund for GST tasks
-                    if(registry.isUST(taskIndexes[i])) { 
+                    if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) { 
                         cycleLockedFees = registry.refundTaskFees(
                             taskIndexes[i],
                             currentTime,
@@ -306,7 +306,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         if(registry.ifTaskExists(_taskIndex)) {
             markTaskProcessed(_taskIndex);
 
-            bool isUST = registry.isUST(_taskIndex);
+            bool isUST = registry.checkTaskType(_taskIndex, CommonUtils.TaskType.UST);
             CommonUtils.TaskDetails memory task = registry.getTaskDetails(_taskIndex);
             
             // Task is cancelled or expired

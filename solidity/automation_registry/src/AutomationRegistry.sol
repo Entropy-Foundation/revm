@@ -114,7 +114,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Emitted when a task is stopped.
     event TasksStopped(
-        LibRegistry.TaskStopped[] StoppedTasks,
+        LibRegistry.TaskStopped[] indexed StoppedTasks,
         address indexed owner
     );
 
@@ -268,22 +268,18 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     ) public {
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
-
-        bool hasNoPriority = checkAndValidateAuxData(_auxData, LibRegistry.TaskType.UST);
-
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
-
         if(IAutomationController(regConfig.automationController()).getCycleState() != 1) { revert CycleNotStarted(); }
-
         if(totalTasks() >= regConfig.taskCapacity()) { revert TaskCapacityReached(); }
 
+        bool hasNoPriority = checkAndValidateAuxData(_auxData, CommonUtils.TaskType.UST);
 
         uint64 regTime = uint64(block.timestamp);
         uint64 startTime;
         uint64 durationSecs;
         ( , startTime, durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
-        validateTaskDuration(regTime, _expiryTime, LibRegistry.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
+        validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
 
         address payloadTarget;
         (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
@@ -347,23 +343,19 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     ) public {
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
-        
-        bool hasNoPriority = checkAndValidateAuxData(_auxData, LibRegistry.TaskType.GST);
-
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
-
         if(IAutomationController(regConfig.automationController()).getCycleState() != 1) { revert CycleNotStarted(); }
-
         if(totalSystemTasks() >= regConfig.sysTaskCapacity()) { revert TaskCapacityReached(); }
-
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
+        
+        bool hasNoPriority = checkAndValidateAuxData(_auxData, CommonUtils.TaskType.GST);
 
         uint64 regTime = uint64(block.timestamp);
         uint64 startTime;
         uint64 durationSecs;
         (, startTime, durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
-        validateTaskDuration(regTime, _expiryTime, LibRegistry.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
+        validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
 
         address payloadTarget;
         (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
@@ -422,7 +414,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
-        if(!isUST(_taskIndex)) { revert UnsupportedTaskOperation(); }
+        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
         if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
         if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         
@@ -435,7 +427,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 task.lockedFeeForNextCycle
             );
             if(!result) { revert ErrorDepositRefund(); }
-            removeTask(_taskIndex, false); 
+            _removeTask(_taskIndex, false); 
         } else { 
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
             // Active tasks will be refunded the deposited amount fully at the end of the cycle.
@@ -475,7 +467,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(!ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
         
         // Check if GST
-        if(isUST(_taskIndex)) { revert UnsupportedTaskOperation(); }
+        if(checkTaskType(_taskIndex, CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
 
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
@@ -483,7 +475,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
 
         if(task.state == CommonUtils.TaskState.PENDING) {
-            removeTask(_taskIndex, true);
+            _removeTask(_taskIndex, true);
         } else {
             LibRegistry.setState(regState.tasks[_taskIndex], uint8(CommonUtils.TaskState.CANCELLED));
         }
@@ -543,10 +535,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 if(msg.sender != task.owner) { revert UnauthorizedAccount(); }
                 
                 // Check if UST
-                if(!isUST(_taskIndexes[i])) { revert UnsupportedTaskOperation(); }
+                if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
 
                 // Remove task from the registry
-                removeTask(_taskIndexes[i], false);
+                _removeTask(_taskIndexes[i], false);
                 // Remove from active tasks
                 regState.activeTaskIds.remove(_taskIndexes[i]);
 
@@ -582,7 +574,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                     depositRefund = task.lockedFeeForNextCycle / REFUND_FRACTION;
                 }
 
-                bool result = safeUnlockLockedDeposit(_taskIndexes[i], task.lockedFeeForNextCycle);
+                bool result = _safeUnlockLockedDeposit(_taskIndexes[i], task.lockedFeeForNextCycle);
                 if(!result) { revert ErrorDepositRefund(); }
 
                 (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(cycleLockedFees, uint64(cycleFeeRefund), _taskIndexes[i]);
@@ -650,8 +642,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
 
                 // Check if GST
-                if(isUST(_taskIndexes[i])) { revert UnsupportedTaskOperation(); }
-                removeTask(_taskIndexes[i], true);
+                if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
+                _removeTask(_taskIndexes[i], true);
                 // Remove from active tasks
                 regState.activeTaskIds.remove(_taskIndexes[i]);
 
@@ -713,7 +705,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     function validateTaskDuration(
         uint64 _regTime,
         uint64 _expiryTime,    
-        LibRegistry.TaskType _type,
+        CommonUtils.TaskType _type,
         uint64 _taskDurationCapSecs,
         uint64 _sysTaskDurationCapSecs,
         uint64 _cycleStartTime, 
@@ -722,9 +714,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(_expiryTime <= _regTime) { revert InvalidExpiryTime(); }
         
         uint64 taskDuration = _expiryTime - _regTime;
-        if(_type == LibRegistry.TaskType.UST) {
+        if(_type == CommonUtils.TaskType.UST) {
             if(taskDuration > _taskDurationCapSecs) { revert InvalidTaskDuration(); }
-        } else if(_type == LibRegistry.TaskType.GST) {
+        } else if(_type == CommonUtils.TaskType.GST) {
             if ( taskDuration > _sysTaskDurationCapSecs) { revert InvalidTaskDuration(); }
         } else {
             revert InvalidTypeForTask();
@@ -755,13 +747,17 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Function to remove a task from the registry.
     /// @param _taskIndex Index of the task to remove. 
     /// @param _removeFromSysReg Wheather to remove from system task registry.
-    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) public onlyRegistryAndController {
+    function _removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
         if(_removeFromSysReg) {
             regSysState.taskIds.remove(_taskIndex);
         }
 
         delete regState.tasks[_taskIndex];
         regState.taskIdList.remove(_taskIndex);
+    }
+
+    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external onlyController {
+        _removeTask(_taskIndex, _removeFromSysReg);
     }
 
     /// @notice Function to update state of the task.
@@ -897,13 +893,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _auxData Input auxiliary data.
     /// @param _taskType Type of the task.
     /// @return Bool representing if the task has priority.
-    function checkAndValidateAuxData(bytes[] memory _auxData, LibRegistry.TaskType _taskType) private pure returns (bool) {
+    function checkAndValidateAuxData(bytes[] memory _auxData, CommonUtils.TaskType _taskType) private pure returns (bool) {
         if(_auxData.length != SUPPORTED_AUX_DATA_COUNT_MAX) { revert InvalidAuxDataLength(); }
 
         // Check task type
-        bytes memory taskType = _auxData[TYPE_AUX_DATA_INDEX];
-        if(taskType.length != 1) { revert InvalidTaskTypeLength(); }
-        uint8 typeValue = uint8(taskType[0]);
+        uint8 typeValue = abi.decode(_auxData[TYPE_AUX_DATA_INDEX], (uint8));
         if(typeValue != uint8(_taskType)) {revert InvalidTaskType(); }
 
         // Check if priority exists
@@ -921,10 +915,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _taskIndex Index of the task. 
     /// @param _lockedDeposit Locked deposit amount to be unlocked.
     /// @return Bool if _lockedDeposit can be unlocked safely.
-    function safeUnlockLockedDeposit(
+    function _safeUnlockLockedDeposit(
         uint64 _taskIndex,
         uint128 _lockedDeposit
-    ) public onlyRegistryAndController returns (bool) {
+    ) private returns (bool) {
         bool hasLockedDeposit = deposit.totalDepositedAutomationFees >= _lockedDeposit;
         
         if(hasLockedDeposit) {
@@ -934,6 +928,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         }
 
         return hasLockedDeposit;
+    }
+
+    function safeUnlockLockedDeposit(
+        uint64 _taskIndex,
+        uint128 _lockedDeposit
+    ) external onlyController returns (bool) {
+        return _safeUnlockLockedDeposit(_taskIndex, _lockedDeposit);
     }
 
     /// @notice Unlocks the locked fee paid by the task for cycle.
@@ -1018,7 +1019,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 _lockedDeposit
     ) private returns (bool) {
         // Ensures that amount to unlock is not more than the total automation fees deposited.
-        bool result = safeUnlockLockedDeposit(_taskIndex, _lockedDeposit);
+        bool result = _safeUnlockLockedDeposit(_taskIndex, _lockedDeposit);
         if (!result) {
             return result;
         }
@@ -1063,10 +1064,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 _lockedDeposit
     ) external onlyController {
         // Check if task is UST
-        if(!isUST(_taskIndex)) { revert RegisteredTaskInvalidType(); }
+        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
-        removeTask(_taskIndex, false);
+        _removeTask(_taskIndex, false);
 
         // Refund
         safeDepositRefund(
@@ -1103,7 +1104,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _currentTime,
         uint256 _cycleLockedFees
     ) external onlyController returns (uint256) {
-        if(!isUST(_taskIndex)) { revert RegisteredTaskInvalidType(); }
+        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
 
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
@@ -1448,19 +1449,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         return regSysState.taskIds.contains(_taskIndex);
     }
 
-    /// @notice Checks if a task is UST or GST.
-    /// @param _taskIndex Task index of the task to check for.
-    function isUST(uint64 _taskIndex) public view returns (bool) {
-        bytes memory taskType = regState.tasks[_taskIndex].auxData[TYPE_AUX_DATA_INDEX];
-        return uint8(taskType[0]) == uint8(LibRegistry.TaskType.UST);
-    }
-
     /// @notice Validates the input task type against the task type.
     /// @param _taskIndex Index of the task.
     /// @param _type Input task type.
-    function checkTaskType(uint64 _taskIndex, LibRegistry.TaskType _type) public view returns (bool) {
-        bytes memory taskType = regState.tasks[_taskIndex].auxData[TYPE_AUX_DATA_INDEX];
-        return uint8(taskType[0]) == uint8(_type);
+    function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
+        uint8 taskType = abi.decode(regState.tasks[_taskIndex].auxData[TYPE_AUX_DATA_INDEX], (uint8));
+        return taskType == uint8(_type);
     }
 
     /// @notice Returns the owner of the task 
@@ -1538,17 +1532,17 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Checks whether there is an active task in registry with specified input task index.
     function hasActiveUserTask(address _account, uint64 _taskIndex) public view returns (bool) {
-        return hasActiveTaskOfType(_account, _taskIndex, LibRegistry.TaskType.UST);
+        return hasActiveTaskOfType(_account, _taskIndex, CommonUtils.TaskType.UST);
     }
 
     /// @notice Checks whether there is an active system task in registry with specified input task index.
     function hasActiveSystemTask(address _account, uint64 _taskIndex) public view returns (bool) {
-        return hasActiveTaskOfType(_account, _taskIndex, LibRegistry.TaskType.GST);
+        return hasActiveTaskOfType(_account, _taskIndex, CommonUtils.TaskType.GST);
     }
 
     /// @notice Checks whether there is an active task in registry with specified input task index of the input type.
     /// The type can be either 1 for user submitted tasks, and 2 for governance authorized tasks.
-    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibRegistry.TaskType _type) public view returns (bool) {
+    function hasActiveTaskOfType(address _account, uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
         return regState.tasks[_taskIndex].owner == _account && LibRegistry.state(regState.tasks[_taskIndex]) != CommonUtils.TaskState.PENDING && checkTaskType(_taskIndex, _type);
     }
 

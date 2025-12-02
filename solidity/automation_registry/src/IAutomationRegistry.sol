@@ -2,7 +2,6 @@
 pragma solidity 0.8.24;
 
 import {CommonUtils} from "./CommonUtils.sol";
-import {LibRegistry} from "./LibRegistry.sol";
 
 interface IAutomationRegistry {
     // Custom errors
@@ -22,7 +21,6 @@ interface IAutomationRegistry {
     error InvalidTaskDuration();
     error InvalidTxHash();
     error InvalidTaskType();
-    error InvalidTaskTypeLength();
     error InvalidTypeForTask();
     error RegistrationDisabled();
     error TaskCapacityReached();
@@ -60,7 +58,7 @@ interface IAutomationRegistry {
 
     // View functions
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-    function isUST(uint64 _taskIndex) external view returns (bool);
+    function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) external view returns (bool);
     function getAllActiveTaskIds() external view returns (uint256[] memory);
     function getCycleLockedFees() external view returns (uint256);
     function getGasCommittedForNextCycle() external view returns (uint128);

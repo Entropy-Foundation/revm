@@ -21,6 +21,12 @@ library CommonUtils {
         CANCELLED
     }
 
+    /// @notice Enum describing task type.
+    enum TaskType {
+        UST,
+        GST
+    }
+    
     /// @notice Task details for individual automation tasks.
     struct TaskDetails {
         uint128 maxGasAmount;
