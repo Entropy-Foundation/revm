@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {console} from "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
@@ -25,6 +24,10 @@ contract AutomationRegistryTest is Test {
     address alice = address(0x123);
     address bob = address(0x456);
 
+    /// @dev Sets up initial state for testing.
+    /// @dev Initializes 'alice' with 100 ether.
+    /// @dev Deploys ERC20Supra and AutomationRegistry contracts. 
+    /// @dev Initializes AutomationRegistry with required parameters. 
     function setUp() public {
         vm.deal(alice, 100 ether);
 
@@ -57,6 +60,7 @@ contract AutomationRegistryTest is Test {
         vm.stopPrank();
     }
 
+    /// @dev Test to ensure all state variables are initialized correctly.
     function testInitialize() public view {
         assertEq(registry.getNextCycleRegistryMaxGasCap(), 10_000_000);
         assertEq(registry.getNextCycleSysRegistryMaxGasCap(), 5_000_000);
@@ -84,6 +88,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.owner(), admin);
     }
 
+    /// @dev Test to ensure reinitialization fails.
     function testInitializeRevertsIfReinitialized() public {
         vm.prank(admin);
         vm.expectRevert(Initializable.InvalidInitialization.selector);
@@ -94,7 +99,7 @@ contract AutomationRegistryTest is Test {
             vmAddress, address(supraERC20)
         );
     }
-
+    /// @dev Test to ensure initialization fails if zero address is passed as VM address.
     function testInitializeRevertsIfVmAddressZero() public {
         AutomationRegistry implementation = new AutomationRegistry();
 
@@ -112,6 +117,7 @@ contract AutomationRegistryTest is Test {
         new ERC1967Proxy(address(implementation), initData);
     }
 
+    /// @dev Test to ensure initialization fails if EOA is passed as ERC20Supra address.
     function testInitializeRevertsIfSupraERC20IsEoa() public {
         AutomationRegistry implementation = new AutomationRegistry();
 
@@ -129,6 +135,7 @@ contract AutomationRegistryTest is Test {
         new ERC1967Proxy(address(implementation), initData);
     }
 
+    /// @dev Test to ensure initialization fails if 0 is passed as task capacity.
     function testInitializeRevertsIfInvalidTaskCapacity() public {
         AutomationRegistry implementation = new AutomationRegistry();
 
@@ -146,14 +153,17 @@ contract AutomationRegistryTest is Test {
         new ERC1967Proxy(address(implementation), initData);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Registration Enabled ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'disableRegistration' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    
+    /// @dev Test to ensure 'disableRegistration' disables the registration.
     function testDisableRegistration() public {
         vm.prank(admin);
         registry.disableRegistration();
 
         assertFalse(registry.isRegistrationEnabled());
     }
-
+    
+    /// @dev Test to ensure 'disableRegistration' emits event 'TaskRegistrationDisabled'. 
     function testDisableRegistrationEmitsEvent() public {
         vm.expectEmit(true, false, false, false);
         emit AutomationRegistry.TaskRegistrationDisabled(false);
@@ -161,8 +171,9 @@ contract AutomationRegistryTest is Test {
         testDisableRegistration();
     }
 
+    /// @dev Test to ensure 'disableRegistration' reverts if registration is already disabled.
     function testDisableRegistrationRevertsIfAlreadyDisabled() public {
-        // First disable
+        // Disable registration
         testDisableRegistration();
 
         // Disable again → revert
@@ -172,6 +183,7 @@ contract AutomationRegistryTest is Test {
         registry.disableRegistration();
     }
 
+    /// @dev Test to ensure 'disableRegistration' reverts if caller is not owner.
     function testDisableRegistrationRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
         
@@ -179,6 +191,9 @@ contract AutomationRegistryTest is Test {
         registry.disableRegistration();
     }
 
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'enableRegistration' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'enableRegistration' enables the registration.
     function testEnableRegistration() public {
         // Disable registration
         testDisableRegistration();
@@ -190,6 +205,7 @@ contract AutomationRegistryTest is Test {
         assertTrue(registry.isRegistrationEnabled());
     }
 
+    /// @dev Test to ensure 'enableRegistration' emits event 'TaskRegistrationEnabled'.
     function testEnableRegistrationEmitsEvent() public {
         // Disable registration
         testDisableRegistration();
@@ -202,6 +218,7 @@ contract AutomationRegistryTest is Test {
         registry.enableRegistration();
     }
 
+    /// @dev Test to ensure 'enableRegistration' reverts if registration is already enabled.
     function testEnableRegistrationRevertsIfAlreadyEnabled() public {
         // Already enabled in initialize()
         vm.expectRevert(IAutomationRegistry.AlreadyEnabled.selector);
@@ -210,6 +227,7 @@ contract AutomationRegistryTest is Test {
         registry.enableRegistration();
     }
 
+    /// @dev Test to ensure 'enableRegistration' reverts if caller is not owner.
     function testEnableRegistrationRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
         
@@ -217,7 +235,9 @@ contract AutomationRegistryTest is Test {
         registry.enableRegistration();
     }
     
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Automation Enabled ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'disableAutomation' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    
+    /// @dev Test to ensure 'disableAutomation' disables the automation.
     function testDisableAutomation() public {
         // Already enabled in initialize()
         vm.prank(admin);
@@ -226,6 +246,7 @@ contract AutomationRegistryTest is Test {
         assertFalse(registry.isAutomationEnabled());
     }
 
+    /// @dev Test to ensure 'disableAutomation' emits event 'AutomationDisabled'.
     function testDisableAutomationEmitsEvent() public {
         vm.expectEmit(true, false, false, false);
         emit AutomationRegistry.AutomationDisabled(false);
@@ -233,8 +254,9 @@ contract AutomationRegistryTest is Test {
         testDisableAutomation();
     }
 
+    /// @dev Test to ensure 'disableAutomation' reverts if automation is already disabled.
     function testDisableAutomationRevertsIfAlreadyDisabled() public {
-        // First disable
+        // Disable automation
         testDisableAutomation();
 
         // Disable again → revert
@@ -244,6 +266,7 @@ contract AutomationRegistryTest is Test {
         registry.disableAutomation();
     }
 
+    /// @dev Test to ensure 'disableAutomation' reverts if caller is not owner.
     function testDisableAutomationRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
@@ -251,6 +274,9 @@ contract AutomationRegistryTest is Test {
         registry.disableAutomation();
     }
 
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'enableAutomation' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'enableAutomation' enables the automation.
     function testEnableAutomation() public {
         // Disable automation
         testDisableAutomation();
@@ -262,8 +288,9 @@ contract AutomationRegistryTest is Test {
         assertTrue(registry.isAutomationEnabled());
     }
 
+    /// @dev Test to ensure 'enableAutomation' emits event 'AutomationEnabled'.
     function testEnableAutomationEmitsEvent() public {
-        // First disable
+        // Disable automation
         testDisableAutomation();
 
         vm.expectEmit(true, false, false, false);
@@ -273,6 +300,7 @@ contract AutomationRegistryTest is Test {
         registry.enableAutomation();
     }
 
+    /// @dev Test to ensure 'enableAutomation' reverts if automation is already enabled.
     function testEnableAutomationRevertsIfAlreadyEnabled() public {
         // Already enabled in initialize()
         vm.expectRevert(IAutomationRegistry.AlreadyEnabled.selector);
@@ -281,6 +309,7 @@ contract AutomationRegistryTest is Test {
         registry.enableAutomation();
     }
 
+    /// @dev Test to ensure 'enableAutomation' reverts if caller is not owner.
     function testEnableAutomationRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
@@ -288,9 +317,9 @@ contract AutomationRegistryTest is Test {
         registry.enableAutomation();
     }
 
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setAutomationController' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    // ::::::::::::::: Controller ::::::::::::::::::::
-
+    /// @dev Helper function that deploys AutomationController and returns its address.
     function deployAutomationController() internal returns (address) {
         // Deploy BlockMeta proxy
         BlockMeta blockMetaImpl = new BlockMeta();
@@ -305,6 +334,7 @@ contract AutomationRegistryTest is Test {
         return address(controllerProxy);
     }
 
+    /// @dev Test to ensure 'setAutomationController' updates the automation controller address.
     function testSetAutomationController() public {
         address controller = deployAutomationController(); 
         
@@ -314,6 +344,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getAutomationController(), controller);
     }
 
+    /// @dev Test to ensure 'setAutomationController' emits event 'AutomationControllerUpdated'.
     function testSetAutomationControllerEmitsEvent() public {
         address oldController = registry.getAutomationController();
         address controller = deployAutomationController();
@@ -325,6 +356,7 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(controller);
     }
 
+    /// @dev Test to ensure 'setAutomationController' reverts if caller is not owner.
     function testSetAutomationControllerRevertsIfNotOwner() public {
         address controller = deployAutomationController();
 
@@ -334,6 +366,7 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(controller);
     }
 
+    /// @dev Test to ensure 'setAutomationController' reverts if zero address is passed.
     function testSetAutomationControllerRevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
@@ -341,6 +374,7 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(address(0));
     }
 
+    /// @dev Test to ensure 'setAutomationController' reverts if EOA is passed.
     function testSetAutomationControllerRevertsIfEoa() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeEOA.selector);
 
@@ -348,7 +382,9 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(alice);
     }
 
-    // Set VM address
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setVM' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'setVM' updates the VM address.
     function testSetVm() public {
         address newVM = address(0x100);
 
@@ -358,6 +394,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getVM(), newVM);
     }
 
+    /// @dev Test to ensure 'setVM' emits event 'VmAddressUpdated'.
     function testSetVmEmitsEvent() public {
         address oldVM = registry.getVM();
         address newVM = address(0x100);
@@ -369,6 +406,7 @@ contract AutomationRegistryTest is Test {
         registry.setVM(newVM);
     }
 
+    /// @dev Test to ensure 'setVM' reverts if zero address is passed.
     function testSetVmRevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
@@ -376,6 +414,7 @@ contract AutomationRegistryTest is Test {
         registry.setVM(address(0));
     }
 
+    /// @dev Test to ensure 'setVM' reverts if caller is not owner.
     function testSetVmRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
@@ -383,7 +422,9 @@ contract AutomationRegistryTest is Test {
         registry.setVM(address(0x100));
     }
 
-    // Set ERC20Supra
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setSupraERC20' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'setSupraERC20' updates the ERC20Supra address. 
     function testSetSupraERC20() public {
         ERC20Supra supra = new ERC20Supra(msg.sender);
 
@@ -393,6 +434,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.supraERC20(), address(supra));
     }
 
+    /// @dev Test to ensure 'setSupraERC20' emits event 'SupraERC20Updated'. 
     function testSetSupraERC20EmitsEvent() public {
         address oldAddr = registry.supraERC20();
         ERC20Supra supra = new ERC20Supra(msg.sender);
@@ -404,6 +446,7 @@ contract AutomationRegistryTest is Test {
         registry.setSupraERC20(address(supra));
     }
 
+    /// @dev Test to ensure 'setSupraERC20' reverts if zero address is passed. 
     function testSetSupraERC20RevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
@@ -411,6 +454,7 @@ contract AutomationRegistryTest is Test {
         registry.setSupraERC20(address(0));
     }
 
+    /// @dev Test to ensure 'setSupraERC20' reverts if EOA is passed. 
     function testSetSupraERC20RevertsIfEoa() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeEOA.selector);
 
@@ -418,6 +462,7 @@ contract AutomationRegistryTest is Test {
         registry.setSupraERC20(alice);
     }
 
+    /// @dev Test to ensure 'setSupraERC20' reverts if caller is not owner. 
     function testSetSupraERC20RevertsIfNotOwner() public {
         ERC20Supra supra = new ERC20Supra(msg.sender);
 
@@ -427,7 +472,9 @@ contract AutomationRegistryTest is Test {
         registry.setSupraERC20(address(supra));
     }
 
-    // Cold wallet
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setColdWallet' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'setColdWallet' updates the cold wallet address.
     function testSetColdWallet() public {
         vm.prank(admin);
         registry.setColdWallet(address(0x1001));
@@ -435,6 +482,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getColdWallet(), address(0x1001));
     }
 
+    /// @dev Test to ensure 'setColdWallet' emits event 'ColdWalletUpdated'.
     function testSetColdWalletEmitsEvent() public {
         address oldColdWallet = registry.getColdWallet();
     
@@ -445,6 +493,7 @@ contract AutomationRegistryTest is Test {
         registry.setColdWallet(address(0x1001));
     }
 
+    /// @dev Test to ensure 'setColdWallet' reverts if zero address is passed.
     function testSetColdWalletRevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
@@ -452,6 +501,7 @@ contract AutomationRegistryTest is Test {
         registry.setColdWallet(address(0));
     }
 
+    /// @dev Test to ensure 'setColdWallet' reverts if caller is not owner.
     function testSetColdWalletRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
@@ -459,7 +509,9 @@ contract AutomationRegistryTest is Test {
         registry.setColdWallet(address(0x1001));
     }
 
-    // Grant Authorization
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'grantAuthorization' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'grantAuthorization' grants authorization to an address.
     function testGrantAuthorization() public {
         vm.prank(admin);
         registry.grantAuthorization(bob);
@@ -467,6 +519,7 @@ contract AutomationRegistryTest is Test {
         assertTrue(registry.isAuthorizedSubmitter(bob));
     }
 
+    /// @dev Test to ensure 'grantAuthorization' emits event 'AuthorizationGranted'.
     function testGrantAuthorizationEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
         emit AutomationRegistry.AuthorizationGranted(bob, block.timestamp);
@@ -475,7 +528,8 @@ contract AutomationRegistryTest is Test {
         registry.grantAuthorization(bob);
     }
 
-    function testGrantAuthorizationRevertsIfExists() public {
+    /// @dev Test to ensure 'grantAuthorization' reverts if address is already authorized.
+    function testGrantAuthorizationRevertsIfAlreadyAuthorised() public {
         // Grant authorization to bob
         testGrantAuthorization();
 
@@ -485,6 +539,7 @@ contract AutomationRegistryTest is Test {
         registry.grantAuthorization(bob);
     }
 
+    /// @dev Test to ensure 'grantAuthorization' reverts if caller is not owner.
     function testGrantAuthorizationRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
@@ -492,7 +547,9 @@ contract AutomationRegistryTest is Test {
         registry.grantAuthorization(bob);
     }
 
-    // Revoke Authorization
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'revokeAuthorization' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    
+    /// @dev Test to ensure 'revokeAuthorization' revokes authorization from an address.
     function testRevokeAuthorization() public {
         // Grant authorization to bob
         testGrantAuthorization();
@@ -504,6 +561,7 @@ contract AutomationRegistryTest is Test {
         assertFalse(registry.isAuthorizedSubmitter(bob));
     }
 
+    /// @dev Test to ensure 'revokeAuthorization' emits event 'AuthorizationRevoked'.
     function testRevokeAuthorizationEmitsEvent() public {
         // Grant authorization to bob
         testGrantAuthorization();
@@ -515,13 +573,15 @@ contract AutomationRegistryTest is Test {
         registry.revokeAuthorization(bob);
     }
 
-    function testRevokeAuthorizationRevertsIfNotExists() public {
+    /// @dev Test to ensure 'revokeAuthorization' reverts if address is not authorised.
+    function testRevokeAuthorizationRevertsIfNotAuthorised() public {
         vm.expectRevert(IAutomationRegistry.AddressDoesNotExist.selector);
 
         vm.prank(admin);
         registry.revokeAuthorization(bob);
     }
 
+    /// @dev Test to ensure 'revokeAuthorization' reverts if caller is not owner.
     function testRevokeAuthorizationRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
@@ -529,7 +589,9 @@ contract AutomationRegistryTest is Test {
         registry.revokeAuthorization(bob);
     }
 
-    // Update config
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateConfigBuffer' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Helper function that returns a valid config.
     function validConfig() internal pure returns (LibRegistry.ConfigDetails memory cfg) {
         cfg = LibRegistry.ConfigDetails(
             10_000_000,                 // registryMaxGasCap
@@ -547,11 +609,12 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testUpdateConfig() public {
+    /// @dev Test to ensure 'updateConfigBuffer' updates the config buffer.
+    function testUpdateConfigBuffer() public {
         LibRegistry.ConfigDetails memory cfg = validConfig();
     
         vm.prank(admin);
-        registry.updateConfig(
+        registry.updateConfigBuffer(
             cfg.taskDurationCapSecs,
             cfg.registryMaxGasCap,
             cfg.automationBaseFeeWeiPerSec,
@@ -566,7 +629,7 @@ contract AutomationRegistryTest is Test {
             cfg.sysTaskCapacity
         );
     
-        // Buffer should be updated
+        // Pending config should be updated
         LibRegistry.ConfigDetails memory pendingCfg = registry.getPendingConfig();
         assertTrue(registry.ifConfigBufferExists());
         assertEq(pendingCfg.taskDurationCapSecs, cfg.taskDurationCapSecs);
@@ -583,14 +646,15 @@ contract AutomationRegistryTest is Test {
         assertEq(pendingCfg.sysTaskCapacity, cfg.sysTaskCapacity);
     }
 
-    function testUpdateConfigEmitsEvent() public {
+    /// @dev Test to ensure 'updateConfigBuffer' emits event 'ConfigBufferUpdated'.
+    function testUpdateConfigBufferEmitsEvent() public {
         LibRegistry.ConfigDetails memory cfg = validConfig();
 
         vm.expectEmit(true, false, false, false);
         emit AutomationRegistry.ConfigBufferUpdated(cfg);
         
         vm.prank(admin);
-        registry.updateConfig(
+        registry.updateConfigBuffer(
             cfg.taskDurationCapSecs,
             cfg.registryMaxGasCap,
             cfg.automationBaseFeeWeiPerSec,
@@ -606,13 +670,14 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testUpdateConfigRevertsIfNotOwner() public {
+    /// @dev Test to ensure 'updateConfigBuffer' reverts if caller is not owner.
+    function testUpdateConfigBufferRevertsIfNotOwner() public {
         LibRegistry.ConfigDetails memory cfg = validConfig();
 
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
         vm.prank(alice);
-        registry.updateConfig(
+        registry.updateConfigBuffer(
             cfg.taskDurationCapSecs,
             cfg.registryMaxGasCap,
             cfg.automationBaseFeeWeiPerSec,
@@ -628,15 +693,18 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    // Withdraw Automation Task Fees
-    function testWithdrawAutomationFeesRevertsIfColdWalletNotSet() public {
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdrawFees' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'withdrawFees' reverts if cold wallet is not set.
+    function testWithdrawFeesRevertsIfColdWalletNotSet() public {
         vm.prank(admin);
 
         vm.expectRevert(IAutomationRegistry.ColdWalletNotSet.selector);
-        registry.withdrawAutomationTaskFees(1 ether);
+        registry.withdrawFees(1 ether);
     }
 
-    function testWithdrawAutomationFeesRevertsIfInsufficientBalance() public {
+    /// @dev Test to ensure 'withdrawFees' reverts if contract has insufficient balance.
+    function testWithdrawFeesRevertsIfInsufficientBalance() public {
         // Set cold wallet
         vm.prank(admin);
         registry.setColdWallet(address(0x1001));
@@ -644,17 +712,70 @@ contract AutomationRegistryTest is Test {
         vm.expectRevert(IAutomationRegistry.InsufficientBalance.selector);
 
         vm.prank(admin);
-        registry.withdrawAutomationTaskFees(1 ether);
+        registry.withdrawFees(1 ether);
     }
 
-    function testWithdrawAutomationFeesRevertsIfNotOwner() public {
+    /// @dev Test to ensure 'withdrawFees' reverts if request amount exceeds the locked balance.
+    function testWithdrawFeesRevertsIfRequestExceedsLockedBalance() public {
+        testRegister();
+
+        // Set cold wallet
+        vm.prank(admin);
+        registry.setColdWallet(address(0x1001));
+
+        vm.expectRevert(IAutomationRegistry.RequestExceedsLockedBalance.selector);
+
+        vm.prank(admin);
+        registry.withdrawFees(0.04 ether);
+    }
+
+    /// @dev Test to ensure 'withdrawFees' reverts if caller is not owner.
+    function testWithdrawFeesRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        registry.withdrawAutomationTaskFees(1 ether);
+        registry.withdrawFees(1 ether);
     }
 
-    // Register
+    /// @dev Test to ensure 'withdrawFees' withdraws the requested amount and updates the balance.
+    function testWithdrawFees() public {
+        testRegister();
+
+        // Set cold wallet
+        address coldWallet = address(0x1001);
+        vm.prank(admin);
+        registry.setColdWallet(coldWallet);
+
+        assertEq(supraERC20.balanceOf(coldWallet), 0);
+        assertEq(supraERC20.balanceOf(address(registry)), 0.502 ether);
+
+        vm.prank(admin);
+        registry.withdrawFees(0.002 ether);
+
+        assertEq(supraERC20.balanceOf(coldWallet), 0.002 ether);
+        assertEq(supraERC20.balanceOf(address(registry)), 0.5 ether);
+    }
+    
+    /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.
+    function testWithdrawFeesEmitsEvent() public {
+        testRegister();
+
+        // Set cold wallet
+        address coldWallet = address(0x1001);
+        vm.prank(admin);
+        registry.setColdWallet(coldWallet);
+
+        vm.expectEmit(true, true, false, false);
+        emit AutomationRegistry.RegistryFeeWithdrawn(coldWallet, 0.002 ether);
+
+        vm.prank(admin);
+        registry.withdrawFees(0.002 ether);
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'register' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Helper function to return payload and auxiliary data.
+    /// @param _type Type of the task. UST: 0, GST: 1
     function payloadAndAuxData(uint8 _type) internal returns (bytes memory, bytes[] memory) {
         ERC20Supra target = new ERC20Supra(alice);
         bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
@@ -667,7 +788,9 @@ contract AutomationRegistryTest is Test {
         return (payload, auxData);   
     }
 
-    function testRegisterRevertAutomationNotEnabled() public {
+    /// @dev Test to ensure 'register' reverts if automation is not enabled.
+    function testRegisterRevertsIfAutomationNotEnabled() public {
+        // Disable automation
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -687,7 +810,9 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertRegistrationDisabled() public {
+    /// @dev Test to ensure 'register' reverts if registration is disabled.
+    function testRegisterRevertsIfRegistrationDisabled() public {
+        // Disable registration
         vm.prank(admin);
         registry.disableRegistration();
         
@@ -707,7 +832,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidMaxGasAmount() public {
+    /// @dev Test to ensure 'register' reverts if 0 is passed as max gas amount.
+    function testRegisterRevertsIfMaxGasAmountZero() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -725,7 +851,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidGasPriceCap() public {
+    /// @dev Test to ensure 'register' reverts if 0 is passed as gas price cap.
+    function testRegisterRevertsIfGasPriceCapZero() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -743,7 +870,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidAutomationFeeCapForCycle() public {
+    /// @dev Test to ensure 'register' reverts if 0 is passed as automation fee cap for cycle.
+    function testRegisterRevertsIfAutomationFeeCapZero() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -761,7 +889,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidExpiryTime() public {
+    /// @dev Test to ensure 'register' reverts if expiry time is equal to or less than registration time.
+    function testRegisterRevertsIfInvalidExpiryTime() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -779,7 +908,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidAuxDataLength() public {
+    /// @dev Test to ensure 'register' reverts if auxiliary data is of invalid length.
+    function testRegisterRevertsIfInvalidAuxDataLength() public {
         testSetAutomationController();
 
         ERC20Supra target = new ERC20Supra(alice);
@@ -803,7 +933,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidTaskType() public {
+    /// @dev Test to ensure 'register' reverts if task type is not UST.
+    function testRegisterRevertsIfTaskTypeNotUST() public {
         testSetAutomationController();
 
         ERC20Supra target = new ERC20Supra(alice);
@@ -827,7 +958,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidTaskDuration() public {
+    /// @dev Test to ensure 'register' reverts if task duration is greater than the task duration cap.
+    function testRegisterRevertsIfInvalidTaskDuration() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -845,7 +977,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertTaskExpiresBeforeNextCycle() public {
+    /// @dev Test to ensure 'register' reverts if task expires before the next cycle.
+    function testRegisterRevertsIfTaskExpiresBeforeNextCycle() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
         
@@ -863,7 +996,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertAddressCannotBeZero() public {
+    /// @dev Test to ensure 'register' reverts if payload target address is zero.
+    function testRegisterRevertsIfPayloadTargetZero() public {
         testSetAutomationController();
 
         bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
@@ -886,7 +1020,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertAddressCannotBeEoa() public {
+    /// @dev Test to ensure 'register' reverts if payload target address is EOA.
+    function testRegisterRevertsIfPayloadTargetEoa() public {
         testSetAutomationController();
 
         bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
@@ -909,7 +1044,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertInvalidTxHash() public {
+    /// @dev Test to ensure 'register' reverts if transaction hash is bytes32(0).
+    function testRegisterRevertsIfInvalidTxHash() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -927,7 +1063,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterRevertGasCommittedExceedsMaxGasCap() public {
+    /// @dev Test to ensure 'register' reverts if gas committed exceeds the registry max gas cap.
+    function testRegisterRevertsIfGasCommittedExceedsMaxGasCap() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
 
@@ -945,6 +1082,7 @@ contract AutomationRegistryTest is Test {
         );
     }
 
+    /// @dev Test to ensure 'register' registers a UST.
     function testRegister() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
@@ -987,6 +1125,7 @@ contract AutomationRegistryTest is Test {
         assertEq(taskMetadata.auxData, auxData);
     }
 
+    /// @dev Test to ensure 'register' emits event 'TaskRegistered'.
     function testRegisterEmitsEvent() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
@@ -1025,8 +1164,10 @@ contract AutomationRegistryTest is Test {
         vm.stopPrank();
     }
 
-    // Register system task
-    function testRegisterSystemTaskRevertAutomationNotEnabled() public {
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'registerSystemTask' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'registerSystemTask' reverts if automation is not enabled.
+    function testRegisterSystemTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1044,7 +1185,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterSystemTaskRevertRegistrationDisabled() public {
+    /// @dev Test to ensure 'registerSystemTask' reverts if registration is disabled.
+    function testRegisterSystemTaskRevertsIfRegistrationDisabled() public {
         vm.prank(admin);
         registry.disableRegistration();
         
@@ -1062,7 +1204,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterSystemTaskRevertUnauthorizedAccount() public {
+    /// @dev Test to ensure 'registerSystemTask' reverts if caller is not authorized.
+    function testRegisterSystemTaskRevertsIfUnauthorizedCaller() public {
         testSetAutomationController();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
 
@@ -1078,7 +1221,8 @@ contract AutomationRegistryTest is Test {
         );
     }
     
-    function testRegisterSystemTaskRevertInvalidAuxDataLength() public {
+    /// @dev Test to ensure 'registerSystemTask' reverts if auxiliary data is of invalid length.
+    function testRegisterSystemTaskRevertsIfInvalidAuxDataLength() public {
         testSetAutomationController();
         testGrantAuthorization();
 
@@ -1102,7 +1246,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterSystemTaskRevertInvalidTaskType() public {
+    /// @dev Test to ensure 'registerSystemTask' reverts if task type is not GST.
+    function testRegisterSystemTaskRevertsIfTaskTypeNotGST() public {
         testSetAutomationController();
         testGrantAuthorization();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0);
@@ -1119,6 +1264,7 @@ contract AutomationRegistryTest is Test {
         );
     }
 
+    /// @dev Test to ensure 'registerSystemTask' registers a GST.
     function testRegisterSystemTask() public {
         testSetAutomationController();
         testGrantAuthorization();
@@ -1155,6 +1301,7 @@ contract AutomationRegistryTest is Test {
         assertEq(taskMetadata.auxData, auxData);
     }
 
+    /// @dev Test to ensure 'registerSystemTask' emits event 'SystemTaskRegistered'.
     function testRegisterSystemTaskEmitsEvent() public {
         testSetAutomationController();
         testGrantAuthorization();
@@ -1188,7 +1335,8 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    function testRegisterSystemTaskRevertGasCommittedExceedsMaxGasCap() public {
+    /// @dev Test to ensure 'registerSystemTask' reverts if gas committed exceeds the system registry max gas cap.
+    function testRegisterSystemTaskRevertsIfGasCommittedExceedsMaxGasCap() public {
         testSetAutomationController();
         testGrantAuthorization();
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
@@ -1205,8 +1353,10 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    // Cancel task
-    function testCancelTaskRevertAutomationNotEnabled() public {
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'cancelTask' reverts if automation is not enabled.
+    function testCancelTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1216,7 +1366,8 @@ contract AutomationRegistryTest is Test {
         registry.cancelTask(0);
     }
 
-    function testCancelTaskRevertTaskDoesNotExist() public {
+    /// @dev Test to ensure 'cancelTask' reverts if task does not exist.
+    function testCancelTaskRevertsIfTaskDoesNotExist() public {
         testSetAutomationController();
 
         vm.expectRevert(IAutomationRegistry.TaskDoesNotExist.selector);
@@ -1225,7 +1376,8 @@ contract AutomationRegistryTest is Test {
         registry.cancelTask(0);
     }
 
-    function testCancelTaskRevertUnsupportedTaskOperation() public {
+    /// @dev Test to ensure 'cancelTask' reverts if task type is not UST.
+    function testCancelTaskRevertsIfTaskTypeNotUST() public {
         testSetAutomationController();
 
         testRegisterSystemTask();
@@ -1235,7 +1387,8 @@ contract AutomationRegistryTest is Test {
         registry.cancelTask(0);
     }
 
-    function testCancelTaskRevertUnauthorizedAccount() public {
+    /// @dev Test to ensure 'cancelTask' reverts if caller is not the task owner.
+    function testCancelTaskRevertsIfUnauthorizedCaller() public {
         testSetAutomationController();
 
         testRegister();
@@ -1245,6 +1398,7 @@ contract AutomationRegistryTest is Test {
         registry.cancelTask(0);
     }
 
+    /// @dev Test to ensure 'cancelTask' cancels a UST.
     function testCancelTask() public {
         testSetAutomationController();
         testRegister();
@@ -1260,6 +1414,7 @@ contract AutomationRegistryTest is Test {
         assertEq(supraERC20.balanceOf(alice), 4.75 ether - 0.002 ether);
     }
 
+    /// @dev Test to ensure 'cancelTask' emits event 'TaskCancelled'.
     function testCancelTaskEmitsEvent() public {
         testSetAutomationController();
         testRegister();
@@ -1271,8 +1426,10 @@ contract AutomationRegistryTest is Test {
         registry.cancelTask(0);
     }
 
-    // Cancel system task
-    function testCancelSystemTaskRevertAutomationNotEnabled() public {
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelSystemTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'cancelSystemTask' reverts if automation is not enabled. 
+    function testCancelSystemTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1282,7 +1439,8 @@ contract AutomationRegistryTest is Test {
         registry.cancelSystemTask(0);
     }
 
-    function testCancelSystemTaskRevertTaskDoesNotExist() public {
+    /// @dev Test to ensure 'cancelSystemTask' reverts if task does not exist. 
+    function testCancelSystemTaskRevertsIfTaskDoesNotExist() public {
         testSetAutomationController();
 
         vm.expectRevert(IAutomationRegistry.TaskDoesNotExist.selector);
@@ -1291,7 +1449,8 @@ contract AutomationRegistryTest is Test {
         registry.cancelSystemTask(0);
     }
 
-    function testCancelSystemTaskRevertSystemTaskDoesNotExist() public {
+    /// @dev Test to ensure 'cancelSystemTask' reverts if task does not exist in system tasks. 
+    function testCancelSystemTaskRevertsIfSystemTaskDoesNotExist() public {
         testSetAutomationController();
 
         testRegister();
@@ -1301,7 +1460,8 @@ contract AutomationRegistryTest is Test {
         registry.cancelSystemTask(0);
     }
 
-    function testCancelSystemTaskRevertUnauthorizedAccount() public {
+    /// @dev Test to ensure 'cancelSystemTask' reverts if caller is not the task owner. 
+    function testCancelSystemTaskRevertsIfUnauthorizedCaller() public {
         testSetAutomationController();
 
         testRegisterSystemTask();
@@ -1310,7 +1470,7 @@ contract AutomationRegistryTest is Test {
         vm.prank(alice);
         registry.cancelSystemTask(0);
     }
-
+    /// @dev Test to ensure 'cancelSystemTask' cancels a GST. 
     function testCancelSystemTask() public {
         testSetAutomationController();
         testRegisterSystemTask();
@@ -1325,6 +1485,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getSystemGasCommittedForNextCycle(), 0);
     }
 
+    /// @dev Test to ensure 'cancelSystemTask' emits event 'TaskCancelled'. 
     function testCancelSystemTaskEmitsEvent() public {
         testSetAutomationController();
         testRegisterSystemTask();
@@ -1336,8 +1497,10 @@ contract AutomationRegistryTest is Test {
         registry.cancelSystemTask(0);
     }
 
-    // Stop tasks
-    function testStopTasksRevertAutomationNotEnabled() public {
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'stopTasks' reverts if automation is not enabled. 
+    function testStopTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1348,7 +1511,8 @@ contract AutomationRegistryTest is Test {
         registry.stopTasks(taskIndexes);
     }
     
-    function testStopTasksRevertTaskIndexesCannotBeEmpty() public {
+    /// @dev Test to ensure 'stopTasks' reverts if input array is empty. 
+    function testStopTasksRevertsIfInputArrayEmpty() public {
         testSetAutomationController();
 
         uint64[] memory taskIndexes;
@@ -1358,7 +1522,8 @@ contract AutomationRegistryTest is Test {
         registry.stopTasks(taskIndexes);
     }
 
-    function testStopTasksRevertUnauthorizedAccount() public {
+    /// @dev Test to ensure 'stopTasks' reverts if caller is not the task owner. 
+    function testStopTasksRevertsIfUnauthorizedCaller() public {
         testSetAutomationController();
         testRegister();
 
@@ -1371,7 +1536,8 @@ contract AutomationRegistryTest is Test {
         registry.stopTasks(taskIndexes);
     }
 
-    function testStopTasksRevertUnsupportedTaskOperation() public {
+    /// @dev Test to ensure 'stopTasks' reverts if task type is not UST. 
+    function testStopTasksRevertsIfTaskTypeNotUST() public {
         testSetAutomationController();
         testRegisterSystemTask();
 
@@ -1384,6 +1550,7 @@ contract AutomationRegistryTest is Test {
         registry.stopTasks(taskIndexes);
     }
 
+    /// @dev Test to ensure 'stopTasks' does nothing if task does not exist. 
     function testStopTasksDoesNothingIfTaskDoesNotExist() public {
         testSetAutomationController();
         testRegister();
@@ -1398,6 +1565,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getTotalDepositedAutomationFees(), 0.5 ether);
     }
 
+    /// @dev Test to ensure 'stopTasks' stops the input UST tasks. 
     function testStopTasks() public {
         testSetAutomationController();
         testRegister();
@@ -1416,6 +1584,7 @@ contract AutomationRegistryTest is Test {
         assertEq(supraERC20.balanceOf(alice), 4.75 ether - 0.002 ether);
     }
 
+    /// @dev Test to ensure 'stopTasks' emits event 'TasksStopped'.  
     function testStopTasksEmitsEvent() public {
         testSetAutomationController();
         testRegister();
@@ -1433,8 +1602,10 @@ contract AutomationRegistryTest is Test {
         registry.stopTasks(taskIndexes);
     }
 
-    // Stop system tasks
-    function testStopSystemTasksRevertAutomationNotEnabled() public {
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'stopSystemTasks' reverts if automation is not enabled.
+    function testStopSystemTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1445,7 +1616,8 @@ contract AutomationRegistryTest is Test {
         registry.stopSystemTasks(taskIndexes);
     }
 
-    function testStopSystemTasksRevertTaskIndexesCannotBeEmpty() public {
+    /// @dev Test to ensure 'stopSystemTasks' reverts if input array is empty.
+    function testStopSystemTasksRevertsIfInputArrayEmpty() public {
         testSetAutomationController();
 
         uint64[] memory taskIndexes;
@@ -1455,7 +1627,8 @@ contract AutomationRegistryTest is Test {
         registry.stopSystemTasks(taskIndexes);
     }
 
-    function testStopSystemTasksRevertUnauthorizedAccount() public {
+    /// @dev Test to ensure 'stopSystemTasks' reverts if caller is not the task owner.
+    function testStopSystemTasksRevertsIfUnauthorizedCaller() public {
         testSetAutomationController();
         testRegisterSystemTask();
 
@@ -1468,7 +1641,8 @@ contract AutomationRegistryTest is Test {
         registry.stopSystemTasks(taskIndexes);
     }
 
-    function testStopSystemTasksRevertUnsupportedTaskOperation() public {
+    /// @dev Test to ensure 'stopSystemTasks' reverts if task type is not GST.
+    function testStopSystemTasksRevertsIfTaskTypeNotGST() public {
         testSetAutomationController();
         testRegister();
 
@@ -1481,6 +1655,7 @@ contract AutomationRegistryTest is Test {
         registry.stopSystemTasks(taskIndexes);
     }
 
+    /// @dev Test to ensure 'stopSystemTasks' does nothing if task does not exist.
     function testStopSystemTasksDoesNothingIfTaskDoesNotExist() public {
         testSetAutomationController();
         testRegisterSystemTask();
@@ -1495,6 +1670,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.totalSystemTasks(), 1);
     }
 
+    /// @dev Test to ensure 'stopSystemTasks' stops the input GST tasks.
     function testStopSystemTasks() public {
         testSetAutomationController();
         testRegisterSystemTask();
@@ -1512,6 +1688,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getSystemGasCommittedForNextCycle(), 0);
     }
 
+    /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
     function testStopSystemTasksEmitsEvent() public {
         testSetAutomationController();
         testRegisterSystemTask();
