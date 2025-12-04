@@ -194,6 +194,9 @@ impl EthFrame<EthInterpreter> {
         let is_static = inputs.is_static;
         let gas_limit = inputs.gas_limit;
 
+        // If the call's bytecode address is the TxHash precompile address,
+        // fetch the transaction hash from Tx and pass the hash to the
+        // interpreter by overwriting the interpreter_input's input with the hash.
         if let Some(tx_hash_addr) = PrecompileId::TxHash.mainnet_address() {
             if inputs.bytecode_address == tx_hash_addr {
                 let tx_hash = ctx.tx().tx_hash();
