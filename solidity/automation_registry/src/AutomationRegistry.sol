@@ -275,17 +275,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 regTime = uint64(block.timestamp);
         uint64 startTime;
         uint64 durationSecs;
-        ( , startTime, durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , startTime, durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
-
-        address payloadTarget;
-        (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
-        if(payloadTarget == address(0)) { revert AddressCannotBeZero(); }
-        if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
-        if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
+        validateInputs(_payloadTx, _maxGasAmount, _txHash);
         if(_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
-        if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
 
         uint128 gasCommitted = _maxGasAmount + regState.gasCommittedForNextCycle();
         if(gasCommitted > regConfig.nextCycleRegistryMaxGasCap()) { revert GasCommittedExceedsMaxGasCap(); }
@@ -351,16 +345,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 regTime = uint64(block.timestamp);
         uint64 startTime;
         uint64 durationSecs;
-        (, startTime, durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , startTime, durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
-        validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
-
-        address payloadTarget;
-        (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
-        if( payloadTarget == address(0)) { revert AddressCannotBeZero(); }
-        if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
-        if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
-        if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
+        validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);        
+        validateInputs(_payloadTx, _maxGasAmount, _txHash);
 
         uint128 gasCommitted = _maxGasAmount + regSysState.gasCommittedForNextCycle();
         if(gasCommitted > regConfig.nextCycleSysRegistryMaxGasCap()) { revert GasCommittedExceedsMaxGasCap(); }
@@ -407,7 +395,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
@@ -460,7 +448,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
 
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
@@ -504,7 +492,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
 
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
@@ -619,7 +607,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         
-        (CommonUtils.CycleState state, uint64 startTime, uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
@@ -719,6 +707,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         }
 
         if( _expiryTime <= _cycleStartTime + _cycleDurationSecs) { revert TaskExpiresBeforeNextCycle(); }
+    }
+
+    /// @notice Helper function to validate the inputs while registering a task.
+    function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount, bytes32 _txHash) private view {
+        address payloadTarget;
+        (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
+        if(payloadTarget == address(0)) { revert AddressCannotBeZero(); }
+        if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
+        if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
+        if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
     }
 
     /// @notice Helper function to transfer refunds.
@@ -1604,7 +1602,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 _taskOccupancy,
         uint128 _committedOccupancy
     ) public view returns (uint128) {
-        ( , , uint64 durationSecs) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , , uint64 durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
         return estimateAutomationFeeWithCommittedOccupancyInternal(
             _taskOccupancy,
             _committedOccupancy,

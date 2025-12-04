@@ -25,7 +25,7 @@ contract AutomationRegistryTest is Test {
     address bob = address(0x456);
 
     /// @dev Sets up initial state for testing.
-    /// @dev Initializes 'alice' with 100 ether.
+    /// @dev Sets balance of 'alice' to 100 ether.
     /// @dev Deploys ERC20Supra and AutomationRegistry contracts. 
     /// @dev Initializes AutomationRegistry with required parameters. 
     function setUp() public {
@@ -62,6 +62,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure all state variables are initialized correctly.
     function testInitialize() public view {
+        assertEq(registry.owner(), admin);
+
         assertEq(registry.getNextCycleRegistryMaxGasCap(), 10_000_000);
         assertEq(registry.getNextCycleSysRegistryMaxGasCap(), 5_000_000);
         assertEq(registry.getAutomationController(), address(0));
@@ -90,13 +92,12 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure reinitialization fails.
     function testInitializeRevertsIfReinitialized() public {
-        vm.prank(admin);
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-    
+        
+        vm.prank(admin);    
         registry.initialize(
             3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
-            500, 2000, 3600, 5_000_000, 500,
-            vmAddress, address(supraERC20)
+            500, 2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
         );
     }
     /// @dev Test to ensure initialization fails if zero address is passed as VM address.
@@ -106,8 +107,8 @@ contract AutomationRegistryTest is Test {
         bytes memory initData = abi.encodeCall(
             AutomationRegistry.initialize,
             (
-                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
-                500, 2000, 3600, 5_000_000, 500,
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
+                2, 500, 2000, 3600, 5_000_000, 500,
                 address(0),                             // VM address as zero
                 address(supraERC20)
             )
@@ -117,6 +118,23 @@ contract AutomationRegistryTest is Test {
         new ERC1967Proxy(address(implementation), initData);
     }
 
+    /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
+    function testInitializeRevertsIfSupraERC20IsZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
+                2, 500, 2000, 3600, 5_000_000, 500, vmAddress, 
+                address(0)                              // address(0) as ERC20Supra
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+  
     /// @dev Test to ensure initialization fails if EOA is passed as ERC20Supra address.
     function testInitializeRevertsIfSupraERC20IsEoa() public {
         AutomationRegistry implementation = new AutomationRegistry();
@@ -124,9 +142,8 @@ contract AutomationRegistryTest is Test {
         bytes memory initData = abi.encodeCall(
             AutomationRegistry.initialize,
             (
-                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
-                500, 2000, 3600, 5_000_000, 500,
-                vmAddress, 
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
+                2, 500, 2000, 3600, 5_000_000, 500, vmAddress, 
                 admin                                   // EOA address as ERC20Supra
             )
         );
@@ -135,8 +152,78 @@ contract AutomationRegistryTest is Test {
         new ERC1967Proxy(address(implementation), initData);
     }
 
-    /// @dev Test to ensure initialization fails if 0 is passed as task capacity.
-    function testInitializeRevertsIfInvalidTaskCapacity() public {
+    /// @dev Test to ensure initialization fails if task duration is <= cycle duration.
+    function testInitializeRevertsIfInvalidTaskDuration() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                2000,                                   // task duration
+                10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
+                2000,                                   // cycle duration
+                3600, 5_000_000, 500, vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidTaskDuration.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+
+    /// @dev Test to ensure initialization fails if registry max gas cap is zero.
+    function testInitializeRevertsIfRegistryMaxGasCapZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600,
+                0,                                      // registry max gas cap
+                0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
+                2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+            )
+        );
+        
+        vm.expectRevert(IAutomationRegistry.InvalidRegistryMaxGasCap.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+
+    /// @dev Test to ensure initialization fails if congestion threshold percentage is > 100.
+    function testInitializeRevertsIfInvalidCongestionThreshold() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether,
+                101,                                    // congestion threshold percentage > 100
+                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidCongestionThreshold.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+
+    /// @dev Test to ensure initialization fails if congestion exponent is 0.
+    function testInitializeRevertsIfCongestionExponentZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
+                0,                                      // congestion exponent
+                500, 2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidCongestionExponent.selector);
+        new ERC1967Proxy(address(implementation), initData);      
+    }
+
+    /// @dev Test to ensure initialization fails if task capacity is 0.
+    function testInitializeRevertsIfTaskCapacityZero() public {
         AutomationRegistry implementation = new AutomationRegistry();
 
         bytes memory initData = abi.encodeCall(
@@ -144,8 +231,7 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
                 0,                                      // 0 as task capacity 
-                2000, 3600, 5_000_000, 500,
-                vmAddress, address(supraERC20)
+                2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
             )
         );
 
@@ -153,6 +239,76 @@ contract AutomationRegistryTest is Test {
         new ERC1967Proxy(address(implementation), initData);
     }
 
+    /// @dev Test to ensure initialization fails if cycle duration is 0.
+    function testInitializeRevertsIfCycleDurationZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
+                0,                                      // cycle duration 
+                3600, 5_000_000, 500, vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidCycleDuration.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+
+    /// @dev Test to ensure initialization fails if system task duration is <= cycle duration.
+    function testInitializeRevertsIfInvalidSysTaskDuration() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
+                2000,                                   // cycle duration
+                2000,                                   // system task duration
+                5_000_000, 500, vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidSysTaskDuration.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+
+    /// @dev Test to ensure initialization fails if system registry max gas cap is 0.
+    function testInitializeRevertsIfSysRegistryMaxGasCapZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2000, 3600,
+                0,                                      // system registry max gas cap 
+                500, vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidSysRegistryMaxGasCap.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+
+    /// @dev Test to ensure initialization fails if system task capacity is 0.
+    function testInitializeRevertsIfSysTaskCapacityZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
+                2, 500, 2000, 3600, 5_000_000,
+                0,                                      // system task capacity
+                vmAddress, address(supraERC20)
+            )
+        );
+
+        vm.expectRevert(IAutomationRegistry.InvalidSysTaskCapacity.selector);
+        new ERC1967Proxy(address(implementation), initData);
+    }
+    
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'disableRegistration' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
     /// @dev Test to ensure 'disableRegistration' disables the registration.
@@ -832,82 +988,6 @@ contract AutomationRegistryTest is Test {
         );
     }
 
-    /// @dev Test to ensure 'register' reverts if 0 is passed as max gas amount.
-    function testRegisterRevertsIfMaxGasAmountZero() public {
-        testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
-
-        vm.expectRevert(IAutomationRegistry.InvalidMaxGasAmount.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(0),                         // maxGasAmount = 0
-            uint128(10 gwei),
-            uint128(0.5 ether),
-            auxData
-        );
-    }
-
-    /// @dev Test to ensure 'register' reverts if 0 is passed as gas price cap.
-    function testRegisterRevertsIfGasPriceCapZero() public {
-        testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
-
-        vm.expectRevert(IAutomationRegistry.InvalidGasPriceCap.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(1_000_000),
-            uint128(0),                       // gasPriceCap = 0           
-            uint128(0.5 ether),
-            auxData
-        );
-    }
-
-    /// @dev Test to ensure 'register' reverts if 0 is passed as automation fee cap for cycle.
-    function testRegisterRevertsIfAutomationFeeCapZero() public {
-        testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
-
-        vm.expectRevert(IAutomationRegistry.InsufficientFeeCapForCycle.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0),                       // automationFeeCapForCycle = 0
-            auxData
-        );
-    }
-
-    /// @dev Test to ensure 'register' reverts if expiry time is equal to or less than registration time.
-    function testRegisterRevertsIfInvalidExpiryTime() public {
-        testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
-
-        vm.expectRevert(IAutomationRegistry.InvalidExpiryTime.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp),        // invalid expiryTime
-            keccak256("txHash"),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
-            auxData
-        );
-    }
-
     /// @dev Test to ensure 'register' reverts if auxiliary data is of invalid length.
     function testRegisterRevertsIfInvalidAuxDataLength() public {
         testSetAutomationController();
@@ -950,6 +1030,25 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
+            keccak256("txHash"),
+            uint128(1_000_000),
+            uint128(10 gwei),
+            uint128(0.5 ether),
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' reverts if expiry time is equal to or less than registration time.
+    function testRegisterRevertsIfInvalidExpiryTime() public {
+        testSetAutomationController();
+        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+
+        vm.expectRevert(IAutomationRegistry.InvalidExpiryTime.selector);
+
+        vm.prank(alice);
+        registry.register(
+            payload,
+            uint64(block.timestamp),        // invalid expiryTime
             keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
@@ -1044,6 +1143,44 @@ contract AutomationRegistryTest is Test {
         );
     }
 
+    /// @dev Test to ensure 'register' reverts if 0 is passed as max gas amount.
+    function testRegisterRevertsIfMaxGasAmountZero() public {
+        testSetAutomationController();
+        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+
+        vm.expectRevert(IAutomationRegistry.InvalidMaxGasAmount.selector);
+
+        vm.prank(alice);
+        registry.register(
+            payload,
+            uint64(block.timestamp + 2250),
+            keccak256("txHash"),
+            uint128(0),                         // maxGasAmount
+            uint128(10 gwei),
+            uint128(0.5 ether),
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' reverts if 0 is passed as gas price cap.
+    function testRegisterRevertsIfGasPriceCapZero() public {
+        testSetAutomationController();
+        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+
+        vm.expectRevert(IAutomationRegistry.InvalidGasPriceCap.selector);
+
+        vm.prank(alice);
+        registry.register(
+            payload,
+            uint64(block.timestamp + 2250),
+            keccak256("txHash"),
+            uint128(1_000_000),
+            uint128(0),                       // gasPriceCap         
+            uint128(0.5 ether),
+            auxData
+        );
+    }
+
     /// @dev Test to ensure 'register' reverts if transaction hash is bytes32(0).
     function testRegisterRevertsIfInvalidTxHash() public {
         testSetAutomationController();
@@ -1078,6 +1215,25 @@ contract AutomationRegistryTest is Test {
             uint128(10_000_001),            // Gas exceeds max gas cap
             uint128(10 gwei),
             uint128(0.5 ether),
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' reverts if automation fee cap is less than the estimated automation fee.
+    function testRegisterRevertsIfAutomationFeeCapLessThanEstimated() public {
+        testSetAutomationController();
+        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+
+        vm.expectRevert(IAutomationRegistry.InsufficientFeeCapForCycle.selector);
+
+        vm.prank(alice);
+        registry.register(
+            payload,
+            uint64(block.timestamp + 2250),
+            keccak256("txHash"),
+            uint128(1_000_000),
+            uint128(10 gwei),
+            uint128(0),                       // automationFeeCapForCycle
             auxData
         );
     }
@@ -1264,6 +1420,42 @@ contract AutomationRegistryTest is Test {
         );
     }
 
+    /// @dev Test to ensure 'registerSystemTask' reverts if task duration is greater than system task duration cap.
+    function testRegisterSystemTaskRevertsIfInvalidTaskDuration() public {
+        testSetAutomationController();
+        testGrantAuthorization();
+        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+
+        vm.expectRevert(IAutomationRegistry.InvalidTaskDuration.selector);
+
+        vm.prank(bob);
+        registry.registerSystemTask(
+            payload,                            // payload
+            uint64(block.timestamp + 3601),     // expiryTime
+            keccak256("txHash"),                // txHash
+            uint128(1_000_000),                 // maxGasAmount
+            auxData                             // aux data
+        );   
+    }
+    
+    /// @dev Test to ensure 'registerSystemTask' reverts if gas committed exceeds the system registry max gas cap.
+    function testRegisterSystemTaskRevertsIfGasCommittedExceedsMaxGasCap() public {
+        testSetAutomationController();
+        testGrantAuthorization();
+        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+
+        vm.expectRevert(IAutomationRegistry.GasCommittedExceedsMaxGasCap.selector);
+
+        vm.prank(bob);
+        registry.registerSystemTask(
+            payload,
+            uint64(block.timestamp + 2250),
+            keccak256("txHash"),
+            uint128(5_000_001),                 // Gas exceeds max gas cap
+            auxData
+        );
+    }
+
     /// @dev Test to ensure 'registerSystemTask' registers a GST.
     function testRegisterSystemTask() public {
         testSetAutomationController();
@@ -1332,24 +1524,6 @@ contract AutomationRegistryTest is Test {
             keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             auxData                             // aux data
-        );
-    }
-
-    /// @dev Test to ensure 'registerSystemTask' reverts if gas committed exceeds the system registry max gas cap.
-    function testRegisterSystemTaskRevertsIfGasCommittedExceedsMaxGasCap() public {
-        testSetAutomationController();
-        testGrantAuthorization();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
-
-        vm.expectRevert(IAutomationRegistry.GasCommittedExceedsMaxGasCap.selector);
-
-        vm.prank(bob);
-        registry.registerSystemTask(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(5_000_001),                 // Gas exceeds max gas cap
-            auxData
         );
     }
 

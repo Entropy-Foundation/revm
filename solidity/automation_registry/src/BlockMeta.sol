@@ -32,7 +32,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
 
     /// @notice Sets the address for the automation controller smart contract.
     /// @param _controller Address of the automation controller smart contract.
-    function setAutomationController(address _controller) public onlyOwner {
+    function setAutomationController(address _controller) external onlyOwner {
         if (!_controller.isContract()) revert AddressCannotBeEOA();
         if (_controller == address(0)) revert AddressCannotBeZero();
 
@@ -43,7 +43,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Calls the monitorCycleEnd function in AutomationController.
-    function monitorCycleEnd() public {
+    function monitorCycleEnd() external {
         IAutomationController(automationController).monitorCycleEnd();
     }
 

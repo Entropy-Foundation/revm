@@ -17,7 +17,7 @@ interface IAutomationController {
     
     // View functions
     function getCycleState() external view returns(uint8);
-    function getCycleInfo() external view returns(CommonUtils.CycleState, uint64, uint64);
+    function getCycleInfo() external view returns(uint64, uint64, uint64, CommonUtils.CycleState);
     function getTransitionInfo() external view returns (uint64, uint128);
 
     // State updating functions

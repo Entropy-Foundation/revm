@@ -20,7 +20,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     uint8 constant SUSPENDED = 0;
     uint8 constant FINISHED = 1;
 
-    LibController.AutomationCycleInfo internal cycleInfo;
+    /// @dev State variables
+    LibController.AutomationCycleInfo cycleInfo;
     IAutomationRegistry public registry;
     address public blockMeta;
 
@@ -72,7 +73,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Emitted when the registry smart contract address is updated.
     event RegistryUpdated(address indexed oldRegistryAddress, address indexed newRegistryAddress);
+
+    /// @notice Emitted when the blockMeta smart contract address is updated.
+    event BlockMetaAddressUpdated(address indexed oldBlockMetaAddress, address indexed newBlockMetaAddress);
     
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONSTRUCTOR AND INITIALIZER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
     /// @dev Disables the initialization for the implementation contract.
     constructor() {
@@ -108,7 +113,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @notice Called by the VM on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
     /// @param _cycleIndex Index of the cycle.
     /// @param _taskIndexes Array of task index to be processed.
-    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external {
         // Check caller is VM
         if (msg.sender != registry.getVM()) { revert CallerNotVM(); }
         
@@ -710,34 +715,31 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         return cycleInfo.nextTaskIndexPosition() != 0;
     }
     
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Returns the current cycle state.
     /// @return Current cycle state.
-    function getCycleState() public view returns (uint8) {
+    function getCycleState() external view returns (uint8) {
         return uint8(cycleInfo.state());
     }
 
-    /// @notice Returns the state, start time and duration of the current cycle. 
-    /// @return State of the cycle.
-    /// @return Start time of the cycle.
-    /// @return Duration of the cycle.
-    function getCycleInfo() public view returns (CommonUtils.CycleState, uint64, uint64) {
-        return (cycleInfo.state(), cycleInfo.startTime(), cycleInfo.durationSecs());
+    /// @notice Returns the index, start time, duration and state of the current cycle. 
+    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState) {
+        return (cycleInfo.index(), cycleInfo.startTime(), cycleInfo.durationSecs(), cycleInfo.state());
     }
 
     /// @notice Returns the refund duration and automation fee per sec of the transtition state.
     /// @return Refund duration
     /// @return Automation fee per sec
-    function getTransitionInfo() public view returns (uint64, uint128) {
+    function getTransitionInfo() external view returns (uint64, uint128) {
         return (cycleInfo.refundDuration(), cycleInfo.automationFeePerSec());
     }
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
     /// @notice Function to update the registry smart contract address.
     /// @param _registry Address of the registry smart contract.
-    function setRegistry(address _registry) public onlyOwner {
+    function setRegistry(address _registry) external onlyOwner {
         if (_registry == address(0)) { revert AddressCannotBeZero(); }
         if (!_registry.isContract()) { revert AddressCannotBeEOA(); }
         
@@ -747,7 +749,19 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         emit RegistryUpdated(oldRegistry, _registry);
     }
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    /// @notice Function to update the blockMeta smart contract address.
+    /// @param _blockMeta Address of the blockMeta smart contract.
+    function setBlockMeta(address _blockMeta) external onlyOwner {
+        if (_blockMeta == address(0)) { revert AddressCannotBeZero(); }
+        if (!_blockMeta.isContract()) { revert AddressCannotBeEOA(); }
+
+        address oldBlockMeta = blockMeta;
+        blockMeta = _blockMeta;
+
+        emit BlockMetaAddressUpdated(oldBlockMeta, _blockMeta);
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Helper function that reverts when 'msg.sender' is not authorized to upgrade the contract.
     /// @dev called by 'upgradeTo' and 'upgradeToAndCall' in UUPSUpgradeable
