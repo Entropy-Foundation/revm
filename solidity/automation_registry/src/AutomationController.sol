@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {CommonUtils} from "./CommonUtils.sol";
@@ -173,7 +173,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     }
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
-    function monitorCycleEnd() public {
+    function monitorCycleEnd() external {
         if (msg.sender != blockMeta) { revert CallerNotBlockMeta(); }
         if (!registry.isAutomationEnabled()) {
             return;
@@ -237,18 +237,22 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             uint64 removedCounter;
             for (uint i = 0; i < taskIndexes.length; i++) {
                 if(registry.ifTaskExists(taskIndexes[i])) {
-                    registry.removeTask(taskIndexes[i], false);
-                    removedTasks[removedCounter++] = taskIndexes[i];
+                    (bool removed, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.removeTask, (taskIndexes[i], false)));
+                    require(removed, RemoveTaskFailed());
 
+                    removedTasks[removedCounter++] = taskIndexes[i];
                     markTaskProcessed(taskIndexes[i]);
 
                     // Nothing to refund for GST tasks
-                    if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) { 
-                        cycleLockedFees = registry.refundTaskFees(
-                            taskIndexes[i],
-                            currentTime,
-                            cycleLockedFees
-                        );       
+                    if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) {                         
+                        (bool refunded, bytes memory data) = address(registry).call(
+                            abi.encodeCall(
+                                IAutomationRegistry.refundTaskFees, 
+                                (taskIndexes[i], currentTime, cycleLockedFees)
+                            )
+                        );
+                        require(refunded, RefundFailed());   
+                        cycleLockedFees = abi.decode(data, (uint256));
                     }
                 }
             }
@@ -317,18 +321,26 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             // Task is cancelled or expired
             if(task.state == CommonUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
                 if(isUST) {
-                    registry.refundDepositAndDrop(_taskIndex, task.owner, task.lockedFeeForNextCycle, task.lockedFeeForNextCycle);
+                    (bool sent, ) = address(registry).call(
+                        abi.encodeCall(
+                            IAutomationRegistry.refundDepositAndDrop,
+                            (_taskIndex, task.owner, task.lockedFeeForNextCycle, task.lockedFeeForNextCycle)
+                        )
+                    );
+                    require(sent, RefundDepositAndDropFailed());
                 } else {
                     // Remove the task from registry and system registry
-                    registry.removeTask(_taskIndex, true);
+                    (bool removed, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.removeTask, (_taskIndex, true)));
+                    require(removed, RemoveTaskFailed());
                 }
                 result.isRemoved = true;
             } else if(!isUST) {
                 // Active GST
                 // Governance submitted tasks are not charged
 
-                result.sysGas = task.maxGasAmount;
-                registry.updateTaskState(_taskIndex, CommonUtils.TaskState.ACTIVE);
+                result.sysGas = task.maxGasAmount;                
+                (bool updated, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.updateTaskState, (_taskIndex, CommonUtils.TaskState.ACTIVE)));
+                require(updated, UpdateTaskStateFailed());
             } else {
                 // Active UST
 
@@ -349,7 +361,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // As here we need to distinguish new tasks from already existing active tasks,
                 // as the fee calculation for them will be different based on their active duration in the cycle.
                 // For more details see calculateTaskFee function.
-                registry.updateTaskState(_taskIndex, CommonUtils.TaskState.ACTIVE);
+                (bool updated, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.updateTaskState, (_taskIndex, CommonUtils.TaskState.ACTIVE)));
+                require(updated, UpdateTaskStateFailed());
 
                 (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
                     _taskIndex,
@@ -406,16 +419,19 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         // It might happen that task has been expired by the time charging is being done.
         // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
         
+        address erc20Supra = registry.supraERC20();
         bool isRemoved;
         uint128 gas;
         uint128 fees;
         if(_fee > _automationFeeCapForCycle) {
-            registry.refundDepositAndDrop(
-                _taskIndex,
-                _owner,
-                _lockedFeeForNextCycle, 
-                _lockedFeeForNextCycle
+            (bool sent, ) = address(registry).call(
+                abi.encodeCall(
+                    IAutomationRegistry.refundDepositAndDrop, 
+                    (_taskIndex, _owner, _lockedFeeForNextCycle,  _lockedFeeForNextCycle)
+                )
             );
+            require(sent, RefundDepositAndDropFailed());
+
             isRemoved = true;
 
             emit TaskCancelledCapacitySurpassed(
@@ -426,11 +442,20 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 _regHash
             );
         } else {
-            uint256 userBalance = IERC20(registry.supraERC20()).balanceOf(_owner);
+            uint256 userBalance = IERC20(erc20Supra).balanceOf(_owner);
             if(userBalance < _fee) {
                 // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
-                registry.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
-                registry.removeTask(_taskIndex, false);
+
+                (bool unlocked, ) = address(registry).call(
+                    abi.encodeCall(
+                        IAutomationRegistry.safeUnlockLockedDeposit, 
+                        (_taskIndex, _lockedFeeForNextCycle)
+                    )
+                );
+                require(unlocked, UnlockLockedDepositFailed());
+
+                (bool removed, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.removeTask, (_taskIndex, false)));
+                require(removed, RemoveTaskFailed());
                 isRemoved = true;
 
                 emit TaskCancelledInsufficentBalance(
@@ -443,7 +468,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             } else {
                 if(_fee != 0)  {
                     // Charge the fee    
-                    bool sent = IERC20(registry.supraERC20()).transferFrom(_owner, address(registry), _fee);
+                    bool sent = IERC20(erc20Supra).transferFrom(_owner, address(registry), _fee);
                     if (!sent) { revert TransferFailed(); }
 
                     fees = _fee;
@@ -475,13 +500,20 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
         bool transitionFinalized = isTransitionFinalized();
         if (transitionFinalized) {
-            registry.updateRegistryState(
-                cycleInfo.sysGasCommittedForNextCycle(),
-                cycleInfo.gasCommittedForNextCycle(),
-                cycleInfo.gasCommittedForNewCycle(),
-                cycleInfo.transitionState.lockedFees,
-                FINISHED
+
+            (bool updated, ) = address(registry).call(
+                abi.encodeCall(
+                    IAutomationRegistry.updateRegistryState,
+                    (
+                        cycleInfo.sysGasCommittedForNextCycle(),
+                        cycleInfo.gasCommittedForNextCycle(),
+                        cycleInfo.gasCommittedForNewCycle(),
+                        cycleInfo.transitionState.lockedFees,
+                        FINISHED
+                    )
+                )
             );
+            require(updated, UpdateRegistryStateFailed());
     
             // Set current timestamp as cycle start time
             // Increment the cycle and update the state to STARTED
@@ -515,7 +547,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             return; 
         }
         
-        registry.updateRegistryState(0, 0, 0, 0, SUSPENDED);
+        (bool updated, )= address(registry).call(abi.encodeCall(IAutomationRegistry.updateRegistryState, (0, 0, 0, 0, SUSPENDED)));
+        require(updated, UpdateRegistryStateFailed());
 
         // Check if automation is enabled
         if (registry.isAutomationEnabled()) {
@@ -690,8 +723,9 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     
     /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
     function updateConfigFromBuffer() private {
-        if(registry.ifConfigBufferExists()) {
-            registry.applyPendingConfig();
+        if(registry.ifConfigBufferExists()) {            
+            (bool sent, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.applyPendingConfig, ()));
+            require(sent, ConfigUpdateFailed());
 
             uint64 cycleDurationSecs = registry.getBufferCycleDurationSecs();
             // Check if transition state exists
@@ -716,12 +750,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     }
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Returns the current cycle state.
-    /// @return Current cycle state.
-    function getCycleState() external view returns (uint8) {
-        return uint8(cycleInfo.state());
-    }
 
     /// @notice Returns the index, start time, duration and state of the current cycle. 
     function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState) {

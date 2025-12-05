@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.27;
 
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
@@ -11,8 +11,10 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
 
     address public automationController;
 
+    /// @dev Custom errors
     error AddressCannotBeEOA();
     error AddressCannotBeZero();
+    error MonitorCycleEndFailed();
 
     /// @notice Emitted when the address for automation controller smart contract is updated.
     /// @param oldController Address of the old automation controller.
@@ -44,7 +46,8 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
 
     /// @notice Calls the monitorCycleEnd function in AutomationController.
     function monitorCycleEnd() external {
-        IAutomationController(automationController).monitorCycleEnd();
+        (bool sent, ) = automationController.call(abi.encodeCall(IAutomationController.monitorCycleEnd, ()));
+        require(sent, MonitorCycleEndFailed());
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {CommonUtils} from "./CommonUtils.sol";
@@ -267,16 +267,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
-        if(IAutomationController(regConfig.automationController()).getCycleState() != 1) { revert CycleNotStarted(); }
+
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        if(state != CommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
         if(totalTasks() >= regConfig.taskCapacity()) { revert TaskCapacityReached(); }
 
         bool hasNoPriority = checkAndValidateAuxData(_auxData, CommonUtils.TaskType.UST);
 
         uint64 regTime = uint64(block.timestamp);
-        uint64 startTime;
-        uint64 durationSecs;
-        ( , startTime, durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
-
         validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
         validateInputs(_payloadTx, _maxGasAmount, _txHash);
         if(_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
@@ -308,7 +306,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         );
         
         regState.tasks[taskIndex] = taskMetadata; 
-        regState.taskIdList.add(taskIndex);
+        require(regState.taskIdList.add(taskIndex), TaskIndexNotUnique());
         regState.currentIndex += 1;
 
         deposit.totalDepositedAutomationFees += _automationFeeCapForCycle;
@@ -336,17 +334,15 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
-        if(IAutomationController(regConfig.automationController()).getCycleState() != 1) { revert CycleNotStarted(); }
+
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        if(state != CommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
         if(totalSystemTasks() >= regConfig.sysTaskCapacity()) { revert TaskCapacityReached(); }
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
         
         bool hasNoPriority = checkAndValidateAuxData(_auxData, CommonUtils.TaskType.GST);
 
         uint64 regTime = uint64(block.timestamp);
-        uint64 startTime;
-        uint64 durationSecs;
-        ( , startTime, durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
-
         validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);        
         validateInputs(_payloadTx, _maxGasAmount, _txHash);
 
@@ -374,9 +370,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         );
 
         regState.tasks[taskIndex] = taskMetadata; 
-        regState.taskIdList.add(taskIndex);
+        require(regState.taskIdList.add(taskIndex), TaskIndexNotUnique());
+        require(regSysState.taskIds.add(taskIndex), TaskIndexNotUnique());
         regState.currentIndex += 1;
-        regSysState.taskIds.add(taskIndex);
 
         emit SystemTaskRegistered(taskIndex, msg.sender, block.timestamp, regState.tasks[taskIndex].getTaskDetails());
     }
@@ -408,14 +404,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         
         if (task.state == CommonUtils.TaskState.PENDING) {
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
+            _removeTask(_taskIndex, false); 
             bool result = safeDepositRefund(
                 _taskIndex,
                 task.owner,
                 task.lockedFeeForNextCycle / REFUND_FACTOR,
                 task.lockedFeeForNextCycle
             );
-            if(!result) { revert ErrorDepositRefund(); }
-            _removeTask(_taskIndex, false); 
+            if(!result) { revert ErrorDepositRefund(); }            
         } else { 
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
             // Active tasks will be refunded the deposited amount fully at the end of the cycle.
@@ -525,8 +521,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 // Remove task from the registry
                 _removeTask(_taskIndexes[i], false);
                 // Remove from active tasks
-                regState.activeTaskIds.remove(_taskIndexes[i]);
-
+                require(regState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
                 // This check means the task was expected to be executed in the next cycle, but it has been stopped.
                 // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
@@ -630,8 +625,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
                 _removeTask(_taskIndexes[i], true);
                 // Remove from active tasks
-                regState.activeTaskIds.remove(_taskIndexes[i]);
-
+                require(regState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
                 if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     // Prevent underflow in gas committed
@@ -743,11 +737,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _removeFromSysReg Wheather to remove from system task registry.
     function _removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
         if(_removeFromSysReg) {
-            regSysState.taskIds.remove(_taskIndex);
+            require(regSysState.taskIds.remove(_taskIndex), TaskIndexNotFound());
         }
 
         delete regState.tasks[_taskIndex];
-        regState.taskIdList.remove(_taskIndex);
+        require(regState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
     }
 
     /// @notice Function to calculate the automation congestion fee.
@@ -868,15 +862,15 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _taskIndex,
         uint128 _lockedDeposit
     ) private returns (bool) {
-        bool hasLockedDeposit = deposit.totalDepositedAutomationFees >= _lockedDeposit;
+        uint256 totalDeposited = deposit.totalDepositedAutomationFees;
         
-        if(hasLockedDeposit) {
-            deposit.totalDepositedAutomationFees -= _lockedDeposit;
-        } else {
-            emit ErrorUnlockTaskDepositFee(_taskIndex, deposit.totalDepositedAutomationFees, _lockedDeposit);
+        if(totalDeposited >= _lockedDeposit) {
+            deposit.totalDepositedAutomationFees = totalDeposited - _lockedDeposit;
+            return true;
         }
 
-        return hasLockedDeposit;
+        emit ErrorUnlockTaskDepositFee(_taskIndex, totalDeposited, _lockedDeposit);
+        return false;
     }
 
     /// @notice Unlocks the locked fee paid by the task for cycle.
@@ -1072,25 +1066,15 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Grants authorization to the input account to submit system automation tasks.
     /// @param _account Address to grant authorization to.
     function grantAuthorization(address _account) external onlyOwner {
-        if(regSysState.authorizedAccounts.contains(_account)) {
-            revert AddressAlreadyExists();
-        } else {
-            regSysState.authorizedAccounts.add(_account);
-            
-            emit AuthorizationGranted(_account, block.timestamp);
-        }
+        require(regSysState.authorizedAccounts.add(_account), AddressAlreadyExists());
+        emit AuthorizationGranted(_account, block.timestamp);
     }
 
     /// @notice Revokes authorization from the input account to submit system automation tasks. 
     /// @param _account Address to revoke authorization from. 
     function revokeAuthorization(address _account) external onlyOwner {
-        if(!regSysState.authorizedAccounts.contains(_account)) {
-            revert AddressDoesNotExist();
-        } else {
-            regSysState.authorizedAccounts.remove(_account);
-
-            emit AuthorizationRevoked(_account, block.timestamp);
-        }
+        require(regSysState.authorizedAccounts.remove(_account), AddressDoesNotExist());
+        emit AuthorizationRevoked(_account, block.timestamp);
     }
 
     /// @notice Function to enable the task registration.
@@ -1299,9 +1283,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
-        uint256 cycleLockedFees;
         // Do not attempt fee refund if remaining duration is 0
-
         (uint64 refundDuration, uint128 automationFeePerSec) = IAutomationController(regConfig.automationController()).getTransitionInfo();
 
         if (task.state != CommonUtils.TaskState.PENDING && refundDuration != 0) {
@@ -1321,7 +1303,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                     _cycleLockedFees,
                     uint64(_refund)
                 );
-            cycleLockedFees = remainingCycleLockedFees;
+            _cycleLockedFees = remainingCycleLockedFees;
         }
 
         safeDepositRefund(
@@ -1331,7 +1313,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             task.lockedFeeForNextCycle
         );
 
-        return cycleLockedFees;
+        return _cycleLockedFees;
     }
 
     function calculateAutomationFeeMultiplierForCurrentCycleInternal() external onlyController view returns (uint128) {

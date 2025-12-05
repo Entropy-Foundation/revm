@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
@@ -238,8 +238,7 @@ contract MultiSignatureWallet is Initializable {
         for (uint256 i = 0; i < _owners.length; i++) {
             address owner = _owners[i];
             if (owner == address(0)) revert InvalidOwner();
-            if (owners.contains(owner)) revert OwnerNotUnique();
-            owners.add(owner);
+            require(owners.add(owner), OwnerNotUnique());
         }
 
         numConfirmationsRequired = _numConfirmationsRequired;
@@ -362,8 +361,7 @@ contract MultiSignatureWallet is Initializable {
         for (uint256 i = 0; i < _owners.length; i++) {
             address owner = _owners[i];
             if (owner == address(0)) revert InvalidOwner();
-            if (!owners.contains(owner)) {
-                owners.add(owner);
+            if (owners.add(owner)) {
                 ownersToUpdate[c++] = owner;
             }
         }
@@ -383,8 +381,7 @@ contract MultiSignatureWallet is Initializable {
 
         for (uint256 i = 0; i < _owners.length; i++) {
             address owner = _owners[i];
-            if (owners.contains(owner)){
-                owners.remove(owner);
+            if (owners.remove(owner)) {
                 ownersToUpdate[c++] = owner;
             }
         }

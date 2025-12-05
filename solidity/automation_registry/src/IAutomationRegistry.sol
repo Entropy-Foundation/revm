@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.27;
 
 import {CommonUtils} from "./CommonUtils.sol";
 
@@ -55,6 +55,8 @@ interface IAutomationRegistry {
     error UnauthorizedCaller();
     error RegisteredTaskInvalidType();
     error AutomationNotEnabled();
+    error TaskIndexNotFound();
+    error TaskIndexNotUnique();
 
     // View functions
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);

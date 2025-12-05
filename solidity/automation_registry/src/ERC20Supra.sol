@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.27;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
@@ -48,11 +48,10 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
         if (balanceOf(msg.sender) < _amount) revert InsufficientBalance();
         
         _burn(msg.sender, _amount);
+        emit Withdrawal(msg.sender, _amount);
 
         (bool sent, ) = payable(msg.sender).call{value: _amount}("");
         if (!sent) revert TransferFailed();
-
-        emit Withdrawal(msg.sender, _amount);
     }    
 
     /// @notice Allows a user to send native tokens directly.
