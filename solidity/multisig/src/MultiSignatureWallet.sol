@@ -443,7 +443,7 @@ contract MultiSignatureWallet is Initializable {
             address to,
             uint256 value,
             bool executed,
-            uint256 numConfirmations,
+            uint24 numConfirmations,
             uint64 timeout,
             bytes memory data
         )
