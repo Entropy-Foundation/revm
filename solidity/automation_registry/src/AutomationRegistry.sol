@@ -114,7 +114,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Emitted when a task is stopped.
     event TasksStopped(
-        LibRegistry.TaskStopped[] indexed StoppedTasks,
+        LibRegistry.TaskStopped[] indexed stoppedTasks,
         address indexed owner
     );
 
@@ -152,14 +152,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         address indexed owner,
         uint64 indexed amount
     );
-
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: MODIFIERS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev Modifier to assert that AutomationController contract is the caller.
-    modifier onlyController() {
-        if(msg.sender != regConfig.automationController()) { revert CallerNotController(); }
-        _;
-    }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONSTRUCTOR AND INITIALIZER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -988,7 +980,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         }
     }
 
-    /// Refunds fee paid by the task for the cycle to the task owner.
+    /// @notice Refunds fee paid by the task for the cycle to the task owner.
     /// Note that here we do not unlock the fee, as on cycle change locked cycle-fees for the ended cycle are
     /// automatically unlocked.
     function safeFeeRefund(
@@ -1006,6 +998,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         result = safeRefund( _taskIndex, _taskOwner, _refundableFee, CYCLE_FEE);
         if (result) { emit TaskFeeRefund(_taskIndex, _taskOwner, _refundableFee); }
         return (result, remainingLockedFees);   
+    }
+
+    /// @notice Function to ensure that AutomationController contract is the caller.
+    function onlyController() private view {
+        if(msg.sender != regConfig.automationController()) { revert CallerNotController(); }
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1111,13 +1108,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Function to update the VM address.
     /// @param _vm New address for VM.
-    function setVM(address _vm) external onlyOwner {
+    function setVm(address _vm) external onlyOwner {
         if(_vm == address(0)) { revert AddressCannotBeZero(); }
 
-        address oldVM = regConfig.vm;
+        address oldVm = regConfig.vm;
         regConfig.vm = _vm;
 
-        emit VmAddressUpdated(oldVM, _vm);
+        emit VmAddressUpdated(oldVm, _vm);
     }
 
     /// @notice Function to update the SupraERC20 address.
@@ -1174,14 +1171,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONTROLLER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
     /// @notice Internally calls _removeTask, reverts if caller is not AutomationController.
-    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external onlyController {
+    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external {
+        onlyController();
         _removeTask(_taskIndex, _removeFromSysReg);
     }
     
     /// @notice Function to update state of the task.
     /// @param _taskIndex Index of the task.
     /// @param _taskState State to update task to.
-    function updateTaskState(uint64 _taskIndex, CommonUtils.TaskState _taskState) external onlyController {
+    function updateTaskState(uint64 _taskIndex, CommonUtils.TaskState _taskState) external {
+        onlyController();
         LibRegistry.setState(regState.tasks[_taskIndex], uint8(_taskState));
     }
 
@@ -1197,7 +1196,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 _gasCommittedForNewCycle,
         uint256 _lockedFees,
         uint8 _state
-    ) external onlyController {
+    ) external {
+        onlyController();
         regSysState.setGasCommittedForNextCycle(_sysGasCommittedForNextCycle);
         regSysState.setGasCommittedForThisCycle(_sysGasCommittedForNextCycle);
         regState.setGasCommittedForNextCycle(_gasCommittedForNextCycle);
@@ -1214,7 +1214,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     }
 
     /// @notice Function to update the registry configuration, reverts if caller is not AutomationController.
-    function applyPendingConfig() external onlyController {
+    function applyPendingConfig() external {
+        onlyController();
         regConfig.config = configBuffer.pendingConfig;
         configBuffer.ifExists = false;
     }
@@ -1222,7 +1223,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     function safeUnlockLockedDeposit(
         uint64 _taskIndex,
         uint128 _lockedDeposit
-    ) external onlyController returns (bool) {
+    ) external returns (bool) {
+        onlyController();
         return _safeUnlockLockedDeposit(_taskIndex, _lockedDeposit);
     }
 
@@ -1235,7 +1237,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _currentTime,
         uint128 _automationFeePerSec,
         uint128 _registryMaxGasCap
-    ) external onlyController view returns (uint128) {
+    ) external returns (uint128) {
+        onlyController();
         return _calculateTaskFee(
             _state,
             _expiryTime,
@@ -1257,7 +1260,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         address _taskOwner,
         uint128 _refundableDeposit,
         uint128 _lockedDeposit
-    ) external onlyController {
+    ) external {
+        onlyController();
         // Check if task is UST
         if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
 
@@ -1278,7 +1282,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _taskIndex,
         uint64 _currentTime,
         uint256 _cycleLockedFees
-    ) external onlyController returns (uint256) {
+    ) external returns (uint256) {
+        onlyController();
         if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
 
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
@@ -1316,7 +1321,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         return _cycleLockedFees;
     }
 
-    function calculateAutomationFeeMultiplierForCurrentCycleInternal() external onlyController view returns (uint128) {
+    function calculateAutomationFeeMultiplierForCurrentCycleInternal() external returns (uint128) {
+        onlyController();
         // Compute the automation fee multiplier for this cycle
         return calculateAutomationFeeMultiplierForCycle(
             regState.gasCommittedForThisCycle(),
@@ -1330,7 +1336,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// maximum allowed occupancy.
     function calculateAutomationFeeMultiplierForCommittedOccupancy(
         uint128 _totalCommittedMaxGas
-    ) external onlyController view returns (uint128) {
+    ) external returns (uint128) {
+        onlyController();
         // Compute the automation fee multiplier for cycle        
         return calculateAutomationFeeMultiplierForCycle(
             _totalCommittedMaxGas,
@@ -1352,7 +1359,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     }
 
     /// @notice Returns the VM address.
-    function getVM() external view returns (address) {
+    function getVm() external view returns (address) {
         return regConfig.vm;
     }
 

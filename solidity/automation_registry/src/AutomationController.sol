@@ -42,7 +42,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         address indexed owner,
         uint128 fee,
         uint256 balance,
-        bytes32 registration_hash
+        bytes32 registrationHash
     );
 
     /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
@@ -115,7 +115,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @param _taskIndexes Array of task index to be processed.
     function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external {
         // Check caller is VM
-        if (msg.sender != registry.getVM()) { revert CallerNotVM(); }
+        if (msg.sender != registry.getVm()) { revert CallerNotVM(); }
         
         CommonUtils.CycleState state = cycleInfo.state(); 
 
@@ -590,7 +590,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             if(currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
             if(cycleInfo.state() != CommonUtils.CycleState.STARTED) { revert InvalidRegistryState(); }
 
-            uint256[] memory expected_tasks_to_be_processed = registry.getTaskIdList().sortUint256();
+            uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
             cycleInfo.setRefundDuration(cycleEndTime - currentTime);
             cycleInfo.setNewCycleDuration(cycleDuration);
@@ -601,7 +601,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             cycleInfo.transitionState.lockedFees = 0;
             cycleInfo.setNextTaskIndexPosition(0);
 
-            updateExpectedTasks(expected_tasks_to_be_processed);
+            updateExpectedTasks(expectedTasksToBeProcessed);
             cycleInfo.setTransitionStateExists(true);
             
             updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
@@ -696,7 +696,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             updateConfigFromBuffer();
             moveToStartedState();
         } else {
-            uint256[] memory expected_tasks_to_be_processed = registry.getTaskIdList().sortUint256();
+            uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
             cycleInfo.setRefundDuration(0);
             cycleInfo.setNewCycleDuration(cycleInfo.durationSecs());
@@ -707,7 +707,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             cycleInfo.transitionState.lockedFees = 0;
             cycleInfo.setNextTaskIndexPosition(0);
             
-            updateExpectedTasks(expected_tasks_to_be_processed);
+            updateExpectedTasks(expectedTasksToBeProcessed);
             cycleInfo.setTransitionStateExists(true);
             
             // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.

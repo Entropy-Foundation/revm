@@ -69,7 +69,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getAutomationController(), address(0));
         assertTrue(registry.isRegistrationEnabled());
         assertTrue(registry.isAutomationEnabled());
-        assertEq(registry.getVM(), vmAddress);
+        assertEq(registry.getVm(), vmAddress);
         assertEq(registry.supraERC20(), address(supraERC20));
 
         LibRegistry.ConfigDetails memory config = registry.getConfig();
@@ -538,44 +538,44 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(alice);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setVM' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setVm' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure 'setVM' updates the VM address.
     function testSetVm() public {
-        address newVM = address(0x100);
+        address newVm = address(0x100);
 
         vm.prank(admin);
-        registry.setVM(newVM);
+        registry.setVm(newVm);
 
-        assertEq(registry.getVM(), newVM);
+        assertEq(registry.getVm(), newVm);
     }
 
-    /// @dev Test to ensure 'setVM' emits event 'VmAddressUpdated'.
+    /// @dev Test to ensure 'setVm' emits event 'VmAddressUpdated'.
     function testSetVmEmitsEvent() public {
-        address oldVM = registry.getVM();
-        address newVM = address(0x100);
+        address oldVm = registry.getVm();
+        address newVm = address(0x100);
 
         vm.expectEmit(true, true, false, false);
-        emit AutomationRegistry.VmAddressUpdated(oldVM, newVM);
+        emit AutomationRegistry.VmAddressUpdated(oldVm, newVm);
 
         vm.prank(admin);
-        registry.setVM(newVM);
+        registry.setVm(newVm);
     }
 
-    /// @dev Test to ensure 'setVM' reverts if zero address is passed.
+    /// @dev Test to ensure 'setVm' reverts if zero address is passed.
     function testSetVmRevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
         vm.prank(admin);
-        registry.setVM(address(0));
+        registry.setVm(address(0));
     }
 
-    /// @dev Test to ensure 'setVM' reverts if caller is not owner.
+    /// @dev Test to ensure 'setVm' reverts if caller is not owner.
     function testSetVmRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        registry.setVM(address(0x100));
+        registry.setVm(address(0x100));
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setSupraERC20' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
