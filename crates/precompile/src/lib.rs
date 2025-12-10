@@ -401,7 +401,7 @@ pub enum PrecompileSpecId {
     /// * `BLS12_PAIRING_CHECK` at address 0x0f
     /// * `BLS12_MAP_FP_TO_G1` at address 0x10
     /// * `BLS12_MAP_FP2_TO_G2` at address 0x11
-    /// * `TX_HASH` at address 0x53555000
+    /// * `TX_HASH` at address 0x53555001
     PRAGUE,
     /// Osaka spec added changes to modexp precompile:
     /// * [`EIP-7823: Set upper bounds for MODEXP`](https://eips.ethereum.org/EIPS/eip-7823).
