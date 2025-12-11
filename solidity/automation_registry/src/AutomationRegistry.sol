@@ -1237,7 +1237,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _currentTime,
         uint128 _automationFeePerSec,
         uint128 _registryMaxGasCap
-    ) external returns (uint128) {
+    ) external view returns (uint128) {
         onlyController();
         return _calculateTaskFee(
             _state,
@@ -1321,7 +1321,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         return _cycleLockedFees;
     }
 
-    function calculateAutomationFeeMultiplierForCurrentCycleInternal() external returns (uint128) {
+    function calculateAutomationFeeMultiplierForCurrentCycleInternal() external view returns (uint128) {
         onlyController();
         // Compute the automation fee multiplier for this cycle
         return calculateAutomationFeeMultiplierForCycle(
@@ -1336,7 +1336,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// maximum allowed occupancy.
     function calculateAutomationFeeMultiplierForCommittedOccupancy(
         uint128 _totalCommittedMaxGas
-    ) external returns (uint128) {
+    ) external view returns (uint128) {
         onlyController();
         // Compute the automation fee multiplier for cycle        
         return calculateAutomationFeeMultiplierForCycle(

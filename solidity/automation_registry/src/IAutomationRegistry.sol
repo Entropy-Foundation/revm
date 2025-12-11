@@ -74,8 +74,8 @@ interface IAutomationRegistry {
     function getVm() external returns (address);
     function supraERC20() external view returns (address);
     function isAutomationEnabled() external view returns (bool);
-    function calculateAutomationFeeMultiplierForCurrentCycleInternal() external returns (uint128);
-    function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external returns (uint128);
+    function calculateAutomationFeeMultiplierForCurrentCycleInternal() external view returns (uint128);
+    function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external view returns (uint128);
     function calculateTaskFee(
         CommonUtils.TaskState _state,
         uint64 _expiryTime,
@@ -84,7 +84,7 @@ interface IAutomationRegistry {
         uint64 _currentTime,
         uint128 _automationFeePerSec,
         uint128 _registryMaxGasCap
-    ) external returns (uint128);
+    ) external view returns (uint128);
     function cycleDurationSecs() external view returns (uint64);
 
     

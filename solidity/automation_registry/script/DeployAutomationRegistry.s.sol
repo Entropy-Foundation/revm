@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.27;
+
+import {Script, console} from "forge-std/Script.sol";
+import {AutomationController} from "../src/AutomationController.sol";
+import {AutomationRegistry} from "../src/AutomationRegistry.sol";
+import {BlockMeta} from "../src/BlockMeta.sol";
+import {ERC20Supra} from "../src/ERC20Supra.sol";
+import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+contract DeployAutomationRegistry is Script {
+    uint64 taskDurationCapSecs;
+    uint128 registryMaxGasCap;
+    uint128 automationBaseFeeWeiPerSec;
+    uint128 flatRegistrationFeeWei;
+    uint8 congestionThresholdPercentage;
+    uint128 congestionBaseFeeWeiPerSec;
+    uint8 congestionExponent;
+    uint16 taskCapacity;
+    uint64 cycleDurationSecs;
+    uint64 sysTaskDurationCapSecs;
+    uint128 sysRegistryMaxGasCap;
+    uint16 sysTaskCapacity;
+    address vmSigner;
+
+    // Config values loaded from .env file
+    function setUp() public {
+        taskDurationCapSecs = uint64(vm.envUint("TASK_DURATION_CAP_SEC"));
+        registryMaxGasCap = uint128(vm.envUint("REGISTRY_MAX_GAS_CAP"));
+        automationBaseFeeWeiPerSec = uint128(vm.envUint("AUTOMATION_BASE_FEE_PER_SEC"));
+        flatRegistrationFeeWei = uint128(vm.envUint("FLAT_REGISTRATION_FEE"));
+        congestionThresholdPercentage = uint8(vm.envUint("CONGESTION_THRESHOLD_PERCENTAGE"));
+        congestionBaseFeeWeiPerSec = uint128(vm.envUint("CONGESTION_BASE_FEE_PER_SEC"));
+        congestionExponent = uint8(vm.envUint("CONGESTION_EXPONENT"));
+        taskCapacity = uint16(vm.envUint("TASK_CAPACITY"));
+        cycleDurationSecs = uint64(vm.envUint("CYCLE_DURATION_SEC"));
+        sysTaskDurationCapSecs = uint64(vm.envUint("SYS_TASK_DURATION_CAP_SEC"));
+        sysRegistryMaxGasCap = uint128(vm.envUint("SYS_REGISTRY_MAX_GAS_CAP"));
+        sysTaskCapacity = uint16(vm.envUint("SYS_TASK_CAPACITY"));
+        vmSigner = vm.envAddress("VM_SIGNER");
+    }
+
+    function run() public {
+        vm.startBroadcast();
+
+        ERC20Supra supraERC20;                          // ERC20Supra contract
+
+        AutomationRegistry registryImpl;                // AutomationRegistry implementation contract
+        ERC1967Proxy registryProxy;                     // AutomationRegistry proxy contract
+        AutomationRegistry registry;                    // Instance of AutomationRegistry at proxy address
+
+        BlockMeta blockMetaImpl;                        // BlockMeta implementation contract
+        ERC1967Proxy blockMetaProxy;                    // BlockMeta proxy contract
+
+        AutomationController controllerImpl;            // AutomationController implementation contract           
+        ERC1967Proxy controllerProxy;                   // AutomationController proxy contract
+        AutomationController controller;                // Instance of AutomationController at proxy address
+
+        // ---------------------------------------------------------------------
+        // Deploy ERC20Supra
+        // ---------------------------------------------------------------------
+        supraERC20 = new ERC20Supra(msg.sender);
+        console.log("ERC20Supra deployed at: ", address(supraERC20));
+        
+        // ---------------------------------------------------------------------
+        // Deploy AutomationRegistry
+        // ---------------------------------------------------------------------
+        registryImpl = new AutomationRegistry();
+        console.log("AutomationRegistry implementation deployed at: ", address(registryImpl));
+        bytes memory initData = abi.encodeCall(
+            AutomationRegistry.initialize,
+            (
+                taskDurationCapSecs,                    // taskDurationCapSecs
+                registryMaxGasCap,                      // registryMaxGasCap
+                automationBaseFeeWeiPerSec,             // automationBaseFeeWeiPerSec
+                flatRegistrationFeeWei,                 // flatRegistrationFeeWei
+                congestionThresholdPercentage,          // congestionThresholdPercentage
+                congestionBaseFeeWeiPerSec,             // congestionBaseFeeWeiPerSec
+                congestionExponent,                     // congestionExponent
+                taskCapacity,                           // taskCapacity
+                cycleDurationSecs,                      // cycleDurationSecs
+                sysTaskDurationCapSecs,                 // sysTaskDurationCapSecs
+                sysRegistryMaxGasCap,                   // sysRegistryMaxGasCap
+                sysTaskCapacity,                        // sysTaskCapacity
+                vmSigner,                               // vm address
+                address(supraERC20)                     // supraERC20 address
+            )
+        );
+        registryProxy = new ERC1967Proxy(address(registryImpl), initData);
+        console.log("AutomationRegistry proxy deployed at: ", address(registryProxy));
+        registry = AutomationRegistry(address(registryProxy));
+
+        // ---------------------------------------------------------------------
+        // Deploy BlockMeta
+        // ---------------------------------------------------------------------
+        blockMetaImpl = new BlockMeta();
+        console.log("BlockMeta implementation deployed at: ", address(blockMetaImpl));
+        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, ());
+        blockMetaProxy = new ERC1967Proxy(address(blockMetaImpl), blockMetaInitData);
+        console.log("BlockMeta proxy deployed at: ", address(blockMetaProxy));
+
+        // ---------------------------------------------------------------------
+        // Deploy AutomationController
+        // ---------------------------------------------------------------------
+        controllerImpl = new AutomationController();
+        console.log("AutomationController implementation deployed at: ", address(controllerImpl));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(registry), address(blockMetaProxy)));
+        controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
+        console.log("AutomationController proxy deployed at: ", address(controllerProxy));
+        controller = AutomationController(address(controllerProxy));
+
+        // ---------------------------------------------------------------------
+        // Set AutomationController address in AutomationRegistry
+        // ---------------------------------------------------------------------
+        registry.setAutomationController(address(controller));
+
+        vm.stopBroadcast();
+    }
+}
