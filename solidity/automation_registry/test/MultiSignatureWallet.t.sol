@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.27;
 
-import {console} from "forge-std/Script.sol";
 import {Test} from "forge-std/Test.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -10,7 +9,7 @@ import "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepU
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import "../src/MultisigBeacon.sol";
 
-contract Multisig is Test {
+contract MultiSignatureWalletTest is Test {
     BlockMeta blockMeta;
     MultisigBeacon beacon;
     address multiSigImplV1;
@@ -696,5 +695,96 @@ contract Multisig is Test {
         
         vm.prank(alice);
         beacon.upgradeTo(address(implV2));
+    }
+    
+    /// @dev Helper function to submit a transaction for contract deployment and grant sufficient confirmations.
+    function submitToDeploy(bytes memory _creationCode, uint256 _value, uint256 _tx) private {
+        bytes memory data = abi.encodeCall(MultiSignatureWallet.deployContract, (_creationCode, _value));
+        submitTransactionToMultiSig(data);
+        grantSufficientConfirmations(_tx);   
+    }
+
+    /// @dev Helper function that returns creation code to deploy ERC1967 proxy contract.
+    function proxyCreationCode(address _impl) private pure returns (bytes memory) {
+        bytes memory initData = abi.encodeCall(BlockMeta.initialize, ());        
+        
+        return abi.encodePacked(
+            type(ERC1967Proxy).creationCode,
+            abi.encode(_impl, initData)
+        );
+    }
+
+    /// @dev Test to ensure 'deployContract' deploys contract and assigns MultiSig as contract owner.
+    function testDeployContract() public {
+        // Deploy implementation
+        submitToDeploy(type(BlockMeta).creationCode, 0, 0);
+        
+        vm.prank(address(1002));
+        bytes memory dataImpl =  multiSig.executeTransaction(0);
+        address impl = abi.decode(dataImpl, (address));
+
+        
+        // Deploy proxy
+        bytes memory creationCode = proxyCreationCode(impl);        
+        submitToDeploy(creationCode, 0, 1);
+
+        vm.prank(address(1002));
+        bytes memory dataProxy =  multiSig.executeTransaction(1);
+        address proxy = abi.decode(dataProxy, (address));
+        assertEq(BlockMeta(proxy).owner(), address(multiSig));
+    }
+
+    /// @dev Test to ensure 'deployContract' reverts if caller is not MultiSig itself.
+    function testDeployContractRevertsIfCallerNotMultiSig() public {
+        bytes memory creationCode = type(BlockMeta).creationCode;
+
+        vm.expectRevert(MultiSignatureWallet.OnlyMultisigAccountCanCall.selector);
+
+        vm.prank(alice);
+        multiSig.deployContract(creationCode, 0);
+    }
+
+    /// @dev Test to ensure 'deployContract' reverts if contract creation code is empty.
+    function testDeployContractRevertsIfCreationCodeEmpty() public {
+        // Deploy implementation
+        submitToDeploy("", 0, 0);   // Empty creation code
+        
+        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'deployContract' reverts if initialize function is non-payable.
+    function testDeployContractRevertsIfInitializerNonPayable() public {
+        vm.deal(address(multiSig), 4 ether);
+
+        // Deploy implementation
+        submitToDeploy(type(BlockMeta).creationCode, 0, 0);
+        
+        vm.prank(address(1002));
+        bytes memory dataImpl =  multiSig.executeTransaction(0);
+        address impl = abi.decode(dataImpl, (address));
+
+        
+        // Deploy proxy
+        bytes memory creationCode = proxyCreationCode(impl);        
+        submitToDeploy(creationCode, 1 ether, 1);
+
+        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(1);
+    }
+
+    /// @dev Test to ensure 'deployContract' reverts if creation code is invalid.
+    function testDeployContractRevertsIfInvalidCreationCode() public {
+        // Deploy implementation
+        submitToDeploy(hex"f1", 0, 0);  // Invalid creation code
+
+        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
     }
 }

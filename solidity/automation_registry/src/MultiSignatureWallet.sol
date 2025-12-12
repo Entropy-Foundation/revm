@@ -59,11 +59,9 @@ contract MultiSignatureWallet is Initializable {
     
     /**
      * @dev Emitted when a transaction to deploy a contract is executed.
-     * @param owner The address of the owner who executed the transaction.
-     * @param txIndex The index of the transaction in the transactions array.
-     * @param deployed The address of the deployed contract.
+     * @param deployedContract The address of the deployed contract.
      */
-    event ExecuteTransactionDeployment(address indexed owner, uint256 indexed txIndex, address indexed deployed);
+    event ContractDeployed(address indexed deployedContract);
 
     /**
      * @dev Emitted when new owners are added to the contract.
@@ -305,7 +303,7 @@ contract MultiSignatureWallet is Initializable {
      * @dev Function to execute a confirmed transaction.
      * @param _txIndex Index of the transaction to execute.
      */
-    function executeTransaction(uint256 _txIndex) public {
+    function executeTransaction(uint256 _txIndex) public returns (bytes memory) {
         onlyOwner(msg.sender);
         txExists(_txIndex);
         notExecuted(_txIndex);
@@ -314,16 +312,11 @@ contract MultiSignatureWallet is Initializable {
         if (transaction.numConfirmations < numConfirmationsRequired)
             revert NotEnoughConfirmation();
         transaction.executed = true;
-        if (transaction.to == address(0)) {
-            address deployed = deploy(transaction.data, transaction.value);
-
-            emit ExecuteTransactionDeployment(msg.sender, _txIndex, deployed);
-        } else {
-            (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
-            if (!success) { revert ExecutionFailed(); }
+        (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
+        if (!success) { revert ExecutionFailed(); }
             
-            emit ExecuteTransaction(msg.sender, _txIndex, data);
-        }
+        emit ExecuteTransaction(msg.sender, _txIndex, data);
+        return data;
     }
 
     /**
@@ -466,7 +459,8 @@ contract MultiSignatureWallet is Initializable {
      * @param _value Amount of ETH to sent along with contract creation.
      * @return deployed The address of the deployed contract
      */
-    function deploy(bytes memory _creationCode, uint256 _value) private returns (address deployed) {
+    function deployContract(bytes memory _creationCode, uint256 _value) external returns (address deployed) {
+        onlyMultiSig();
         if (_creationCode.length == 0) { revert EmptyCreationCode(); }
 
         assembly {
@@ -478,5 +472,6 @@ contract MultiSignatureWallet is Initializable {
             )
         }
         if (deployed == address(0)) { revert ContractCreationFailed(); }
+        emit ContractDeployed(deployed);
     }
 }
