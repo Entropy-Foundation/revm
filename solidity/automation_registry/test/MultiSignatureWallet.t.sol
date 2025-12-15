@@ -22,6 +22,8 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Sets up initial state for testing.
     /// @dev Deploys all required contracts.
     function setUp() public {
+        vm.deal(alice, 10 ether);
+        
         address owner1 = address(1001);
         address owner2 = address(1002);
         address owner3 = address(1003);
@@ -786,5 +788,25 @@ contract MultiSignatureWalletTest is Test {
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'receive' works correctly.
+    function testReceive() public {
+        assertEq(address(multiSig).balance, 0);
+
+        // Send ETH to multisig
+        vm.prank(alice);
+        (bool success, ) = address(multiSig).call{value: 1 ether}("");
+        assertTrue(success);
+
+        assertEq(address(multiSig).balance, 1 ether);
+    }
+
+    /// @dev Test to ensure 'receive' emits event 'Deposit'.
+    function testReceiveEmitsEvent() public {
+        vm.expectEmit(true, false, false, true);
+        emit MultiSignatureWallet.Deposit(alice, 1 ether, 1 ether);
+
+        testReceive();
     }
 }
