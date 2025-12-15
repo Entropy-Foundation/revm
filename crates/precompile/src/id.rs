@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use primitives::{address, Address};
+use primitives::{address, supra_constants::TX_HASH_ADDRESS, Address};
 
 use crate::{Precompile, PrecompileSpecId};
 
@@ -80,7 +80,7 @@ impl PrecompileId {
             Self::Bls12MapFpToGp1 => address!("0x0000000000000000000000000000000000000010"),
             Self::Bls12MapFp2ToGp2 => address!("0x0000000000000000000000000000000000000011"),
             Self::P256Verify => address!("0x0000000000000000000000000000000000000012"),
-            Self::TxHash => address!("0x0000000000000000000000000000000053555001"),
+            Self::TxHash => TX_HASH_ADDRESS,
             Self::Custom(_) => return None,
         };
         Some(address)
