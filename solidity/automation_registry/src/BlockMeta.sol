@@ -14,6 +14,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
     /// @dev Custom errors
     error AddressCannotBeEOA();
     error AddressCannotBeZero();
+    error AutomationControllerNotSet();
     error InvalidCaller();
     error MonitorCycleEndFailed();
 
@@ -36,8 +37,8 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
     /// @notice Sets the address for the automation controller smart contract.
     /// @param _controller Address of the automation controller smart contract.
     function setAutomationController(address _controller) external onlyOwner {
-        if (!_controller.isContract()) revert AddressCannotBeEOA();
         if (_controller == address(0)) revert AddressCannotBeZero();
+        if (!_controller.isContract()) revert AddressCannotBeEOA();
 
         address oldController = automationController;
         automationController = _controller;
@@ -48,6 +49,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
     /// @notice Calls the monitorCycleEnd function in AutomationController.
     function blockPrologue() external {
         require(msg.sender == address(0x5355500000000000000000000000000000000000), InvalidCaller());    // Caller must be SUP0
+        require(automationController != address(0), AutomationControllerNotSet());
 
         (bool sent, ) = automationController.call(abi.encodeCall(IAutomationController.monitorCycleEnd, ()));
         require(sent, MonitorCycleEndFailed());
