@@ -9,10 +9,12 @@ import {BeaconProxy} from "../lib/openzeppelin-contracts/contracts/proxy/beacon/
 contract DeployMultisig is Script {
     address[] owners;
     uint256 numConfirmations;
+    address beaconOwner;
 
     function setUp() public {
         owners = vm.envAddress("OWNERS", ",");
         numConfirmations = vm.envUint("NUM_CONFIRMATIONS");
+        beaconOwner = vm.envAddress("BEACON_OWNER");
     }
 
     function run() public {
@@ -27,8 +29,9 @@ contract DeployMultisig is Script {
         // -------------------------------------------
         // Deploy beacon pointing to implementation
         // -------------------------------------------
-        MultisigBeacon beacon = new MultisigBeacon(address(multisigImpl));
+        MultisigBeacon beacon = new MultisigBeacon(address(multisigImpl), beaconOwner);
         console.log("Beacon deployed at: ", address(beacon));
+        console.log("Beacon owner: ", beacon.owner());
 
         // ----------------------
         // Deploy multisig proxy
@@ -42,12 +45,6 @@ contract DeployMultisig is Script {
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (owners, numConfirmations));
         BeaconProxy multisigProxy = new BeaconProxy(address(beacon), initData);
         console.log("Multisig Proxy deployed at: ", address(multisigProxy));
-
-        // ------------------------------------------
-        // Transfer beacon's ownership to multisig
-        // ------------------------------------------
-        beacon.transferOwnership(address(multisigProxy));
-        console.log("Beacon ownership transferred to multisig proxy at: ", address(multisigProxy));
 
         vm.stopBroadcast();
     }

@@ -1,16 +1,16 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {BlockMeta} from "../src/BlockMeta.sol";
+import {Counter} from "../src/Counter.sol";
 import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {BeaconProxy} from "../lib/openzeppelin-contracts/contracts/proxy/beacon/BeaconProxy.sol";
-import "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import "../src/MultisigBeacon.sol";
 
 contract MultiSignatureWalletTest is Test {
-    BlockMeta blockMeta;
+    Counter counter;
     MultisigBeacon beacon;
     address multiSigImplV1;
     MultiSignatureWallet multiSig;
@@ -38,31 +38,29 @@ contract MultiSignatureWalletTest is Test {
         vm.startPrank(alice);
         // Deploy Beacon contract
         multiSigImplV1 = address(new MultiSignatureWallet());
-        beacon = new MultisigBeacon(multiSigImplV1);
+        beacon = new MultisigBeacon(multiSigImplV1, 0xE64Bd5C4810e6C7666C544a05c980C9Fe617283f); // Pre-determined address of multisigProxy
         
         // Deploy BeaconProxy for MultiSig
         bytes memory multiSigInitData = abi.encodeCall(MultiSignatureWallet.initialize, (owners, 4));
         BeaconProxy multisigProxy = new BeaconProxy(address(beacon), multiSigInitData);
         multiSig = MultiSignatureWallet(payable(multisigProxy));
         
-        // Transfer Beacon's ownership to multisig
-        beacon.transferOwnership(address(multisigProxy));
         vm.stopPrank();
 
 
         vm.startPrank(address(multisigProxy));
-        // Deploy BlockMeta proxy contract
-        BlockMeta blockMetaImpl = new BlockMeta();
-        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, ());
-        ERC1967Proxy blockMetaProxy = new ERC1967Proxy(address(blockMetaImpl), blockMetaInitData);
-        blockMeta = BlockMeta(address(blockMetaProxy));
+        // Deploy Counter proxy contract
+        Counter counterImpl = new Counter();
+        bytes memory counterInitData = abi.encodeCall(Counter.initialize, ());
+        ERC1967Proxy counterProxy = new ERC1967Proxy(address(counterImpl), counterInitData);
+        counter = Counter(address(counterProxy));
         vm.stopPrank();
     }    
 
     /// @dev Test to ensure ownership and implementation address is initialized correctly. 
     function testOwnerAndImplementation() public view {
         assertEq(beacon.owner(), address(multiSig));
-        assertEq(blockMeta.owner(), address(multiSig));
+        assertEq(counter.owner(), address(multiSig));
         assertEq(beacon.implementation(), multiSigImplV1);
     }
 
@@ -123,16 +121,16 @@ contract MultiSignatureWalletTest is Test {
         new BeaconProxy(address(beacon), initData);
     }
 
-    /// @dev Helper function that returns calldata to set automation controller in BlockMeta. 
-    function dataToSetAutomationController(address _controller) private pure returns (bytes memory) {
-        return (abi.encodeCall(BlockMeta.setAutomationController, (_controller)));
+    /// @dev Helper function that returns calldata for 'increment' in Counter. 
+    function dataForIncrement() private pure returns (bytes memory) {
+        return abi.encodeCall(Counter.increment, ());
     }
 
-    /// @dev Helper function to submit a transaction to perform an action in the BlockMeta contract.
+    /// @dev Helper function to submit a transaction to perform an action in the Counter contract.
     function submitTransaction(bytes memory _data) private {
         vm.prank(address(1001));
         multiSig.submitTransaction(
-            address(blockMeta),
+            address(counter),
             0,
             10000,
             _data
@@ -140,13 +138,12 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'submitTransaction' submits a transaction.
-    function testSubmitTransactionSetAutomationController() public {
-        BlockMeta impl = new BlockMeta();
-        bytes memory data = dataToSetAutomationController(address(impl));
+    function testSubmitTransactionIncrement() public {
+        bytes memory data = dataForIncrement();
         submitTransaction(data);
         
         (address to, uint256 value, bool executed, uint24 numConfirmations, uint64 timeout, bytes memory storedData) = multiSig.getTransaction(0);
-        assertEq(to, address(blockMeta));
+        assertEq(to, address(counter));
         assertEq(value, 0);
         assertEq(executed, false);
         assertEq(numConfirmations, 1);
@@ -155,15 +152,14 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'submitTransaction' reverts if caller is not an owner.
-    function testSubmitTransactionSetAutomationControllerRevertsIfNotOwner() public {
-        BlockMeta impl = new BlockMeta();
-        bytes memory data = dataToSetAutomationController(address(impl));
+    function testSubmitTransactionIncrementRevertsIfNotOwner() public {
+        bytes memory data = dataForIncrement();
 
         vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
 
         vm.prank(alice);                    // Not an owner
         multiSig.submitTransaction(
-            address(blockMeta),
+            address(counter),
             0,
             100000,
             data
@@ -184,8 +180,8 @@ contract MultiSignatureWalletTest is Test {
     } 
 
     /// @dev Test to ensure 'confirmTransaction' confirms a transaction.
-    function testConfirmTransactionSetAutomationController() public {
-        testSubmitTransactionSetAutomationController();
+    function testConfirmTransactionIncrement() public {
+        testSubmitTransactionIncrement();
         
         grantSufficientConfirmations(0);
 
@@ -195,7 +191,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'confirmTransaction' reverts if caller is not an owner.
     function testConfirmTransactionRevertsIfNotOwner() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
         confirmTransaction(alice, 0);      // Not an owner
@@ -203,7 +199,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'confirmTransaction' reverts if transaction does not exist.
     function testConfirmTransactionRevertsIfTxDoesNotExist() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
         confirmTransaction(address(1002), 1);
@@ -211,7 +207,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'confirmTransaction' reverts if the transaction is already executed.
     function testConfirmTransactionRevertsIfTxAlreadyExecuted() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
         
         uint256 txId = 0;
         grantSufficientConfirmations(txId);
@@ -226,7 +222,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'confirmTransaction' reverts if transaction is already confirmed.
     function testConfirmTransactionRevertsIfTxAlreadyConfirmed() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.expectRevert(MultiSignatureWallet.TxnAlreadyConfirmed.selector);
         confirmTransaction(address(1001), 0);
@@ -235,7 +231,7 @@ contract MultiSignatureWalletTest is Test {
     // @dev Test to ensure 'confirmTransaction' reverts if transaction has expired.
     function testConfirmTransactionRevertsIfTxExpired() public {
         vm.warp(500);
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.warp(10501);
         vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
@@ -251,7 +247,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'revokeConfirmation' revokes the confirmation of an owner.
     function testRevokeConfirmation() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
         
         uint256 txId = 0;
         confirmTransaction(address(1002), txId);
@@ -263,7 +259,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if caller is not an owner.
     function testRevokeConfirmationRevertsIfNotOwner() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
         
         vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
         revokeConfirmation(alice, 1);
@@ -271,7 +267,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if transaction does not exist.
     function testRevokeConfirmationRevertsIfTxDoesNotExist() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
         
         vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), 1);
@@ -279,7 +275,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction is already executed.
     function testRevokeConfirmationRevertsIfTxAlreadyExecuted() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
         
         uint256 txId = 0;
         grantSufficientConfirmations(txId);
@@ -294,7 +290,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction has expired.
     function testRevokeConfirmationRevertsIfTxExpired() public {
         vm.warp(500);
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.warp(10501);
         vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
@@ -304,7 +300,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction was not confirmed.
     function testRevokeConfirmationRevertsIfTxNotConfirmed() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.expectRevert(MultiSignatureWallet.TransactionNotConfirmed.selector);
         revokeConfirmation(address(1002), 0);
@@ -312,7 +308,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'executeTransaction' executes a transaction.
     function testExecuteTransaction() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         uint256 txId = 0;
         grantSufficientConfirmations(txId);
@@ -322,11 +318,12 @@ contract MultiSignatureWalletTest is Test {
 
         ( , , bool executed, , , ) = multiSig.getTransaction(txId);
         assertTrue(executed);
+        assertEq(counter.counter(), 1);
     }
 
     /// @dev Test to ensure 'executeTransaction' reverts if caller is not an owner.
     function testExecuteTransactionRevertsIfCallerNotOwner() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
 
@@ -355,7 +352,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'executeTransaction' reverts if transaction has expired.
     function testExecuteTransactionRevertsIfTxExpired() public {
         vm.warp(500);
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         vm.warp(10501);
         vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
@@ -366,7 +363,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'executeTransaction' reverts if the transaction has insufficient number of confirmations.
     function testExecuteTransactionRevertsIfInsufficientConfirmations() public {
-        testSubmitTransactionSetAutomationController();
+        testSubmitTransactionIncrement();
 
         uint256 txId = 0;
         confirmTransaction(address(1002), txId);
@@ -380,7 +377,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Helper function that returns calldata to transfer ownership.
     function dataToTransferOwnership() private view returns (bytes memory) {
-        return abi.encodeCall(Ownable2StepUpgradeable.transferOwnership, (alice));
+        return abi.encodeCall(OwnableUpgradeable.transferOwnership, (alice));
     }
 
     /// @dev Test to ensure ownership transfer works correctly. 
@@ -391,10 +388,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
         
-        vm.prank(alice);
-        blockMeta.acceptOwnership();
-
-        assertEq(blockMeta.owner(), alice);
+        assertEq(counter.owner(), alice);
     }
 
     /// @dev Helper function to return calldata to add an owner in multisig.
@@ -700,15 +694,15 @@ contract MultiSignatureWalletTest is Test {
     }
     
     /// @dev Helper function to submit a transaction for contract deployment and grant sufficient confirmations.
-    function submitToDeploy(bytes memory _creationCode, uint256 _value, uint256 _tx) private {
+    function submitToDeploy(bytes memory _creationCode, uint256 _value, uint256 _txIndex) private {
         bytes memory data = abi.encodeCall(MultiSignatureWallet.deployContract, (_creationCode, _value));
         submitTransactionToMultiSig(data);
-        grantSufficientConfirmations(_tx);   
+        grantSufficientConfirmations(_txIndex);   
     }
 
     /// @dev Helper function that returns creation code to deploy ERC1967 proxy contract.
     function proxyCreationCode(address _impl) private pure returns (bytes memory) {
-        bytes memory initData = abi.encodeCall(BlockMeta.initialize, ());        
+        bytes memory initData = abi.encodeCall(Counter.initialize, ());        
         
         return abi.encodePacked(
             type(ERC1967Proxy).creationCode,
@@ -719,7 +713,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'deployContract' deploys contract and assigns MultiSig as contract owner.
     function testDeployContract() public {
         // Deploy implementation
-        submitToDeploy(type(BlockMeta).creationCode, 0, 0);
+        submitToDeploy(type(Counter).creationCode, 0, 0);
         
         vm.prank(address(1002));
         bytes memory dataImpl =  multiSig.executeTransaction(0);
@@ -733,12 +727,12 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         bytes memory dataProxy =  multiSig.executeTransaction(1);
         address proxy = abi.decode(dataProxy, (address));
-        assertEq(BlockMeta(proxy).owner(), address(multiSig));
+        assertEq(Counter(proxy).owner(), address(multiSig));
     }
 
     /// @dev Test to ensure 'deployContract' reverts if caller is not MultiSig itself.
     function testDeployContractRevertsIfCallerNotMultiSig() public {
-        bytes memory creationCode = type(BlockMeta).creationCode;
+        bytes memory creationCode = type(Counter).creationCode;
 
         vm.expectRevert(MultiSignatureWallet.OnlyMultisigAccountCanCall.selector);
 
@@ -762,7 +756,7 @@ contract MultiSignatureWalletTest is Test {
         vm.deal(address(multiSig), 4 ether);
 
         // Deploy implementation
-        submitToDeploy(type(BlockMeta).creationCode, 0, 0);
+        submitToDeploy(type(Counter).creationCode, 0, 0);
         
         vm.prank(address(1002));
         bytes memory dataImpl =  multiSig.executeTransaction(0);

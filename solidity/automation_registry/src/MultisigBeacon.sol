@@ -12,6 +12,7 @@ contract MultisigBeacon is UpgradeableBeacon {
     /**
      * @dev Constructor to initialize the addresses for implementation and initial owner.
      * @param _implementation Address of the initial multisig implementation contract.
+     * @param _owner Address of the Beacon owner.
      */
-    constructor(address _implementation) UpgradeableBeacon(_implementation, msg.sender) {}
+    constructor(address _implementation, address _owner) UpgradeableBeacon(_implementation, _owner) {}
 }
