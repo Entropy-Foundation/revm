@@ -1,0 +1,9 @@
+[submodule "solidity/supra_contracts/lib/openzeppelin-contracts"]
+	path = solidity/supra_contracts/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "solidity/supra_contracts/lib/openzeppelin-contracts-upgradeable"]
+	path = solidity/supra_contracts/lib/openzeppelin-contracts-upgradeable
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable
+[submodule "solidity/supra_contracts/lib/forge-std"]
+	path = solidity/supra_contracts/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
