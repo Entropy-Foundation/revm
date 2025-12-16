@@ -7,9 +7,12 @@ import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC196
 
 contract DeployBlockMeta is Script {
     address automationController;
+    bytes4 selector;
 
     function setUp() public {
         automationController = vm.envAddress("AUTOMATION_CONTROLLER");
+	selector = bytes4(keccak256("monitor_cycle_end()"));
+
     }
 
     function run() public {
@@ -25,8 +28,8 @@ contract DeployBlockMeta is Script {
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         console.log("BlockMeta proxy deployed at: ", address(proxy));
 
-        // Set AutomationController address
-        BlockMeta(address(proxy)).setAutomationController(automationController);
+        // Register an entry
+        BlockMeta(address(proxy)).register(automationController, selector);
 
         vm.stopBroadcast();
     }
