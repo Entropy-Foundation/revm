@@ -85,11 +85,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Emitted when automation is disabled.
     event AutomationDisabled(bool indexed status);
 
-    /// @notice Emitted when the VM address is updated.
-    event VmAddressUpdated(address indexed oldVmAddress, address indexed newVmAddress);
+    /// @notice Emitted when the VM Signer address is updated.
+    event VmSignerUpdated(address indexed oldVmSigner, address indexed newVmSigner);
 
-    /// @notice Emitted when the SupraERC20 address is updated.
-    event SupraERC20Updated(address indexed oldSupraERC20, address indexed newSupraERC20);
+    /// @notice Emitted when the ERC20Supra address is updated.
+    event Erc20SupraUpdated(address indexed oldErc20Supra, address indexed newErc20Supra);
 
     /// @notice Emitted when a new config is added.
     event ConfigBufferUpdated(
@@ -174,8 +174,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _sysTaskDurationCapSecs Maximum allowable duration (in seconds) from the registration time that a system automation task can run.
     /// @param _sysRegistryMaxGasCap Maximum gas allocation for system automation tasks per cycle.
     /// @param _sysTaskCapacity Maximum number of system tasks that the registry can hold.
-    /// @param _vm Address for the VM.
-    /// @param _supraERC20 Address of the ERC20Supra contract.
+    /// @param _vmSigner Address for the VM Signer.
+    /// @param _erc20Supra Address of the ERC20Supra contract.
     function initialize(
         uint64 _taskDurationCapSecs,
         uint128 _registryMaxGasCap,
@@ -189,8 +189,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _sysTaskDurationCapSecs,
         uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity,
-        address _vm,
-        address _supraERC20
+        address _vmSigner,
+        address _erc20Supra
     ) public initializer {
         validateConfigParameters(
             _taskDurationCapSecs,
@@ -203,10 +203,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _sysRegistryMaxGasCap,
             _sysTaskCapacity
         );
-        if(_vm == address(0)) revert AddressCannotBeZero();
+        if(_vmSigner == address(0)) revert AddressCannotBeZero();
 
-        if(_supraERC20 == address(0)) revert AddressCannotBeZero();
-        if(!_supraERC20.isContract()) revert AddressCannotBeEOA();
+        if(_erc20Supra == address(0)) revert AddressCannotBeZero();
+        if(!_erc20Supra.isContract()) revert AddressCannotBeEOA();
 
         LibRegistry.Config memory config = LibRegistry.createConfig(
             _registryMaxGasCap,
@@ -228,8 +228,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _sysRegistryMaxGasCap,
             true,
             true,
-            _vm,
-            _supraERC20,
+            _vmSigner,
+            _erc20Supra,
             config  
         );
 
@@ -304,7 +304,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         deposit.totalDepositedAutomationFees += _automationFeeCapForCycle;
 
         uint128 fee = regConfig.flatRegistrationFeeWei() + _automationFeeCapForCycle;
-        bool sent = IERC20(regConfig.supraERC20).transferFrom(msg.sender, address(this), fee);
+        bool sent = IERC20(regConfig.erc20Supra).transferFrom(msg.sender, address(this), fee);
         if (!sent) { revert TransferFailed(); }
 
         emit TaskRegistered(taskIndex, msg.sender, regConfig.flatRegistrationFeeWei(), _automationFeeCapForCycle, regState.tasks[taskIndex].getTaskDetails());
@@ -569,7 +569,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         // Refund and emit event if any tasks were stopped
         if(stoppedTaskDetails.length > 0) {            
-            uint256 balance = IERC20(regConfig.supraERC20).balanceOf(address(this));
+            uint256 balance = IERC20(regConfig.erc20Supra).balanceOf(address(this));
 
             if(balance < totalRefundFee) { revert InsufficientBalanceForRefund(); }
             refund(msg.sender, totalRefundFee);
@@ -710,7 +710,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _amount Amount to refund
     /// @return Bool representing if refund was successful.
     function refund(address _to, uint128 _amount) private returns (bool) {
-        bool sent = IERC20(regConfig.supraERC20).transfer(_to, _amount);
+        bool sent = IERC20(regConfig.erc20Supra).transfer(_to, _amount);
         if (!sent) { revert TransferFailed(); }
 
         return sent;
@@ -971,7 +971,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 _refundableAmount,
         uint8 _refundType
     ) private returns (bool) {
-        uint256 balance = IERC20(regConfig.supraERC20).balanceOf(address(this));
+        uint256 balance = IERC20(regConfig.erc20Supra).balanceOf(address(this));
         if(balance < _refundableAmount) {
             emit ErrorInsufficientBalanceToRefund(_taskIndex, _taskOwner, _refundType, _refundableAmount);
             return false;
@@ -1106,27 +1106,27 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         emit AutomationDisabled(regConfig.automationEnabled());
     }
 
-    /// @notice Function to update the VM address.
-    /// @param _vm New address for VM.
-    function setVm(address _vm) external onlyOwner {
-        if(_vm == address(0)) { revert AddressCannotBeZero(); }
+    /// @notice Function to update the VM Signer address.
+    /// @param _vmSigner New address for VM Signer.
+    function setVmSigner(address _vmSigner) external onlyOwner {
+        if(_vmSigner == address(0)) { revert AddressCannotBeZero(); }
 
-        address oldVm = regConfig.vm;
-        regConfig.vm = _vm;
+        address oldVmSigner = regConfig.vmSigner;
+        regConfig.vmSigner = _vmSigner;
 
-        emit VmAddressUpdated(oldVm, _vm);
+        emit VmSignerUpdated(oldVmSigner, _vmSigner);
     }
 
-    /// @notice Function to update the SupraERC20 address.
-    /// @param _supraERC20 New address for SupraERC20.
-    function setSupraERC20(address _supraERC20) external onlyOwner {
-        if(_supraERC20 == address(0)) { revert AddressCannotBeZero(); }
-        if(!_supraERC20.isContract()) { revert AddressCannotBeEOA(); }
+    /// @notice Function to update the ERC20Supra address.
+    /// @param _erc20Supra New address for ERC20Supra.
+    function setErc20Supra(address _erc20Supra) external onlyOwner {
+        if(_erc20Supra == address(0)) { revert AddressCannotBeZero(); }
+        if(!_erc20Supra.isContract()) { revert AddressCannotBeEOA(); }
 
-        address oldSupraERC20 = regConfig.supraERC20;
-        regConfig.supraERC20 = _supraERC20;
+        address oldErc20Supra = regConfig.erc20Supra;
+        regConfig.erc20Supra = _erc20Supra;
 
-        emit SupraERC20Updated(oldSupraERC20, _supraERC20);
+        emit Erc20SupraUpdated(oldErc20Supra, _erc20Supra);
     }
 
     /// @notice Function to withdraw the accumulated fees.
@@ -1134,12 +1134,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     function withdrawFees(uint256 _amount) external onlyOwner {
         address coldWallet = deposit.coldWallet;
         if(coldWallet == address(0)) { revert ColdWalletNotSet(); }
-        uint256 balance = IERC20(regConfig.supraERC20).balanceOf(address(this));
+        uint256 balance = IERC20(regConfig.erc20Supra).balanceOf(address(this));
 
         if(balance < _amount) { revert InsufficientBalance(); }
         if(balance - _amount < regState.cycleLockedFees + deposit.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
 
-        bool sent = IERC20(regConfig.supraERC20).transfer(coldWallet, _amount);
+        bool sent = IERC20(regConfig.erc20Supra).transfer(coldWallet, _amount);
         if(!sent) { revert TransferFailed(); }
 
         emit RegistryFeeWithdrawn(coldWallet, _amount);
@@ -1358,14 +1358,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         return deposit.coldWallet;
     }
 
-    /// @notice Returns the VM address.
-    function getVm() external view returns (address) {
-        return regConfig.vm;
+    /// @notice Returns the VM Signer address.
+    function getVmSigner() external view returns (address) {
+        return regConfig.vmSigner;
     }
 
-    /// @notice Returns the SupraERC20 address.
-    function supraERC20() external view returns (address) {
-        return regConfig.supraERC20;
+    /// @notice Returns the ERC20Supra address.
+    function erc20Supra() external view returns (address) {
+        return regConfig.erc20Supra;
     }
 
     /// @notice Returns the address of AutomationController smart contract.

@@ -29,8 +29,8 @@ library LibRegistry {
         uint256 nextCycleRegistryMaxGasCap_nextCycleSysRegistryMaxGasCap;
         // address | bool | bool
         uint256 controller_registrationEnabled_automationEnabled;
-        address vm;
-        address supraERC20;
+        address vmSigner;
+        address erc20Supra;
         Config config;
     }
     
@@ -39,8 +39,8 @@ library LibRegistry {
         uint128 _nextCycleSysRegistryMaxGasCap,
         bool _registrationEnabled,
         bool _automationEnabled,
-        address _vm,
-        address _supraERC20,
+        address _vmSigner,
+        address _erc20Supra,
         Config memory _config
     ) internal pure returns (RegistryConfig memory rcfg) {
         // Pack nextCycleRegistryMaxGasCap | nextCycleSysRegistryMaxGasCap
@@ -54,8 +54,8 @@ library LibRegistry {
             (_registrationEnabled ? (uint256(1) << 95) : 0) |
             (_automationEnabled ? (uint256(1) << 94) : 0);
 
-        rcfg.vm = _vm;
-        rcfg.supraERC20 = _supraERC20;
+        rcfg.vmSigner = _vmSigner;
+        rcfg.erc20Supra = _erc20Supra;
         
         // Assign inner Config
         rcfg.config = _config;

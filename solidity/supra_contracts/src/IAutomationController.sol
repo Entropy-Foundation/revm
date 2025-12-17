@@ -6,8 +6,7 @@ import {CommonUtils} from "./CommonUtils.sol";
 interface IAutomationController {
     // Custom errors
     error AddressCannotBeEOA();
-    error CallerNotBlockMeta();
-    error CallerNotVM();
+    error CallerNotVmSigner();
     error ConfigUpdateFailed();
     error InconsistentTransitionState();
     error AddressCannotBeZero();

@@ -23,7 +23,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @dev State variables
     LibController.AutomationCycleInfo cycleInfo;
     IAutomationRegistry public registry;
-    address public blockMeta;
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
   
@@ -73,9 +72,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Emitted when the registry smart contract address is updated.
     event RegistryUpdated(address indexed oldRegistryAddress, address indexed newRegistryAddress);
-
-    /// @notice Emitted when the blockMeta smart contract address is updated.
-    event BlockMetaAddressUpdated(address indexed oldBlockMetaAddress, address indexed newBlockMetaAddress);
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONSTRUCTOR AND INITIALIZER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
@@ -86,16 +82,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     
     /// @notice Initializes the configuration parameters of the contract, can only be called once.
     /// @param _registry Address of the registry smart contract.
-    /// @param _blockMeta Address of the blockmeta smart contract.
-    function initialize(address _registry, address _blockMeta) public initializer {
+    function initialize(address _registry) public initializer {
         if (_registry == address(0)) { revert AddressCannotBeZero(); }
         if (!_registry.isContract()) { revert AddressCannotBeEOA(); }
 
-        if (_blockMeta == address(0)) { revert AddressCannotBeZero(); }
-        if (!_blockMeta.isContract()) { revert AddressCannotBeEOA(); }
-
         registry = IAutomationRegistry(_registry);
-        blockMeta = _blockMeta;
         
         (CommonUtils.CycleState state, uint64 cycleId) = registry.isAutomationEnabled() ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
 
@@ -110,12 +101,12 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         __Ownable_init(msg.sender);
     }
 
-    /// @notice Called by the VM on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
+    /// @notice Called by the VM Signer on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
     /// @param _cycleIndex Index of the cycle.
     /// @param _taskIndexes Array of task index to be processed.
     function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external {
-        // Check caller is VM
-        if (msg.sender != registry.getVm()) { revert CallerNotVM(); }
+        // Check caller is VM Signer
+        if (msg.sender != registry.getVmSigner()) { revert CallerNotVmSigner(); }
         
         CommonUtils.CycleState state = cycleInfo.state(); 
 
@@ -174,7 +165,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
     function monitorCycleEnd() external {
-        if (msg.sender != blockMeta) { revert CallerNotBlockMeta(); }
+        if (tx.origin != registry.getVmSigner()) { revert CallerNotVmSigner(); }
         if (!registry.isAutomationEnabled()) {
             return;
         }
@@ -315,12 +306,12 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         if(registry.ifTaskExists(_taskIndex)) {
             markTaskProcessed(_taskIndex);
 
-            bool isUST = registry.checkTaskType(_taskIndex, CommonUtils.TaskType.UST);
+            bool isUst = registry.checkTaskType(_taskIndex, CommonUtils.TaskType.UST);
             CommonUtils.TaskDetails memory task = registry.getTaskDetails(_taskIndex);
             
             // Task is cancelled or expired
             if(task.state == CommonUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
-                if(isUST) {
+                if(isUst) {
                     (bool sent, ) = address(registry).call(
                         abi.encodeCall(
                             IAutomationRegistry.refundDepositAndDrop,
@@ -334,7 +325,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                     require(removed, RemoveTaskFailed());
                 }
                 result.isRemoved = true;
-            } else if(!isUST) {
+            } else if(!isUst) {
                 // Active GST
                 // Governance submitted tasks are not charged
 
@@ -419,7 +410,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         // It might happen that task has been expired by the time charging is being done.
         // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
         
-        address erc20Supra = registry.supraERC20();
+        address erc20Supra = registry.erc20Supra();
         bool isRemoved;
         uint128 gas;
         uint128 fees;
@@ -775,18 +766,6 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         registry = IAutomationRegistry(_registry);
         
         emit RegistryUpdated(oldRegistry, _registry);
-    }
-
-    /// @notice Function to update the blockMeta smart contract address.
-    /// @param _blockMeta Address of the blockMeta smart contract.
-    function setBlockMeta(address _blockMeta) external onlyOwner {
-        if (_blockMeta == address(0)) { revert AddressCannotBeZero(); }
-        if (!_blockMeta.isContract()) { revert AddressCannotBeEOA(); }
-
-        address oldBlockMeta = blockMeta;
-        blockMeta = _blockMeta;
-
-        emit BlockMetaAddressUpdated(oldBlockMeta, _blockMeta);
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::

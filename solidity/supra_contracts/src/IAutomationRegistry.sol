@@ -71,8 +71,8 @@ interface IAutomationRegistry {
     function totalTasks() external view returns (uint256);
     function ifConfigBufferExists() external view returns (bool);
     function getBufferCycleDurationSecs() external view returns (uint64);
-    function getVm() external returns (address);
-    function supraERC20() external view returns (address);
+    function getVmSigner() external returns (address);
+    function erc20Supra() external view returns (address);
     function isAutomationEnabled() external view returns (bool);
     function calculateAutomationFeeMultiplierForCurrentCycleInternal() external view returns (uint128);
     function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external view returns (uint128);

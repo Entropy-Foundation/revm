@@ -9,7 +9,6 @@ import {AutomationRegistry} from "../src/AutomationRegistry.sol";
 import {AutomationController} from "../src/AutomationController.sol";
 import {IAutomationRegistry} from "../src/IAutomationRegistry.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
-import {BlockMeta} from "../src/BlockMeta.sol";
 import {LibRegistry} from "../src/LibRegistry.sol";
 import {CommonUtils} from "../src/CommonUtils.sol";
 
@@ -17,10 +16,10 @@ contract AutomationRegistryTest is Test {
     AutomationRegistry impl;                    // implementation logic contract
     AutomationRegistry registry;                // registry instance on proxy address
     ERC1967Proxy proxy;                         // proxy contract
-    ERC20Supra supraERC20;                      // ERC20Supra contract
+    ERC20Supra erc20Supra;                      // ERC20Supra contract
 
     address admin = address(0xA11CE);
-    address vmAddress = address(0x99);
+    address vmSigner = address(0x5355500000000000000000000000000000000000);
     address alice = address(0x123);
     address bob = address(0x456);
 
@@ -32,7 +31,7 @@ contract AutomationRegistryTest is Test {
         vm.deal(alice, 100 ether);
 
         vm.startPrank(admin);
-        supraERC20 = new ERC20Supra(msg.sender);
+        erc20Supra = new ERC20Supra(msg.sender);
         impl = new AutomationRegistry();
 
         bytes memory initData = abi.encodeCall(
@@ -50,8 +49,8 @@ contract AutomationRegistryTest is Test {
                 3600,                       // sysTaskDurationCapSecs
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
-                vmAddress,                  // vm address
-                address(supraERC20)         // supraERC20 address
+                vmSigner,                   // VM Signer address
+                address(erc20Supra)         // ERC20Supra address
             )
         );
 
@@ -69,8 +68,8 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getAutomationController(), address(0));
         assertTrue(registry.isRegistrationEnabled());
         assertTrue(registry.isAutomationEnabled());
-        assertEq(registry.getVm(), vmAddress);
-        assertEq(registry.supraERC20(), address(supraERC20));
+        assertEq(registry.getVmSigner(), vmSigner);
+        assertEq(registry.erc20Supra(), address(erc20Supra));
 
         LibRegistry.ConfigDetails memory config = registry.getConfig();
 
@@ -97,11 +96,11 @@ contract AutomationRegistryTest is Test {
         vm.prank(admin);    
         registry.initialize(
             3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
-            500, 2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+            500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
         );
     }
-    /// @dev Test to ensure initialization fails if zero address is passed as VM address.
-    function testInitializeRevertsIfVmAddressZero() public {
+    /// @dev Test to ensure initialization fails if zero address is passed as VM Signer.
+    function testInitializeRevertsIfVmSignerZero() public {
         AutomationRegistry implementation = new AutomationRegistry();
 
         bytes memory initData = abi.encodeCall(
@@ -109,8 +108,8 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500,
-                address(0),                             // VM address as zero
-                address(supraERC20)
+                address(0),                             // VM Signer as zero
+                address(erc20Supra)
             )
         );
 
@@ -119,14 +118,14 @@ contract AutomationRegistryTest is Test {
     }
 
     /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
-    function testInitializeRevertsIfSupraERC20IsZero() public {
+    function testInitializeRevertsIfErc20SupraIsZero() public {
         AutomationRegistry implementation = new AutomationRegistry();
         
         bytes memory initData = abi.encodeCall(
             AutomationRegistry.initialize,
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
-                2, 500, 2000, 3600, 5_000_000, 500, vmAddress, 
+                2, 500, 2000, 3600, 5_000_000, 500, vmSigner, 
                 address(0)                              // address(0) as ERC20Supra
             )
         );
@@ -136,14 +135,14 @@ contract AutomationRegistryTest is Test {
     }
   
     /// @dev Test to ensure initialization fails if EOA is passed as ERC20Supra address.
-    function testInitializeRevertsIfSupraERC20IsEoa() public {
+    function testInitializeRevertsIfErc20SupraIsEoa() public {
         AutomationRegistry implementation = new AutomationRegistry();
 
         bytes memory initData = abi.encodeCall(
             AutomationRegistry.initialize,
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
-                2, 500, 2000, 3600, 5_000_000, 500, vmAddress, 
+                2, 500, 2000, 3600, 5_000_000, 500, vmSigner, 
                 admin                                   // EOA address as ERC20Supra
             )
         );
@@ -162,7 +161,7 @@ contract AutomationRegistryTest is Test {
                 2000,                                   // task duration
                 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
                 2000,                                   // cycle duration
-                3600, 5_000_000, 500, vmAddress, address(supraERC20)
+                3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -180,7 +179,7 @@ contract AutomationRegistryTest is Test {
                 3600,
                 0,                                      // registry max gas cap
                 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
-                2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
         
@@ -197,7 +196,7 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether,
                 101,                                    // congestion threshold percentage > 100
-                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -214,7 +213,7 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 0,                                      // congestion exponent
-                500, 2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+                500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -231,7 +230,7 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
                 0,                                      // 0 as task capacity 
-                2000, 3600, 5_000_000, 500, vmAddress, address(supraERC20)
+                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -248,7 +247,7 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
                 0,                                      // cycle duration 
-                3600, 5_000_000, 500, vmAddress, address(supraERC20)
+                3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -266,7 +265,7 @@ contract AutomationRegistryTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
                 2000,                                   // cycle duration
                 2000,                                   // system task duration
-                5_000_000, 500, vmAddress, address(supraERC20)
+                5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -283,7 +282,7 @@ contract AutomationRegistryTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2000, 3600,
                 0,                                      // system registry max gas cap 
-                500, vmAddress, address(supraERC20)
+                500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -301,7 +300,7 @@ contract AutomationRegistryTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000,
                 0,                                      // system task capacity
-                vmAddress, address(supraERC20)
+                vmSigner, address(erc20Supra)
             )
         );
 
@@ -477,14 +476,9 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Helper function that deploys AutomationController and returns its address.
     function deployAutomationController() internal returns (address) {
-        // Deploy BlockMeta proxy
-        BlockMeta blockMetaImpl = new BlockMeta();
-        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, ());
-        ERC1967Proxy blockMetaProxy = new ERC1967Proxy(address(blockMetaImpl), blockMetaInitData);
-
         // Deploy AutomationController proxy
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(registry), address(blockMetaProxy)));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(registry)));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
 
         return address(controllerProxy);
@@ -538,94 +532,94 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(alice);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setVm' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setVmSigner' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'setVM' updates the VM address.
-    function testSetVm() public {
-        address newVm = address(0x100);
+    /// @dev Test to ensure 'setVmSigner' updates the VM Signer address.
+    function testSetVmSigner() public {
+        address newVmSigner = address(0x100);
 
         vm.prank(admin);
-        registry.setVm(newVm);
+        registry.setVmSigner(newVmSigner);
 
-        assertEq(registry.getVm(), newVm);
+        assertEq(registry.getVmSigner(), newVmSigner);
     }
 
-    /// @dev Test to ensure 'setVm' emits event 'VmAddressUpdated'.
-    function testSetVmEmitsEvent() public {
-        address oldVm = registry.getVm();
-        address newVm = address(0x100);
+    /// @dev Test to ensure 'setVmSigner' emits event 'VmSignerUpdated'.
+    function testSetVmSignerEmitsEvent() public {
+        address oldVmSigner = registry.getVmSigner();
+        address newVmSigner = address(0x100);
 
         vm.expectEmit(true, true, false, false);
-        emit AutomationRegistry.VmAddressUpdated(oldVm, newVm);
+        emit AutomationRegistry.VmSignerUpdated(oldVmSigner, newVmSigner);
 
         vm.prank(admin);
-        registry.setVm(newVm);
+        registry.setVmSigner(newVmSigner);
     }
 
-    /// @dev Test to ensure 'setVm' reverts if zero address is passed.
-    function testSetVmRevertsIfZeroAddress() public {
+    /// @dev Test to ensure 'setVmSigner' reverts if zero address is passed.
+    function testSetVmSignerRevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
         vm.prank(admin);
-        registry.setVm(address(0));
+        registry.setVmSigner(address(0));
     }
 
-    /// @dev Test to ensure 'setVm' reverts if caller is not owner.
-    function testSetVmRevertsIfNotOwner() public {
+    /// @dev Test to ensure 'setVmSigner' reverts if caller is not owner.
+    function testSetVmSignerRevertsIfNotOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        registry.setVm(address(0x100));
+        registry.setVmSigner(address(0x100));
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setSupraERC20' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setErc20Supra' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'setSupraERC20' updates the ERC20Supra address. 
-    function testSetSupraERC20() public {
+    /// @dev Test to ensure 'setErc20Supra' updates the ERC20Supra address. 
+    function testSetErc20Supra() public {
         ERC20Supra supra = new ERC20Supra(msg.sender);
 
         vm.prank(admin);
-        registry.setSupraERC20(address(supra));
+        registry.setErc20Supra(address(supra));
 
-        assertEq(registry.supraERC20(), address(supra));
+        assertEq(registry.erc20Supra(), address(supra));
     }
 
-    /// @dev Test to ensure 'setSupraERC20' emits event 'SupraERC20Updated'. 
-    function testSetSupraERC20EmitsEvent() public {
-        address oldAddr = registry.supraERC20();
+    /// @dev Test to ensure 'setErc20Supra' emits event 'Erc20SupraUpdated'. 
+    function testSetErc20SupraEmitsEvent() public {
+        address oldAddr = registry.erc20Supra();
         ERC20Supra supra = new ERC20Supra(msg.sender);
 
         vm.expectEmit(true, true, false, false);
-        emit AutomationRegistry.SupraERC20Updated(oldAddr, address(supra));
+        emit AutomationRegistry.Erc20SupraUpdated(oldAddr, address(supra));
 
         vm.prank(admin);
-        registry.setSupraERC20(address(supra));
+        registry.setErc20Supra(address(supra));
     }
 
-    /// @dev Test to ensure 'setSupraERC20' reverts if zero address is passed. 
-    function testSetSupraERC20RevertsIfZeroAddress() public {
+    /// @dev Test to ensure 'setErc20Supra' reverts if zero address is passed. 
+    function testSetErc20SupraRevertsIfZeroAddress() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
         vm.prank(admin);
-        registry.setSupraERC20(address(0));
+        registry.setErc20Supra(address(0));
     }
 
-    /// @dev Test to ensure 'setSupraERC20' reverts if EOA is passed. 
-    function testSetSupraERC20RevertsIfEoa() public {
+    /// @dev Test to ensure 'setErc20Supra' reverts if EOA is passed. 
+    function testSetErc20SupraRevertsIfEoa() public {
         vm.expectRevert(IAutomationRegistry.AddressCannotBeEOA.selector);
 
         vm.prank(admin);
-        registry.setSupraERC20(alice);
+        registry.setErc20Supra(alice);
     }
 
-    /// @dev Test to ensure 'setSupraERC20' reverts if caller is not owner. 
-    function testSetSupraERC20RevertsIfNotOwner() public {
+    /// @dev Test to ensure 'setErc20Supra' reverts if caller is not owner. 
+    function testSetErc20SupraRevertsIfNotOwner() public {
         ERC20Supra supra = new ERC20Supra(msg.sender);
 
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        registry.setSupraERC20(address(supra));
+        registry.setErc20Supra(address(supra));
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setColdWallet' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -902,14 +896,14 @@ contract AutomationRegistryTest is Test {
         vm.prank(admin);
         registry.setColdWallet(coldWallet);
 
-        assertEq(supraERC20.balanceOf(coldWallet), 0);
-        assertEq(supraERC20.balanceOf(address(registry)), 0.502 ether);
+        assertEq(erc20Supra.balanceOf(coldWallet), 0);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.502 ether);
 
         vm.prank(admin);
         registry.withdrawFees(0.002 ether);
 
-        assertEq(supraERC20.balanceOf(coldWallet), 0.002 ether);
-        assertEq(supraERC20.balanceOf(address(registry)), 0.5 ether);
+        assertEq(erc20Supra.balanceOf(coldWallet), 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.5 ether);
     }
     
     /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.
@@ -1244,8 +1238,8 @@ contract AutomationRegistryTest is Test {
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
         
         vm.startPrank(alice);
-        supraERC20.deposit{value: 5 ether}();
-        supraERC20.approve(address(registry), type(uint256).max);
+        erc20Supra.deposit{value: 5 ether}();
+        erc20Supra.approve(address(registry), type(uint256).max);
 
         registry.register(
             payload,
@@ -1264,8 +1258,8 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getNextTaskIndex(), 1);
         assertEq(registry.getGasCommittedForNextCycle(), 1_000_000);
         assertEq(registry.getTotalDepositedAutomationFees(), 0.5 ether);
-        assertEq(supraERC20.balanceOf(address(registry)), 0.002 ether + 0.5 ether);
-        assertEq(supraERC20.balanceOf(alice), 4.5 ether - 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.002 ether + 0.5 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.5 ether - 0.002 ether);
 
         assertEq(taskMetadata.maxGasAmount, 1_000_000);
         assertEq(taskMetadata.gasPriceCap, 10 gwei);
@@ -1287,8 +1281,8 @@ contract AutomationRegistryTest is Test {
         (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
         
         vm.startPrank(alice);
-        supraERC20.deposit{value: 5 ether}();
-        supraERC20.approve(address(registry), type(uint256).max);
+        erc20Supra.deposit{value: 5 ether}();
+        erc20Supra.approve(address(registry), type(uint256).max);
 
         CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(
             1_000_000,
@@ -1584,8 +1578,8 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.getGasCommittedForNextCycle(), 0);
         assertEq(registry.getTotalDepositedAutomationFees(), 0);
-        assertEq(supraERC20.balanceOf(address(registry)), 0.002 ether + 0.25 ether);
-        assertEq(supraERC20.balanceOf(alice), 4.75 ether - 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.002 ether + 0.25 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.75 ether - 0.002 ether);
     }
 
     /// @dev Test to ensure 'cancelTask' emits event 'TaskCancelled'.
@@ -1754,8 +1748,8 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.getGasCommittedForNextCycle(), 0);
         assertEq(registry.getTotalDepositedAutomationFees(), 0);
-        assertEq(supraERC20.balanceOf(address(registry)), 0.002 ether + 0.25 ether);
-        assertEq(supraERC20.balanceOf(alice), 4.75 ether - 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.002 ether + 0.25 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.75 ether - 0.002 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' emits event 'TasksStopped'.  
