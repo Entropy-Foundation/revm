@@ -31,5 +31,3 @@ rustc-ice-*
 
 # Fixtures
 /test-fixtures
-
-node_modules

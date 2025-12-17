@@ -8,9 +8,8 @@ import {BlockMeta} from "../src/BlockMeta.sol";
 import {BlockBasedCounter} from "./BlockBasedCounter.sol";
 
 contract BlockMetaTest is Test {
-    address controller;                         // AutomationController address
     BlockMeta blockMeta;                        // BlockMeta instance on proxy address
-    BlockBasedCounter counter;                  // Counter instance for test purposes
+    BlockBasedCounter counter;                  // BlockBasedCounter instance on proxy address
     address counterAddress;
     bytes4 selector;
 
@@ -29,13 +28,13 @@ contract BlockMetaTest is Test {
         ERC1967Proxy blockMetaProxy = new ERC1967Proxy(address(blockMetaImpl), blockMetaInitData);
         blockMeta = BlockMeta(address(blockMetaProxy));
 
-	BlockBasedCounter counterImpl = new BlockBasedCounter();
+	    BlockBasedCounter counterImpl = new BlockBasedCounter();
         bytes memory counterInitData = abi.encodeCall(BlockBasedCounter.initialize, (address(blockMeta)));
         ERC1967Proxy counterProxy = new ERC1967Proxy(address(counterImpl), counterInitData);
         counter = BlockBasedCounter(address(counterProxy));
 
-	counterAddress = address(counter);
-	selector = BlockBasedCounter.increment.selector;
+	    counterAddress = address(counter);
+	    selector = BlockBasedCounter.increment.selector;
 
         vm.stopPrank();
     }
@@ -89,15 +88,14 @@ contract BlockMetaTest is Test {
 
         vm.prank(address(0x5355500000000000000000000000000000000000));
         blockMeta.blockPrologue();
-	assertEq(counter.counter(), 1);
+	    assertEq(counter.counter(), 1);
     }
 
-    /// @dev Test to ensure 'blockPrologue' reverts if caller is not SUP0.
-    function testBlockPrologueRevertsIfNotSUP0() public {
-        vm.expectRevert(BlockMeta.InvalidCaller.selector);
+    /// @dev Test to ensure 'blockPrologue' reverts if caller is not VM Signer.
+    function testBlockPrologueRevertsIfNotVmSigner() public {
+        vm.expectRevert(BlockMeta.CallerNotVmSigner.selector);
 
         vm.prank(alice);
         blockMeta.blockPrologue();
     }
-
 }
