@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC196
 import {BeaconProxy} from "../lib/openzeppelin-contracts/contracts/proxy/beacon/BeaconProxy.sol";
 import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
-import "../src/MultisigBeacon.sol";
+import {MultisigBeacon, UpgradeableBeacon} from "../src/MultisigBeacon.sol";
 
 contract MultiSignatureWalletTest is Test {
     Counter counter;
