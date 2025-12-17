@@ -11,6 +11,10 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
+
+    // Address of VM Signer: SUP0
+    address constant VM_SIGNER = address(0x5355500000000000000000000000000000000000);
+    
     struct Entry {
         bytes4[] selectors;
         bool exists;
@@ -25,7 +29,8 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
     /// @dev Custom errors
     error AddressCannotBeEOA();
     error AddressCannotBeZero();
-    error InvalidCaller();
+    error CallerNotVmSigner();
+    error SelectorAlreadyRegistered();
 
 
     /// @notice Emitted when a new target address is added.
@@ -80,7 +85,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
 
         // prevent duplicate selector per target
         for (uint256 i; i < e.selectors.length; i++) {
-            require(e.selectors[i] != selector, "Selector already registered");
+            require(e.selectors[i] != selector, SelectorAlreadyRegistered());
         }
 
         e.selectors.push(selector);
@@ -90,7 +95,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
 
     /// @notice Calls all registered functions for the targets.
     function blockPrologue() external {
-        require(msg.sender == address(0x5355500000000000000000000000000000000000), InvalidCaller());    // Caller must be SUP0
+        require(msg.sender == VM_SIGNER, CallerNotVmSigner());   // Caller must be VM Signer
         for (uint256 i; i < targets.length; i++) {
             address target = targets[i];
             bytes4[] storage sels = registry[target].selectors;
