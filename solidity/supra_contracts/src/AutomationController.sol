@@ -213,44 +213,46 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @param _cycleIndex Input cycle index of the cycle being suspended.
     /// @param _taskIndexes Array of task indexes to be processed.
     function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
-        if(_taskIndexes.length > 0) {
-            if(cycleInfo.state() != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
-            if(cycleInfo.index() != _cycleIndex) { revert InvalidInputCycleIndex(); }
-            // Check if transition state exists
-            if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+        if (_taskIndexes.length == 0) {
+            return;
+        }
 
-            uint64 currentTime = uint64(block.timestamp);
-            uint256 cycleLockedFees = registry.getCycleLockedFees();
+        if(cycleInfo.state() != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+        if(cycleInfo.index() != _cycleIndex) { revert InvalidInputCycleIndex(); }
+        // Check if transition state exists
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+
+        uint64 currentTime = uint64(block.timestamp);
+        uint256 cycleLockedFees = registry.getCycleLockedFees();
             
-            // Sort task indexes as order is important
-            uint64[] memory taskIndexes = _taskIndexes.sortUint64();
-            uint64[] memory removedTasks = new uint64[](taskIndexes.length);
-            uint64 removedCounter;
-            for (uint i = 0; i < taskIndexes.length; i++) {
-                if(registry.ifTaskExists(taskIndexes[i])) {
-                    (bool removed, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.removeTask, (taskIndexes[i], false)));
-                    require(removed, RemoveTaskFailed());
+        // Sort task indexes as order is important
+        uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+        uint64[] memory removedTasks = new uint64[](taskIndexes.length);
+        uint64 removedCounter;
+        for (uint i = 0; i < taskIndexes.length; i++) {
+            if(registry.ifTaskExists(taskIndexes[i])) {
+                (bool removed, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.removeTask, (taskIndexes[i], false)));
+                require(removed, RemoveTaskFailed());
 
-                    removedTasks[removedCounter++] = taskIndexes[i];
-                    markTaskProcessed(taskIndexes[i]);
+                removedTasks[removedCounter++] = taskIndexes[i];
+                markTaskProcessed(taskIndexes[i]);
 
-                    // Nothing to refund for GST tasks
-                    if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) {                         
-                        (bool refunded, bytes memory data) = address(registry).call(
-                            abi.encodeCall(
-                                IAutomationRegistry.refundTaskFees, 
-                                (taskIndexes[i], currentTime, cycleLockedFees)
-                            )
-                        );
-                        require(refunded, RefundFailed());   
-                        cycleLockedFees = abi.decode(data, (uint256));
-                    }
+                // Nothing to refund for GST tasks
+                if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) {                         
+                    (bool refunded, bytes memory data) = address(registry).call(
+                        abi.encodeCall(
+                            IAutomationRegistry.refundTaskFees, 
+                            (taskIndexes[i], currentTime, cycleLockedFees)
+                        )
+                    );
+                    require(refunded, RefundFailed());   
+                    cycleLockedFees = abi.decode(data, (uint256));
                 }
             }
-        
-            updateCycleTransitionStateFromSuspended();
-            emit RemovedTasks(removedTasks);
         }
+        
+        updateCycleTransitionStateFromSuspended();
+        emit RemovedTasks(removedTasks);
     }
 
     /// @notice Traverses all input task indexes and either drops or tries to charge automation fee if possible.

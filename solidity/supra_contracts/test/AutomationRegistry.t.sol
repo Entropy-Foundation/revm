@@ -924,18 +924,14 @@ contract AutomationRegistryTest is Test {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'register' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Helper function to return payload and auxiliary data.
-    /// @param _type Type of the task. UST: 0, GST: 1
-    function payloadAndAuxData(uint8 _type) internal returns (bytes memory, bytes[] memory) {
-        ERC20Supra target = new ERC20Supra(alice);
+    /// @dev Helper function to return payload.
+    /// @param _value Value to be sent along with transaction.
+    /// @param _target Address of destination smart contract.
+    function createPayload(uint128 _value, address _target) private pure returns (bytes memory) {
         bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(address(target), callData);
+        bytes memory payload = abi.encode(_value, _target, callData);
 
-        bytes[] memory auxData = new bytes[](2);
-        auxData[0] = abi.encode(uint8(_type));
-        auxData[1] = abi.encode(uint64(100));
-
-        return (payload, auxData);   
+        return payload;   
     }
 
     /// @dev Test to ensure 'register' reverts if automation is not enabled.
@@ -944,7 +940,8 @@ contract AutomationRegistryTest is Test {
         vm.prank(admin);
         registry.disableAutomation();
         
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0);
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));
 
         vm.expectRevert(IAutomationRegistry.AutomationNotEnabled.selector);
 
@@ -956,6 +953,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),                 // maxGasAmount
             uint128(10 gwei),                   // gasPriceCap
             uint128(0.5 ether),                 // automationFeeCapForCycle
+            0,                                  // priority
+            0,                                  // task type
             auxData                             // aux data
         );
     }
@@ -965,8 +964,9 @@ contract AutomationRegistryTest is Test {
         // Disable registration
         vm.prank(admin);
         registry.disableRegistration();
-        
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0);
+
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.RegistrationDisabled.selector);
 
@@ -978,45 +978,17 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),                 // maxGasAmount
             uint128(10 gwei),                   // gasPriceCap
             uint128(0.5 ether),                 // automationFeeCapForCycle
+            0,                                  // priority
+            0,                                  // task type
             auxData                             // aux data
-        );
-    }
-
-    /// @dev Test to ensure 'register' reverts if auxiliary data is of invalid length.
-    function testRegisterRevertsIfInvalidAuxDataLength() public {
-        testSetAutomationController();
-
-        ERC20Supra target = new ERC20Supra(alice);
-        bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(address(target), callData);
-
-        bytes[] memory auxData = new bytes[](3);    // Invalid length
-        auxData[0] = abi.encode(uint8(0));
-
-        vm.expectRevert(IAutomationRegistry.InvalidAuxDataLength.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
-            auxData
         );
     }
 
     /// @dev Test to ensure 'register' reverts if task type is not UST.
     function testRegisterRevertsIfTaskTypeNotUST() public {
         testSetAutomationController();
-
-        ERC20Supra target = new ERC20Supra(alice);
-        bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(address(target), callData);
-
-        bytes[] memory auxData = new bytes[](2);
-        auxData[0] = abi.encode(uint8(1));        // Invalid task type: expected 0, passing 1
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));      
 
         vm.expectRevert(IAutomationRegistry.InvalidTaskType.selector);
 
@@ -1028,6 +1000,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            1,                                  // Task type not UST
             auxData
         );
     }
@@ -1035,18 +1009,21 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if expiry time is equal to or less than registration time.
     function testRegisterRevertsIfInvalidExpiryTime() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.InvalidExpiryTime.selector);
 
         vm.prank(alice);
         registry.register(
             payload,
-            uint64(block.timestamp),        // invalid expiryTime
+            uint64(block.timestamp),        // Invalid expiryTime
             keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1054,7 +1031,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if task duration is greater than the task duration cap.
     function testRegisterRevertsIfInvalidTaskDuration() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.InvalidTaskDuration.selector);
 
@@ -1066,6 +1044,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1073,7 +1053,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if task expires before the next cycle.
     function testRegisterRevertsIfTaskExpiresBeforeNextCycle() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.expectRevert(IAutomationRegistry.TaskExpiresBeforeNextCycle.selector);
 
@@ -1085,6 +1066,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1092,12 +1075,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if payload target address is zero.
     function testRegisterRevertsIfPayloadTargetZero() public {
         testSetAutomationController();
-
-        bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(address(0), callData);        // Invalid address: address(0)
-
-        bytes[] memory auxData = new bytes[](2);
-        auxData[0] = abi.encode(uint8(0));  
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(0));               // Invalid address: address(0)
 
         vm.expectRevert(IAutomationRegistry.AddressCannotBeZero.selector);
 
@@ -1109,6 +1088,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1116,12 +1097,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if payload target address is EOA.
     function testRegisterRevertsIfPayloadTargetEoa() public {
         testSetAutomationController();
-
-        bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(alice, callData);        // Invalid address: EOA address being passed
-
-        bytes[] memory auxData = new bytes[](2);
-        auxData[0] = abi.encode(uint8(0));  
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, alice);                    // Invalid address: EOA address being passed
 
         vm.expectRevert(IAutomationRegistry.AddressCannotBeEOA.selector);
 
@@ -1133,6 +1110,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1140,7 +1119,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if 0 is passed as max gas amount.
     function testRegisterRevertsIfMaxGasAmountZero() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.InvalidMaxGasAmount.selector);
 
@@ -1152,6 +1132,8 @@ contract AutomationRegistryTest is Test {
             uint128(0),                         // maxGasAmount
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1159,7 +1141,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if 0 is passed as gas price cap.
     function testRegisterRevertsIfGasPriceCapZero() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.InvalidGasPriceCap.selector);
 
@@ -1171,6 +1154,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(0),                       // gasPriceCap         
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1178,7 +1163,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if transaction hash is bytes32(0).
     function testRegisterRevertsIfInvalidTxHash() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.InvalidTxHash.selector);
 
@@ -1190,6 +1176,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1197,7 +1185,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if gas committed exceeds the registry max gas cap.
     function testRegisterRevertsIfGasCommittedExceedsMaxGasCap() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.GasCommittedExceedsMaxGasCap.selector);
 
@@ -1209,6 +1198,8 @@ contract AutomationRegistryTest is Test {
             uint128(10_000_001),            // Gas exceeds max gas cap
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
     }
@@ -1216,7 +1207,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' reverts if automation fee cap is less than the estimated automation fee.
     function testRegisterRevertsIfAutomationFeeCapLessThanEstimated() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));  
 
         vm.expectRevert(IAutomationRegistry.InsufficientFeeCapForCycle.selector);
 
@@ -1228,6 +1220,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0),                       // automationFeeCapForCycle
+            0,
+            0,
             auxData
         );
     }
@@ -1235,7 +1229,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' registers a UST.
     function testRegister() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
         erc20Supra.deposit{value: 5 ether}();
@@ -1248,6 +1243,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
         vm.stopPrank();
@@ -1269,8 +1266,10 @@ contract AutomationRegistryTest is Test {
         assertEq(taskMetadata.taskIndex, 0);
         assertEq(taskMetadata.registrationTime, uint64(block.timestamp));
         assertEq(taskMetadata.expiryTime, uint64(block.timestamp + 2250));
-        assertEq(taskMetadata.owner, alice);
+        assertEq(taskMetadata.priority, 0);
+        assertEq(uint8(taskMetadata.taskType), 0);
         assertEq(uint8(taskMetadata.state), 0);
+        assertEq(taskMetadata.owner, alice);
         assertEq(taskMetadata.payloadTx, payload);
         assertEq(taskMetadata.auxData, auxData);
     }
@@ -1278,7 +1277,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'register' emits event 'TaskRegistered'.
     function testRegisterEmitsEvent() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0); 
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
         erc20Supra.deposit{value: 5 ether}();
@@ -1293,8 +1293,10 @@ contract AutomationRegistryTest is Test {
             0,
             uint64(block.timestamp),
             uint64(block.timestamp + 2250),
-            alice,
+            0,
+            CommonUtils.TaskType.UST,
             CommonUtils.TaskState.PENDING,
+            alice,
             payload,      
             auxData
         );
@@ -1309,6 +1311,8 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
+            0,
+            0,
             auxData
         );
         vm.stopPrank();
@@ -1320,8 +1324,9 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         registry.disableAutomation();
-        
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.AutomationNotEnabled.selector);
 
@@ -1331,6 +1336,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp + 2250),     // expiryTime
             keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
+            2,                                  // priority
+            1,                                  // task type
             auxData                             // aux data
         );
     }
@@ -1339,8 +1346,9 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTaskRevertsIfRegistrationDisabled() public {
         vm.prank(admin);
         registry.disableRegistration();
-        
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));
 
         vm.expectRevert(IAutomationRegistry.RegistrationDisabled.selector);
 
@@ -1350,6 +1358,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp + 2250),     // expiryTime
             keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
+            2,                                  // priority
+            1,                                  // task type
             auxData                             // aux data
         );
     }
@@ -1357,7 +1367,8 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'registerSystemTask' reverts if caller is not authorized.
     function testRegisterSystemTaskRevertsIfUnauthorizedCaller() public {
         testSetAutomationController();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.UnauthorizedAccount.selector);
 
@@ -1367,31 +1378,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp + 2250),     // expiryTime
             keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
-            auxData                             // aux data
-        );
-    }
-    
-    /// @dev Test to ensure 'registerSystemTask' reverts if auxiliary data is of invalid length.
-    function testRegisterSystemTaskRevertsIfInvalidAuxDataLength() public {
-        testSetAutomationController();
-        testGrantAuthorization();
-
-        ERC20Supra target = new ERC20Supra(alice);
-        bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(address(target), callData);
-
-        bytes[] memory auxData = new bytes[](3);
-        auxData[0] = abi.encode(uint8(1));
-        auxData[1] = abi.encode(uint64(100));
-
-        vm.expectRevert(IAutomationRegistry.InvalidAuxDataLength.selector);
-
-        vm.prank(bob);
-        registry.registerSystemTask(
-            payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
-            uint128(1_000_000),                 // maxGasAmount
+            2,                                  // priority
+            1,                                  // task type
             auxData                             // aux data
         );
     }
@@ -1400,17 +1388,21 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTaskRevertsIfTaskTypeNotGST() public {
         testSetAutomationController();
         testGrantAuthorization();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(0);
+
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));
 
         vm.expectRevert(IAutomationRegistry.InvalidTaskType.selector);
 
         vm.prank(bob);
         registry.registerSystemTask(
-            payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
-            uint128(1_000_000),                 // maxGasAmount
-            auxData                             // aux data
+            payload,
+            uint64(block.timestamp + 2250),
+            keccak256("txHash"),
+            uint128(1_000_000),
+            2,
+            0,                                  // Task type not GST
+            auxData
         );
     }
 
@@ -1418,17 +1410,20 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTaskRevertsIfInvalidTaskDuration() public {
         testSetAutomationController();
         testGrantAuthorization();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.expectRevert(IAutomationRegistry.InvalidTaskDuration.selector);
 
         vm.prank(bob);
         registry.registerSystemTask(
-            payload,                            // payload
-            uint64(block.timestamp + 3601),     // expiryTime
-            keccak256("txHash"),                // txHash
-            uint128(1_000_000),                 // maxGasAmount
-            auxData                             // aux data
+            payload,
+            uint64(block.timestamp + 3601),     // Invalid task duration
+            keccak256("txHash"),
+            uint128(1_000_000), 
+            2, 
+            1, 
+            auxData
         );   
     }
     
@@ -1436,7 +1431,8 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTaskRevertsIfGasCommittedExceedsMaxGasCap() public {
         testSetAutomationController();
         testGrantAuthorization();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));
 
         vm.expectRevert(IAutomationRegistry.GasCommittedExceedsMaxGasCap.selector);
 
@@ -1446,6 +1442,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp + 2250),
             keccak256("txHash"),
             uint128(5_000_001),                 // Gas exceeds max gas cap
+            2,
+            1,
             auxData
         );
     }
@@ -1454,7 +1452,8 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTask() public {
         testSetAutomationController();
         testGrantAuthorization();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.prank(bob);
         registry.registerSystemTask(
@@ -1462,6 +1461,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp + 2250),     // expiryTime
             keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
+            2,                                  // priority
+            1,                                  // task type
             auxData                             // aux data
         );
         
@@ -1481,8 +1482,10 @@ contract AutomationRegistryTest is Test {
         assertEq(taskMetadata.taskIndex, 0);
         assertEq(taskMetadata.registrationTime, uint64(block.timestamp));
         assertEq(taskMetadata.expiryTime, uint64(block.timestamp + 2250));
-        assertEq(taskMetadata.owner, bob);
+        assertEq(taskMetadata.priority, 2);
+        assertEq(uint8(taskMetadata.taskType), 1);
         assertEq(uint8(taskMetadata.state), 0);
+        assertEq(taskMetadata.owner, bob);
         assertEq(taskMetadata.payloadTx, payload);
         assertEq(taskMetadata.auxData, auxData);
     }
@@ -1491,7 +1494,9 @@ contract AutomationRegistryTest is Test {
     function testRegisterSystemTaskEmitsEvent() public {
         testSetAutomationController();
         testGrantAuthorization();
-        (bytes memory payload, bytes[] memory auxData) = payloadAndAuxData(1);
+        
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra));
 
         CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(
             1_000_000,
@@ -1502,8 +1507,10 @@ contract AutomationRegistryTest is Test {
             0,
             uint64(block.timestamp),
             uint64(block.timestamp + 2250),
-            bob,
+            2,
+            CommonUtils.TaskType.GST,
             CommonUtils.TaskState.PENDING,
+            bob,
             payload,      
             auxData
         );
@@ -1517,6 +1524,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp + 2250),     // expiryTime
             keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
+            2,                                  // priority
+            1,                                  // task type
             auxData                             // aux data
         );
     }

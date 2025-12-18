@@ -26,13 +26,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
 
-    /// @dev Supported auxiliary data count
-    uint8 constant SUPPORTED_AUX_DATA_COUNT_MAX = 2;
-    /// @dev Index of the auxiliary data holding task type value
-    uint8 constant TYPE_AUX_DATA_INDEX = 0;
-    /// @dev Index of the auxiliary data holding task priority value
-    uint8 constant PRIORITY_AUX_DATA_INDEX = 1;
-
     /// @dev Defines the cycle state, used to update the registry.
     uint8 constant SUSPENDED = 0;
     uint8 constant FINISHED = 1;
@@ -246,6 +239,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _maxGasAmount Maximum amount of gas for the automation task.
     /// @param _gasPriceCap Maximum gas willing to pay for the task.
     /// @param _automationFeeCapForCycle Maximum automation fee for a cycle to be paid ever.
+    /// @param _priority Priority for the task. 0 for default priority.
+    /// @param _type Type of task.
     /// @param _auxData Auxiliary data to be passed.
     function register(
         bytes memory _payloadTx,
@@ -254,6 +249,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
         uint128 _automationFeeCapForCycle,
+        uint64 _priority,
+        uint8 _type,
         bytes[] memory _auxData
     ) external {
         // Check if automation is enabled
@@ -263,8 +260,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
         if(totalTasks() >= regConfig.taskCapacity()) { revert TaskCapacityReached(); }
-
-        bool hasNoPriority = checkAndValidateAuxData(_auxData, CommonUtils.TaskType.UST);
+        if(_type != uint8(CommonUtils.TaskType.UST)) { revert InvalidTaskType(); }
 
         uint64 regTime = uint64(block.timestamp);
         validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
@@ -281,7 +277,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         regState.setGasCommittedForNextCycle(gasCommitted);
         uint64 taskIndex = regState.currentIndex; 
 
-        if(hasNoPriority) { _auxData[PRIORITY_AUX_DATA_INDEX] = abi.encode(taskIndex); }
         LibRegistry.TaskMetadata memory taskMetadata = LibRegistry.createTaskMetadata(
             _maxGasAmount,
             _gasPriceCap,
@@ -291,7 +286,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             taskIndex,
             regTime,
             _expiryTime,
+            taskIndex,      // priority set to taskIndex
             msg.sender,
+            CommonUtils.TaskType.UST,
             CommonUtils.TaskState.PENDING,
             _payloadTx,
             _auxData
@@ -315,12 +312,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _expiryTime Time after which the task gets expired.
     /// @param _txHash Transaction hash of the request transaction.
     /// @param _maxGasAmount Maximum amount of gas for the automation task.
+    /// @param _priority Priority for the task. 0 for default priority.
+    /// @param _type Type of task.
     /// @param _auxData Auxiliary data to be passed.
     function registerSystemTask(
         bytes memory _payloadTx,
         uint64 _expiryTime,
         bytes32 _txHash,
         uint128 _maxGasAmount,
+        uint64 _priority,
+        uint8 _type,
         bytes[] memory _auxData
     ) external {
         // Check if automation is enabled
@@ -330,9 +331,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
         if(totalSystemTasks() >= regConfig.sysTaskCapacity()) { revert TaskCapacityReached(); }
-        if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
-        
-        bool hasNoPriority = checkAndValidateAuxData(_auxData, CommonUtils.TaskType.GST);
+        if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }        
+        if(_type != uint8(CommonUtils.TaskType.GST)) { revert InvalidTaskType(); }
 
         uint64 regTime = uint64(block.timestamp);
         validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);        
@@ -345,7 +345,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         uint64 taskIndex = regState.currentIndex; 
 
-        if(hasNoPriority) {_auxData[PRIORITY_AUX_DATA_INDEX] = abi.encode(taskIndex); }
+        uint64 taskPriority = _priority == 0 ? taskIndex : _priority;   // Defaults to taskIndex as priority if 0 is passed
         LibRegistry.TaskMetadata memory taskMetadata = LibRegistry.createTaskMetadata(
             _maxGasAmount,
             0,
@@ -355,7 +355,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             taskIndex,
             regTime,
             _expiryTime,
+            taskPriority,
             msg.sender,
+            CommonUtils.TaskType.GST,
             CommonUtils.TaskState.PENDING,
             _payloadTx,
             _auxData
@@ -697,10 +699,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount, bytes32 _txHash) private view {
-        address payloadTarget;
-        (payloadTarget, ) = abi.decode(_payloadTx, (address, bytes));
+        ( , address payloadTarget, ) = abi.decode(_payloadTx, (uint128, address, bytes));
         if(payloadTarget == address(0)) { revert AddressCannotBeZero(); }
         if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
+        
         if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
         if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
     }
@@ -822,27 +824,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(automationFeePerSec == 0) return 0;
 
         return calculateAutomationFeeForInterval(_duration, _taskOccupancy, automationFeePerSec, regConfig.nextCycleRegistryMaxGasCap());
-    }
-
-    /// @notice Function to check and validate the input auxiliary data.
-    /// @param _auxData Input auxiliary data.
-    /// @param _taskType Type of the task.
-    /// @return Bool representing if the task has priority.
-    function checkAndValidateAuxData(bytes[] memory _auxData, CommonUtils.TaskType _taskType) private pure returns (bool) {
-        if(_auxData.length != SUPPORTED_AUX_DATA_COUNT_MAX) { revert InvalidAuxDataLength(); }
-
-        // Check task type
-        uint8 typeValue = abi.decode(_auxData[TYPE_AUX_DATA_INDEX], (uint8));
-        if(typeValue != uint8(_taskType)) {revert InvalidTaskType(); }
-
-        // Check if priority exists
-        bytes memory priorityBytes = _auxData[PRIORITY_AUX_DATA_INDEX];
-        bool hasNoPriority = (priorityBytes.length == 0);
-        if (!hasNoPriority) {
-            uint64 _priority = abi.decode(priorityBytes, (uint64));
-        }
-
-        return hasNoPriority;
     }
 
     /// @notice Unlocks the deposit paid by the task from the total automation fees deposited.
@@ -1450,7 +1431,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Checks if a task exist.
     /// @param _taskIndex Task index to check if a task exists against it.
     function ifTaskExists(uint64 _taskIndex) public view returns (bool) {
-        return regState.tasks[_taskIndex].owner != address(0) && regState.taskIdList.contains(_taskIndex);
+        return regState.tasks[_taskIndex].owner() != address(0) && regState.taskIdList.contains(_taskIndex);
     }
 
     /// @notice Checks if a system task exist.
@@ -1463,14 +1444,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _taskIndex Index of the task.
     /// @param _type Input task type.
     function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
-        uint8 taskType = abi.decode(regState.tasks[_taskIndex].auxData[TYPE_AUX_DATA_INDEX], (uint8));
-        return taskType == uint8(_type);
+        return _type == regState.tasks[_taskIndex].taskType();
     }
 
     /// @notice Returns the owner of the task 
     /// @param _taskIndex Task index of the task to query.
     function getTaskOwner(uint64 _taskIndex) external view returns (address) {
-        return regState.tasks[_taskIndex].owner;
+        return regState.tasks[_taskIndex].owner();
     }
 
     /// @notice Returns the state of the task 
@@ -1558,7 +1538,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Checks whether there is an active task in registry with specified input task index of the input type.
     /// The type can be either 0 for user submitted tasks, and 1 for governance authorized tasks.
     function hasActiveTaskOfType(address _account, uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
-        return regState.tasks[_taskIndex].owner == _account && LibRegistry.state(regState.tasks[_taskIndex]) != CommonUtils.TaskState.PENDING && checkTaskType(_taskIndex, _type);
+        return regState.tasks[_taskIndex].owner() == _account && LibRegistry.state(regState.tasks[_taskIndex]) != CommonUtils.TaskState.PENDING && checkTaskType(_taskIndex, _type);
     }
 
     /// @notice Checks if config buffer exists.

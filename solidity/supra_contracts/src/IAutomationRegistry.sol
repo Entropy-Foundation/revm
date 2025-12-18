@@ -14,7 +14,6 @@ interface IAutomationRegistry {
     error GasCommittedExceedsMaxGasCap();
     error InsufficientFeeCapForCycle();
     error InsufficentValueSent();
-    error InvalidAuxDataLength();
     error InvalidExpiryTime();
     error InvalidGasPriceCap();
     error InvalidMaxGasAmount();

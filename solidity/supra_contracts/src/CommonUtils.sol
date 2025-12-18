@@ -37,8 +37,10 @@ library CommonUtils {
         uint64 taskIndex;
         uint64 registrationTime;
         uint64 expiryTime;
-        address owner;
+        uint64 priority;
+        CommonUtils.TaskType taskType;
         CommonUtils.TaskState state;
+        address owner;
         bytes payloadTx;      
         bytes[] auxData;
     }
@@ -58,15 +60,19 @@ library CommonUtils {
 
         // --- Direct values ---
         details.txHash = t.txHash;
-        details.owner = t.owner;
         details.payloadTx = t.payloadTx;
         details.auxData = t.auxData;
 
-        // --- Decode packed uint256: taskIndex | registrationTime | expiryTime | state ---
-        details.taskIndex        = uint64(t.taskIndex_registrationTime_expiryTime_state >> 192);
-        details.registrationTime = uint64(t.taskIndex_registrationTime_expiryTime_state >> 128);
-        details.expiryTime       = uint64(t.taskIndex_registrationTime_expiryTime_state >> 64);
-        details.state            = CommonUtils.TaskState(uint8(t.taskIndex_registrationTime_expiryTime_state >> 56));
+        // --- Decode packed uint256: taskIndex | registrationTime | expiryTime | priority ---
+        details.taskIndex        = uint64(t.taskIndex_registrationTime_expiryTime_priority >> 192);
+        details.registrationTime = uint64(t.taskIndex_registrationTime_expiryTime_priority >> 128);
+        details.expiryTime       = uint64(t.taskIndex_registrationTime_expiryTime_priority >> 64);
+        details.priority         = uint64(t.taskIndex_registrationTime_expiryTime_priority);
+
+        // --- Decode packed uint256: owner | taskType | taskState ---
+        details.owner = address(uint160(t.owner_type_state >> 96));
+        details.taskType = CommonUtils.TaskType(uint8(t.owner_type_state >> 88));
+        details.state = CommonUtils.TaskState(uint8(t.owner_type_state >> 80));
     }
 
 
@@ -74,7 +80,6 @@ library CommonUtils {
     struct Deposit {
         uint256 totalDepositedAutomationFees;
         address coldWallet;
-        // uint256 totalLockedFees;                    // TO_DO
         // mapping(uint64 => uint256) taskLockedFees;  // TO_DO
     }
 

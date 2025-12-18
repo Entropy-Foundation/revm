@@ -9,6 +9,7 @@ import {CommonUtils} from "./CommonUtils.sol";
 library LibRegistry {
     
     uint256 private constant MAX_UINT128 = type(uint128).max;
+    uint256 private constant MAX_UINT160 = type(uint160).max;
     uint256 private constant MAX_UINT64 = type(uint64).max;
     uint256 private constant MAX_UINT16 = type(uint16).max;
     uint256 private constant MAX_UINT8 = type(uint8).max;
@@ -97,7 +98,7 @@ library LibRegistry {
 
     function setAutomationController(RegistryConfig storage r, address _controller) internal {
         // clear top 160 bits
-        r.controller_registrationEnabled_automationEnabled &= ~((uint256(type(uint160).max)) << 96);
+        r.controller_registrationEnabled_automationEnabled &= ~(MAX_UINT160 << 96);
 
         // insert 160-bit address
         r.controller_registrationEnabled_automationEnabled |= uint256(uint160(_controller)) << 96;
@@ -292,10 +293,11 @@ library LibRegistry {
 
         bytes32 txHash;
         
-        // uint64 | uint64 | uint64 | TaskState
-        uint256 taskIndex_registrationTime_expiryTime_state;
+        // uint64 | uint64 | uint64 | uint64
+        uint256 taskIndex_registrationTime_expiryTime_priority;
 
-        address owner;
+        // address | TaskType (uint8) | TaskState (uint8)
+        uint256 owner_type_state;
 
         bytes payloadTx;      
         bytes[] auxData;
@@ -310,7 +312,9 @@ library LibRegistry {
         uint64 _taskIndex,
         uint64 _registrationTime,
         uint64 _expiryTime,
+        uint64 _priority,
         address _owner,
+        CommonUtils.TaskType _type,
         CommonUtils.TaskState _state,
         bytes memory _payloadTx,
         bytes[] memory _auxData
@@ -323,17 +327,23 @@ library LibRegistry {
 
         // Direct fields
         t.txHash = _txHash;
-        t.owner = _owner;
         t.payloadTx = _payloadTx;
         t.auxData = _auxData;
 
-        // Pack (uint64 | uint64 | uint64 | uint8)
-        // Layout: [taskIndex | registrationTime | expiryTime | state]
-        t.taskIndex_registrationTime_expiryTime_state =
+        // Pack (uint64 | uint64 | uint64 | uint64)
+        // Layout: [taskIndex | registrationTime | expiryTime | priority]
+        t.taskIndex_registrationTime_expiryTime_priority =
             (uint256(_taskIndex) << 192) |
             (uint256(_registrationTime) << 128) |
             (uint256(_expiryTime) << 64) |
-            (uint256(uint8(_state)) << 56);
+            uint256(_priority);
+
+        // Pack (address | uint8 | uint8)
+        // Layout: [owner | taskType | taskState]
+        t.owner_type_state =
+            (uint256(uint160(_owner)) << 96) |
+            (uint256(uint8(_type)) << 88) |
+            (uint256(uint8(_state))<< 80);
     }
 
     // maxGasAmount (uint128) | gasPriceCap (uint128)
@@ -374,41 +384,69 @@ library LibRegistry {
         t.automationFeeCapForCycle_lockedFeeForNextCycle |= uint256(_value);
     }
 
-    // taskIndex (uint64) | registrationTime (uint64) | expiryTime (uint64) | state (TaskState/uint8)
+    // taskIndex (uint64) | registrationTime (uint64) | expiryTime (uint64) | priority (uint64)
     function taskIndex(TaskMetadata storage t) internal view returns (uint64) {
-        return uint64(t.taskIndex_registrationTime_expiryTime_state >> 192);
+        return uint64(t.taskIndex_registrationTime_expiryTime_priority >> 192);
     }
 
     function registrationTime(TaskMetadata storage t) internal view returns (uint64) {
-        return uint64(t.taskIndex_registrationTime_expiryTime_state >> 128);
+        return uint64(t.taskIndex_registrationTime_expiryTime_priority >> 128);
     }
 
     function expiryTime(TaskMetadata storage t) internal view returns (uint64) {
-        return uint64(t.taskIndex_registrationTime_expiryTime_state >> 64);
+        return uint64(t.taskIndex_registrationTime_expiryTime_priority >> 64);
     }
 
-    function state(TaskMetadata storage t) internal view returns (CommonUtils.TaskState) {
-        return CommonUtils.TaskState(uint8(t.taskIndex_registrationTime_expiryTime_state >> 56));
+    function priority(TaskMetadata storage t) internal view returns (uint64) {
+        return uint64(t.taskIndex_registrationTime_expiryTime_priority);
     }
 
     function setTaskIndex(TaskMetadata storage t, uint64 _value) internal {
-        t.taskIndex_registrationTime_expiryTime_state &= ~(MAX_UINT64 << 192);
-        t.taskIndex_registrationTime_expiryTime_state |= uint256(_value) << 192;
+        t.taskIndex_registrationTime_expiryTime_priority &= ~(MAX_UINT64 << 192);
+        t.taskIndex_registrationTime_expiryTime_priority |= uint256(_value) << 192;
     }
 
     function setRegistrationTime(TaskMetadata storage t, uint64 _value) internal {
-        t.taskIndex_registrationTime_expiryTime_state &= ~(MAX_UINT64 << 128);
-        t.taskIndex_registrationTime_expiryTime_state |= uint256(_value) << 128;
+        t.taskIndex_registrationTime_expiryTime_priority &= ~(MAX_UINT64 << 128);
+        t.taskIndex_registrationTime_expiryTime_priority |= uint256(_value) << 128;
     }
 
     function setExpiryTime(TaskMetadata storage t, uint64 _value) internal {
-        t.taskIndex_registrationTime_expiryTime_state &= ~(MAX_UINT64 << 64);
-        t.taskIndex_registrationTime_expiryTime_state |= uint256(_value) << 64;
+        t.taskIndex_registrationTime_expiryTime_priority &= ~(MAX_UINT64 << 64);
+        t.taskIndex_registrationTime_expiryTime_priority |= uint256(_value) << 64;
+    }
+
+    function setPriority(TaskMetadata storage t, uint64 _value) internal {
+        t.taskIndex_registrationTime_expiryTime_priority &= ~MAX_UINT64;
+        t.taskIndex_registrationTime_expiryTime_priority |= uint256(_value);
+    }
+
+    // owner (address/uint160) | type (TaskType/uint8) | state (TaskState/uint8)
+    function owner(TaskMetadata storage t) internal view returns (address) {
+        return address(uint160(t.owner_type_state >> 96));
+    }
+
+    function taskType(TaskMetadata storage t) internal view returns (CommonUtils.TaskType) {
+        return CommonUtils.TaskType(uint8(t.owner_type_state >> 88));
+    }
+
+    function state(TaskMetadata storage t) internal view returns (CommonUtils.TaskState) {
+        return CommonUtils.TaskState(uint8(t.owner_type_state >> 80));
+    }
+
+    function setOwner(TaskMetadata storage t, address _value) internal {
+        t.owner_type_state &= ~(MAX_UINT160 << 96);
+        t.owner_type_state |= uint256(uint160(_value)) << 96;
+    }
+
+    function setType(TaskMetadata storage t, uint8 _value) internal {
+        t.owner_type_state &= ~(MAX_UINT8 << 88);
+        t.owner_type_state |= uint256(_value) << 88;
     }
 
     function setState(TaskMetadata storage t, uint8 _value) internal {
-        t.taskIndex_registrationTime_expiryTime_state &= ~(MAX_UINT8 << 56);
-        t.taskIndex_registrationTime_expiryTime_state |= uint256(_value) << 56;
+        t.owner_type_state &= ~(MAX_UINT8 << 80);
+        t.owner_type_state |= uint256(_value) << 80;
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: RegistryState ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
