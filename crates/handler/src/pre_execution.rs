@@ -174,7 +174,7 @@ pub fn validate_against_state_and_deduct_caller<
             caller_account.info.nonce = caller_account.info.nonce.saturating_add(1);
         }
     }
-    
+
     journal.caller_accounting_journal_entry(tx.caller(), old_balance, tx.kind().is_call());
     Ok(())
 }

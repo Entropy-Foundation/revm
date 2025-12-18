@@ -26,6 +26,7 @@ pub mod eip7907;
 pub mod eip7918;
 pub mod hardfork;
 mod once_lock;
+pub mod supra_constants;
 
 pub use constants::*;
 pub use once_lock::OnceLock;

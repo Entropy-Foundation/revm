@@ -21,6 +21,7 @@ pub mod kzg_point_evaluation;
 pub mod modexp;
 pub mod secp256k1;
 pub mod secp256r1;
+pub mod tx_hash;
 pub mod utilities;
 
 pub use id::PrecompileId;
@@ -195,6 +196,7 @@ impl Precompiles {
         INSTANCE.get_or_init(|| {
             let mut precompiles = Self::cancun().clone();
             precompiles.extend(bls12_381::precompiles());
+            precompiles.extend([tx_hash::TX_HASH]);
             precompiles
         })
     }
@@ -399,6 +401,7 @@ pub enum PrecompileSpecId {
     /// * `BLS12_PAIRING_CHECK` at address 0x0f
     /// * `BLS12_MAP_FP_TO_G1` at address 0x10
     /// * `BLS12_MAP_FP2_TO_G2` at address 0x11
+    /// * `TX_HASH` at address 0x53555001
     PRAGUE,
     /// Osaka spec added changes to modexp precompile:
     /// * [`EIP-7823: Set upper bounds for MODEXP`](https://eips.ethereum.org/EIPS/eip-7823).

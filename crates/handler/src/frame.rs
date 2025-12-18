@@ -3,6 +3,7 @@ use crate::item_or_result::FrameInitOrResult;
 use crate::{precompile_provider::PrecompileProvider, ItemOrResult};
 use crate::{CallFrame, CreateFrame, FrameData, FrameResult};
 use context::result::FromStringError;
+use context::Transaction;
 use context_interface::context::ContextError;
 use context_interface::local::{FrameToken, OutFrame};
 use context_interface::ContextTr;
@@ -21,11 +22,12 @@ use interpreter::{
     FrameInput, Gas, InputsImpl, InstructionResult, Interpreter, InterpreterAction,
     InterpreterResult, InterpreterTypes, SharedMemory,
 };
+use precompile::PrecompileId;
 use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
 };
-use primitives::{keccak256, Address, Bytes, U256};
+use primitives::{keccak256, Address, Bytes, B256, U256};
 use state::Bytecode;
 use std::borrow::ToOwned;
 use std::boxed::Box;
@@ -169,7 +171,6 @@ impl EthFrame<EthInterpreter> {
 
         // Create subroutine checkpoint
         let checkpoint = ctx.journal_mut().checkpoint();
-
         // Touch address. For "EIP-158 State Clear", this will erase empty accounts.
         if let CallValue::Transfer(value) = inputs.value {
             // Transfer value from caller to called account
@@ -183,7 +184,7 @@ impl EthFrame<EthInterpreter> {
             }
         }
 
-        let interpreter_input = InputsImpl {
+        let mut interpreter_input = InputsImpl {
             target_address: inputs.target_address,
             caller_address: inputs.caller,
             bytecode_address: Some(inputs.bytecode_address),
@@ -192,6 +193,17 @@ impl EthFrame<EthInterpreter> {
         };
         let is_static = inputs.is_static;
         let gas_limit = inputs.gas_limit;
+
+        // If the call's bytecode address is the TxHash precompile address,
+        // fetch the transaction hash from Tx and pass the hash to the
+        // interpreter by overwriting the interpreter_input's input with the hash.
+        if let Some(tx_hash_addr) = PrecompileId::TxHash.mainnet_address() {
+            if inputs.bytecode_address == tx_hash_addr {
+                let tx_hash = ctx.tx().tx_hash();
+                interpreter_input.input =
+                    CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
+            }
+        }
 
         if let Some(result) = precompiles
             .run(
@@ -308,7 +320,7 @@ impl EthFrame<EthInterpreter> {
                 .journal_mut()
                 .nonce_bump_journal_entry(inputs.caller);
         }
-        
+
         // Create address
         let mut init_code_hash = None;
         let created_address = match inputs.scheme {
