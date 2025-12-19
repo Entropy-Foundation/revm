@@ -42,6 +42,5 @@ pub fn is_supra_reserved(address: &Address) -> bool {
 
 define_reserved_addresses!(
     VM_SIGNER = SUPRA_RESERVED_ADDRESSES[0],
-    TXN_HASH = SUPRA_RESERVED_ADDRESSES[1],
+    TX_HASH_ADDRESS = SUPRA_RESERVED_ADDRESSES[1],
 );
-
