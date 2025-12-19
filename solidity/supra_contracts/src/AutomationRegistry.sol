@@ -699,7 +699,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount, bytes32 _txHash) private view {
-        ( , address payloadTarget, ) = abi.decode(_payloadTx, (uint128, address, bytes));
+        ( , address payloadTarget, , ) = abi.decode(_payloadTx, (uint128, address, bytes, LibRegistry.AccessListEntry[]));
         if(payloadTarget == address(0)) { revert AddressCannotBeZero(); }
         if(!payloadTarget.isContract()) { revert AddressCannotBeEOA(); }
         

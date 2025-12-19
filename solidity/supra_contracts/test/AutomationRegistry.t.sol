@@ -928,8 +928,24 @@ contract AutomationRegistryTest is Test {
     /// @param _value Value to be sent along with transaction.
     /// @param _target Address of destination smart contract.
     function createPayload(uint128 _value, address _target) private pure returns (bytes memory) {
+        LibRegistry.AccessListEntry[] memory accessList = new LibRegistry.AccessListEntry[](2);
+        
+        bytes32[] memory keys = new bytes32[](2); 
+        keys[0] = bytes32(uint256(0));
+        keys[1] = bytes32(uint256(1));
+
+        accessList[0] = LibRegistry.AccessListEntry({
+            addr: address(0x1111),
+            storageKeys: keys
+        });
+
+        accessList[1] = LibRegistry.AccessListEntry({
+            addr: address(0x2222),
+            storageKeys: keys
+        });
+
         bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
-        bytes memory payload = abi.encode(_value, _target, callData);
+        bytes memory payload = abi.encode(_value, _target, callData, accessList);
 
         return payload;   
     }
@@ -1243,7 +1259,7 @@ contract AutomationRegistryTest is Test {
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
+            4,
             0,
             auxData
         );

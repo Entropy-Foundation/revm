@@ -13,6 +13,14 @@ library LibRegistry {
     uint256 private constant MAX_UINT64 = type(uint64).max;
     uint256 private constant MAX_UINT16 = type(uint16).max;
     uint256 private constant MAX_UINT8 = type(uint8).max;
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: AccessListEntry :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Struct representing an entry in access list.
+    struct AccessListEntry {
+        address addr;
+        bytes32[] storageKeys;
+    }
     
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ConfigBuffer :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
