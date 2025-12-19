@@ -14,11 +14,13 @@ rust-version.workspace = true
 [dependencies]
 alloy-sol-types = { workspace = true }
 alloy-contract =  { workspace = true }
+alloy-eips = { workspace = true }
 serde = { workspace = true }
 alloy = { workspace = true }
 derive_more = { workspace = true }
 thiserror = { workspace = true }
 primitives = { workspace = true }
+context = { workspace = true }
 
 [lints]
 workspace = true

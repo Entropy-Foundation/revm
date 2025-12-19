@@ -4226,8 +4226,10 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "alloy-contract",
+ "alloy-eips",
  "alloy-sol-types",
  "derive_more",
+ "revm-context",
  "revm-primitives",
  "serde",
  "thiserror",
