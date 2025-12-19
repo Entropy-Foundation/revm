@@ -26,9 +26,9 @@ contract ERC20SupraTest is Test {
         assertEq(token.decimals(), 18);
     }
 
-    function testDepositMintsTokens() public {
+    function testNativeToErc20Supra() public {
         vm.prank(alice);
-        token.deposit{value: 5 ether}();
+        token.nativeToErc20Supra{value: 5 ether}();
 
         assertEq(token.balanceOf(alice), 5 ether);
         assertEq(address(token).balance, 5 ether);
@@ -36,14 +36,14 @@ contract ERC20SupraTest is Test {
         assertEq(alice.balance, 95 ether);
     }
 
-    function testDepositZeroReverts() public {
+    function testNativeToErc20SupraRevertsIfAmountZero() public {
         vm.expectRevert(ERC20Supra.InvalidAmount.selector);
 
         vm.prank(alice);
-        token.deposit{value: 0}();
+        token.nativeToErc20Supra{value: 0}();
     }
 
-    function testReceiveMintsTokens() public {
+    function testReceiveMintsERC20Supra() public {
         vm.prank(alice);
         (bool success, ) = address(token).call{value: 3 ether}("");
         require(success);
@@ -53,20 +53,20 @@ contract ERC20SupraTest is Test {
         assertEq(alice.balance, 97 ether);
     }
 
-    function testReceiveZeroReverts() public {
+    function testReceiveRevertsIfAmountZero() public {
         vm.expectRevert(ERC20Supra.InvalidAmount.selector);
 
         vm.prank(alice);
         address(token).call{value: 0}("");
     }
 
-    function testWithdrawBurnsAndSends() public {
+    function testErc20SupraToNative() public {
         // Alice deposits 5 SUPRA → gets 5 * 10 ** 18 ERC20Supra tokens
-        testDepositMintsTokens();
+        testNativeToErc20Supra();
 
         // Alice withdraws 3 SUPRA → burns 3 * 10 ** 18 ERC20Supra tokens
         vm.prank(alice);
-        token.withdraw(3 ether);
+        token.erc20SupraToNative(3 ether);
 
         assertEq(token.balanceOf(alice), 2 ether);
         assertEq(address(alice).balance, 98 ether);
@@ -74,24 +74,24 @@ contract ERC20SupraTest is Test {
         assertEq(address(token).balance, token.totalSupply());
     }
 
-    function testWithdrawRevertsIfInsufficientBalance() public {
+    function testErc20SupraToNativeRevertsIfInsufficientBalance() public {
         vm.expectRevert(ERC20Supra.InsufficientBalance.selector);
 
         vm.prank(alice);
-        token.withdraw(1 ether);
+        token.erc20SupraToNative(1 ether);
     }
 
-    function testWithdrawRevertsInvalidAmount() public {
+    function testErc20SupraToNativeRevertsIfAmountZero() public {
         vm.expectRevert(ERC20Supra.InvalidAmount.selector);
 
         vm.prank(alice);
-        token.withdraw(0);
+        token.erc20SupraToNative(0);
     }
 
-    function testWithdrawRevertsIfNativeTransferFails() public {
+    function testErc20SupraToNativeRevertsIfNativeTransferFails() public {
         // Mint tokens
         vm.prank(alice);
-        token.deposit{value: 1 ether}();
+        token.nativeToErc20Supra{value: 1 ether}();
 
         RejectReceive rejector = new RejectReceive();
 
@@ -103,14 +103,14 @@ contract ERC20SupraTest is Test {
         vm.expectRevert(ERC20Supra.TransferFailed.selector);
 
         vm.prank(address(rejector));
-        token.withdraw(1 ether);
+        token.erc20SupraToNative(1 ether);
 
         assertEq(token.balanceOf(address(rejector)), 1 ether);
     }
 
     function testCannotTransferToContract() public {
         vm.prank(alice);
-        token.deposit{value: 1 ether}();
+        token.nativeToErc20Supra{value: 1 ether}();
 
         vm.expectRevert(ERC20Supra.InvalidTransfer.selector);
 
@@ -124,13 +124,13 @@ contract ERC20SupraTest is Test {
         vm.expectRevert(ERC20Supra.InvalidTransfer.selector);
 
         vm.prank(address(token));
-        token.deposit{value: 1 ether}();
+        token.nativeToErc20Supra{value: 1 ether}();
     }
 
     // Additional test cases for ERC20Supra
     function testTransferBetweenUsers() public {
         vm.prank(alice);
-        token.deposit{value: 5 ether}();
+        token.nativeToErc20Supra{value: 5 ether}();
         
         assertEq(token.balanceOf(alice) , 5 ether);
 
@@ -143,7 +143,7 @@ contract ERC20SupraTest is Test {
 
     function testTransferFromAllowance() public {
         vm.prank(alice);
-        token.deposit{value: 5 ether}();
+        token.nativeToErc20Supra{value: 5 ether}();
 
         vm.prank(alice);
         token.approve(bob, 3 ether);
@@ -158,7 +158,7 @@ contract ERC20SupraTest is Test {
 
     function testBurnFromReducesBalance() public {
         vm.prank(alice);
-        token.deposit{value: 5 ether}();
+        token.nativeToErc20Supra{value: 5 ether}();
 
         vm.prank(alice);
         token.approve(bob, 3 ether);
@@ -173,14 +173,14 @@ contract ERC20SupraTest is Test {
 
     function testTotalSupplyEqualsContractBalance() public {
         vm.prank(alice);
-        token.deposit{value: 3 ether}();
+        token.nativeToErc20Supra{value: 3 ether}();
         vm.prank(bob);
-        token.deposit{value: 2 ether}();
+        token.nativeToErc20Supra{value: 2 ether}();
 
         vm.prank(alice);
-        token.withdraw(1 ether);
+        token.erc20SupraToNative(1 ether);
         vm.prank(bob);
-        token.withdraw(2 ether);
+        token.erc20SupraToNative(2 ether);
 
         assertEq(address(token).balance, token.totalSupply());
         assertEq(token.totalSupply(), 2 ether);
@@ -188,32 +188,32 @@ contract ERC20SupraTest is Test {
         assertEq(token.balanceOf(bob), 0);
     }
 
-    function testDepositEmitsEvent() public {
+    function testNativeToErc20SupraEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ERC20Supra.Deposit(alice, 5 ether);
+        emit ERC20Supra.NativeToERC20Supra(alice, 5 ether);
 
         vm.prank(alice);
-        token.deposit{value: 5 ether}();
+        token.nativeToErc20Supra{value: 5 ether}();
     }
 
     function testReceiveEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ERC20Supra.Deposit(alice, 3 ether);
+        emit ERC20Supra.NativeToERC20Supra(alice, 3 ether);
 
         vm.prank(alice);
         (bool success, ) = address(token).call{value: 3 ether}("");
         require(success);
     }
 
-    function testWithdrawEmitsEvent() public {
+    function testErc20SupraToNativeEmitsEvent() public {
         vm.prank(alice);
-        token.deposit{value: 5 ether}();
+        token.nativeToErc20Supra{value: 5 ether}();
 
         vm.expectEmit(true, true, false, false);
-        emit ERC20Supra.Withdrawal(alice, 2 ether);
+        emit ERC20Supra.ERC20SupraToNative(alice, 2 ether);
 
         vm.prank(alice);
-        token.withdraw(2 ether);
+        token.erc20SupraToNative(2 ether);
     }
 }
 
