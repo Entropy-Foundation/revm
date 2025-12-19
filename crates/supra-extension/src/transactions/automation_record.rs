@@ -5,6 +5,8 @@ use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, U256};
 use alloy_sol_types::SolCall;
 use primitives::supra_constants::VM_SIGNER;
+use alloy_eips::eip2718::Typed2718;
+use context::TransactionType;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -13,7 +15,7 @@ pub struct AutomationRegistryRecord {
     pub sender: Address,
     pub chain_id: ChainId,
     /// Height of the block in scope of which this transaction is being executed.
-    pub block_height: U256,
+    pub block_height: u64,
     /// Index of the automation record being executed in scope of the block.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub nonce: u64,
@@ -39,10 +41,17 @@ pub struct AutomationRegistryRecord {
     pub input: Bytes,
 }
 
+impl Typed2718 for AutomationRegistryRecord {
+    fn ty(&self) -> u8 {
+        TransactionType::Eip1559 as u8
+    }
+
+}
+
 pub struct AutomationRecordBuilder {
     to: Address,
     chain_id: Option<ChainId>,
-    block_height: Option<U256>,
+    block_height: Option<u64>,
     nonce: Option<u64>,
     gas_limit: Option<u64>,
     task_indexes: Option<Vec<u64>>,
@@ -61,7 +70,7 @@ impl AutomationRecordBuilder {
             cycle_index: None,
         }
     }
-    pub fn block_height(mut self, block_height: U256) -> Self {
+    pub fn block_height(mut self, block_height: u64) -> Self {
         self.block_height = Some(block_height);
         self
     }
