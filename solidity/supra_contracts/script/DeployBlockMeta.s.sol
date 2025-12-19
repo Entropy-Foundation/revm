@@ -11,8 +11,7 @@ contract DeployBlockMeta is Script {
 
     function setUp() public {
         automationController = vm.envAddress("AUTOMATION_CONTROLLER");
-	selector = bytes4(keccak256("monitor_cycle_end()"));
-
+	    selector = bytes4(keccak256("monitorCycleEnd()"));
     }
 
     function run() public {
@@ -28,7 +27,7 @@ contract DeployBlockMeta is Script {
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         console.log("BlockMeta proxy deployed at: ", address(proxy));
 
-        // Register an entry
+        // Register the selector
         BlockMeta(address(proxy)).register(automationController, selector);
 
         vm.stopBroadcast();
