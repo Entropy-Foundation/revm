@@ -3,7 +3,10 @@ use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBind
 use crate::value_or_error;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_sol_types::SolCall;
+use context::TransactionType;
 use primitives::supra_constants::VM_SIGNER;
+use crate::transactions::automation_record::AutomationRegistryRecord;
+use alloy_eips::eip2718::Typed2718;
 
 /// EVM system transaction generated based on the block sent for execution.
 /// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meat
@@ -19,7 +22,7 @@ pub struct BlockMetadata {
     pub sender: Address,
     /// A height of the block based on which this transaction is created
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub height: U256,
+    pub height: u64,
     /// Hash of the block being executed
     pub block_hash: B256,
     /// Block creation timestamp in seconds
@@ -32,9 +35,16 @@ pub struct BlockMetadata {
     pub input: Bytes,
 }
 
+impl Typed2718 for AutomationRegistryRecord {
+    fn ty(&self) -> u8 {
+        TransactionType::Eip1559 as u8
+    }
+
+}
+
 pub struct BlockMetadataBuilder {
     to: Address,
-    height: Option<U256>,
+    height: Option<u64>,
     block_hash: Option<B256>,
     timestamp: Option<U256>,
     chain_id: Option<ChainId>,
@@ -50,7 +60,7 @@ impl BlockMetadataBuilder {
             chain_id: None,
         }
     }
-    pub fn height(mut self, height: U256) -> Self {
+    pub fn height(mut self, height: u64) -> Self {
         self.height = Some(height);
         self
     }

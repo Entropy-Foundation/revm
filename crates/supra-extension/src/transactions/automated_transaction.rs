@@ -1,5 +1,8 @@
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
+use alloy_eips::eip2718::Typed2718;
+use context::TransactionType;
+use crate::transactions::automation_record::AutomationRegistryRecord;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -69,6 +72,12 @@ pub struct AutomatedTransaction {
     /// data: An unlimited size byte array specifying the
     /// input data of the message call, formally Td.
     pub input: Bytes,
+}
+
+impl Typed2718 for AutomationRegistryRecord {
+    fn ty(&self) -> u8 {
+        TransactionType::Eip1559 as u8
+    }
 }
 
 impl AutomatedTransaction {
