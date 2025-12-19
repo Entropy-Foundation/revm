@@ -1,0 +1,27 @@
+[package]
+name = "revm-supra-extension"
+version = "0.1.0"
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+alloy-sol-types = { workspace = true }
+alloy-contract =  { workspace = true }
+serde = { workspace = true }
+alloy = { workspace = true }
+derive_more = { workspace = true }
+thiserror = { workspace = true }
+primitives = { workspace = true }
+
+[lints]
+workspace = true
+
+
+[build-dependencies]

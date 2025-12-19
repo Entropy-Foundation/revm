@@ -15,6 +15,8 @@ members = [
     "crates/context",
     "crates/context/interface",
     "crates/handler",
+    # supra extensions
+    "crates/supra-extension",
 
     # variants
     "crates/op-revm",
@@ -34,10 +36,8 @@ members = [
     "examples/erc20_gas",
     "examples/my_evm",
     "examples/custom_opcodes",
-    "examples/custom_precompile_journal", "crates/supra-extension",
+    "examples/custom_precompile_journal",
 
-    # supra extensions
-    "crates/supra-extension"
 ]
 resolver = "2"
 default-members = ["crates/revm"]
@@ -59,7 +59,7 @@ context-interface = { path = "crates/context/interface", package = "revm-context
 handler = { path = "crates/handler", package = "revm-handler", version = "10.0.0", default-features = false }
 op-revm = { path = "crates/op-revm", package = "op-revm", version = "10.0.0", default-features = false }
 ee-tests = { path = "crates/ee-tests", package = "revm-ee-tests", version = "0.1.0", default-features = false }
-supra-extension = { path = "crates/supra-extension", package = "supra-extension", version = "0.1.0", default-features = false }
+supra-extension = { path = "crates/supra-extension", package = "revm-supra-extension", version = "0.1.0", default-features = false }
 
 # alloy
 alloy-eip2930 = { version = "0.2.1", default-features = false }
