@@ -1,3 +1,6 @@
+//! Definition of the block metadata transaction which will be executed for every block
+//! to aid block based checks to assist chain regular operations
+
 use crate::errors::SupraExtensionError;
 use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBindings::blockPrologueCall;
 use crate::value_or_error;
@@ -5,8 +8,11 @@ use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_sol_types::SolCall;
 use context::TransactionType;
 use primitives::supra_constants::VM_SIGNER;
-use crate::transactions::automation_record::AutomationRegistryRecord;
 use alloy_eips::eip2718::Typed2718;
+use alloy_consensus::transaction::Transaction;
+use context::transaction::{AccessList, SignedAuthorization};
+use primitives::eip7825::TX_GAS_LIMIT_CAP;
+use primitives::TxKind;
 
 /// EVM system transaction generated based on the block sent for execution.
 /// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meat
@@ -35,13 +41,102 @@ pub struct BlockMetadata {
     pub input: Bytes,
 }
 
-impl Typed2718 for AutomationRegistryRecord {
+impl Transaction for BlockMetadata {
+
+    #[inline]
+    fn chain_id(&self) -> Option<ChainId> {
+        Some(self.chain_id)
+    }
+
+    #[inline]
+    fn nonce(&self) -> u64 {
+        self.height
+    }
+
+    #[inline]
+    fn gas_limit(&self) -> u64 {
+        TX_GAS_LIMIT_CAP
+    }
+
+    #[inline]
+    fn gas_price(&self) -> Option<u128> {
+        None
+    }
+
+    #[inline]
+    fn max_fee_per_gas(&self) -> u128 {
+        0
+    }
+
+    #[inline]
+    fn max_priority_fee_per_gas(&self) -> Option<u128> {
+        Some(0)
+    }
+
+    #[inline]
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        None
+    }
+
+    #[inline]
+    fn priority_fee_or_price(&self) -> u128 {
+        0
+    }
+
+    fn effective_gas_price(&self, _base_fee: Option<u64>) -> u128 {
+        0
+    }
+
+    #[inline]
+    fn is_dynamic_fee(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn kind(&self) -> TxKind {
+        TxKind::Call(self.to)
+    }
+
+    #[inline]
+    fn is_create(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn value(&self) -> U256 {
+        U256::from(0)
+    }
+
+    #[inline]
+    fn input(&self) -> &Bytes {
+        &self.input
+    }
+
+    #[inline]
+    fn access_list(&self) -> Option<&AccessList> {
+        None
+    }
+
+    #[inline]
+    fn blob_versioned_hashes(&self) -> Option<&[B256]> {
+        None
+    }
+
+    #[inline]
+    fn authorization_list(&self) -> Option<&[SignedAuthorization]> {
+        None
+    }
+}
+impl Typed2718 for BlockMetadata {
     fn ty(&self) -> u8 {
-        TransactionType::Eip1559 as u8
+        TransactionType::Custom as u8
     }
 
 }
 
+/// Builder for [`BlockMetadata`] transaction.
+/// All properties are mandatory.
+#[derive(Clone, Debug)]
 pub struct BlockMetadataBuilder {
     to: Address,
     height: Option<u64>,
@@ -50,6 +145,7 @@ pub struct BlockMetadataBuilder {
     chain_id: Option<ChainId>,
 }
 
+#[allow(missing_docs)]
 impl BlockMetadataBuilder {
     pub fn new(to: Address) -> Self {
         Self {
@@ -71,6 +167,11 @@ impl BlockMetadataBuilder {
     }
     pub fn chain_id(mut self, chain_id: u64) -> Self {
         self.chain_id = Some(chain_id);
+        self
+    }
+
+    pub fn timestamp(mut self, timestamp: U256) -> Self {
+        self.timestamp = Some(timestamp);
         self
     }
 

@@ -1,37 +1,44 @@
+//! Automation registry transaction record definition to assist automation bookkeeping.
 use crate::errors::SupraExtensionError;
 use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBindings::processTasksCall;
 use crate::value_or_error;
 use alloy::eips::eip2930::AccessList;
-use alloy::primitives::{Address, Bytes, ChainId, U256};
+use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};
 use alloy_sol_types::SolCall;
 use primitives::supra_constants::VM_SIGNER;
 use alloy_eips::eip2718::Typed2718;
 use context::TransactionType;
+use alloy_consensus::transaction::Transaction;
+use context::transaction::SignedAuthorization;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+/// Transaction representing automation transaction record which will trigger automation task processing
+/// during cycle transitions assisting automation bookkeeping flow.
 pub struct AutomationRegistryRecord {
+    /// Address of the transaction sender. By default it will be `@evm_vm_signer` reserved addressed by supra.
     pub sender: Address,
-    pub chain_id: ChainId,
     /// Height of the block in scope of which this transaction is being executed.
     pub block_height: u64,
+    /// Chain id.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
+    pub chain_id: ChainId,
     /// Index of the automation record being executed in scope of the block.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub nonce: u64,
     /// A scalar value equal to the maximum
     /// amount of gas that should be used in executing
-    /// this transaction. This is paid up-front, before any
-    /// computation is done and may not be increased
-    /// later; formally Tg.
+    /// this transaction. Automation record execution will be gas-less, but it still will be guarded
+    /// by gas limit.
     #[cfg_attr(
         feature = "serde",
         serde(with = "alloy_serde::quantity", rename = "gas", alias = "gasLimit")
     )]
     pub gas_limit: u64,
-    /// The 160-bit address of the message call’s recipient or, for a contract creation
-    /// transaction, ∅, used here to denote the only member of B0 ; formally Tt.
-    /// Address of the automation registry SC.
+    /// The 160-bit address of the message call’s recipient.
+    /// It will correspond to the address of the automation-registry/automation-controller SC deployed
+    /// by governance.
     #[cfg_attr(feature = "serde", serde(default))]
     pub to: Address,
     /// Expected input data of the transaction
@@ -41,13 +48,102 @@ pub struct AutomationRegistryRecord {
     pub input: Bytes,
 }
 
+impl Transaction for AutomationRegistryRecord {
+
+    #[inline]
+    fn chain_id(&self) -> Option<ChainId> {
+        Some(self.chain_id)
+    }
+
+    #[inline]
+    fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    #[inline]
+    fn gas_limit(&self) -> u64 {
+        self.gas_limit
+    }
+
+    #[inline]
+    fn gas_price(&self) -> Option<u128> {
+        None
+    }
+
+    #[inline]
+    fn max_fee_per_gas(&self) -> u128 {
+        0
+    }
+
+    #[inline]
+    fn max_priority_fee_per_gas(&self) -> Option<u128> {
+        Some(0)
+    }
+
+    #[inline]
+    fn max_fee_per_blob_gas(&self) -> Option<u128> {
+        None
+    }
+
+    #[inline]
+    fn priority_fee_or_price(&self) -> u128 {
+        0
+    }
+
+    fn effective_gas_price(&self, _base_fee: Option<u64>) -> u128 {
+        0
+    }
+
+    #[inline]
+    fn is_dynamic_fee(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn kind(&self) -> TxKind {
+        TxKind::Call(self.to)
+    }
+
+    #[inline]
+    fn is_create(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn value(&self) -> U256 {
+        U256::from(0)
+    }
+
+    #[inline]
+    fn input(&self) -> &Bytes {
+        &self.input
+    }
+
+    #[inline]
+    fn access_list(&self) -> Option<&AccessList> {
+        None
+    }
+
+    #[inline]
+    fn blob_versioned_hashes(&self) -> Option<&[B256]> {
+        None
+    }
+
+    #[inline]
+    fn authorization_list(&self) -> Option<&[SignedAuthorization]> {
+        None
+    }
+}
+
 impl Typed2718 for AutomationRegistryRecord {
     fn ty(&self) -> u8 {
-        TransactionType::Eip1559 as u8
+        TransactionType::Custom as u8
     }
 
 }
 
+/// Builder for [`AutomationRegistryRecord`]
+#[derive(Clone, Debug)]
 pub struct AutomationRecordBuilder {
     to: Address,
     chain_id: Option<ChainId>,
@@ -58,7 +154,9 @@ pub struct AutomationRecordBuilder {
     cycle_index: Option<u64>,
 }
 
+#[allow(missing_docs)]
 impl AutomationRecordBuilder {
+    /// New builder with the target address as input.
     pub fn new(to: Address) -> Self {
         Self {
             to,
