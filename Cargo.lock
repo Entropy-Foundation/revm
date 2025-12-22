@@ -4225,8 +4225,10 @@ name = "revm-supra-extension"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "alloy-consensus",
  "alloy-contract",
  "alloy-eips",
+ "alloy-serde",
  "alloy-sol-types",
  "derive_more",
  "revm-context",
