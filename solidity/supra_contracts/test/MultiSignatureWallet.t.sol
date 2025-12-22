@@ -51,7 +51,7 @@ contract MultiSignatureWalletTest is Test {
         vm.startPrank(address(multisigProxy));
         // Deploy Counter proxy contract
         Counter counterImpl = new Counter();
-        bytes memory counterInitData = abi.encodeCall(Counter.initialize, ());
+        bytes memory counterInitData = abi.encodeCall(Counter.initialize, (address(multiSig)));
         ERC1967Proxy counterProxy = new ERC1967Proxy(address(counterImpl), counterInitData);
         counter = Counter(address(counterProxy));
         vm.stopPrank();
@@ -701,8 +701,8 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Helper function that returns creation code to deploy ERC1967 proxy contract.
-    function proxyCreationCode(address _impl) private pure returns (bytes memory) {
-        bytes memory initData = abi.encodeCall(Counter.initialize, ());        
+    function proxyCreationCode(address _impl) private view returns (bytes memory) {
+        bytes memory initData = abi.encodeCall(Counter.initialize, (address(multiSig)));        
         
         return abi.encodePacked(
             type(ERC1967Proxy).creationCode,
