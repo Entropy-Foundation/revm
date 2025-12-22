@@ -4,13 +4,13 @@ use std::path::PathBuf;
 
 fn main() {
     // 1. Tell Cargo to rerun the script if the contracts directory changes
-    println!("cargo:rerun-if-changed=solidity/supra_contracts/");
+    // println!("cargo:rerun-if-changed=solidity/supra_contracts/");
 
     // Determine the output directory for the generated bindings
     let cargo_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("OUT_DIR environment variable not set"));
 
     let contracts_relative_path = PathBuf::from("../../solidity/supra_contracts");
-    let contracts_build_config = contracts_relative_path.join(PathBuf::from("foundry.toml"));
+    let contracts_build_config = cargo_dir.join(contracts_relative_path.join(PathBuf::from("foundry.toml")));
     let contract_names = "SupraContracts";
 
     let bindings_path = cargo_dir
@@ -49,8 +49,4 @@ fn main() {
     if !bind_output.success() {
         panic!("forge bind failed");
     }
-
-    // // 4. Tell Cargo to link the generated files
-    // // This makes the generated bindings available via `include!(concat!(env!("OUT_DIR"), "/alloy_bindings/lib.rs"));`
-    // println!("cargo:rustc-link-search=native={}", out_dir.display());
 }

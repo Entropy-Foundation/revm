@@ -1,18 +1,23 @@
+//! Constants defined by SUPRA to facilitate execution flow extensions.
 use alloy_primitives::Address;
 
+/// Defines a constant of Address type for the input value with the specified name
 #[macro_export]
 macro_rules! define_reserved_addresses {
     (
         $(
+            $doc:expr,
             $name:ident = $value:expr
         ),+ $(,)?
     ) => {
         $(
+            #[doc = $doc]
             pub const $name: Address = $value;
         )+
     };
 }
 
+/// Converts [`u64`] to [`Address`] type.
 pub const fn u64_to_address(x: u64) -> Address {
     let x = x.to_be_bytes();
     Address::new([
@@ -20,6 +25,9 @@ pub const fn u64_to_address(x: u64) -> Address {
     ])
 }
 
+/// Generates continues range of address.
+///  - start is the start address
+///  - N generic parameter specifying the length of the range from the specified start.
 pub const fn generate_address_range<const N: usize>(start: u64) -> [Address; N] {
     let start_address = u64_to_address(start);
     let mut reserved_addresses: [Address; N] =  [start_address; N];
@@ -33,7 +41,7 @@ pub const fn generate_address_range<const N: usize>(start: u64) -> [Address; N] 
 }
 
 /// [0x5355_0000, 0x53555_00FF] addresses are reserved as SUPRA special addresses.
-pub const SUPRA_RESERVED_ADDRESSES: [Address; 0xff] = generate_address_range::<0xff>(0x5355_0000);
+pub const SUPRA_RESERVED_ADDRESSES: [Address; 0xFF] = generate_address_range::<0xff>(0x5355_0000);
 
 /// Checks whether specified input address is one of the SUPRA
 pub fn is_supra_reserved(address: &Address) -> bool {
@@ -41,7 +49,9 @@ pub fn is_supra_reserved(address: &Address) -> bool {
 }
 
 define_reserved_addresses!(
+    "Supra Reserved address for VM SIGNER",
     VM_SIGNER = SUPRA_RESERVED_ADDRESSES[0],
-    TXN_HASH = SUPRA_RESERVED_ADDRESSES[1],
+    "Supra Reserved address Precompile address to retrieve transaction hash",
+    TX_HASH_ADDRESS = SUPRA_RESERVED_ADDRESSES[1],
 );
 

@@ -78,6 +78,7 @@ alloy-transport = { version = "1.0.12", default-features = false }
 
 alloy-contract = { version = "1.0.19"}
 alloy = { version = "1.0.19", features = ["sol-types", "contract"] }
+alloy-serde = { version = "1.0.19" }
 
 #forge = { git = "https://github.com/foundry-rs/foundry.git", tag="v1.4.1"}
 
