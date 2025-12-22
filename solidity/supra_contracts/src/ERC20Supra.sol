@@ -17,12 +17,12 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     /// @notice Error thrown if low level call fails.
     error TransferFailed();
 
-    /// @notice Emitted when native token is deposited and ERC20Supra is minted.
+    /// @notice Emitted when native tokens are deposited to mint and receive ERC20Supra tokens.
     /// @param account Address of the depositer.
     /// @param amount Amount deposited.
     event NativeToERC20Supra(address indexed account, uint256 indexed amount);
     
-    /// @notice Emitted when native token is withdrawn and ERC20Supra gets burnt. 
+    /// @notice Emitted when native tokens are withdrawn by burning ERC20Supra tokens. 
     /// @param account Address withdrawing.
     /// @param amount Amount withdrawn.
     event ERC20SupraToNative(address indexed account, uint256 indexed amount);
