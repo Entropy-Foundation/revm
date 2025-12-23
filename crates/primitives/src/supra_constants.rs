@@ -40,12 +40,17 @@ pub const fn generate_address_range<const N: usize>(start: u64) -> [Address; N] 
     reserved_addresses
 }
 
-/// [0x5355_0000, 0x53555_00FF] addresses are reserved as SUPRA special addresses.
-pub const SUPRA_RESERVED_ADDRESSES: [Address; 0xFF] = generate_address_range::<0xff>(0x5355_0000);
+/// [0x5355_5000, 0x53555_50FF] addresses are reserved as SUPRA special addresses.
+pub const SUPRA_RESERVED_ADDRESSES: [Address; 0xFF] = generate_address_range::<0xff>(0x5355_5000);
 
 /// Checks whether specified input address is one of the SUPRA
 pub fn is_supra_reserved(address: &Address) -> bool {
     SUPRA_RESERVED_ADDRESSES.contains(address)
+}
+
+/// Checks whether specified input address is SUPRA reserved VM_SIGNER
+pub fn is_vm_signer(address: &Address) -> bool {
+    VM_SIGNER.eq(address)
 }
 
 define_reserved_addresses!(
