@@ -64,10 +64,11 @@ contract MultiSignatureWalletTest is Test {
         assertEq(beacon.implementation(), multiSigImplV1);
     }
 
-    /// @dev Test to ensure owners and number of confirmations required are initialized correctly.
+    /// @dev Test to ensure contract is initialized correctly.
     function testInitialize() public view {
         assertEq(multiSig.getOwners(), owners);
         assertEq(multiSig.numConfirmationsRequired(), 4);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'initialize' reverts if array of owners is empty.
@@ -149,6 +150,7 @@ contract MultiSignatureWalletTest is Test {
         assertEq(numConfirmations, 1);
         assertEq(timeout, block.timestamp + 10000);
         assertEq(storedData, data);
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'submitTransaction' reverts if caller is not an owner.
@@ -160,6 +162,21 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(alice);                    // Not an owner
         multiSig.submitTransaction(
             address(counter),
+            0,
+            100000,
+            data
+        );
+    }
+
+    /// @dev Test to ensure 'submitTransaction' reverts if address(0) is passed as recipient.
+    function testSubmitTransactionIncrementRevertsIfAddressZero() public {
+        bytes memory data = dataForIncrement();
+
+        vm.expectRevert(MultiSignatureWallet.InvalidRecipient.selector);
+
+        vm.prank(address(1001));
+        multiSig.submitTransaction(
+            address(0),
             0,
             100000,
             data
@@ -215,7 +232,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyExecuted.selector);
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
 
         confirmTransaction(address(1005), txId);
     }
@@ -255,6 +272,7 @@ contract MultiSignatureWalletTest is Test {
 
         ( , , , uint256 confirmations , , ) = multiSig.getTransaction(txId);
         assertEq(confirmations, 1);
+        assertFalse(multiSig.isConfirmed(txId, address(1001)));
     }
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if caller is not an owner.
@@ -283,7 +301,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyExecuted.selector);
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), txId);
     }
 
@@ -316,8 +334,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1001));
         multiSig.executeTransaction(txId);
 
-        ( , , bool executed, , , ) = multiSig.getTransaction(txId);
-        assertTrue(executed);
+        assertEq(multiSig.txCount(), 0);
         assertEq(counter.counter(), 1);
     }
 
@@ -343,7 +360,7 @@ contract MultiSignatureWalletTest is Test {
     function testExecuteTransactionRevertsIfTxAlreadyExecuted() public {
         testExecuteTransaction();
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyExecuted.selector);
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -802,5 +819,11 @@ contract MultiSignatureWalletTest is Test {
         emit MultiSignatureWallet.Deposit(alice, 1 ether, 1 ether);
 
         testReceive();
+    }
+
+    /// @dev Test to ensure 'getTransaction' reverts if transaction does not exist.
+    function testGetTransactionRevertsIfTxDoesNotExist() public {
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.getTransaction(0);
     }
 }

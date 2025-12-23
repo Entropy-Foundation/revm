@@ -120,6 +120,11 @@ contract MultiSignatureWallet is Initializable {
     error InvalidOwner();
 
     /**
+     * @dev Error for when address(0) is passed as recipient while submitting a transaction.
+     */
+    error InvalidRecipient();
+
+    /**
      * @dev Error for when a duplicate owner address is provided.
      */
     error OwnerNotUnique();
@@ -172,11 +177,17 @@ contract MultiSignatureWallet is Initializable {
         bytes data; // Data payload of the transaction
     }
 
-    // Mapping to track confirmations for each transaction by each owner
-    mapping(uint256 transactionIndex => mapping(address owner => bool permissionToExecute)) public isConfirmed;
+    // Mapping to track confirmations for each transaction.
+    mapping(uint256 => EnumerableSet.AddressSet) private confirmations;
 
-    // Array to store all transactions
-    Transaction[] private transactions;
+    // Mapping from transaction index to Transaction
+    mapping(uint256 => Transaction) private transactions;
+    
+    // Auto-incrementing transaction index
+    uint256 private txIndex;
+    
+    // Number of active transactions
+    uint256 public txCount;
 
     // Function to ensure the caller is an owner
     function onlyOwner(address owner) private view {
@@ -193,7 +204,7 @@ contract MultiSignatureWallet is Initializable {
 
     // Function to check if a transaction exists
     function txExists(uint256 _txIndex) private view {
-        if (_txIndex >= transactions.length) 
+        if (transactions[_txIndex].to == address(0))
         revert InvalidTxnId();
     }
 
@@ -211,7 +222,7 @@ contract MultiSignatureWallet is Initializable {
 
     // Function to check if a transaction has not been confirmed by the caller
     function notConfirmed(uint256 _txIndex) private view {
-        if (isConfirmed[_txIndex][msg.sender])  revert TxnAlreadyConfirmed();
+        if (confirmations[_txIndex].contains(msg.sender))  revert TxnAlreadyConfirmed();
     }
 
     /**
@@ -263,23 +274,25 @@ contract MultiSignatureWallet is Initializable {
         bytes memory _data
     ) external payable {
         onlyOwner(msg.sender);
-        uint256 txIndex = transactions.length;
+        if (_to == address(0)) revert InvalidRecipient();
 
-        transactions.push(
-            Transaction({
-                to: _to,
-                executed: false,
-                timeout: uint64(block.timestamp) + _timeoutDuration,
-               //We assume the act of submission is an implicit confirmation
-                numConfirmations: 1,
-                value: _value,
-                data: _data
-            })
-        );
+        uint256 currentTxIndex = txIndex;
 
-        isConfirmed[txIndex][msg.sender] = true;
+        transactions[currentTxIndex]  = Transaction({
+            to: _to,
+            executed: false,
+            timeout: uint64(block.timestamp) + _timeoutDuration,
+           //We assume the act of submission is an implicit confirmation
+            numConfirmations: 1,
+            value: _value,
+            data: _data
+        });
 
-        emit SubmitTransaction(msg.sender, txIndex, _to, _value, _data);
+        confirmations[currentTxIndex].add(msg.sender);
+        txIndex++;
+        txCount++;
+
+        emit SubmitTransaction(msg.sender, currentTxIndex, _to, _value, _data);
     }
 
     /**
@@ -294,7 +307,7 @@ contract MultiSignatureWallet is Initializable {
         txNotExpired(_txIndex);
         Transaction storage transaction = transactions[_txIndex];
         transaction.numConfirmations += 1;
-        isConfirmed[_txIndex][msg.sender] = true;
+        confirmations[_txIndex].add(msg.sender);
 
         emit ConfirmTransaction(msg.sender, _txIndex);
     }
@@ -308,10 +321,21 @@ contract MultiSignatureWallet is Initializable {
         txExists(_txIndex);
         notExecuted(_txIndex);
         txNotExpired(_txIndex);
-        Transaction storage transaction = transactions[_txIndex];
+        Transaction memory transaction = transactions[_txIndex];
         if (transaction.numConfirmations < numConfirmationsRequired)
             revert NotEnoughConfirmation();
-        transaction.executed = true;
+
+        // Remove the transaction from storage
+        delete transactions[_txIndex];
+        
+        // Clear all confirmations
+        confirmations[_txIndex].clear();
+
+        // Remove confirmations mapping
+        delete confirmations[_txIndex];
+
+        txCount--;
+
         (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
         if (!success) { revert ExecutionFailed(); }
             
@@ -328,14 +352,12 @@ contract MultiSignatureWallet is Initializable {
         txExists(_txIndex);
         notExecuted(_txIndex);
         txNotExpired(_txIndex);
-        if (!isConfirmed[_txIndex][msg.sender]) {
-            revert TransactionNotConfirmed();
-        }
+        if (!confirmations[_txIndex].contains(msg.sender)) revert TransactionNotConfirmed();
 
         Transaction storage transaction = transactions[_txIndex];
 
         transaction.numConfirmations -= 1;
-        isConfirmed[_txIndex][msg.sender] = false;
+        confirmations[_txIndex].remove(msg.sender);
 
         emit RevokeConfirmation(msg.sender, _txIndex);
     }
@@ -410,11 +432,13 @@ contract MultiSignatureWallet is Initializable {
     }
 
     /**
-     * @dev Function to retrieve the count of transactions submitted to the wallet.
-     * @return Total number of transactions in the wallet.
+     * @dev Checks if a transaction is confirmed by an owner.
+     * @param _txIndex Index of the transaction to check for.
+     * @param _owner Address of the owner.
      */
-    function getTransactionCount() public view returns (uint256) {
-        return transactions.length;
+    function isConfirmed(uint256 _txIndex, address _owner) external view returns (bool) {
+        txExists(_txIndex); 
+        return confirmations[_txIndex].contains(_owner);
     }
 
     /**
@@ -441,6 +465,7 @@ contract MultiSignatureWallet is Initializable {
             bytes memory data
         )
     {
+        txExists(_txIndex);
         Transaction storage transaction = transactions[_txIndex];
 
         return (
