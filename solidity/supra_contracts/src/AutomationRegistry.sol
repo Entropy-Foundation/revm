@@ -1074,7 +1074,15 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Function to enable the automation.
     function enableAutomation() external onlyOwner {
         if(regConfig.automationEnabled()) { revert AlreadyEnabled(); }
+
+        IAutomationController controller = IAutomationController(regConfig.automationController());
+        ( , , , CommonUtils.CycleState state) = controller.getCycleInfo();
         regConfig.setAutomationEnabled(true);
+        
+        if (state == CommonUtils.CycleState.READY) {
+            controller.moveToStartedState();
+            controller.updateConfigFromBuffer();
+        }
 
         emit AutomationEnabled(regConfig.automationEnabled());
     }
@@ -1082,7 +1090,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Function to disable the automation.
     function disableAutomation() external onlyOwner {
         if(!regConfig.automationEnabled()) { revert AlreadyDisabled(); }
+
+        IAutomationController controller = IAutomationController(regConfig.automationController());
+        ( , , , CommonUtils.CycleState state) = controller.getCycleInfo();
+
         regConfig.setAutomationEnabled(false);
+        if (state == CommonUtils.CycleState.FINISHED && !controller.isTransitionInProgress()) {
+            controller.tryMoveToSuspendedState();
+        }
 
         emit AutomationDisabled(regConfig.automationEnabled());
     }

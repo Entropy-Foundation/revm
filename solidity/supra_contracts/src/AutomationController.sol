@@ -118,57 +118,9 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         }
     }
 
-    /// @notice It will be triggered for automation registry caused by `supra_governance::reconfiguration` or DKG finalization
-    /// to update the automation registry state depending on SUPRA_NATIVE_AUTOMATION feature flag state.
-    /// If registry is not fully initialized nothing is done.
-    /// If native automation feature is disabled and automation cycle in STARTED state,
-    /// then automation lifecycle is suspended immediately. And detached managment will
-    /// initiate reprocessing of the available tasks which will end up in refund and cleanup actions.
-    /// Otherwise suspention is postponed until the end of the transition state.
-    /// Nothing will be done if automation cycle was already suspended, i.e. in READY state.
-    /// If native automation feature is enabled and automation lifecycle has been in READY state, then lifecycle is restarted.
-    function onNewCycle() public {
-        CommonUtils.CycleState state = cycleInfo.state(); 
-
-        // Check if automation is enabled
-        if (registry.isAutomationEnabled()) {
-            // If the lifecycle has been suspended and we are recovering from it, then we update config from buffer and
-            // then start a new cycle directly.
-            // Unless we are in READY state, the feature flag being enabled will not have any effect.
-            // All the other states mean that we are in the middle of previous transition, which should end
-            // before reenabling the feature.
-            if (state == CommonUtils.CycleState.READY) {
-                if(registry.totalTasks() > 0) {
-                    emit ErrorInconsistentSuspendedState();
-                } else {
-                    updateConfigFromBuffer();
-                    moveToStartedState();
-                }
-            }
-
-
-            // We do not update config here, as due to feature being disabled, cycle ends early so it is expected
-            // that the current fee-parameters will be used to calculate automation-fee for refund for a cycle
-            // that has been kept short.
-            // So the confing should remain intact.
-        } else if (state == CommonUtils.CycleState.STARTED) {
-            tryMoveToSuspendedState();
-        } else if (state == CommonUtils.CycleState.FINISHED && cycleInfo.ifTransitionStateExists()) {
-            if (!isTransitionInProgress()) {
-                // Just entered cycle-end phase, and meanwhile also feature has been disabled so it is safe to move to suspended state.
-                tryMoveToSuspendedState();
-            }
-            // Otherwise wait of the cycle transition to end and then feature flag value will be taken into account.
-        }
-        // If in already SUSPENDED state or in READY state then do nothing.
-    }
-
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
     function monitorCycleEnd() external {
         if (tx.origin != registry.getVmSigner()) { revert CallerNotVmSigner(); }
-        if (!registry.isAutomationEnabled()) {
-            return;
-        }
 
         if(cycleInfo.state() != CommonUtils.CycleState.STARTED || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
             return;
@@ -493,32 +445,30 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
         bool transitionFinalized = isTransitionFinalized();
         if (transitionFinalized) {
-
-            (bool updated, ) = address(registry).call(
-                abi.encodeCall(
-                    IAutomationRegistry.updateRegistryState,
-                    (
-                        cycleInfo.sysGasCommittedForNextCycle(),
-                        cycleInfo.gasCommittedForNextCycle(),
-                        cycleInfo.gasCommittedForNewCycle(),
-                        cycleInfo.transitionState.lockedFees,
-                        FINISHED
+            if (!registry.isAutomationEnabled() && cycleInfo.state() == CommonUtils.CycleState.FINISHED) {
+                _tryMoveToSuspendedState();
+            } else {
+                (bool updated, ) = address(registry).call(
+                    abi.encodeCall(
+                        IAutomationRegistry.updateRegistryState,
+                        (
+                            cycleInfo.sysGasCommittedForNextCycle(),
+                            cycleInfo.gasCommittedForNextCycle(),
+                            cycleInfo.gasCommittedForNewCycle(),
+                            cycleInfo.transitionState.lockedFees,
+                            FINISHED
+                        )
                     )
-                )
-            );
-            require(updated, UpdateRegistryStateFailed());
-    
-            // Set current timestamp as cycle start time
-            // Increment the cycle and update the state to STARTED
-            moveToStartedState();
-            if(registry.getTotalActiveTasks() > 0 ) {
-                uint256[] memory activeTasks = registry.getAllActiveTaskIds();
-                emit ActiveTasks(activeTasks);
-            }
-    
-            // Check if automation is disabled
-            if (!registry.isAutomationEnabled()) {
-                tryMoveToSuspendedState();
+                );
+                require(updated, UpdateRegistryStateFailed());
+
+                // Set current timestamp as cycle start time
+                // Increment the cycle and update the state to STARTED
+                _moveToStartedState();
+                if(registry.getTotalActiveTasks() > 0 ) {
+                    uint256[] memory activeTasks = registry.getAllActiveTaskIds();
+                    emit ActiveTasks(activeTasks);
+                }
             }
         }
     }   
@@ -547,8 +497,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         if (registry.isAutomationEnabled()) {
             // Update the config in case if transition flow is STARTED -> SUSPENDED-> STARTED.
             // to reflect new configs for the new cycle if it has been updated during SUSPENDED state processing
-            updateConfigFromBuffer();
-            moveToStartedState();
+            _updateConfigFromBuffer();
+            _moveToStartedState();
         } else {
             moveToReadyState();
         }
@@ -568,7 +518,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     ///   c) when cycle transition was in progress and there was a feature suspension, but it could not be applied,
     ///      and postponed till the cycle transition concludes
     /// In all the cases if there are no tasks in registry the state will be updated directly to READY state.
-    function tryMoveToSuspendedState() private {
+    function _tryMoveToSuspendedState() private {
         if(registry.totalTasks() == 0) {
             // Registry is empty move to ready state directly
             updateCycleStateTo(CommonUtils.CycleState.READY);
@@ -612,6 +562,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         }
     }
 
+    function tryMoveToSuspendedState() external {
+        if (msg.sender != address(registry)) { revert CallerNotRegistry(); }
+        _tryMoveToSuspendedState();
+    }
+
     /// @notice Transitions cycle state to the READY state. 
     function moveToReadyState() private {
         // If the cycle duration updated has been identified during transtion, then the transition state is kept
@@ -645,7 +600,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     }
 
     /// @notice Transitions cycle state to the STARTED state. 
-    function moveToStartedState() private {
+    function _moveToStartedState() private {
         cycleInfo.setIndex(cycleInfo.index() + 1);
 
         cycleInfo.setStartTime(uint64(block.timestamp));
@@ -656,6 +611,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         }
 
         updateCycleStateTo(CommonUtils.CycleState.STARTED);
+    }
+
+    function moveToStartedState() external {
+        if (msg.sender != address(registry)) { revert CallerNotRegistry(); }
+        _moveToStartedState();
     }
 
     /// @notice Updates the state of the cycle.
@@ -684,38 +644,42 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Helper function called when cycle end is identified.
     function onCycleEndInternal() private {
-        if(registry.totalTasks() == 0) {
-            // Registry is empty update config buffer and move to STARTED state directly
-            updateConfigFromBuffer();
-            moveToStartedState();
-        } else {
-            uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
+        if (!registry.isAutomationEnabled()) {
+            _tryMoveToSuspendedState();
+        } else{
+            if(registry.totalTasks() == 0) {
+                // Registry is empty update config buffer and move to STARTED state directly
+                _updateConfigFromBuffer();
+                _moveToStartedState();
+            } else {
+                uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
-            cycleInfo.setRefundDuration(0);
-            cycleInfo.setNewCycleDuration(cycleInfo.durationSecs());
-            cycleInfo.setAutomationFeePerSec(0);
-            cycleInfo.setGasCommittedForNewCycle(registry.getGasCommittedForNextCycle());
-            cycleInfo.setGasCommittedForNextCycle(0);
-            cycleInfo.setSysGasCommittedForNextCycle (0);
-            cycleInfo.transitionState.lockedFees = 0;
-            cycleInfo.setNextTaskIndexPosition(0);
-            
-            updateExpectedTasks(expectedTasksToBeProcessed);
-            cycleInfo.setTransitionStateExists(true);
-            
-            // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.
-            updateConfigFromBuffer();
+                cycleInfo.setRefundDuration(0);
+                cycleInfo.setNewCycleDuration(cycleInfo.durationSecs());
+                cycleInfo.setAutomationFeePerSec(0);
+                cycleInfo.setGasCommittedForNewCycle(registry.getGasCommittedForNextCycle());
+                cycleInfo.setGasCommittedForNextCycle(0);
+                cycleInfo.setSysGasCommittedForNextCycle (0);
+                cycleInfo.transitionState.lockedFees = 0;
+                cycleInfo.setNextTaskIndexPosition(0);
 
-            // Calculate automation fee per second for the new cycle only after configuration is updated.
-            // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
-            // and will be used to charge tasks during transition process.
-            cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
-            updateCycleStateTo(CommonUtils.CycleState.FINISHED);
+                updateExpectedTasks(expectedTasksToBeProcessed);
+                cycleInfo.setTransitionStateExists(true);
+
+                // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.
+                _updateConfigFromBuffer();
+
+                // Calculate automation fee per second for the new cycle only after configuration is updated.
+                // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
+                // and will be used to charge tasks during transition process.
+                cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
+                updateCycleStateTo(CommonUtils.CycleState.FINISHED);
+            }
         }
     }
     
     /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
-    function updateConfigFromBuffer() private {
+    function _updateConfigFromBuffer() private {
         if(registry.ifConfigBufferExists()) {            
             (bool sent, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.applyPendingConfig, ()));
             require(sent, ConfigUpdateFailed());
@@ -730,6 +694,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         }
     }
 
+    function updateConfigFromBuffer() external {
+        if (msg.sender != address(registry)) { revert CallerNotRegistry(); }
+        _updateConfigFromBuffer();
+    }
+
     /// @notice Checks if the cycle transition is finalized.
     /// @return Bool representing if the cycle transition is finalized.
     function isTransitionFinalized() private view returns (bool) {
@@ -738,7 +707,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Checks if the cycle transition is in progress.
     /// @return Bool representing if the cycle transition is in progress.
-    function isTransitionInProgress() private view returns (bool) {
+    function isTransitionInProgress() public view returns (bool) {
         return cycleInfo.nextTaskIndexPosition() != 0;
     }
     
