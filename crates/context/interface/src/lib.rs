@@ -15,7 +15,7 @@ pub mod result;
 pub mod transaction;
 
 pub use block::Block;
-pub use cfg::{Cfg, CreateScheme, TransactTo};
+pub use cfg::{Cfg, CreateScheme, TransactTo, ExecutionMode};
 pub use context::{ContextError, ContextSetters, ContextTr};
 pub use database_interface::{DBErrorMarker, Database};
 pub use either;
