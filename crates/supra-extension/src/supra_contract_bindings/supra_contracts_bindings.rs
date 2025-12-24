@@ -13,23 +13,24 @@ library CommonUtils {
     non_snake_case,
     clippy::pub_underscore_fields,
     clippy::style,
-    clippy::empty_structs_with_brackets,
-    elided_lifetimes_in_paths
+    clippy::empty_structs_with_brackets
 )]
 pub mod CommonUtils {
     use super::*;
+    use alloy::sol_types as alloy_sol_types;
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct CycleState(u8);
     const _: () = {
+        use alloy::sol_types as alloy_sol_types;
         #[automatically_derived]
         impl alloy_sol_types::private::SolTypeValue<CycleState> for u8 {
             #[inline]
             fn stv_to_tokens(
                 &self,
-            ) -> <alloy_sol_types::sol_data::Uint<
+            ) -> <alloy::sol_types::sol_data::Uint<
                 8,
             > as alloy_sol_types::SolType>::Token<'_> {
                 alloy_sol_types::private::SolTypeValue::<
@@ -328,8 +329,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
         non_camel_case_types,
         non_snake_case,
         clippy::pub_underscore_fields,
-        clippy::style,
-        elided_lifetimes_in_paths
+        clippy::style
     )]
     const _: () = {
         use alloy::sol_types as alloy_sol_types;
@@ -367,7 +367,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
         #[cfg(test)]
         #[allow(dead_code, unreachable_patterns)]
         fn _type_assertion(
-            _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+            _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
         ) {
             match _t {
                 alloy_sol_types::private::AssertTypeEq::<
@@ -1219,8 +1219,7 @@ interface SupraContractsBindings {
     non_snake_case,
     clippy::pub_underscore_fields,
     clippy::style,
-    clippy::empty_structs_with_brackets,
-    elided_lifetimes_in_paths
+    clippy::empty_structs_with_brackets
 )]
 pub mod SupraContractsBindings {
     use super::*;
@@ -1275,7 +1274,7 @@ function blockPrologue() external;
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1307,7 +1306,7 @@ function blockPrologue() external;
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1419,7 +1418,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1459,7 +1458,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1584,7 +1583,7 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1626,7 +1625,7 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1762,7 +1761,7 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1796,7 +1795,7 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1918,7 +1917,7 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -1958,7 +1957,7 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2085,7 +2084,7 @@ function getTaskIdList() external view returns (uint256[] memory);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2123,7 +2122,7 @@ function getTaskIdList() external view returns (uint256[] memory);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2242,7 +2241,7 @@ function getTransitionInfo() external view returns (uint64, uint128);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2279,7 +2278,7 @@ function getTransitionInfo() external view returns (uint64, uint128);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2404,7 +2403,7 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2436,7 +2435,7 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2553,7 +2552,7 @@ function isAutomationEnabled() external view returns (bool);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2587,7 +2586,7 @@ function isAutomationEnabled() external view returns (bool);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2705,7 +2704,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
@@ -2740,7 +2739,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple<'_>>,
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
             ) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
