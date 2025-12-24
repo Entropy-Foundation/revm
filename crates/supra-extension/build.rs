@@ -1,16 +1,24 @@
-use std::process::Command;
 use std::env;
 use std::path::PathBuf;
 
+use clap::Parser;
+use forge::cmd::bind::BindArgs;
+
 fn main() {
     // 1. Tell Cargo to rerun the script if the contracts directory changes
-    // println!("cargo:rerun-if-changed=solidity/supra_contracts/");
+    let cargo_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set"),
+    );
+    println!(
+        "cargo:rerun-if-changed={}/../../solidity/supra_contracts/src/SupraContractsBindings.sol",
+        cargo_dir.display()
+    );
 
     // Determine the output directory for the generated bindings
-    let cargo_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("OUT_DIR environment variable not set"));
 
     let contracts_relative_path = PathBuf::from("../../solidity/supra_contracts");
-    let contracts_build_config = cargo_dir.join(contracts_relative_path.join(PathBuf::from("foundry.toml")));
+    let contracts_build_config =
+        cargo_dir.join(contracts_relative_path.join(PathBuf::from("foundry.toml")));
     let contract_names = "SupraContracts";
 
     let bindings_path = cargo_dir
@@ -19,34 +27,14 @@ fn main() {
 
     // Ensure the output directory exists
     std::fs::create_dir_all(bindings_path.as_path()).expect("Failed to create bindings directory");
-
-    // 2. Build the contracts using forge build
-    // This step ensures the contract artifacts are up-to-date
-    let build_output = Command::new("forge")
-        .arg("build")
-        .arg("--config-path")
-        .arg(contracts_build_config.display().to_string())
-        .status()
-        .expect("Failed to execute forge build. Is foundry installed and in PATH?");
-
-    if !build_output.success() {
-        panic!("forge build failed: {:?}", build_output);
-    }
-
-    // 3. Generate the bindings using forge bind
-    let bind_output = Command::new("forge")
-        .arg("bind")
-        .arg("--bindings-path")
-        .arg(&bindings_path)
-        .arg("--module") // Generate as a module (lib.rs file inside the path)
-        .arg("--overwrite") // Overwrite existing files
-        .arg("--select")
-        .arg(contract_names)
-        .arg("--alloy")
-        .status()
-        .expect("Failed to execute forge bind. Is foundry installed and in PATH?");
-
-    if !bind_output.success() {
-        panic!("forge bind failed");
-    }
+    let command_inputs = format!(
+        "bind --bindings-path {} --overwrite --module --select {} --alloy --config-path {}",
+        bindings_path.display(),
+        contract_names,
+        contracts_build_config.display()
+    );
+    let parsed_inputs = shlex::split(&command_inputs).expect("Failed to parse command string");
+    let bind_cmd: BindArgs =
+        BindArgs::try_parse_from(parsed_inputs).expect("Failed to parse command arguments");
+    bind_cmd.run().expect("Failed to execute bind command");
 }
