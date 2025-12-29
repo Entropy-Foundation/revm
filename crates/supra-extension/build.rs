@@ -18,6 +18,7 @@ fn main() {
     // To do it:
     // - uncomment below code
     // - uncomment build dependencies in Cargo.toml file of this project
+    // - uncomment forge library reference in top level Cargo.toml file
     // - build the project
 
 
