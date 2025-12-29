@@ -29,9 +29,9 @@ workspace = true
 
 
 [build-dependencies]
-forge = { workspace =  true }
-clap = { workspace = true }
-shlex = { workspace = true }
+#forge = { workspace =  true }
+#clap = { workspace = true }
+#shlex = { workspace = true }
 
 [features]
 serde = ["alloy-serde"]

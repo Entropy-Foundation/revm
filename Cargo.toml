@@ -80,9 +80,11 @@ alloy-contract = { version = "1.0.19"}
 alloy = { version = "1.0.19", features = ["sol-types", "contract"] }
 alloy-serde = { version = "1.0.19" }
 
-forge = { git = "https://github.com/foundry-rs/foundry.git", tag="v1.4.1"}
-alloy-chains = { version = "0.2.13" }
-shlex = { version = "1.3.0" }
+# libraries required to build supra-contract bindings 
+# For more detaisl see crates/supra-extension/build.rs
+#forge = { git = "https://github.com/foundry-rs/foundry.git", tag="v1.4.1"}
+#alloy-chains = { version = "0.2.13" }
+#shlex = { version = "1.3.0" }
 
 # precompiles
 ark-bls12-381 = { version = "0.5", default-features = false }
