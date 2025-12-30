@@ -22,7 +22,7 @@ contract MultiSignatureWallet is Initializable {
     /**
      * @dev Emitted when a new transaction is submitted.
      * @param owner The address of the owner who submitted the transaction.
-     * @param txIndex The index of the transaction in the transactions array.
+     * @param txIndex The index of the transaction.
      * @param to The contract address the transaction is directed to.
      * @param value The amount of ether to be sent with the transaction.
      * @param data The data payload of the transaction.
@@ -36,23 +36,29 @@ contract MultiSignatureWallet is Initializable {
     );
 
     /**
+     * @dev Emitted when a transaction is expired.
+     * @param txIndex The index of the expired transaction.
+     */
+    event TransactionExpired(uint256 indexed txIndex);
+    
+    /**
      * @dev Emitted when a transaction is confirmed by an owner.
      * @param owner The address of the owner who confirmed the transaction.
-     * @param txIndex The index of the transaction in the transactions array.
+     * @param txIndex The index of the transaction.
      */
     event ConfirmTransaction(address indexed owner, uint256 indexed txIndex);
 
     /**
      * @dev Emitted when a confirmation is revoked by an owner.
      * @param owner The address of the owner who revoked the confirmation.
-     * @param txIndex The index of the transaction in the transactions array.
+     * @param txIndex The index of the transaction.
      */
     event RevokeConfirmation(address indexed owner, uint256 indexed txIndex);
 
     /**
      * @dev Emitted when a transaction is executed.
      * @param owner The address of the owner who executed the transaction.
-     * @param txIndex The index of the transaction in the transactions array.
+     * @param txIndex The index of the transaction.
      * @param txData The data returned by the transaction call.
      */
     event ExecuteTransaction(address indexed owner, uint256 indexed txIndex, bytes txData);
@@ -155,11 +161,6 @@ contract MultiSignatureWallet is Initializable {
     error TransactionNotConfirmed();
 
     /**
-     * @dev Error for when a transaction has already expired.
-     */
-    error TransactionAlreadyExpired();
-
-    /**
      * @dev Error for when a function is called by an account other than the multisig wallet itself.
      */
     error OnlyMultisigAccountCanCall();
@@ -170,7 +171,6 @@ contract MultiSignatureWallet is Initializable {
     // Structure to hold transaction details
     struct Transaction {
         address to; // Transaction target address
-        bool executed; // Flag indicating if the transaction has been executed
         uint64 timeout; // Expiry timestamp of the transaction
         uint24 numConfirmations; // Number of confirmations received for the transaction
         uint256 value; // Amount of ether sent with the transaction
@@ -208,16 +208,29 @@ contract MultiSignatureWallet is Initializable {
         revert InvalidTxnId();
     }
 
-    // Function to check if a transaction has not been executed
-    function notExecuted(uint256 _txIndex) private view {
-        if (transactions[_txIndex].executed) 
-        revert TxnAlreadyExecuted();
+    /// @dev Helper function to remove a transaction and emit an event if it is expired.
+    /// @param _txIndex Index of the transaction.
+    /// @return bool True if the transaction was expired and removed.
+    function cleanupIfExpired(uint256 _txIndex) private returns (bool) {
+        if (transactions[_txIndex].timeout < block.timestamp) {
+            removeTransaction(_txIndex);
+            emit TransactionExpired(_txIndex);
+
+            return true;
+        }
+        return false;
     }
 
-    // Function to check if a transaction has not been expired or not
-    function txNotExpired(uint256 _txIndex) private view {
-        if (transactions[_txIndex].timeout < block.timestamp)
-            revert TransactionAlreadyExpired();
+    /// @dev Helper function to remove a transaction from the storage.
+    /// @param _txIndex Index of the transaction to remove.
+    function removeTransaction(uint256 _txIndex) private {
+        // Remove the transaction from storage
+        delete transactions[_txIndex];
+
+        // Remove confirmations mapping
+        delete confirmations[_txIndex];
+
+        txCount--;
     }
 
     // Function to check if a transaction has not been confirmed by the caller
@@ -280,7 +293,6 @@ contract MultiSignatureWallet is Initializable {
 
         transactions[currentTxIndex]  = Transaction({
             to: _to,
-            executed: false,
             timeout: uint64(block.timestamp) + _timeoutDuration,
            //We assume the act of submission is an implicit confirmation
             numConfirmations: 1,
@@ -297,14 +309,17 @@ contract MultiSignatureWallet is Initializable {
 
     /**
      * @dev Function to confirm an existing transaction.
+     * @dev If the transaction is expired, it is deleted and TransactionExpired is emitted.
      * @param _txIndex Index of the transaction to confirm.
      */
     function confirmTransaction(uint256 _txIndex) public {
         onlyOwner(msg.sender);
         txExists(_txIndex);
-        notExecuted(_txIndex);
         notConfirmed(_txIndex);
-        txNotExpired(_txIndex);
+        if (cleanupIfExpired(_txIndex)) {
+            // Transaction expired, action is no longer applicable
+            return;
+        }
         Transaction storage transaction = transactions[_txIndex];
         transaction.numConfirmations += 1;
         confirmations[_txIndex].add(msg.sender);
@@ -314,27 +329,21 @@ contract MultiSignatureWallet is Initializable {
 
     /**
      * @dev Function to execute a confirmed transaction.
+     * @dev If the transaction is expired, it is deleted and TransactionExpired is emitted.
      * @param _txIndex Index of the transaction to execute.
      */
     function executeTransaction(uint256 _txIndex) public returns (bytes memory) {
         onlyOwner(msg.sender);
         txExists(_txIndex);
-        notExecuted(_txIndex);
-        txNotExpired(_txIndex);
+        if (cleanupIfExpired(_txIndex)) {
+            // Transaction expired, action is no longer applicable
+            return bytes("");
+        }
         Transaction memory transaction = transactions[_txIndex];
         if (transaction.numConfirmations < numConfirmationsRequired)
             revert NotEnoughConfirmation();
 
-        // Remove the transaction from storage
-        delete transactions[_txIndex];
-        
-        // Clear all confirmations
-        confirmations[_txIndex].clear();
-
-        // Remove confirmations mapping
-        delete confirmations[_txIndex];
-
-        txCount--;
+        removeTransaction(_txIndex);
 
         (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
         if (!success) { revert ExecutionFailed(); }
@@ -345,13 +354,16 @@ contract MultiSignatureWallet is Initializable {
 
     /**
      * @dev Function to revoke a previously given confirmation for a transaction.
+     * @dev If the transaction is expired, it is deleted and TransactionExpired is emitted.
      * @param _txIndex Index of the transaction to revoke confirmation.
      */
     function revokeConfirmation(uint256 _txIndex) external {
         onlyOwner(msg.sender);
         txExists(_txIndex);
-        notExecuted(_txIndex);
-        txNotExpired(_txIndex);
+        if (cleanupIfExpired(_txIndex)) {
+            // Transaction expired, action is no longer applicable
+            return;
+        }
         if (!confirmations[_txIndex].contains(msg.sender)) revert TransactionNotConfirmed();
 
         Transaction storage transaction = transactions[_txIndex];
@@ -446,7 +458,6 @@ contract MultiSignatureWallet is Initializable {
      * @param _txIndex Index of the transaction to retrieve details for.
      * @return to Transaction target address.
      * @return value Amount of ether sent with the transaction.
-     * @return executed Boolean indicating if the transaction has been executed.
      * @return numConfirmations Number of confirmations received for the transaction.
      * @return timeout Expiry timestamp of the transaction.
      * @return data Data payload of the transaction.
@@ -459,7 +470,6 @@ contract MultiSignatureWallet is Initializable {
         returns (
             address to,
             uint256 value,
-            bool executed,
             uint24 numConfirmations,
             uint64 timeout,
             bytes memory data
@@ -471,7 +481,6 @@ contract MultiSignatureWallet is Initializable {
         return (
             transaction.to,
             transaction.value,
-            transaction.executed,
             transaction.numConfirmations,
             transaction.timeout,
             transaction.data
