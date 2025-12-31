@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
-import {CommonUtils} from "./CommonUtils.sol";
+import {LibCommonUtils} from "./LibCommonUtils.sol";
 import {LibRegistry} from "./LibRegistry.sol";
 
 import {IAutomationController} from "./IAutomationController.sol";
@@ -13,7 +13,7 @@ import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/uti
 
 contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUPSUpgradeable {
     using EnumerableSet for *;
-    using CommonUtils for *;
+    using LibCommonUtils for *;
     using LibRegistry for *;
 
     /// @dev Constant for 10^8
@@ -49,7 +49,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         address indexed owner, 
         uint128 registrationFee, 
         uint128 lockedDepositFee, 
-        CommonUtils.TaskDetails taskMetadata
+        LibCommonUtils.TaskDetails taskMetadata
     );
 
     /// @notice Emitted when a system task is registered.
@@ -57,7 +57,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 indexed taskIndex, 
         address indexed owner, 
         uint256 timestamp, 
-        CommonUtils.TaskDetails taskMetadata
+        LibCommonUtils.TaskDetails taskMetadata
     );
     
     /// @notice Emitted when an account is authorized as submitter for system tasks.
@@ -257,13 +257,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
+        ( , uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        if(state != LibCommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
         if(totalTasks() >= regConfig.taskCapacity()) { revert TaskCapacityReached(); }
-        if(_type != uint8(CommonUtils.TaskType.UST)) { revert InvalidTaskType(); }
+        if(_type != uint8(LibCommonUtils.TaskType.UST)) { revert InvalidTaskType(); }
 
         uint64 regTime = uint64(block.timestamp);
-        validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
+        validateTaskDuration(regTime, _expiryTime, LibCommonUtils.TaskType.UST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);
         validateInputs(_payloadTx, _maxGasAmount, _txHash);
         if(_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
 
@@ -288,8 +288,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _expiryTime,
             taskIndex,      // priority set to taskIndex
             msg.sender,
-            CommonUtils.TaskType.UST,
-            CommonUtils.TaskState.PENDING,
+            LibCommonUtils.TaskType.UST,
+            LibCommonUtils.TaskState.PENDING,
             _payloadTx,
             _auxData
         );
@@ -328,14 +328,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         if(!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
+        ( , uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        if(state != LibCommonUtils.CycleState.STARTED) { revert CycleNotStarted(); }
         if(totalSystemTasks() >= regConfig.sysTaskCapacity()) { revert TaskCapacityReached(); }
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }        
-        if(_type != uint8(CommonUtils.TaskType.GST)) { revert InvalidTaskType(); }
+        if(_type != uint8(LibCommonUtils.TaskType.GST)) { revert InvalidTaskType(); }
 
         uint64 regTime = uint64(block.timestamp);
-        validateTaskDuration(regTime, _expiryTime, CommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);        
+        validateTaskDuration(regTime, _expiryTime, LibCommonUtils.TaskType.GST, regConfig.taskDurationCapSecs(), regConfig.sysTaskDurationCapSecs(), startTime, durationSecs);        
         validateInputs(_payloadTx, _maxGasAmount, _txHash);
 
         uint128 gasCommitted = _maxGasAmount + regSysState.gasCommittedForNextCycle();
@@ -357,8 +357,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _expiryTime,
             taskPriority,
             msg.sender,
-            CommonUtils.TaskType.GST,
-            CommonUtils.TaskState.PENDING,
+            LibCommonUtils.TaskType.GST,
+            LibCommonUtils.TaskState.PENDING,
             _payloadTx,
             _auxData
         );
@@ -385,18 +385,18 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        if(state != LibCommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         
-        CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
+        LibCommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
+        if(checkTaskType(_taskIndex, LibCommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
         if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
-        if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if(task.state == LibCommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         
-        if (task.state == CommonUtils.TaskState.PENDING) {
+        if (task.state == LibCommonUtils.TaskState.PENDING) {
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
             _removeTask(_taskIndex, false); 
             bool result = safeDepositRefund(
@@ -409,7 +409,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         } else { 
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
             // Active tasks will be refunded the deposited amount fully at the end of the cycle.
-            LibRegistry.setState(regState.tasks[_taskIndex], uint8(CommonUtils.TaskState.CANCELLED));
+            LibRegistry.setState(regState.tasks[_taskIndex], uint8(LibCommonUtils.TaskState.CANCELLED));
         }
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
@@ -438,24 +438,24 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        if(state != LibCommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         if(!ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
         
         // Check if GST
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
+        if(checkTaskType(_taskIndex, LibCommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
 
-        CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
+        LibCommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
         if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
-        if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if(task.state == LibCommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
 
-        if(task.state == CommonUtils.TaskState.PENDING) {
+        if(task.state == LibCommonUtils.TaskState.PENDING) {
             _removeTask(_taskIndex, true);
         } else {
-            LibRegistry.setState(regState.tasks[_taskIndex], uint8(CommonUtils.TaskState.CANCELLED));
+            LibRegistry.setState(regState.tasks[_taskIndex], uint8(LibCommonUtils.TaskState.CANCELLED));
         }
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
@@ -482,8 +482,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        ( , uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        if(state != LibCommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
         // Compute the automation fee multiplier for cycle
@@ -504,13 +504,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             if(ifTaskExists(_taskIndexes[i])) {
-                CommonUtils.TaskDetails memory task = regState.tasks[_taskIndexes[i]].getTaskDetails();
+                LibCommonUtils.TaskDetails memory task = regState.tasks[_taskIndexes[i]].getTaskDetails();
 
                 // Check if authorised
                 if(msg.sender != task.owner) { revert UnauthorizedAccount(); }
                 
                 // Check if UST
-                if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
+                if(checkTaskType(_taskIndexes[i], LibCommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
 
                 // Remove task from the registry
                 _removeTask(_taskIndexes[i], false);
@@ -520,7 +520,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 // This check means the task was expected to be executed in the next cycle, but it has been stopped.
                 // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
                 // Also it checks that task should not be cancelled.
-                if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
+                if(task.state != LibCommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     // Prevent underflow in gas committed
                     if(regState.gasCommittedForNextCycle() < task.maxGasAmount) { revert GasCommittedValueUnderflow(); }
                     // Reduce committed gas by the stopped task's max gas
@@ -529,7 +529,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
                 uint128 cycleFeeRefund;
                 uint128 depositRefund;
-                if(task.state != CommonUtils.TaskState.PENDING) {
+                if(task.state != LibCommonUtils.TaskState.PENDING) {
                     uint128 taskFee = _calculateTaskFee(
                         task.state,
                         task.expiryTime,
@@ -596,8 +596,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
         
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        ( , uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
+        if(state != LibCommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
@@ -611,17 +611,17 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             if(ifTaskExists(_taskIndexes[i])) {
-                CommonUtils.TaskDetails memory task = regState.tasks[_taskIndexes[i]].getTaskDetails();
+                LibCommonUtils.TaskDetails memory task = regState.tasks[_taskIndexes[i]].getTaskDetails();
 
                 if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
 
                 // Check if GST
-                if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
+                if(checkTaskType(_taskIndexes[i], LibCommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
                 _removeTask(_taskIndexes[i], true);
                 // Remove from active tasks
                 require(regState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
-                if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
+                if(task.state != LibCommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     // Prevent underflow in gas committed
                     if(regSysState.gasCommittedForNextCycle() < task.maxGasAmount) { revert GasCommittedValueUnderflow(); } 
                     regSysState.setGasCommittedForNextCycle(regSysState.gasCommittedForNextCycle() - task.maxGasAmount);
@@ -677,7 +677,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     function validateTaskDuration(
         uint64 _regTime,
         uint64 _expiryTime,    
-        CommonUtils.TaskType _type,
+        LibCommonUtils.TaskType _type,
         uint64 _taskDurationCapSecs,
         uint64 _sysTaskDurationCapSecs,
         uint64 _cycleStartTime, 
@@ -686,9 +686,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(_expiryTime <= _regTime) { revert InvalidExpiryTime(); }
         
         uint64 taskDuration = _expiryTime - _regTime;
-        if(_type == CommonUtils.TaskType.UST) {
+        if(_type == LibCommonUtils.TaskType.UST) {
             if(taskDuration > _taskDurationCapSecs) { revert InvalidTaskDuration(); }
-        } else if(_type == CommonUtils.TaskType.GST) {
+        } else if(_type == LibCommonUtils.TaskType.GST) {
             if ( taskDuration > _sysTaskDurationCapSecs) { revert InvalidTaskDuration(); }
         } else {
             revert InvalidTypeForTask();
@@ -881,7 +881,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @param _registryMaxGasCap Registry max gas cap
     /// @return Calculated task fee for the interval the task will be active.
     function _calculateTaskFee(
-        CommonUtils.TaskState _state,
+        LibCommonUtils.TaskState _state,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint64 _potentialFeeTimeframe,
@@ -903,7 +903,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // This way bad-actors will be discourged to submit small and short tasks with big occupancy by blocking other
         // good-actors register tasks.
         uint64 actualFeeTimeframe; 
-        if(_state == CommonUtils.TaskState.PENDING) {
+        if(_state == LibCommonUtils.TaskState.PENDING) {
             actualFeeTimeframe = _potentialFeeTimeframe;
         } else {
             actualFeeTimeframe = taskActiveTimeframe < _potentialFeeTimeframe ? taskActiveTimeframe : _potentialFeeTimeframe;
@@ -1076,10 +1076,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(regConfig.automationEnabled()) { revert AlreadyEnabled(); }
 
         IAutomationController controller = IAutomationController(regConfig.automationController());
-        ( , , , CommonUtils.CycleState state) = controller.getCycleInfo();
+        ( , , , LibCommonUtils.CycleState state) = controller.getCycleInfo();
         regConfig.setAutomationEnabled(true);
         
-        if (state == CommonUtils.CycleState.READY) {
+        if (state == LibCommonUtils.CycleState.READY) {
             controller.moveToStartedState();
             controller.updateConfigFromBuffer();
         }
@@ -1092,10 +1092,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(!regConfig.automationEnabled()) { revert AlreadyDisabled(); }
 
         IAutomationController controller = IAutomationController(regConfig.automationController());
-        ( , , , CommonUtils.CycleState state) = controller.getCycleInfo();
+        ( , , , LibCommonUtils.CycleState state) = controller.getCycleInfo();
 
         regConfig.setAutomationEnabled(false);
-        if (state == CommonUtils.CycleState.FINISHED && !controller.isTransitionInProgress()) {
+        if (state == LibCommonUtils.CycleState.FINISHED && !controller.isTransitionInProgress()) {
             controller.tryMoveToSuspendedState();
         }
 
@@ -1175,7 +1175,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Function to update state of the task.
     /// @param _taskIndex Index of the task.
     /// @param _taskState State to update task to.
-    function updateTaskState(uint64 _taskIndex, CommonUtils.TaskState _taskState) external {
+    function updateTaskState(uint64 _taskIndex, LibCommonUtils.TaskState _taskState) external {
         onlyController();
         LibRegistry.setState(regState.tasks[_taskIndex], uint8(_taskState));
     }
@@ -1226,7 +1226,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Internally calls _calculateTaskFee, reverts if caller is not AutomationController.
     function calculateTaskFee(
-        CommonUtils.TaskState _state,
+        LibCommonUtils.TaskState _state,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint64 _potentialFeeTimeframe,
@@ -1259,7 +1259,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     ) external {
         onlyController();
         // Check if task is UST
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
+        if(checkTaskType(_taskIndex, LibCommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
         _removeTask(_taskIndex, false);
@@ -1280,14 +1280,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint256 _cycleLockedFees
     ) external returns (uint256) {
         onlyController();
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
+        if(checkTaskType(_taskIndex, LibCommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
 
-        CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
+        LibCommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
         // Do not attempt fee refund if remaining duration is 0
         (uint64 refundDuration, uint128 automationFeePerSec) = IAutomationController(regConfig.automationController()).getTransitionInfo();
 
-        if (task.state != CommonUtils.TaskState.PENDING && refundDuration != 0) {
+        if (task.state != LibCommonUtils.TaskState.PENDING && refundDuration != 0) {
             uint128 registryMaxGasCap = getRegistryMaxGasCap();
             uint128 _refund = _calculateTaskFee(
                 task.state,
@@ -1387,9 +1387,9 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Retrieves the details of automation tasks by their task index. Skips a task if it doesn't exist.
     /// @param _taskIndexes Input task indexes to get details of.
     /// @return Task details of the tasks that exist.
-    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (CommonUtils.TaskDetails[] memory) {
+    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (LibCommonUtils.TaskDetails[] memory) {
         uint256 count = _taskIndexes.length;
-        CommonUtils.TaskDetails[] memory temp =  new CommonUtils.TaskDetails[](count);
+        LibCommonUtils.TaskDetails[] memory temp =  new LibCommonUtils.TaskDetails[](count);
         uint256 exists;
 
         for (uint256 i = 0; i < count; i++) {
@@ -1399,7 +1399,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             }
         }
 
-        CommonUtils.TaskDetails[] memory taskDetails =  new CommonUtils.TaskDetails[](exists);
+        LibCommonUtils.TaskDetails[] memory taskDetails =  new LibCommonUtils.TaskDetails[](exists);
         for (uint256 i = 0; i < exists; i++) {
             taskDetails[i] = temp[i];            
         }
@@ -1438,7 +1438,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Returns the details of a task. Reverts if task doesn't exist.
     /// @param _taskIndex Task index to get details for.
-    function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory) {
+    function getTaskDetails(uint64 _taskIndex) external view returns (LibCommonUtils.TaskDetails memory) {
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         return regState.tasks[_taskIndex].getTaskDetails();
     }
@@ -1458,7 +1458,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Validates the input task type against the task type.
     /// @param _taskIndex Index of the task.
     /// @param _type Input task type.
-    function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
+    function checkTaskType(uint64 _taskIndex, LibCommonUtils.TaskType _type) public view returns (bool) {
         return _type == regState.tasks[_taskIndex].taskType();
     }
 
@@ -1470,7 +1470,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Returns the state of the task 
     /// @param _taskIndex Task index of the task to query.
-    function getTaskState(uint64 _taskIndex) external view returns (CommonUtils.TaskState) {
+    function getTaskState(uint64 _taskIndex) external view returns (LibCommonUtils.TaskState) {
         return LibRegistry.state(regState.tasks[_taskIndex]);
     }
 
@@ -1542,18 +1542,18 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Checks whether there is an active task in registry with specified input task index.
     function hasActiveUserTask(address _account, uint64 _taskIndex) external view returns (bool) {
-        return hasActiveTaskOfType(_account, _taskIndex, CommonUtils.TaskType.UST);
+        return hasActiveTaskOfType(_account, _taskIndex, LibCommonUtils.TaskType.UST);
     }
 
     /// @notice Checks whether there is an active system task in registry with specified input task index.
     function hasActiveSystemTask(address _account, uint64 _taskIndex) external view returns (bool) {
-        return hasActiveTaskOfType(_account, _taskIndex, CommonUtils.TaskType.GST);
+        return hasActiveTaskOfType(_account, _taskIndex, LibCommonUtils.TaskType.GST);
     }
 
     /// @notice Checks whether there is an active task in registry with specified input task index of the input type.
     /// The type can be either 0 for user submitted tasks, and 1 for governance authorized tasks.
-    function hasActiveTaskOfType(address _account, uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
-        return regState.tasks[_taskIndex].owner() == _account && LibRegistry.state(regState.tasks[_taskIndex]) != CommonUtils.TaskState.PENDING && checkTaskType(_taskIndex, _type);
+    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommonUtils.TaskType _type) public view returns (bool) {
+        return regState.tasks[_taskIndex].owner() == _account && LibRegistry.state(regState.tasks[_taskIndex]) != LibCommonUtils.TaskState.PENDING && checkTaskType(_taskIndex, _type);
     }
 
     /// @notice Checks if config buffer exists.

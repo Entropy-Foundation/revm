@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {CommonUtils} from "./CommonUtils.sol";
+import {LibCommonUtils} from "./LibCommonUtils.sol";
 
 interface IAutomationRegistry {
     // Custom errors
@@ -59,12 +59,12 @@ interface IAutomationRegistry {
 
     // View functions
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-    function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) external view returns (bool);
+    function checkTaskType(uint64 _taskIndex, LibCommonUtils.TaskType _type) external view returns (bool);
     function getAllActiveTaskIds() external view returns (uint256[] memory);
     function getCycleLockedFees() external view returns (uint256);
     function getGasCommittedForNextCycle() external view returns (uint128);
     function getRegistryMaxGasCap() external view returns (uint128);
-    function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory);
+    function getTaskDetails(uint64 _taskIndex) external view returns (LibCommonUtils.TaskDetails memory);
     function getTaskIdList() external view returns (uint256[] memory);
     function getTotalActiveTasks() external view returns (uint256);
     function totalTasks() external view returns (uint256);
@@ -76,7 +76,7 @@ interface IAutomationRegistry {
     function calculateAutomationFeeMultiplierForCurrentCycleInternal() external view returns (uint128);
     function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external view returns (uint128);
     function calculateTaskFee(
-        CommonUtils.TaskState _state,
+        LibCommonUtils.TaskState _state,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint64 _potentialFeeTimeframe,
@@ -89,7 +89,7 @@ interface IAutomationRegistry {
     
     // State updating functions
     function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external;
-    function updateTaskState(uint64 _taskIndex, CommonUtils.TaskState _taskState) external;
+    function updateTaskState(uint64 _taskIndex, LibCommonUtils.TaskState _taskState) external;
     function updateRegistryState(
         uint128 _sysGasCommittedForNextCycle,
         uint128 _gasCommittedForNextCycle,

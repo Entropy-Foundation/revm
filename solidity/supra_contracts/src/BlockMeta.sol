@@ -3,10 +3,10 @@ pragma solidity 0.8.27;
 
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {CommonUtils} from "./CommonUtils.sol";
+import {LibCommonUtils} from "./LibCommonUtils.sol";
 
 contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
-    using CommonUtils for address;
+    using LibCommonUtils for address;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE

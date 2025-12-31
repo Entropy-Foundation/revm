@@ -4,7 +4,7 @@ pragma solidity 0.8.27;
 import {LibRegistry} from "./LibRegistry.sol";
 
 // Helper library used by supra contracts
-library CommonUtils {
+library LibCommonUtils {
     
     /// @notice Enum describing state of the cycle.
     enum CycleState {
@@ -38,8 +38,8 @@ library CommonUtils {
         uint64 registrationTime;
         uint64 expiryTime;
         uint64 priority;
-        CommonUtils.TaskType taskType;
-        CommonUtils.TaskState state;
+        LibCommonUtils.TaskType taskType;
+        LibCommonUtils.TaskState state;
         address owner;
         bytes payloadTx;      
         bytes[] auxData;
@@ -71,8 +71,8 @@ library CommonUtils {
 
         // --- Decode packed uint256: owner | taskType | taskState ---
         details.owner = address(uint160(t.owner_type_state >> 96));
-        details.taskType = CommonUtils.TaskType(uint8(t.owner_type_state >> 88));
-        details.state = CommonUtils.TaskState(uint8(t.owner_type_state >> 80));
+        details.taskType = LibCommonUtils.TaskType(uint8(t.owner_type_state >> 88));
+        details.state = LibCommonUtils.TaskState(uint8(t.owner_type_state >> 80));
     }
 
 

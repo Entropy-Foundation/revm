@@ -10,7 +10,7 @@ import {AutomationController} from "../src/AutomationController.sol";
 import {IAutomationRegistry} from "../src/IAutomationRegistry.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {LibRegistry} from "../src/LibRegistry.sol";
-import {CommonUtils} from "../src/CommonUtils.sol";
+import {LibCommonUtils} from "../src/LibCommonUtils.sol";
 
 contract AutomationRegistryTest is Test {
     AutomationRegistry impl;                    // implementation logic contract
@@ -1272,7 +1272,7 @@ contract AutomationRegistryTest is Test {
         );
         vm.stopPrank();
 
-        CommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
+        LibCommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
         assertTrue(registry.ifTaskExists(0));
         assertEq(registry.totalTasks(), 1);
         assertEq(registry.getNextTaskIndex(), 1);
@@ -1307,7 +1307,7 @@ contract AutomationRegistryTest is Test {
         erc20Supra.deposit{value: 5 ether}();
         erc20Supra.approve(address(registry), type(uint256).max);
 
-        CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(
+        LibCommonUtils.TaskDetails memory taskMetadata = LibCommonUtils.TaskDetails(
             1_000_000,
             10 gwei,
             0.5 ether,
@@ -1317,8 +1317,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp),
             uint64(block.timestamp + 2250),
             0,
-            CommonUtils.TaskType.UST,
-            CommonUtils.TaskState.PENDING,
+            LibCommonUtils.TaskType.UST,
+            LibCommonUtils.TaskState.PENDING,
             alice,
             payload,      
             auxData
@@ -1491,7 +1491,7 @@ contract AutomationRegistryTest is Test {
             auxData                             // aux data
         );
         
-        CommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
+        LibCommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
         assertTrue(registry.ifTaskExists(0));
         assertTrue(registry.ifSysTaskExists(0));
         assertEq(registry.totalTasks(), 1);
@@ -1523,7 +1523,7 @@ contract AutomationRegistryTest is Test {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));
 
-        CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(
+        LibCommonUtils.TaskDetails memory taskMetadata = LibCommonUtils.TaskDetails(
             1_000_000,
             0,
             0,
@@ -1533,8 +1533,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp),
             uint64(block.timestamp + 2250),
             2,
-            CommonUtils.TaskType.GST,
-            CommonUtils.TaskState.PENDING,
+            LibCommonUtils.TaskType.GST,
+            LibCommonUtils.TaskState.PENDING,
             bob,
             payload,      
             auxData

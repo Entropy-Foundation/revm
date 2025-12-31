@@ -3,7 +3,7 @@
 pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
-import {CommonUtils} from "./CommonUtils.sol";
+import {LibCommonUtils} from "./LibCommonUtils.sol";
 
 // Helper library used by AutomationController.
 library LibController {
@@ -38,7 +38,7 @@ library LibController {
         uint64 _index,
         uint64 _startTime,
         uint64 _durationSecs,
-        CommonUtils.CycleState _cycleState
+        LibCommonUtils.CycleState _cycleState
     ) internal {
         _cycleInfo.index_startTime_durationSecs_state_ifTransitionStateExists = 
             (uint256(_index) << 192) |
@@ -60,8 +60,8 @@ library LibController {
         return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 64);
     }
 
-    function state(AutomationCycleInfo storage cycle) internal view returns (CommonUtils.CycleState) {
-        return CommonUtils.CycleState(uint8(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 56));
+    function state(AutomationCycleInfo storage cycle) internal view returns (LibCommonUtils.CycleState) {
+        return LibCommonUtils.CycleState(uint8(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 56));
     }
 
     function ifTransitionStateExists(AutomationCycleInfo storage cycle) internal view returns (bool) {
