@@ -394,6 +394,8 @@ contract AutomationRegistryTest is Test {
     
     /// @dev Test to ensure 'disableAutomation' disables the automation.
     function testDisableAutomation() public {
+        testSetAutomationController();
+
         // Already enabled in initialize()
         vm.prank(admin);
         registry.disableAutomation();
@@ -403,10 +405,13 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'disableAutomation' emits event 'AutomationDisabled'.
     function testDisableAutomationEmitsEvent() public {
+        testSetAutomationController();
+
         vm.expectEmit(true, false, false, false);
         emit AutomationRegistry.AutomationDisabled(false);
 
-        testDisableAutomation();
+        vm.prank(admin);
+        registry.disableAutomation();
     }
 
     /// @dev Test to ensure 'disableAutomation' reverts if automation is already disabled.
@@ -952,6 +957,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'register' reverts if automation is not enabled.
     function testRegisterRevertsIfAutomationNotEnabled() public {
+        testSetAutomationController();
+
         // Disable automation
         vm.prank(admin);
         registry.disableAutomation();
@@ -1338,6 +1345,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'registerSystemTask' reverts if automation is not enabled.
     function testRegisterSystemTaskRevertsIfAutomationNotEnabled() public {
+        testSetAutomationController();
+        
         vm.prank(admin);
         registry.disableAutomation();
 
@@ -1550,6 +1559,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'cancelTask' reverts if automation is not enabled.
     function testCancelTaskRevertsIfAutomationNotEnabled() public {
+        testSetAutomationController();
+
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1623,6 +1634,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'cancelSystemTask' reverts if automation is not enabled. 
     function testCancelSystemTaskRevertsIfAutomationNotEnabled() public {
+        testSetAutomationController();
+        
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1694,6 +1707,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'stopTasks' reverts if automation is not enabled. 
     function testStopTasksRevertsIfAutomationNotEnabled() public {
+        testSetAutomationController();
+        
         vm.prank(admin);
         registry.disableAutomation();
         
@@ -1799,6 +1814,8 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'stopSystemTasks' reverts if automation is not enabled.
     function testStopSystemTasksRevertsIfAutomationNotEnabled() public {
+        testSetAutomationController();
+
         vm.prank(admin);
         registry.disableAutomation();
         
