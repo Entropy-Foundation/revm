@@ -6,6 +6,9 @@ import {LibRegistry} from "./LibRegistry.sol";
 // Helper library used by supra contracts
 library CommonUtils {
     
+    // Address of the VM Signer: SUP0
+    address constant VM_SIGNER = address(0x53555000);
+    
     /// @notice Enum describing state of the cycle.
     enum CycleState {
         READY,
@@ -100,5 +103,20 @@ library CommonUtils {
             size := extcodesize(_addr)
         }
         return size > 0;
+    }
+
+    /// @notice Checks if an address is VM Signer.
+    /// @param _addr Address to check.
+    /// @return bool If it is VM Signer.
+    function isVmSigner(address _addr) internal pure returns (bool) {
+        return _addr == VM_SIGNER;
+    }
+
+    /// @notice Checks if an address is a reserved address. 
+    /// @param _addr Address to check.
+    /// @return bool If it is a reserved address.
+    function isReservedAddress(address _addr) internal pure returns (bool) {
+        uint160 addr = uint160(_addr);
+        return addr >= uint160(VM_SIGNER) && addr <= uint160(0x535550FF);
     }
 }

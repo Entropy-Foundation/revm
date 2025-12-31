@@ -17,15 +17,15 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     /// @notice Error thrown if low level call fails.
     error TransferFailed();
 
-    /// @notice Emitted when native token is deposited.
+    /// @notice Emitted when native tokens are deposited to mint and receive ERC20Supra tokens.
     /// @param account Address of the depositer.
     /// @param amount Amount deposited.
-    event Deposit(address indexed account, uint256 indexed amount);
+    event NativeToERC20Supra(address indexed account, uint256 indexed amount);
     
-    /// @notice Emitted when native token is withdrawn, 
+    /// @notice Emitted when native tokens are withdrawn by burning ERC20Supra tokens. 
     /// @param account Address withdrawing.
     /// @param amount Amount withdrawn.
-    event Withdrawal(address indexed account, uint256 indexed amount);
+    event ERC20SupraToNative(address indexed account, uint256 indexed amount);
 
     constructor(address _initialOwner)
         ERC20("ERC20Supra", "SUPRA")
@@ -34,32 +34,32 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     {}
 
     /// @notice Deposit native token → Mint ERC20Supra 1:1
-    function deposit() external payable {
+    function nativeToErc20Supra() external payable {
         if (msg.value == 0) revert InvalidAmount();
         _mint(msg.sender, msg.value);
 
-        emit Deposit(msg.sender, msg.value);
+        emit NativeToERC20Supra(msg.sender, msg.value);
     }
 
     /// @notice Withdraw native token → Burn ERC20Supra 1:1
     /// @param _amount Amount of native tokens to withdraw.
-    function withdraw(uint256 _amount) external {
+    function erc20SupraToNative(uint256 _amount) external {
         if (_amount == 0) revert InvalidAmount();
         if (balanceOf(msg.sender) < _amount) revert InsufficientBalance();
         
         _burn(msg.sender, _amount);
-        emit Withdrawal(msg.sender, _amount);
+        emit ERC20SupraToNative(msg.sender, _amount);
 
         (bool sent, ) = payable(msg.sender).call{value: _amount}("");
         if (!sent) revert TransferFailed();
     }    
 
-    /// @notice Allows a user to send native tokens directly.
+    /// @notice Allows a user to send native tokens directly and get ERC20Supra.
     receive() external payable {
         if (msg.value == 0) revert InvalidAmount();
         
         _mint(msg.sender, msg.value);
-        emit Deposit(msg.sender, msg.value);
+        emit NativeToERC20Supra(msg.sender, msg.value);
     }
 
     /// @notice Disallows sending tokens to the token contract itself. This prevents accidental locking of tokens.

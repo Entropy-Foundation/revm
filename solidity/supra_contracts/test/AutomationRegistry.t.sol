@@ -949,7 +949,7 @@ contract AutomationRegistryTest is Test {
             storageKeys: keys
         });
 
-        bytes memory callData = abi.encodeCall(ERC20Supra.withdraw, 100);
+        bytes memory callData = abi.encodeCall(ERC20Supra.erc20SupraToNative, 100);
         bytes memory payload = abi.encode(_value, _target, callData, accessList);
 
         return payload;   
@@ -1256,7 +1256,7 @@ contract AutomationRegistryTest is Test {
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
-        erc20Supra.deposit{value: 5 ether}();
+        erc20Supra.nativeToErc20Supra{value: 5 ether}();
         erc20Supra.approve(address(registry), type(uint256).max);
 
         registry.register(
@@ -1304,7 +1304,7 @@ contract AutomationRegistryTest is Test {
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
-        erc20Supra.deposit{value: 5 ether}();
+        erc20Supra.nativeToErc20Supra{value: 5 ether}();
         erc20Supra.approve(address(registry), type(uint256).max);
 
         CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(

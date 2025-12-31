@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC196
 import {BeaconProxy} from "../lib/openzeppelin-contracts/contracts/proxy/beacon/BeaconProxy.sol";
 import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
-import "../src/MultisigBeacon.sol";
+import {MultisigBeacon, UpgradeableBeacon} from "../src/MultisigBeacon.sol";
 
 contract MultiSignatureWalletTest is Test {
     Counter counter;
@@ -51,7 +51,7 @@ contract MultiSignatureWalletTest is Test {
         vm.startPrank(address(multisigProxy));
         // Deploy Counter proxy contract
         Counter counterImpl = new Counter();
-        bytes memory counterInitData = abi.encodeCall(Counter.initialize, ());
+        bytes memory counterInitData = abi.encodeCall(Counter.initialize, (address(multiSig)));
         ERC1967Proxy counterProxy = new ERC1967Proxy(address(counterImpl), counterInitData);
         counter = Counter(address(counterProxy));
         vm.stopPrank();
@@ -64,10 +64,11 @@ contract MultiSignatureWalletTest is Test {
         assertEq(beacon.implementation(), multiSigImplV1);
     }
 
-    /// @dev Test to ensure owners and number of confirmations required are initialized correctly.
+    /// @dev Test to ensure contract is initialized correctly.
     function testInitialize() public view {
         assertEq(multiSig.getOwners(), owners);
         assertEq(multiSig.numConfirmationsRequired(), 4);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'initialize' reverts if array of owners is empty.
@@ -142,13 +143,13 @@ contract MultiSignatureWalletTest is Test {
         bytes memory data = dataForIncrement();
         submitTransaction(data);
         
-        (address to, uint256 value, bool executed, uint24 numConfirmations, uint64 timeout, bytes memory storedData) = multiSig.getTransaction(0);
+        (address to, uint256 value, uint24 numConfirmations, uint64 timeout, bytes memory storedData) = multiSig.getTransaction(0);
         assertEq(to, address(counter));
         assertEq(value, 0);
-        assertEq(executed, false);
         assertEq(numConfirmations, 1);
         assertEq(timeout, block.timestamp + 10000);
         assertEq(storedData, data);
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'submitTransaction' reverts if caller is not an owner.
@@ -160,6 +161,21 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(alice);                    // Not an owner
         multiSig.submitTransaction(
             address(counter),
+            0,
+            100000,
+            data
+        );
+    }
+
+    /// @dev Test to ensure 'submitTransaction' reverts if address(0) is passed as recipient.
+    function testSubmitTransactionIncrementRevertsIfAddressZero() public {
+        bytes memory data = dataForIncrement();
+
+        vm.expectRevert(MultiSignatureWallet.InvalidRecipient.selector);
+
+        vm.prank(address(1001));
+        multiSig.submitTransaction(
+            address(0),
             0,
             100000,
             data
@@ -185,7 +201,7 @@ contract MultiSignatureWalletTest is Test {
         
         grantSufficientConfirmations(0);
 
-        ( , , , uint256 numConfirmations, , ) = multiSig.getTransaction(0);
+        ( , , uint256 numConfirmations, , ) = multiSig.getTransaction(0);
         assertEq(numConfirmations, 4);
     }
 
@@ -215,7 +231,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyExecuted.selector);
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
 
         confirmTransaction(address(1005), txId);
     }
@@ -228,15 +244,17 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1001), 0);
     }
 
-    // @dev Test to ensure 'confirmTransaction' reverts if transaction has expired.
-    function testConfirmTransactionRevertsIfTxExpired() public {
+    /// @dev Test to ensure 'confirmTransaction' removes the tx and emits 'TransactionExpired' if transaction has expired.
+    function testConfirmTransactionRemovesTxIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
+        vm.expectEmit(true, false, false, false);
+        emit MultiSignatureWallet.TransactionExpired(0);
         
         confirmTransaction(address(1005), 0);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Helper function to revoke confirmation.
@@ -253,8 +271,9 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1002), txId);
         revokeConfirmation(address(1001), txId);
 
-        ( , , , uint256 confirmations , , ) = multiSig.getTransaction(txId);
+        ( , , uint256 confirmations , , ) = multiSig.getTransaction(txId);
         assertEq(confirmations, 1);
+        assertFalse(multiSig.isConfirmed(txId, address(1001)));
     }
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if caller is not an owner.
@@ -283,19 +302,21 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyExecuted.selector);
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), txId);
     }
 
-    /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction has expired.
-    function testRevokeConfirmationRevertsIfTxExpired() public {
+    /// @dev Test to ensure 'revokeConfirmation' removes the tx and emits 'TransactionExpired' if the transaction has expired.
+    function testRevokeConfirmationRemovesTxIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
+        vm.expectEmit(true, false, false, false);
+        emit MultiSignatureWallet.TransactionExpired(0);
         
         revokeConfirmation(address(1001), 0);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction was not confirmed.
@@ -316,8 +337,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1001));
         multiSig.executeTransaction(txId);
 
-        ( , , bool executed, , , ) = multiSig.getTransaction(txId);
-        assertTrue(executed);
+        assertEq(multiSig.txCount(), 0);
         assertEq(counter.counter(), 1);
     }
 
@@ -343,22 +363,24 @@ contract MultiSignatureWalletTest is Test {
     function testExecuteTransactionRevertsIfTxAlreadyExecuted() public {
         testExecuteTransaction();
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyExecuted.selector);
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
     }
 
-    /// @dev Test to ensure 'executeTransaction' reverts if transaction has expired.
-    function testExecuteTransactionRevertsIfTxExpired() public {
+    /// @dev Test to ensure 'executeTransaction' removes the tx and emits 'TransactionExpired' if transaction has expired.
+    function testExecuteTransactionRemovesTxIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
+        vm.expectEmit(true, false, false, false);
+        emit MultiSignatureWallet.TransactionExpired(0);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' reverts if the transaction has insufficient number of confirmations.
@@ -459,18 +481,21 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(0);
     }
 
-    /// @dev Test to ensure 'addOwners' reverts if transaction has expired.
-    function testAddOwnersRevertsIfTimestampExpired() public {
+    /// @dev Test to ensure 'addOwners' removes the tx and emits 'TransactionExpired' if transaction has expired.
+    function testAddOwnersRemovesTxIfExpired() public {
         vm.warp(500);
         submitTransactionToMultiSig(dataToAddOwnerInMultiSig());
+        assertEq(multiSig.txCount(), 1);
     
         grantSufficientConfirmations(0);
 
         vm.warp(10501);
-        vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);        
+        vm.expectEmit(true, false, false, false);
+        emit MultiSignatureWallet.TransactionExpired(0);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'addOwners' reverts if transaction has insufficient number of confirmations.
@@ -551,20 +576,23 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(1);
     }
 
-    /// @dev Test to ensure 'removeOwners' reverts if transaction has expired.
-    function testRemoveOwnersRevertsIfTimestampExpired() public {
+    /// @dev Test to ensure 'removeOwners' removes the tx and emits 'TransactionExpired' if transaction has expired.
+    function testRemoveOwnersRemovesTxIfExpired() public {
         testAddOwners();
 
         vm.warp(500);
         submitTransactionToMultiSig(dataToRemoveOwnerFromMultiSig());
+        assertEq(multiSig.txCount(), 1);
 
         grantSufficientConfirmations(1);
 
         vm.warp(10501);
-        vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
+        vm.expectEmit(true, false, false, false);
+        emit MultiSignatureWallet.TransactionExpired(1);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(1);
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if transaction has insufficient number of confirmations.
@@ -632,18 +660,21 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(0);
     }
 
-    /// @dev Test to ensure 'updateNumConfirmations' reverts if the transaction has expired.
-    function testUpdateNumConfimationsRevertsIftimestampExpired() public {
+    /// @dev Test to ensure 'updateNumConfirmations' removes the tx and emits 'TransactionExpired' if the transaction has expired.
+    function testUpdateNumConfimationsRemovesTxIfExpired() public {
         vm.warp(500);
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+        assertEq(multiSig.txCount(), 1);
 
         grantSufficientConfirmations(0);
 
         vm.warp(10501);
-        vm.expectRevert(MultiSignatureWallet.TransactionAlreadyExpired.selector);
+        vm.expectEmit(true, false, false, false);
+        emit MultiSignatureWallet.TransactionExpired(0);
 
         vm.prank(address(1002));
-        multiSig.executeTransaction(0);        
+        multiSig.executeTransaction(0);    
+        assertEq(multiSig.txCount(), 0);
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the transaction has insufficient number of confirmations.
@@ -701,8 +732,8 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Helper function that returns creation code to deploy ERC1967 proxy contract.
-    function proxyCreationCode(address _impl) private pure returns (bytes memory) {
-        bytes memory initData = abi.encodeCall(Counter.initialize, ());        
+    function proxyCreationCode(address _impl) private view returns (bytes memory) {
+        bytes memory initData = abi.encodeCall(Counter.initialize, (address(multiSig)));        
         
         return abi.encodePacked(
             type(ERC1967Proxy).creationCode,
@@ -802,5 +833,24 @@ contract MultiSignatureWalletTest is Test {
         emit MultiSignatureWallet.Deposit(alice, 1 ether, 1 ether);
 
         testReceive();
+    }
+
+    /// @dev Test to ensure 'getTransaction' reverts if transaction does not exist.
+    function testGetTransactionRevertsIfTxDoesNotExist() public {
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.getTransaction(0);
+    }
+    
+    /// @dev Test to ensure expired transaction is removed and accessing it results in a revert.
+    function testGetTransactionRevertsIfTxExpiredAndCleanedUp() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        confirmTransaction(address(1005), 0);
+        assertEq(multiSig.txCount(), 0);
+
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.getTransaction(0);
     }
 }

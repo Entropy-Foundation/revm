@@ -6,20 +6,25 @@ import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/uti
 
 contract Counter is OwnableUpgradeable, UUPSUpgradeable {
     uint256 public counter;
+    address public privilegedAddress;
 
     /// @dev Disables the initialization for the implementation contract.
     constructor() {
         _disableInitializers();
     }
 
-    /// @notice Initializes the owner of the contract.
-    function initialize() public initializer {
+    /// @notice Initializes the owner and privileged address of the contract.
+    /// @param _privileged Privileged address.
+    function initialize(address _privileged) public initializer {
+        privilegedAddress = _privileged;
         __Ownable_init(msg.sender);
     }
 
     /// @notice Increments the counter by 1.
-    function increment() external onlyOwner {
-        counter = counter + 1;
+    function increment() external {
+        if (msg.sender == privilegedAddress) {
+            counter = counter + 1;
+	    }
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
