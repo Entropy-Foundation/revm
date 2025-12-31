@@ -3,17 +3,17 @@ pragma solidity 0.8.27;
 
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {LibCommonUtils} from "./LibCommonUtils.sol";
+import {CommonUtils} from "./CommonUtils.sol";
 
 contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable {
-    using LibCommonUtils for address;
+    using CommonUtils for address;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
     // Address of VM Signer: SUP0
-    address constant VM_SIGNER = address(0x5355500000000000000000000000000000000000);
+    address constant VM_SIGNER = address(0x53555000);
     
     struct Entry {
         bytes4[] selectors;

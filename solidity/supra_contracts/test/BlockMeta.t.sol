@@ -86,7 +86,7 @@ contract BlockMetaTest is Test {
     function testBlockPrologue() public {
         testEntryRegistration();
 
-        vm.prank(address(0x5355500000000000000000000000000000000000));
+        vm.prank(address(0x53555000));
         blockMeta.blockPrologue();
 	    assertEq(counter.counter(), 1);
     }

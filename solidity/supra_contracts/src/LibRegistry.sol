@@ -3,7 +3,7 @@
 pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
-import {LibCommonUtils} from "./LibCommonUtils.sol";
+import {CommonUtils} from "./CommonUtils.sol";
 
 // Helper library used by AutomationRegistry.
 library LibRegistry {
@@ -322,8 +322,8 @@ library LibRegistry {
         uint64 _expiryTime,
         uint64 _priority,
         address _owner,
-        LibCommonUtils.TaskType _type,
-        LibCommonUtils.TaskState _state,
+        CommonUtils.TaskType _type,
+        CommonUtils.TaskState _state,
         bytes memory _payloadTx,
         bytes[] memory _auxData
     ) internal pure returns (TaskMetadata memory t) {
@@ -434,12 +434,12 @@ library LibRegistry {
         return address(uint160(t.owner_type_state >> 96));
     }
 
-    function taskType(TaskMetadata storage t) internal view returns (LibCommonUtils.TaskType) {
-        return LibCommonUtils.TaskType(uint8(t.owner_type_state >> 88));
+    function taskType(TaskMetadata storage t) internal view returns (CommonUtils.TaskType) {
+        return CommonUtils.TaskType(uint8(t.owner_type_state >> 88));
     }
 
-    function state(TaskMetadata storage t) internal view returns (LibCommonUtils.TaskState) {
-        return LibCommonUtils.TaskState(uint8(t.owner_type_state >> 80));
+    function state(TaskMetadata storage t) internal view returns (CommonUtils.TaskState) {
+        return CommonUtils.TaskState(uint8(t.owner_type_state >> 80));
     }
 
     function setOwner(TaskMetadata storage t, address _value) internal {

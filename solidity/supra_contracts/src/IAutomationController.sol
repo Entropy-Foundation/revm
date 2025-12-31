@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {LibCommonUtils} from "./LibCommonUtils.sol";
+import {CommonUtils} from "./CommonUtils.sol";
 
 interface IAutomationController {
     // Custom errors
@@ -23,7 +23,7 @@ interface IAutomationController {
     error UpdateTaskStateFailed();
 
     // View functions
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommonUtils.CycleState);
+    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState);
     function getTransitionInfo() external view returns (uint64, uint128);
     function isTransitionInProgress() external view returns (bool);
 

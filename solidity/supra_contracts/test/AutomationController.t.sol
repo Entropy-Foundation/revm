@@ -9,7 +9,7 @@ import {AutomationRegistry} from "../src/AutomationRegistry.sol";
 import {AutomationController} from "../src/AutomationController.sol";
 import {IAutomationController} from "../src/IAutomationController.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
-import {LibCommonUtils} from "../src/LibCommonUtils.sol";
+import {CommonUtils} from "../src/CommonUtils.sol";
 
 contract AutomationControllerTest is Test {
     AutomationRegistry registry;                // AutomationRegistry instance on proxy address
@@ -17,7 +17,7 @@ contract AutomationControllerTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
 
     address admin = address(0xA11CE);
-    address vmSigner = address(0x5355500000000000000000000000000000000000);
+    address vmSigner = address(0x53555000);
     address alice = address(0x123);
     address bob = address(0x456);
 
@@ -85,11 +85,11 @@ contract AutomationControllerTest is Test {
         assertEq(controller.owner(), admin);
         assertEq(address(controller.registry()), address(registry));
 
-        (uint64 index, uint64 startTime, uint64 durationSecs, LibCommonUtils.CycleState state) = controller.getCycleInfo();
+        (uint64 index, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = controller.getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
         assertEq(durationSecs, registry.cycleDurationSecs());
-        assertEq(uint8(state), uint8(LibCommonUtils.CycleState.STARTED));
+        assertEq(uint8(state), uint8(CommonUtils.CycleState.STARTED));
     }
 
     /// @dev Test to ensure initialize reverts if reinitialized.

@@ -10,7 +10,7 @@ import {AutomationController} from "../src/AutomationController.sol";
 import {IAutomationRegistry} from "../src/IAutomationRegistry.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {LibRegistry} from "../src/LibRegistry.sol";
-import {LibCommonUtils} from "../src/LibCommonUtils.sol";
+import {CommonUtils} from "../src/CommonUtils.sol";
 
 contract AutomationRegistryTest is Test {
     AutomationRegistry impl;                    // implementation logic contract
@@ -19,7 +19,7 @@ contract AutomationRegistryTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
 
     address admin = address(0xA11CE);
-    address vmSigner = address(0x5355500000000000000000000000000000000000);
+    address vmSigner = address(0x53555000);
     address alice = address(0x123);
     address bob = address(0x456);
 
@@ -1272,7 +1272,7 @@ contract AutomationRegistryTest is Test {
         );
         vm.stopPrank();
 
-        LibCommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
+        CommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
         assertTrue(registry.ifTaskExists(0));
         assertEq(registry.totalTasks(), 1);
         assertEq(registry.getNextTaskIndex(), 1);
@@ -1307,7 +1307,7 @@ contract AutomationRegistryTest is Test {
         erc20Supra.deposit{value: 5 ether}();
         erc20Supra.approve(address(registry), type(uint256).max);
 
-        LibCommonUtils.TaskDetails memory taskMetadata = LibCommonUtils.TaskDetails(
+        CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(
             1_000_000,
             10 gwei,
             0.5 ether,
@@ -1317,8 +1317,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp),
             uint64(block.timestamp + 2250),
             0,
-            LibCommonUtils.TaskType.UST,
-            LibCommonUtils.TaskState.PENDING,
+            CommonUtils.TaskType.UST,
+            CommonUtils.TaskState.PENDING,
             alice,
             payload,      
             auxData
@@ -1491,7 +1491,7 @@ contract AutomationRegistryTest is Test {
             auxData                             // aux data
         );
         
-        LibCommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
+        CommonUtils.TaskDetails memory taskMetadata = registry.getTaskDetails(0);
         assertTrue(registry.ifTaskExists(0));
         assertTrue(registry.ifSysTaskExists(0));
         assertEq(registry.totalTasks(), 1);
@@ -1523,7 +1523,7 @@ contract AutomationRegistryTest is Test {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));
 
-        LibCommonUtils.TaskDetails memory taskMetadata = LibCommonUtils.TaskDetails(
+        CommonUtils.TaskDetails memory taskMetadata = CommonUtils.TaskDetails(
             1_000_000,
             0,
             0,
@@ -1533,8 +1533,8 @@ contract AutomationRegistryTest is Test {
             uint64(block.timestamp),
             uint64(block.timestamp + 2250),
             2,
-            LibCommonUtils.TaskType.GST,
-            LibCommonUtils.TaskState.PENDING,
+            CommonUtils.TaskType.GST,
+            CommonUtils.TaskState.PENDING,
             bob,
             payload,      
             auxData

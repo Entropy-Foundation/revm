@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
-import {LibCommonUtils} from "./LibCommonUtils.sol";
+import {CommonUtils} from "./CommonUtils.sol";
 import {LibController} from "./LibController.sol";
 
 import {IAutomationController} from "./IAutomationController.sol";
@@ -13,7 +13,7 @@ import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/uti
 
 contract AutomationController is IAutomationController, Ownable2StepUpgradeable, UUPSUpgradeable {
     using EnumerableSet for EnumerableSet.UintSet;
-    using LibCommonUtils for *;
+    using CommonUtils for *;
     using LibController for *;
 
     /// @dev Defines the cycle state, used to update the registry.
@@ -54,10 +54,10 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @notice Emitted when the cycle state transitions.
     event AutomationCycleEvent(
         uint64 indexed index,
-        LibCommonUtils.CycleState indexed state,
+        CommonUtils.CycleState indexed state,
         uint64 startTime,
         uint64 durationSecs,
-        LibCommonUtils.CycleState indexed oldState
+        CommonUtils.CycleState indexed oldState
     );
     
     /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
@@ -88,7 +88,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
         registry = IAutomationRegistry(_registry);
         
-        (LibCommonUtils.CycleState state, uint64 cycleId) = registry.isAutomationEnabled() ? (LibCommonUtils.CycleState.STARTED, 1) : (LibCommonUtils.CycleState.READY, 0);
+        (CommonUtils.CycleState state, uint64 cycleId) = registry.isAutomationEnabled() ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
 
         cycleInfo.initializeCycle(
             cycleId,
@@ -108,12 +108,12 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         // Check caller is VM Signer
         if (msg.sender != registry.getVmSigner()) { revert CallerNotVmSigner(); }
         
-        LibCommonUtils.CycleState state = cycleInfo.state(); 
+        CommonUtils.CycleState state = cycleInfo.state(); 
 
-        if(state == LibCommonUtils.CycleState.FINISHED) {
+        if(state == CommonUtils.CycleState.FINISHED) {
             onCycleTransition(_cycleIndex, _taskIndexes);
         } else {
-            if(state != LibCommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+            if(state != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
             onCycleSuspend(_cycleIndex, _taskIndexes);
         }
     }
@@ -122,7 +122,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     function monitorCycleEnd() external {
         if (tx.origin != registry.getVmSigner()) { revert CallerNotVmSigner(); }
 
-        if(cycleInfo.state() != LibCommonUtils.CycleState.STARTED || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
+        if(cycleInfo.state() != CommonUtils.CycleState.STARTED || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
             return;
         }
         
@@ -140,7 +140,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @param _taskIndexes Array of task indexes to be processed.
     function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
         if(_taskIndexes.length == 0) { return; }
-        if(cycleInfo.state() != LibCommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+        if(cycleInfo.state() != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
         
         // Check if transition state exists
         if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
@@ -169,7 +169,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             return;
         }
 
-        if(cycleInfo.state() != LibCommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+        if(cycleInfo.state() != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
         if(cycleInfo.index() != _cycleIndex) { revert InvalidInputCycleIndex(); }
         // Check if transition state exists
         if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
@@ -190,7 +190,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 markTaskProcessed(taskIndexes[i]);
 
                 // Nothing to refund for GST tasks
-                if(registry.checkTaskType(taskIndexes[i], LibCommonUtils.TaskType.UST)) {                         
+                if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) {                         
                     (bool refunded, bytes memory data) = address(registry).call(
                         abi.encodeCall(
                             IAutomationRegistry.refundTaskFees, 
@@ -260,11 +260,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         if(registry.ifTaskExists(_taskIndex)) {
             markTaskProcessed(_taskIndex);
 
-            bool isUst = registry.checkTaskType(_taskIndex, LibCommonUtils.TaskType.UST);
-            LibCommonUtils.TaskDetails memory task = registry.getTaskDetails(_taskIndex);
+            bool isUst = registry.checkTaskType(_taskIndex, CommonUtils.TaskType.UST);
+            CommonUtils.TaskDetails memory task = registry.getTaskDetails(_taskIndex);
             
             // Task is cancelled or expired
-            if(task.state == LibCommonUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
+            if(task.state == CommonUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
                 if(isUst) {
                     (bool sent, ) = address(registry).call(
                         abi.encodeCall(
@@ -284,7 +284,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // Governance submitted tasks are not charged
 
                 result.sysGas = task.maxGasAmount;                
-                (bool updated, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.updateTaskState, (_taskIndex, LibCommonUtils.TaskState.ACTIVE)));
+                (bool updated, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.updateTaskState, (_taskIndex, CommonUtils.TaskState.ACTIVE)));
                 require(updated, UpdateTaskStateFailed());
             } else {
                 // Active UST
@@ -306,7 +306,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // As here we need to distinguish new tasks from already existing active tasks,
                 // as the fee calculation for them will be different based on their active duration in the cycle.
                 // For more details see calculateTaskFee function.
-                (bool updated, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.updateTaskState, (_taskIndex, LibCommonUtils.TaskState.ACTIVE)));
+                (bool updated, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.updateTaskState, (_taskIndex, CommonUtils.TaskState.ACTIVE)));
                 require(updated, UpdateTaskStateFailed());
 
                 (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
@@ -445,7 +445,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
         bool transitionFinalized = isTransitionFinalized();
         if (transitionFinalized) {
-            if (!registry.isAutomationEnabled() && cycleInfo.state() == LibCommonUtils.CycleState.FINISHED) {
+            if (!registry.isAutomationEnabled() && cycleInfo.state() == CommonUtils.CycleState.FINISHED) {
                 _tryMoveToSuspendedState();
             } else {
                 (bool updated, ) = address(registry).call(
@@ -521,7 +521,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     function _tryMoveToSuspendedState() private {
         if(registry.totalTasks() == 0) {
             // Registry is empty move to ready state directly
-            updateCycleStateTo(LibCommonUtils.CycleState.READY);
+            updateCycleStateTo(CommonUtils.CycleState.READY);
         } else if (!cycleInfo.ifTransitionStateExists()) {
             uint64 currentTime = uint64(block.timestamp);
 
@@ -531,7 +531,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
             if(currentTime < startTime) { revert InvalidRegistryState(); }
             if(currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
-            if(cycleInfo.state() != LibCommonUtils.CycleState.STARTED) { revert InvalidRegistryState(); }
+            if(cycleInfo.state() != CommonUtils.CycleState.STARTED) { revert InvalidRegistryState(); }
 
             uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
@@ -547,9 +547,9 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             updateExpectedTasks(expectedTasksToBeProcessed);
             cycleInfo.setTransitionStateExists(true);
             
-            updateCycleStateTo(LibCommonUtils.CycleState.SUSPENDED);
+            updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
         } else {
-            if(cycleInfo.state() != LibCommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+            if(cycleInfo.state() != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
             if(isTransitionInProgress()) { revert InvalidRegistryState(); }
 
             // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
@@ -558,7 +558,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             cycleInfo.setAutomationFeePerSec(0);
             cycleInfo.setGasCommittedForNewCycle(0);
             
-            updateCycleStateTo(LibCommonUtils.CycleState.SUSPENDED);
+            updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
         }
     }
 
@@ -596,7 +596,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 cycleInfo.transitionState.expectedTasksToBeProcessed.clear();
             }
         }
-        updateCycleStateTo(LibCommonUtils.CycleState.READY);
+        updateCycleStateTo(CommonUtils.CycleState.READY);
     }
 
     /// @notice Transitions cycle state to the STARTED state. 
@@ -610,7 +610,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             cycleInfo.setDurationSecs(cycleInfo.newCycleDuration());
         }
 
-        updateCycleStateTo(LibCommonUtils.CycleState.STARTED);
+        updateCycleStateTo(CommonUtils.CycleState.STARTED);
     }
 
     function moveToStartedState() external {
@@ -620,8 +620,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Updates the state of the cycle.
     /// @param _state Input state to update cycle state with.
-    function updateCycleStateTo(LibCommonUtils.CycleState _state) private {
-        LibCommonUtils.CycleState oldState = cycleInfo.state();
+    function updateCycleStateTo(CommonUtils.CycleState _state) private {
+        CommonUtils.CycleState oldState = cycleInfo.state();
         cycleInfo.setState(uint8(_state));
 
         emit AutomationCycleEvent (
@@ -673,7 +673,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
                 // and will be used to charge tasks during transition process.
                 cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
-                updateCycleStateTo(LibCommonUtils.CycleState.FINISHED);
+                updateCycleStateTo(CommonUtils.CycleState.FINISHED);
             }
         }
     }
@@ -714,7 +714,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Returns the index, start time, duration and state of the current cycle. 
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommonUtils.CycleState) {
+    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState) {
         return (cycleInfo.index(), cycleInfo.startTime(), cycleInfo.durationSecs(), cycleInfo.state());
     }
 
