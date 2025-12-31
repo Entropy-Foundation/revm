@@ -6,6 +6,11 @@ target
 .vscode
 .idea
 pkg/
+cache
+out
+broadcast
+.env
+all-chain.json
 
 bins/revme/temp_folder
 bins/revme/tests
