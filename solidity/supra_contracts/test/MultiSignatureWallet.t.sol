@@ -245,10 +245,9 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'confirmTransaction' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testConfirmTransactionRevertsIfTxExpired() public {
+    function testConfirmTransactionRemovesTxIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
-        assertEq(multiSig.txCount(), 1);
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
@@ -308,10 +307,9 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'revokeConfirmation' removes the tx and emits 'TransactionExpired' if the transaction has expired.
-    function testRevokeConfirmationRevertsIfTxExpired() public {
+    function testRevokeConfirmationRemovesTxIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
-        assertEq(multiSig.txCount(), 1);
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
@@ -372,10 +370,9 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'executeTransaction' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testExecuteTransactionRevertsIfTxExpired() public {
+    function testExecuteTransactionRemovesTxIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
-        assertEq(multiSig.txCount(), 1);
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
@@ -485,7 +482,7 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'addOwners' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testAddOwnersRevertsIfTimestampExpired() public {
+    function testAddOwnersRemovesTxIfExpired() public {
         vm.warp(500);
         submitTransactionToMultiSig(dataToAddOwnerInMultiSig());
         assertEq(multiSig.txCount(), 1);
@@ -580,7 +577,7 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'removeOwners' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testRemoveOwnersRevertsIfTimestampExpired() public {
+    function testRemoveOwnersRemovesTxIfExpired() public {
         testAddOwners();
 
         vm.warp(500);
@@ -664,7 +661,7 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' removes the tx and emits 'TransactionExpired' if the transaction has expired.
-    function testUpdateNumConfimationsRevertsIftimestampExpired() public {
+    function testUpdateNumConfimationsRemovesTxIfExpired() public {
         vm.warp(500);
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
         assertEq(multiSig.txCount(), 1);
@@ -840,6 +837,19 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'getTransaction' reverts if transaction does not exist.
     function testGetTransactionRevertsIfTxDoesNotExist() public {
+        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.getTransaction(0);
+    }
+    
+    /// @dev Test to ensure expired transaction is removed and accessing it results in a revert.
+    function testGetTransactionRevertsIfTxExpiredAndCleanedUp() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        confirmTransaction(address(1005), 0);
+        assertEq(multiSig.txCount(), 0);
+
         vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
         multiSig.getTransaction(0);
     }
