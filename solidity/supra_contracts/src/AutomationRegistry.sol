@@ -301,8 +301,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         deposit.totalDepositedAutomationFees += _automationFeeCapForCycle;
 
         uint128 fee = regConfig.flatRegistrationFeeWei() + _automationFeeCapForCycle;
-        bool sent = IERC20(regConfig.erc20Supra).transferFrom(msg.sender, address(this), fee);
-        if (!sent) { revert TransferFailed(); }
+        _chargeFees(msg.sender, fee);
 
         emit TaskRegistered(taskIndex, msg.sender, regConfig.flatRegistrationFeeWei(), _automationFeeCapForCycle, regState.tasks[taskIndex].getTaskDetails());
     }
@@ -986,6 +985,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(msg.sender != regConfig.automationController()) { revert CallerNotController(); }
     }
 
+    /// @notice Helper function to charge fees from the user.
+    function _chargeFees(address _from, uint256 _amount) private {
+        bool sent = IERC20(regConfig.erc20Supra).transferFrom(_from, address(this), _amount);
+        if(!sent) { revert TransferFailed(); }
+    }
+
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Function to update the registry configuration buffer.
@@ -1165,6 +1170,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONTROLLER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Helper function to charge fees from the user.
+    function chargeFees(address _from, uint256 _amount) external {
+        onlyController();
+        _chargeFees(_from, _amount);
+    }
     
     /// @notice Internally calls _removeTask, reverts if caller is not AutomationController.
     function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external {

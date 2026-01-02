@@ -413,7 +413,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             } else {
                 if(_fee != 0)  {
                     // Charge the fee    
-                    bool sent = IERC20(erc20Supra).transferFrom(_owner, address(registry), _fee);
+                    (bool sent, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.chargeFees, (_owner, _fee)));
                     if (!sent) { revert TransferFailed(); }
 
                     fees = _fee;

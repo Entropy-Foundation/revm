@@ -1278,8 +1278,8 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.getNextTaskIndex(), 1);
         assertEq(registry.getGasCommittedForNextCycle(), 1_000_000);
         assertEq(registry.getTotalDepositedAutomationFees(), 0.5 ether);
-        assertEq(erc20Supra.balanceOf(address(registry)), 0.002 ether + 0.5 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.5 ether - 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.502 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.498 ether);
 
         assertEq(taskMetadata.maxGasAmount, 1_000_000);
         assertEq(taskMetadata.gasPriceCap, 10 gwei);
@@ -1614,8 +1614,8 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.getGasCommittedForNextCycle(), 0);
         assertEq(registry.getTotalDepositedAutomationFees(), 0);
-        assertEq(erc20Supra.balanceOf(address(registry)), 0.002 ether + 0.25 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.75 ether - 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.252 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.748 ether);
     }
 
     /// @dev Test to ensure 'cancelTask' emits event 'TaskCancelled'.
@@ -1775,11 +1775,20 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'stopTasks' stops the input UST tasks. 
     function testStopTasks() public {
-        testSetAutomationController();
         testRegister();
+        address controller = registry.getAutomationController();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
+
+        vm.warp(2002);
+        vm.startPrank(vmSigner, vmSigner);
+        AutomationController(controller).monitorCycleEnd();        
+        AutomationController(controller).processTasks(2, taskIndexes);
+        vm.stopPrank();
+
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.702 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.298 ether);
 
         vm.prank(alice);
         registry.stopTasks(taskIndexes);
@@ -1788,20 +1797,26 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.getGasCommittedForNextCycle(), 0);
         assertEq(registry.getTotalDepositedAutomationFees(), 0);
-        assertEq(erc20Supra.balanceOf(address(registry)), 0.002 ether + 0.25 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.75 ether - 0.002 ether);
+        assertEq(erc20Supra.balanceOf(address(registry)), 0.18955 ether);
+        assertEq(erc20Supra.balanceOf(alice), 4.81045 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' emits event 'TasksStopped'.  
     function testStopTasksEmitsEvent() public {
-        testSetAutomationController();
         testRegister();
+        address controller = registry.getAutomationController();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
+        vm.warp(2002);
+        vm.startPrank(vmSigner, vmSigner);
+        AutomationController(controller).monitorCycleEnd();        
+        AutomationController(controller).processTasks(2, taskIndexes);
+        vm.stopPrank();
+
         LibRegistry.TaskStopped[] memory stoppedTasks = new LibRegistry.TaskStopped[](1);
-        stoppedTasks[0] = LibRegistry.TaskStopped(0, 0.25 ether, 0, keccak256("txHash"));
+        stoppedTasks[0] = LibRegistry.TaskStopped(0, 0.5 ether, 0.01245 ether, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
         emit AutomationRegistry.TasksStopped(stoppedTasks, alice);
@@ -1882,11 +1897,18 @@ contract AutomationRegistryTest is Test {
 
     /// @dev Test to ensure 'stopSystemTasks' stops the input GST tasks.
     function testStopSystemTasks() public {
-        testSetAutomationController();
         testRegisterSystemTask();
+        address controller = registry.getAutomationController();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
+
+        vm.warp(2002);
+        vm.prank(vmSigner, vmSigner);
+        AutomationController(controller).monitorCycleEnd();        
+        
+        vm.prank(vmSigner);
+        AutomationController(controller).processTasks(2, taskIndexes);
 
         vm.prank(bob);
         registry.stopSystemTasks(taskIndexes);
@@ -1895,16 +1917,23 @@ contract AutomationRegistryTest is Test {
         assertFalse(registry.ifSysTaskExists(0));
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.totalSystemTasks(), 0);
-        assertEq(registry.getSystemGasCommittedForNextCycle(), 0);
+        assertEq(registry.getSystemGasCommittedForNextCycle(), 1000000);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
     function testStopSystemTasksEmitsEvent() public {
-        testSetAutomationController();
         testRegisterSystemTask();
+        address controller = registry.getAutomationController();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
+
+        vm.warp(2002);
+        vm.prank(vmSigner, vmSigner);
+        AutomationController(controller).monitorCycleEnd();        
+        
+        vm.prank(vmSigner);
+        AutomationController(controller).processTasks(2, taskIndexes);
 
         LibRegistry.TaskStopped[] memory stoppedTasks = new LibRegistry.TaskStopped[](1);
         stoppedTasks[0] = LibRegistry.TaskStopped(0, 0, 0, keccak256("txHash"));

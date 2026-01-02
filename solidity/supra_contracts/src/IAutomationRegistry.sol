@@ -113,4 +113,5 @@ interface IAutomationRegistry {
         uint64 _currentTime,
         uint256 _cycleLockedFees
     ) external returns (uint256);
+    function chargeFees(address _from, uint256 _amount) external;
 }
