@@ -2,6 +2,7 @@
 pragma solidity 0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
+import {AutomationCore} from "../src/AutomationCore.sol";
 import {AutomationController} from "../src/AutomationController.sol";
 import {AutomationRegistry} from "../src/AutomationRegistry.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
@@ -44,6 +45,10 @@ contract DeployAutomationRegistry is Script {
 
         ERC20Supra erc20Supra;                          // ERC20Supra contract
 
+        AutomationCore coreImpl;                        // AutomationCore implementation contract
+        ERC1967Proxy coreProxy;                         // AutomationCore proxy contract
+        AutomationCore automationCore;                  // Instance of AutomationCore at proxy address
+
         AutomationRegistry registryImpl;                // AutomationRegistry implementation contract
         ERC1967Proxy registryProxy;                     // AutomationRegistry proxy contract
         AutomationRegistry registry;                    // Instance of AutomationRegistry at proxy address
@@ -59,12 +64,12 @@ contract DeployAutomationRegistry is Script {
         console.log("ERC20Supra deployed at: ", address(erc20Supra));
         
         // ---------------------------------------------------------------------
-        // Deploy AutomationRegistry
+        // Deploy AutomationCore
         // ---------------------------------------------------------------------
-        registryImpl = new AutomationRegistry();
-        console.log("AutomationRegistry implementation deployed at: ", address(registryImpl));
-        bytes memory initData = abi.encodeCall(
-            AutomationRegistry.initialize,
+        coreImpl = new AutomationCore();
+        console.log("AutomationCore implementation deployed at: ", address(coreImpl));
+        bytes memory coreInitData = abi.encodeCall(
+            AutomationCore.initialize,
             (
                 taskDurationCapSecs,                    // taskDurationCapSecs
                 registryMaxGasCap,                      // registryMaxGasCap
@@ -82,7 +87,18 @@ contract DeployAutomationRegistry is Script {
                 address(erc20Supra)                     // ERC20Supra address
             )
         );
-        registryProxy = new ERC1967Proxy(address(registryImpl), initData);
+        coreProxy = new ERC1967Proxy(address(coreImpl), coreInitData);
+        console.log("AutomationCore proxy deployed at: ", address(coreProxy));
+        automationCore = AutomationCore(address(coreProxy));
+
+        // ---------------------------------------------------------------------
+        // Deploy AutomationRegistry
+        // ---------------------------------------------------------------------
+        registryImpl = new AutomationRegistry();
+        console.log("AutomationRegistry implementation deployed at: ", address(registryImpl));
+        
+        bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore)));
+        registryProxy = new ERC1967Proxy(address(registryImpl), registryInitData);
         console.log("AutomationRegistry proxy deployed at: ", address(registryProxy));
         registry = AutomationRegistry(address(registryProxy));
 
@@ -91,14 +107,27 @@ contract DeployAutomationRegistry is Script {
         // ---------------------------------------------------------------------
         controllerImpl = new AutomationController();
         console.log("AutomationController implementation deployed at: ", address(controllerImpl));
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(registry)));
+        
+        bytes memory controllerInitData = abi.encodeCall(
+            AutomationController.initialize,
+            (
+                address(automationCore),
+                address(registry)
+            )
+        );
         controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
         console.log("AutomationController proxy deployed at: ", address(controllerProxy));
         controller = AutomationController(address(controllerProxy));
 
-        // ---------------------------------------------------------------------
+        // --------------------------------------------------------------------------
+        // Set AutomationRegistry and AutomationController address in AutomationCore
+        // --------------------------------------------------------------------------
+        automationCore.setAutomationRegistry(address(registry));
+        automationCore.setAutomationController(address(controller));
+
+        // --------------------------------------------------------------------------
         // Set AutomationController address in AutomationRegistry
-        // ---------------------------------------------------------------------
+        // --------------------------------------------------------------------------
         registry.setAutomationController(address(controller));
 
         vm.stopBroadcast();

@@ -5,12 +5,11 @@ import {CommonUtils} from "./CommonUtils.sol";
 
 interface IAutomationController {
     // Custom errors
-    error AddressCannotBeEOA();
+    error CallerNotAutomationCore();
     error CallerNotRegistry();
     error CallerNotVmSigner();
     error ConfigUpdateFailed();
     error InconsistentTransitionState();
-    error AddressCannotBeZero();
     error InvalidInputCycleIndex();
     error InvalidRegistryState();
     error OutOfOrderTaskProcessingRequest(); 
@@ -31,5 +30,5 @@ interface IAutomationController {
     function monitorCycleEnd() external;
     function moveToStartedState() external;
     function tryMoveToSuspendedState() external;
-    function updateConfigFromBuffer() external;
+    function updateCyleDuration(uint64 cycleDurationSecs) external;
 }

@@ -6,6 +6,7 @@ import {CommonUtils} from "./CommonUtils.sol";
 import {LibController} from "./LibController.sol";
 
 import {IAutomationController} from "./IAutomationController.sol";
+import {IAutomationCore} from "./IAutomationCore.sol";
 import {IAutomationRegistry} from "./IAutomationRegistry.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable2StepUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
@@ -23,6 +24,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @dev State variables
     LibController.AutomationCycleInfo cycleInfo;
     IAutomationRegistry public registry;
+    IAutomationCore public automationCore;
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
   
@@ -72,6 +74,10 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Emitted when the registry smart contract address is updated.
     event RegistryUpdated(address indexed oldRegistryAddress, address indexed newRegistryAddress);
+
+    /// @notice Emitted when the AutomationCore contract address is updated.
+    event AutomationCoreUpdated(address indexed oldAutomationCore, address indexed newAutomationCore);
+
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONSTRUCTOR AND INITIALIZER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
@@ -81,19 +87,21 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     }
     
     /// @notice Initializes the configuration parameters of the contract, can only be called once.
-    /// @param _registry Address of the registry smart contract.
-    function initialize(address _registry) public initializer {
-        if (_registry == address(0)) { revert AddressCannotBeZero(); }
-        if (!_registry.isContract()) { revert AddressCannotBeEOA(); }
+    /// @param _automationCore Address of the AutomationCore smart contract.
+    /// @param _registry Address of the AutomationRegistry smart contract.
+    function initialize(address _automationCore, address _registry) public initializer {
+        _automationCore.validateContractAddress();
+        _registry.validateContractAddress();
 
+        automationCore = IAutomationCore(_automationCore); 
         registry = IAutomationRegistry(_registry);
         
-        (CommonUtils.CycleState state, uint64 cycleId) = registry.isAutomationEnabled() ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
+        (CommonUtils.CycleState state, uint64 cycleId) = automationCore.isAutomationEnabled() ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
 
         cycleInfo.initializeCycle(
             cycleId,
             uint64(block.timestamp),
-            registry.cycleDurationSecs(),
+            automationCore.cycleDurationSecs(),
             state
         ); 
 
@@ -106,7 +114,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @param _taskIndexes Array of task index to be processed.
     function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external {
         // Check caller is VM Signer
-        if (msg.sender != registry.getVmSigner()) { revert CallerNotVmSigner(); }
+        if (msg.sender != automationCore.getVmSigner()) { revert CallerNotVmSigner(); }
         
         CommonUtils.CycleState state = cycleInfo.state(); 
 
@@ -120,7 +128,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
     function monitorCycleEnd() external {
-        if (tx.origin != registry.getVmSigner()) { revert CallerNotVmSigner(); }
+        if (tx.origin != automationCore.getVmSigner()) { revert CallerNotVmSigner(); }
 
         if(cycleInfo.state() != CommonUtils.CycleState.STARTED || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
             return;
@@ -191,10 +199,10 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
                 // Nothing to refund for GST tasks
                 if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) {                         
-                    (bool refunded, bytes memory data) = address(registry).call(
+                    (bool refunded, bytes memory data) = address(automationCore).call(
                         abi.encodeCall(
-                            IAutomationRegistry.refundTaskFees, 
-                            (taskIndexes[i], currentTime, cycleLockedFees)
+                            IAutomationCore.refundTaskFees, 
+                            (taskIndexes[i], currentTime, cycleLockedFees, cycleInfo.refundDuration(), cycleInfo.automationFeePerSec())
                         )
                     );
                     require(refunded, RefundFailed());   
@@ -288,17 +296,13 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 require(updated, UpdateTaskStateFailed());
             } else {
                 // Active UST
-
-                uint128 registryMaxGasCap = registry.getRegistryMaxGasCap();
-
-                uint128 fee = registry.calculateTaskFee(
+                uint128 fee = automationCore.calculateTaskFee(
                     task.state,
                     task.expiryTime,
                     task.maxGasAmount,
                     cycleInfo.newCycleDuration(),
                     _currentTime,
-                    cycleInfo.automationFeePerSec(),
-                    registryMaxGasCap
+                    cycleInfo.automationFeePerSec()
                 );
 
                 // If the task reached this phase that means it is a valid active task for the new cycle.
@@ -364,7 +368,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         // It might happen that task has been expired by the time charging is being done.
         // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
         
-        address erc20Supra = registry.erc20Supra();
+        address erc20Supra = automationCore.erc20Supra();
         bool isRemoved;
         uint128 gas;
         uint128 fees;
@@ -391,9 +395,9 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             if(userBalance < _fee) {
                 // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
 
-                (bool unlocked, ) = address(registry).call(
+                (bool unlocked, ) = address(automationCore).call(
                     abi.encodeCall(
-                        IAutomationRegistry.safeUnlockLockedDeposit, 
+                        IAutomationCore.safeUnlockLockedDeposit, 
                         (_taskIndex, _lockedFeeForNextCycle)
                     )
                 );
@@ -413,7 +417,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             } else {
                 if(_fee != 0)  {
                     // Charge the fee    
-                    (bool sent, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.chargeFees, (_owner, _fee)));
+                    (bool sent, ) = address(automationCore).call(abi.encodeCall(IAutomationCore.chargeFees, (_owner, _fee)));
                     if (!sent) { revert TransferFailed(); }
 
                     fees = _fee;
@@ -445,7 +449,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
         bool transitionFinalized = isTransitionFinalized();
         if (transitionFinalized) {
-            if (!registry.isAutomationEnabled() && cycleInfo.state() == CommonUtils.CycleState.FINISHED) {
+            if (!automationCore.isAutomationEnabled() && cycleInfo.state() == CommonUtils.CycleState.FINISHED) {
                 _tryMoveToSuspendedState();
             } else {
                 (bool updated, ) = address(registry).call(
@@ -494,7 +498,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         require(updated, UpdateRegistryStateFailed());
 
         // Check if automation is enabled
-        if (registry.isAutomationEnabled()) {
+        if (automationCore.isAutomationEnabled()) {
             // Update the config in case if transition flow is STARTED -> SUSPENDED-> STARTED.
             // to reflect new configs for the new cycle if it has been updated during SUSPENDED state processing
             _updateConfigFromBuffer();
@@ -537,7 +541,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
             cycleInfo.setRefundDuration(cycleEndTime - currentTime);
             cycleInfo.setNewCycleDuration(cycleDuration);
-            cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCurrentCycleInternal());
+            cycleInfo.setAutomationFeePerSec(automationCore.calculateAutomationFeeMultiplierForCurrentCycleInternal());
             cycleInfo.setGasCommittedForNewCycle(0);
             cycleInfo.setGasCommittedForNextCycle(0);
             cycleInfo.setSysGasCommittedForNextCycle(0);
@@ -644,7 +648,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Helper function called when cycle end is identified.
     function onCycleEndInternal() private {
-        if (!registry.isAutomationEnabled()) {
+        if (!automationCore.isAutomationEnabled()) {
             _tryMoveToSuspendedState();
         } else{
             if(registry.totalTasks() == 0) {
@@ -672,7 +676,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // Calculate automation fee per second for the new cycle only after configuration is updated.
                 // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
                 // and will be used to charge tasks during transition process.
-                cycleInfo.setAutomationFeePerSec(registry.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
+                cycleInfo.setAutomationFeePerSec(automationCore.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
                 updateCycleStateTo(CommonUtils.CycleState.FINISHED);
             }
         }
@@ -680,23 +684,20 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     
     /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
     function _updateConfigFromBuffer() private {
-        if(registry.ifConfigBufferExists()) {            
-            (bool sent, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.applyPendingConfig, ()));
-            require(sent, ConfigUpdateFailed());
-
-            uint64 cycleDurationSecs = registry.getBufferCycleDurationSecs();
-            // Check if transition state exists
-            if (cycleInfo.ifTransitionStateExists()) {
-                cycleInfo.setNewCycleDuration(cycleDurationSecs); 
-            } else {
-                cycleInfo.setDurationSecs(cycleDurationSecs);
-            }
-        }
+        (bool sent, ) = address(automationCore).call(abi.encodeCall(IAutomationCore.applyPendingConfig, ()));
+        require(sent, ConfigUpdateFailed());
     }
 
-    function updateConfigFromBuffer() external {
-        if (msg.sender != address(registry)) { revert CallerNotRegistry(); }
-        _updateConfigFromBuffer();
+    /// @notice Helper function to update cycle duration.
+    function updateCyleDuration(uint64 _cycleDurationSecs) external {
+        if (msg.sender != address(automationCore)) { revert CallerNotAutomationCore(); }
+
+        // Check if transition state exists
+        if (cycleInfo.ifTransitionStateExists()) {
+            cycleInfo.setNewCycleDuration(_cycleDurationSecs); 
+        } else {
+            cycleInfo.setDurationSecs(_cycleDurationSecs);
+        }
     }
 
     /// @notice Checks if the cycle transition is finalized.
@@ -730,14 +731,25 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @notice Function to update the registry smart contract address.
     /// @param _registry Address of the registry smart contract.
     function setRegistry(address _registry) external onlyOwner {
-        if (_registry == address(0)) { revert AddressCannotBeZero(); }
-        if (!_registry.isContract()) { revert AddressCannotBeEOA(); }
-        
+        _registry.validateContractAddress();
+
         address oldRegistry = address(registry);
         registry = IAutomationRegistry(_registry);
         
         emit RegistryUpdated(oldRegistry, _registry);
     }
+
+    /// @notice Function to update the AutomationCore contract address.
+    /// @param _automationCore Address of the AutomationCore contract.
+    function setAutomationCore(address _automationCore) external onlyOwner {
+        _automationCore.validateContractAddress();
+        
+        address oldAutomationCore = address(automationCore);
+        automationCore = IAutomationCore(_automationCore);
+        
+        emit AutomationCoreUpdated(oldAutomationCore, _automationCore);
+    }
+
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 

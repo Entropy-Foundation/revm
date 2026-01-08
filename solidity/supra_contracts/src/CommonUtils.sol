@@ -5,6 +5,10 @@ import {LibRegistry} from "./LibRegistry.sol";
 
 // Helper library used by supra contracts
 library CommonUtils {
+
+    // Custom errors
+    error AddressCannotBeEOA();
+    error AddressCannotBeZero();
     
     // Address of the VM Signer: SUP0
     address constant VM_SIGNER = address(0x53555000);
@@ -103,6 +107,12 @@ library CommonUtils {
             size := extcodesize(_addr)
         }
         return size > 0;
+    }
+
+    /// @notice Validates a contract address.
+    function validateContractAddress(address _contractAddr) internal view {
+        if (_contractAddr == address(0)) { revert AddressCannotBeZero(); }
+        if (!isContract(_contractAddr)) { revert AddressCannotBeEOA(); }
     }
 
     /// @notice Checks if an address is VM Signer.
