@@ -22,8 +22,6 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     mapping(address targetContract => EnumerableSet.Bytes4Set selectors) private registry;
 
     /// @dev Custom errors
-    error AddressCannotBeEOA();
-    error AddressCannotBeZero();
     error CallerNotVmSigner();
     error SelectorAlreadyRegistered();
     error SelectorNotRegistered();
@@ -84,8 +82,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     /// @param _targetContract The target contract address.
     /// @param _selector Function selector to be called on target contract.
     function register(address _targetContract, bytes4 _selector) external onlyOwner {
-        if (_targetContract == address(0)) revert AddressCannotBeZero();
-        if (!_targetContract.isContract()) revert AddressCannotBeEOA();
+        _targetContract.validateContractAddress();
 
         // Adds a target contract if it does not exist
         registeredTargets.add(_targetContract);
