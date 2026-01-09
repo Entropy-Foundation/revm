@@ -38,27 +38,36 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Emitted when a selector is registered.
     /// @param targetContract Address of the target contract.
     /// @param selector Function selector to be called on target contract.
-    event SelectorRegistered(address indexed targetContract, bytes4 indexed selector);
+    /// @param priority Priority of the registered function.
+    event SelectorRegistered(address indexed targetContract, bytes4 indexed selector, uint64 indexed priority);
 
     /// @notice Emitted when a selector is deregistered.
     /// @param targetContract Address of the target contract.
     /// @param selector Deregistered function selector.
-    event SelectorDeregistered(address indexed targetContract, bytes4 indexed selector);
+    /// @param priority Priority of the deregistered function.
+    event SelectorDeregistered(address indexed targetContract, bytes4 indexed selector, uint64 indexed priority);
 
     /// @notice Emitted when call to a function fails.
     /// @param targetContract Address of the target contract.
     /// @param selector Called function selector.
+    /// @param priority Priority of the called function.
     /// @param returndata Returned data.
     event CallFailed(
         address indexed targetContract,
         bytes4 indexed selector,
+        uint64 indexed priority,
         bytes returndata
     );
 
     /// @notice Emitted when call to a function is successful.
     /// @param targetContract Address of the target contract.
     /// @param selector Called function selector.
-    event CallSucceeded(address indexed targetContract, bytes4 indexed selector);
+    /// @param priority Priority of the called function.
+    event CallSucceeded(
+        address indexed targetContract, 
+        bytes4 indexed selector, 
+        uint64 indexed priority
+    );
 
     /**
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -113,7 +122,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
         executions[i] = executionEntry;
         executionIndex[key] = i + 1;
 
-        emit SelectorRegistered(_targetContract, _selector);
+        emit SelectorRegistered(_targetContract, _selector, _priority);
     }
     
     /// @notice Deregisters a function selector.
@@ -125,6 +134,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
         uint256 index = executionIndex[key];
         require(index != 0, SelectorNotRegistered());
         index -= 1;
+        uint64 priority = uint64(executions[index]);
 
         uint256 lastIndex = executions.length - 1;
         
@@ -143,7 +153,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
         // Remove key of the function 
         delete executionIndex[key];
 
-        emit SelectorDeregistered(_targetContract, _selector);
+        emit SelectorDeregistered(_targetContract, _selector, priority);
     }
 
     /// @notice Calls all registered functions for the targets.
@@ -156,11 +166,12 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
 
             address target = address(uint160(executionEntry >> 96));
             bytes4 selector = bytes4(uint32(executionEntry >> 64));
+            uint64 priority = uint64(executionEntry);
             (bool ok, bytes memory data) = target.call(abi.encodePacked(selector));
             if (ok) {
-                emit CallSucceeded(target, selector); 
+                emit CallSucceeded(target, selector, priority); 
             } else {
-                emit CallFailed(target, selector, data);
+                emit CallFailed(target, selector, priority, data);
             }
         }
     }

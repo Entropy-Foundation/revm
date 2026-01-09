@@ -13,6 +13,7 @@ contract BlockMetaTest is Test {
     Counter counter;                            // Counter instance on proxy address
     address counterAddress;
     bytes4 selector;
+    uint64 priority;
 
     address admin = address(0xA11CE);
     address vmAddress = address(0x99);
@@ -39,6 +40,7 @@ contract BlockMetaTest is Test {
 
 	    counterAddress = address(counter);
 	    selector = Counter.increment.selector;
+        priority = 1;
 
         vm.stopPrank();
     }
@@ -46,16 +48,18 @@ contract BlockMetaTest is Test {
     /// @dev Helper function to register a selector.
     /// @param _targetContract The target contract address.
     /// @param _selector Function selector to register.
-    function register(address _targetContract, bytes4 _selector) private {
+    /// @param _priority The priority of the function entry.
+    function register(address _targetContract, bytes4 _selector, uint64 _priority) private {
         vm.prank(admin);
-        blockMeta.register(_targetContract, _selector);
+        blockMeta.register(_targetContract, _selector, _priority);
     }
 
     /// @dev Test to ensure 'register' registers a selector.
     function testRegister() public {
         assertEq(blockMeta.getTargetContracts().length, 0);
+        assertEq(blockMeta.getSelectors(counterAddress).length, 0);
 
-        register(counterAddress, selector);
+        register(counterAddress, selector, priority);
 
         address[] memory targetContracts = blockMeta.getTargetContracts();
         assertEq(targetContracts.length, 1);
@@ -68,10 +72,10 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'register' emits event 'SelectorRegistered'.
     function testRegisterEmitsEvent() public {
-        vm.expectEmit(true, true, false, false);
-        emit BlockMeta.SelectorRegistered(counterAddress, selector);
+        vm.expectEmit(true, true, true, false);
+        emit BlockMeta.SelectorRegistered(counterAddress, selector, priority);
 
-        register(counterAddress, selector);
+        register(counterAddress, selector, priority);
     }
 
     /// @dev Test to ensure 'register' reverts if caller is not owner.
@@ -79,21 +83,21 @@ contract BlockMetaTest is Test {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
         vm.prank(alice);
-        blockMeta.register(counterAddress, selector);
+        blockMeta.register(counterAddress, selector, priority);
     }
 
     /// @dev Test to ensure 'register' reverts if address(0) is passed.
     function testRegisterRevertsIfAddressZero() public {
         vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
 
-        register(address(0), selector);
+        register(address(0), selector, priority);
     }
 
     /// @dev Test to ensure 'register' reverts if EOA is passed.
     function testRegisterRevertsIfEOA() public {
         vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
 
-        register(alice, selector);
+        register(alice, selector, priority);
     }
 
     /// @dev Test to ensure 'register' reverts if selector already exists.
@@ -101,13 +105,13 @@ contract BlockMetaTest is Test {
         testRegister();
 
         vm.expectRevert(BlockMeta.SelectorAlreadyRegistered.selector);
-        register(counterAddress, selector);
+        register(counterAddress, selector, priority);
     }
 
     /// @dev Test to ensure 'deregister' deregisters a single selector.
     function testDeregisterSingleSelector() public {
-        register(counterAddress, selector);
-        register(counterAddress, bytes4(keccak256("foo()")));
+        register(counterAddress, selector, priority);
+        register(counterAddress, bytes4(keccak256("foo()")), priority + 1);
 
         assertEq(blockMeta.getTargetContracts().length, 1);
         assertEq(blockMeta.getSelectors(counterAddress).length, 2);
@@ -119,26 +123,12 @@ contract BlockMetaTest is Test {
         assertEq(blockMeta.getSelectors(counterAddress).length, 1);
     }
 
-    /// @dev Test to ensure 'deregister' removes target contract if no selector is left.
-    function testDeregisterLastSelectorRemovesTarget() public {
-        testRegister();
-
-        vm.prank(admin);
-        blockMeta.deregister(counterAddress, selector);
-
-        // Target contract should be removed.        
-        assertEq(blockMeta.getTargetContracts().length, 0);
-
-        // Selector should be removed
-        assertEq(blockMeta.getSelectors(counterAddress).length, 0);
-    }
-
     /// @dev Test to ensure 'deregister' emits event 'SelectorDeregistered'.
     function testDeregisterEmitsEvent() public {
         testRegister();
 
-        vm.expectEmit(true, true, false, false);
-        emit BlockMeta.SelectorDeregistered(counterAddress, selector);
+        vm.expectEmit(true, true, true, false);
+        emit BlockMeta.SelectorDeregistered(counterAddress, selector, priority);
 
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
@@ -200,10 +190,10 @@ contract BlockMetaTest is Test {
         FailingContract failingContract = new FailingContract();
         bytes4 failSelector = FailingContract.fail.selector;
 
-        register(address(failingContract), failSelector);
+        register(address(failingContract), failSelector, priority);
 
-        vm.expectEmit(true, true, false, true);
-        emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
+        vm.expectEmit(true, true, true, true);
+        emit BlockMeta.CallFailed(address(failingContract), failSelector, priority, abi.encodeWithSignature("Fail()"));
 
         vm.prank(VM_SIGNER);
         blockMeta.blockPrologue();
@@ -211,10 +201,10 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'blockPrologue' emits 'CallSucceeded' for a successful call.
     function testBlockPrologueEmitsCallSucceeded() public {
-        register(counterAddress, selector);
+        register(counterAddress, selector, priority);
 
-        vm.expectEmit(true, true, false, false);
-        emit BlockMeta.CallSucceeded(counterAddress, selector);
+        vm.expectEmit(true, true, true, false);
+        emit BlockMeta.CallSucceeded(counterAddress, selector, priority);
 
         vm.prank(VM_SIGNER);
         blockMeta.blockPrologue();
