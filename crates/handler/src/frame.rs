@@ -27,7 +27,7 @@ use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
 };
-use primitives::{keccak256, Address, Bytes, B256, U256};
+use primitives::{keccak256, Address, Bytes, U256};
 use state::Bytecode;
 use std::borrow::ToOwned;
 use std::boxed::Box;
