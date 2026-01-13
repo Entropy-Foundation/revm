@@ -72,8 +72,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// When automation is in suspended state, there are no tasks expected.
     event ErrorInconsistentSuspendedState();
 
-    /// @notice Emitted when the registry smart contract address is updated.
-    event RegistryUpdated(address indexed oldRegistryAddress, address indexed newRegistryAddress);
+    /// @notice Emitted when the AutomationRegistry contract address is updated.
+    event AutomationRegistryUpdated(address indexed oldRegistryAddress, address indexed newRegistryAddress);
 
     /// @notice Emitted when the AutomationCore contract address is updated.
     event AutomationCoreUpdated(address indexed oldAutomationCore, address indexed newAutomationCore);
@@ -728,15 +728,15 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
-    /// @notice Function to update the registry smart contract address.
-    /// @param _registry Address of the registry smart contract.
-    function setRegistry(address _registry) external onlyOwner {
+    /// @notice Function to update the AutomationRegistry contract address.
+    /// @param _registry Address of the AutomationRegistry contract.
+    function setAutomationRegistry(address _registry) external onlyOwner {
         _registry.validateContractAddress();
 
         address oldRegistry = address(registry);
         registry = IAutomationRegistry(_registry);
         
-        emit RegistryUpdated(oldRegistry, _registry);
+        emit AutomationRegistryUpdated(oldRegistry, _registry);
     }
 
     /// @notice Function to update the AutomationCore contract address.

@@ -418,7 +418,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         // Refund and emit event if any tasks were stopped
         if(stoppedTaskDetails.length > 0) {            
-            uint256 balance = IERC20(erc20Supra).balanceOf(address(this));
+            uint256 balance = IERC20(erc20Supra).balanceOf(automationCore);
 
             if(balance < totalRefundFee) { revert InsufficientBalanceForRefund(); }
             IAutomationCore(automationCore).refund(msg.sender, totalRefundFee);
@@ -556,7 +556,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         _automationController.validateContractAddress();
 
         address oldAutomationController = automationController;
-        automationCore = _automationController;
+        automationController = _automationController;
         
         emit AutomationControllerUpdated(oldAutomationController, _automationController);
     }

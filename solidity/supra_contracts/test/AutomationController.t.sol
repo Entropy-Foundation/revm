@@ -6,15 +6,17 @@ import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC196
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from"../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {AutomationRegistry} from "../src/AutomationRegistry.sol";
+import {AutomationCore} from "../src/AutomationCore.sol";
 import {AutomationController} from "../src/AutomationController.sol";
 import {IAutomationController} from "../src/IAutomationController.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {CommonUtils} from "../src/CommonUtils.sol";
 
 contract AutomationControllerTest is Test {
+    ERC20Supra erc20Supra;                      // ERC20Supra contract
+    AutomationCore automationCore;              // AutomationCore instance on proxy address
     AutomationRegistry registry;                // AutomationRegistry instance on proxy address
     AutomationController controller;            // AutomationController instance on proxy address
-    ERC20Supra erc20Supra;                      // ERC20Supra contract
 
     address admin = address(0xA11CE);
     address vmSigner = address(0x53555000);
@@ -23,28 +25,16 @@ contract AutomationControllerTest is Test {
 
     /// @dev Sets up initial state for testing.
     /// @dev Sets balance of 'alice' to 100 ether.
-    /// @dev Deploys and initializes ERC20Supra, AutomationRegistry and AutomationController contracts. 
+    /// @dev Deploys and initializes all contracts with required parameters. 
     function setUp() public {
         vm.deal(alice, 100 ether);
 
-        // Deploy ERC20Supra
-        vm.prank(admin);
+        vm.startPrank(admin);
         erc20Supra = new ERC20Supra(msg.sender);
 
-        // Deploy AutomationRegistry proxy
-        registry = AutomationRegistry(deployRegistry(address(erc20Supra)));
-
-        // Deploy AutomationController proxy
-        controller = AutomationController(deployController(address(registry)));
-    }
-    
-    /// @dev Helper function to deploy AutomationRegistry proxy 
-    function deployRegistry(address _erc20Supra) private returns (address) {
-        vm.startPrank(admin);
-        AutomationRegistry impl = new AutomationRegistry();
-
-        bytes memory initData = abi.encodeCall(
-            AutomationRegistry.initialize,
+        AutomationCore automationCoreImpl = new AutomationCore();
+        bytes memory automationCoreInitData = abi.encodeCall(
+            AutomationCore.initialize,
             (
                 3600,                       // taskDurationCapSecs
                 10_000_000,                 // registryMaxGasCap
@@ -59,36 +49,35 @@ contract AutomationControllerTest is Test {
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
                 vmSigner,                   // VM Signer address
-                address(_erc20Supra)        // ERC20Supra address
+                address(erc20Supra)        // ERC20Supra address
             )
         );
-
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        vm.stopPrank();
+        ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
+        automationCore = AutomationCore(address(automationCoreProxy));
         
-        return address(proxy);
-    }
+        AutomationRegistry registryImpl = new AutomationRegistry();
+        bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore)));
+        ERC1967Proxy registryProxy = new ERC1967Proxy(address(registryImpl), registryInitData);
+        registry = AutomationRegistry(address(registryProxy));
 
-    /// @dev Helper function to deploy AutomationController proxy 
-    function deployController(address _registry) private returns (address) {
-        vm.startPrank(admin);
-        AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize,(_registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        AutomationController controllerImpl = new AutomationController();
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry)));
+        ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
+        controller = AutomationController(address(controllerProxy));
+
         vm.stopPrank();
-        
-        return address(proxy);
     }
 
     /// @dev Test to ensure all state variables are initialized correctly.
     function testInitialize() public view {
         assertEq(controller.owner(), admin);
+        assertEq(address(controller.automationCore()), address(automationCore));
         assertEq(address(controller.registry()), address(registry));
 
         (uint64 index, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = controller.getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
-        assertEq(durationSecs, registry.cycleDurationSecs());
+        assertEq(durationSecs, automationCore.cycleDurationSecs());
         assertEq(uint8(state), uint8(CommonUtils.CycleState.STARTED));
     }
 
@@ -97,74 +86,90 @@ contract AutomationControllerTest is Test {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         
         vm.prank(admin);
-        controller.initialize(address(registry));
+        controller.initialize(address(automationCore), address(registry));
     }
 
-    /// @dev Test to ensure initialize reverts if registry address is zero.
-    function testInitializeRevertsIfRegistryZero() public {
-        // Deploy AutomationController proxy
+    /// @dev Test to ensure initialize reverts if AutomationCore address is zero.
+    function testInitializeRevertsIfAutomationCoreAddressZero() public {
         AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize,(address(0)));
+        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(0), address(registry)));
 
-        vm.expectRevert(IAutomationController.AddressCannotBeZero.selector);
+        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
         new ERC1967Proxy(address(impl), initData);
     }
 
-    /// @dev Test to ensure initialize reverts if registry address is EOA.
-    function testInitializeRevertsIfRegistryEoa() public {
-        // Deploy AutomationController proxy
+    /// @dev Test to ensure initialize reverts if AutomationCore address is EOA.
+    function testInitializeRevertsIfAutomationCoreEoa() public {
         AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize,(alice));
+        bytes memory initData = abi.encodeCall(AutomationController.initialize, (alice, address(registry)));
 
-        vm.expectRevert(IAutomationController.AddressCannotBeEOA.selector);
+        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+        new ERC1967Proxy(address(impl), initData);
+    }
+
+    /// @dev Test to ensure initialize reverts if AutomationRegistry address is zero.
+    function testInitializeRevertsIfRegistryZero() public {
+        AutomationController impl = new AutomationController();
+        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(automationCore), address(0)));
+
+        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
+        new ERC1967Proxy(address(impl), initData);
+    }
+
+    /// @dev Test to ensure initialize reverts if AutomationRegistry address is EOA.
+    function testInitializeRevertsIfRegistryEoa() public {
+        AutomationController impl = new AutomationController();
+        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(automationCore), alice));
+
+        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
         new ERC1967Proxy(address(impl), initData);
     }
     
-    /// @dev Test to ensure 'setRegistry' reverts if caller is not owner.
-    function testSetRegistryRevertsIfNotOwner() public {
-        address newRegistry = deployRegistry(address(erc20Supra));
+    /// @dev Test to ensure 'setAutomationRegistry' reverts if caller is not owner.
+    function testSetAutomationRegistryRevertsIfNotOwner() public {
+        AutomationRegistry registryImplementation = new AutomationRegistry();
 
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
 
         vm.prank(alice);
-        controller.setRegistry(newRegistry);
+        controller.setAutomationRegistry(address(registryImplementation));
     }
     
-    /// @dev Test to ensure 'setRegistry' reverts if address is zero.
-    function testSetRegistryRevertsIfAddressZero() public {
-        vm.expectRevert(IAutomationController.AddressCannotBeZero.selector);
+    /// @dev Test to ensure 'setAutomationRegistry' reverts if address is zero.
+    function testSetAutomationRegistryRevertsIfAddressZero() public {
+        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
 
         vm.prank(admin);
-        controller.setRegistry(address(0));
+        controller.setAutomationRegistry(address(0));
     }
 
-    /// @dev Test to ensure 'setRegistry' reverts if address is EOA.
-    function testSetRegistryRevertsIfAddressEoa() public {
-        vm.expectRevert(IAutomationController.AddressCannotBeEOA.selector);
+    /// @dev Test to ensure 'setAutomationRegistry' reverts if address is EOA.
+    function testSetAutomationRegistryRevertsIfAddressEoa() public {
+        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
 
         vm.prank(admin);
-        controller.setRegistry(alice);
+        controller.setAutomationRegistry(alice);
     }
 
-    /// @dev Test to ensure 'setRegistry' updates the registry address.
-    function testSetRegistry() public {
-        address newRegistry = deployRegistry(address(erc20Supra));
-        
+    /// @dev Test to ensure 'setAutomationRegistry' updates the registry address.
+    function testSetAutomationRegistry() public {
+        AutomationRegistry registryImplementation = new AutomationRegistry();
+
         vm.prank(admin);
-        controller.setRegistry(newRegistry);
+        controller.setAutomationRegistry(address(registryImplementation));
 
-        assertEq(address(controller.registry()), newRegistry);
+        assertEq(address(controller.registry()), address(registryImplementation));
     }
 
-    /// @dev Test to ensure 'setRegistry' emits event 'RegistryUpdated'.
-    function testSetRegistryEmitsEvent() public {
-        address newRegistry = deployRegistry(address(erc20Supra));
+    /// @dev Test to ensure 'setAutomationRegistry' emits event 'AutomationRegistryUpdated'.
+    function testSetAutomationRegistryEmitsEvent() public {
+        AutomationRegistry registryImplementation = new AutomationRegistry();
 
         vm.expectEmit(true, true, false, false);
-        emit AutomationController.RegistryUpdated(address(controller.registry()), newRegistry);
+        emit AutomationController.AutomationRegistryUpdated(address(controller.registry()), address(registryImplementation));
 
         vm.prank(admin);
-        controller.setRegistry(newRegistry);
+        controller.setAutomationRegistry(address(registryImplementation));
     }
 
     /// @dev Test to ensure 'processTasks' reverts if caller is not VM Signer.

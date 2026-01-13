@@ -6,6 +6,7 @@ import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC196
 import {OwnableUpgradeable} from"../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {Counter} from "./Counter.sol";
+import {CommonUtils} from "../src/CommonUtils.sol";
 
 contract BlockMetaTest is Test {
     BlockMeta blockMeta;                        // BlockMeta instance on proxy address
@@ -83,14 +84,14 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'register' reverts if address(0) is passed.
     function testRegisterRevertsIfAddressZero() public {
-        vm.expectRevert(BlockMeta.AddressCannotBeZero.selector);
+        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
 
         register(address(0), selector);
     }
 
     /// @dev Test to ensure 'register' reverts if EOA is passed.
     function testRegisterRevertsIfEOA() public {
-        vm.expectRevert(BlockMeta.AddressCannotBeEOA.selector);
+        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
 
         register(alice, selector);
     }
