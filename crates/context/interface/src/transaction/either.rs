@@ -118,4 +118,11 @@ where
             Either::Right(r) => r.max_priority_fee_per_gas(),
         }
     }
+
+    fn tx_hash(&self) -> B256 {
+        match self {
+            Either::Left(l) => l.tx_hash(),
+            Either::Right(r) => r.tx_hash(),
+        }
+    }
 }
