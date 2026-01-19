@@ -399,6 +399,31 @@ contract BlockMetaTest is Test {
         blockMeta.blockPrologue();
     }
 
+    /// @dev Test to ensure 'blockPrologue' continues execution even if a call fails.
+    function testBlockPrologueContinuesAfterACallFails() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        register(address(failingContract), failSelector);
+        register(counterAddress, selector);
+
+        assertEq(counter.counter(), 0);
+
+        // Expect the failing call event
+        vm.expectEmit(true, true, false, true);
+        emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
+
+        // Expect the successful call event
+        vm.expectEmit(true, true, false, false);
+        emit BlockMeta.CallSucceeded(counterAddress, selector);
+
+        vm.prank(VM_SIGNER);
+        blockMeta.blockPrologue();
+
+        // Counter must still be incremented even though the first call failed
+        assertEq(counter.counter(), 1);
+    }
+
     /// @dev Test to ensure 'getExecutions' returns the execution order.
     function testGetExecutions() public {
         FailingContract failingContract = new FailingContract();
@@ -415,6 +440,7 @@ contract BlockMetaTest is Test {
         assertEq(targets[1], address(failingContract));
         assertEq(targets[2], counterAddress);
 
+        assertEq(selectors.length, 3);
         assertEq(selectors[0], selector);
         assertEq(selectors[1], failSelector);
         assertEq(selectors[2], foo);
