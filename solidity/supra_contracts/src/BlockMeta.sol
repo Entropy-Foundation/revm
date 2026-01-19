@@ -43,7 +43,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Emitted when the execution order is updated.
     /// @param executionOrder Updated execution order.
-    event ExecutionOrderUpdated(uint256[] executionOrder);
+    event ExecutionOrderUpdated(uint256[] indexed executionOrder);
 
     /// @notice Emitted when call to a function fails.
     /// @param targetContract Address of the target contract.
@@ -188,7 +188,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Checks whether a given execution entry is already registered.
     /// @param _executionEntry The packed execution entry to check.
-    function checkDuplicate(uint256 _executionEntry) private {
+    function checkDuplicate(uint256 _executionEntry) private view {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
             if (executions[i] == _executionEntry) {

@@ -13,7 +13,6 @@ contract BlockMetaTest is Test {
     Counter counter;                            // Counter instance on proxy address
     address counterAddress;
     bytes4 selector;
-    uint64 priority;
 
     address admin = address(0xA11CE);
     address vmAddress = address(0x99);
@@ -40,7 +39,6 @@ contract BlockMetaTest is Test {
 
 	    counterAddress = address(counter);
 	    selector = Counter.increment.selector;
-        priority = 1;
 
         vm.stopPrank();
     }
@@ -48,56 +46,63 @@ contract BlockMetaTest is Test {
     /// @dev Helper function to register a selector.
     /// @param _targetContract The target contract address.
     /// @param _selector Function selector to register.
-    /// @param _priority The priority of the function entry.
-    function register(address _targetContract, bytes4 _selector, uint64 _priority) private {
+    function register(address _targetContract, bytes4 _selector) private {
         vm.prank(admin);
-        blockMeta.register(_targetContract, _selector, _priority);
+        blockMeta.register(_targetContract, _selector);
     }
 
     /// @dev Test to ensure 'register' registers a selector.
     function testRegister() public {
-        assertEq(blockMeta.getTargetContracts().length, 0);
-        assertEq(blockMeta.getSelectors(counterAddress).length, 0);
+        address[] memory targets;
+        bytes4[] memory selectors;
+        (targets, selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 0);
+        assertEq(selectors.length, 0);
 
-        register(counterAddress, selector, priority);
+        register(counterAddress, selector);
 
-        address[] memory targetContracts = blockMeta.getTargetContracts();
-        assertEq(targetContracts.length, 1);
-        assertEq(targetContracts[0], counterAddress);
-
-        bytes4[] memory selectors = blockMeta.getSelectors(counterAddress);
+        (targets, selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 1);
         assertEq(selectors.length, 1);
+        assertEq(targets[0], counterAddress);
         assertEq(selectors[0], selector);
     }
 
     /// @dev Test to ensure 'register' emits event 'SelectorRegistered'.
     function testRegisterEmitsEvent() public {
-        vm.expectEmit(true, true, true, false);
-        emit BlockMeta.SelectorRegistered(counterAddress, selector, priority);
+        vm.expectEmit(true, true, false, false);
+        emit BlockMeta.SelectorRegistered(counterAddress, selector);
 
-        register(counterAddress, selector, priority);
+        register(counterAddress, selector);
     }
 
     /// @dev Test to ensure 'register' reverts if caller is not owner.
     function testRegisterRevertsIfNotOwner() public {
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        blockMeta.register(counterAddress, selector, priority);
+        blockMeta.register(counterAddress, selector);
     }
 
     /// @dev Test to ensure 'register' reverts if address(0) is passed.
     function testRegisterRevertsIfAddressZero() public {
         vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
 
-        register(address(0), selector, priority);
+        register(address(0), selector);
     }
 
     /// @dev Test to ensure 'register' reverts if EOA is passed.
     function testRegisterRevertsIfEOA() public {
         vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
 
-        register(alice, selector, priority);
+        register(alice, selector);
+    }
+
+    /// @dev Test to ensure 'register' reverts if empty selector is passed.
+    function testRegisterRevertsIfEmptySelector() public {
+        vm.expectRevert(BlockMeta.InvalidSelector.selector);
+
+        register(counterAddress, bytes4(0));
     }
 
     /// @dev Test to ensure 'register' reverts if selector already exists.
@@ -105,30 +110,41 @@ contract BlockMetaTest is Test {
         testRegister();
 
         vm.expectRevert(BlockMeta.SelectorAlreadyRegistered.selector);
-        register(counterAddress, selector, priority);
+        register(counterAddress, selector);
     }
 
-    /// @dev Test to ensure 'deregister' deregisters a single selector.
-    function testDeregisterSingleSelector() public {
-        register(counterAddress, selector, priority);
-        register(counterAddress, bytes4(keccak256("foo()")), priority + 1);
+    /// @dev Test to ensure 'deregister' deregisters a selector.
+    function testDeregister() public {
+        bytes4 foo = bytes4(keccak256("foo()"));
+        register(counterAddress, selector);
+        register(counterAddress, foo);
 
-        assertEq(blockMeta.getTargetContracts().length, 1);
-        assertEq(blockMeta.getSelectors(counterAddress).length, 2);
+        address[] memory targets;
+        bytes4[] memory selectors;
+        (targets, selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 2);
+        assertEq(selectors.length, 2);
+        assertEq(targets[0], counterAddress);
+        assertEq(targets[1], counterAddress);
+        assertEq(selectors[0], selector);
+        assertEq(selectors[1], foo);
 
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
 
-        assertEq(blockMeta.getTargetContracts().length, 1);
-        assertEq(blockMeta.getSelectors(counterAddress).length, 1);
+        (targets, selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 1);
+        assertEq(selectors.length, 1);
+        assertEq(targets[0], counterAddress);
+        assertEq(selectors[0], foo);
     }
 
     /// @dev Test to ensure 'deregister' emits event 'SelectorDeregistered'.
     function testDeregisterEmitsEvent() public {
         testRegister();
 
-        vm.expectEmit(true, true, true, false);
-        emit BlockMeta.SelectorDeregistered(counterAddress, selector, priority);
+        vm.expectEmit(true, true, false, false);
+        emit BlockMeta.SelectorDeregistered(counterAddress, selector);
 
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
@@ -138,7 +154,7 @@ contract BlockMetaTest is Test {
     function testDeregisterRevertsIfNotOwner() public {
         testRegister();
 
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
         blockMeta.deregister(counterAddress, selector);
@@ -156,14 +172,187 @@ contract BlockMetaTest is Test {
         blockMeta.deregister(counterAddress, invalidSelector);
     }
 
-    /// @dev Test to ensure 'deregister' reverts if target contract is not registered.
-    function testDeregisterRevertsIfTargetNotRegistered() public {
-        assertEq(blockMeta.getTargetContracts().length, 0);
-
-        vm.expectRevert(BlockMeta.SelectorNotRegistered.selector);
+    /// @dev Test to ensure 'deregisterAt' deregisters a selector at an index.
+    function testDeregisterAt() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+        
+        address[] memory targets;
+        bytes4[] memory selectors;
+        (targets, selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 2);
+        assertEq(selectors.length, 2);
+        assertEq(targets[0], counterAddress);
+        assertEq(targets[1], address(failingContract));
+        assertEq(selectors[0], selector);
+        assertEq(selectors[1], failSelector);
 
         vm.prank(admin);
-        blockMeta.deregister(counterAddress, selector);
+        blockMeta.deregisterAt(0);
+
+        (targets, selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 1);
+        assertEq(selectors.length, 1);
+        assertEq(targets[0], address(failingContract));
+        assertEq(selectors[0], failSelector);
+    }
+
+    /// @dev Test to ensure 'deregisterAt' emits event 'SelectorDeregistered'.
+    function testDeregisterAtEmitsEvent() public {
+        testRegister();
+
+        vm.expectEmit(true, true, false, false);
+        emit BlockMeta.SelectorDeregistered(counterAddress, selector);
+
+        vm.prank(admin);
+        blockMeta.deregisterAt(0);
+    }
+    
+    /// @dev Test to ensure 'deregisterAt' reverts if caller is not owner.
+    function testDeregisterAtRevertsIfNotOwner() public {
+        testRegister();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+
+        vm.prank(alice);
+        blockMeta.deregisterAt(0);
+    }
+
+    /// @dev Test to ensure 'deregisterAt' reverts if invalid index is passed.
+    function testDeregisterAtRevertsIfInvalidIndex() public {
+        testRegister();
+
+        vm.expectRevert(BlockMeta.InvalidIndex.selector);
+
+        vm.prank(admin);
+        blockMeta.deregisterAt(1);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' updates the execution order.
+    function testUpdateExecutionOrder() public {
+        testRegister();
+
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(address(failingContract), failSelector);
+        executionOrder[1] = packExecution(counterAddress, selector); 
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+
+        (address[] memory targets, bytes4[] memory selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 2);
+        assertEq(selectors.length, 2);
+        assertEq(targets[0], address(failingContract));
+        assertEq(targets[1], counterAddress);
+        assertEq(selectors[0], failSelector);
+        assertEq(selectors[1], selector);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' emits event 'ExecutionOrderUpdated'.
+    function testUpdateExecutionOrderEmitsEvent() public {
+        testRegister();
+
+        uint256[] memory executionOrder = createExecutionOrder();
+
+        vm.expectEmit(true, false, false, false);
+        emit BlockMeta.ExecutionOrderUpdated(executionOrder);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if caller is not owner.
+    function testUpdateExecutionOrderRevertsIfNotOwner() public {
+        uint256[] memory executionOrder = createExecutionOrder();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+
+        vm.prank(alice);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if address(0) is passed as target.
+    function testUpdateExecutionOrderRevertsIfTargetAddressZero() public {
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(counterAddress, selector); 
+        executionOrder[1] = packExecution(address(0), selector);
+
+        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if EOA is passed as target.
+    function testUpdateExecutionOrderRevertsIfTargetAddressEOA() public {
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(counterAddress, selector); 
+        executionOrder[1] = packExecution(alice, selector);
+
+        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if empty selector is passed
+    function testUpdateExecutionOrderRevertsIfEmptySelector() public {
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(counterAddress, selector); 
+        executionOrder[1] = packExecution(counterAddress, bytes4(0));
+
+        vm.expectRevert(BlockMeta.InvalidSelector.selector);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if duplicate selector is passed.
+    function testUpdateExecutionOrderRevertsIfDuplicateSelector() public {
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(counterAddress, selector); 
+        executionOrder[1] = packExecution(counterAddress, selector);
+
+        vm.expectRevert(BlockMeta.SelectorAlreadyRegistered.selector);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+    
+    /// @dev Test to ensure 'updateExecutionOrder' decreases execution order length.
+    function testUpdateExecutionOrderDecreasesExecutionOrder() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+
+        address[] memory targetsList;
+        bytes4[] memory selectorsList;
+        (targetsList, selectorsList) = blockMeta.getExecutions();
+        assertEq(targetsList.length, 2);
+        assertEq(selectorsList.length, 2);
+        assertEq(targetsList[0], counterAddress);
+        assertEq(targetsList[1], address(failingContract));
+        assertEq(selectorsList[0], selector);
+        assertEq(selectorsList[1], failSelector);
+
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(address(failingContract), failSelector);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+
+        (targetsList, selectorsList) = blockMeta.getExecutions();
+        assertEq(targetsList.length, 1);
+        assertEq(selectorsList.length, 1);
+        assertEq(targetsList[0], address(failingContract));
+        assertEq(selectorsList[0], failSelector);
     }
 
     /// @dev Test to ensure 'blockPrologue' executes.
@@ -190,10 +379,10 @@ contract BlockMetaTest is Test {
         FailingContract failingContract = new FailingContract();
         bytes4 failSelector = FailingContract.fail.selector;
 
-        register(address(failingContract), failSelector, priority);
+        register(address(failingContract), failSelector);
 
-        vm.expectEmit(true, true, true, true);
-        emit BlockMeta.CallFailed(address(failingContract), failSelector, priority, abi.encodeWithSignature("Fail()"));
+        vm.expectEmit(true, true, false, true);
+        emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
 
         vm.prank(VM_SIGNER);
         blockMeta.blockPrologue();
@@ -201,13 +390,122 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'blockPrologue' emits 'CallSucceeded' for a successful call.
     function testBlockPrologueEmitsCallSucceeded() public {
-        register(counterAddress, selector, priority);
+        register(counterAddress, selector);
 
-        vm.expectEmit(true, true, true, false);
-        emit BlockMeta.CallSucceeded(counterAddress, selector, priority);
+        vm.expectEmit(true, true, false, false);
+        emit BlockMeta.CallSucceeded(counterAddress, selector);
 
         vm.prank(VM_SIGNER);
         blockMeta.blockPrologue();
+    }
+
+    /// @dev Test to ensure 'getExecutions' returns the execution order.
+    function testGetExecutions() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+        bytes4 foo = bytes4(keccak256("foo()"));
+
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+        register(counterAddress, foo);
+
+        (address[] memory targets, bytes4[] memory selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 3);
+        assertEq(targets[0], counterAddress);
+        assertEq(targets[1], address(failingContract));
+        assertEq(targets[2], counterAddress);
+
+        assertEq(selectors[0], selector);
+        assertEq(selectors[1], failSelector);
+        assertEq(selectors[2], foo);
+    }
+
+    /// @dev Test to ensure 'getTargetContracts' works correctly.
+    function testGetTargetContracts() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+        register(counterAddress, bytes4(keccak256("foo()")));
+
+        address[] memory targets = blockMeta.getTargetContracts();
+        assertEq(targets.length, 2);
+        assertEq(targets[0], counterAddress);
+        assertEq(targets[1], address(failingContract));
+    }
+
+    /// @dev Test to ensure 'getSelectors' works correctly.
+    function testGetSelectors() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+        bytes4 foo = bytes4(keccak256("foo()"));
+
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+        register(counterAddress, foo);
+
+        bytes4[] memory selectors = blockMeta.getSelectors(counterAddress);
+        assertEq(selectors.length, 2);
+        assertEq(selectors[0], selector);
+        assertEq(selectors[1], foo);
+    }
+
+    /// @dev Test to ensure 'getExecutionAt' returns an execution entry.
+    function testGetExecutionAt() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+
+        (address target, bytes4 sel) = blockMeta.getExecutionAt(1);
+        assertEq(target, address(failingContract));
+        assertEq(sel, failSelector);
+    }
+
+    /// @dev Test to ensure 'getExecutionAt' reverts if invalid index is passed.
+    function testGetExecutionAtRevertsIfInvalidIndex() public {
+        testRegister();
+
+        vm.expectRevert(BlockMeta.InvalidIndex.selector);
+        blockMeta.getExecutionAt(1);
+    }
+
+    /// @dev Test to ensure 'getExecutionIndex' returns the index for a target address and selector.
+    function testGetExecutionIndex() public {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        register(counterAddress, selector);
+        register(address(failingContract), failSelector);
+
+        assertEq(blockMeta.getExecutionIndex(address(failingContract), failSelector), 1);
+    }
+
+    /// @dev Test to ensure 'getExecutionIndex' reverts if selector does not exist.
+    function testGetExecutionIndexRevertsIfSelectorDoesNotExist() public {
+        vm.expectRevert(BlockMeta.SelectorNotRegistered.selector);
+        
+        blockMeta.getExecutionIndex(counterAddress, selector);
+    }
+
+    /// @dev Helper function to pack a target contract address and function selector into a single uint256 execution entry.
+    function packExecution(address _targetContract, bytes4 _selector) private pure returns (uint256) {
+        // Layout: [target[160] | selector[32] | 0[64] ]
+        return (uint256(uint160(_targetContract)) << 96)  | (uint256(uint32(_selector)) << 64);
+    }
+
+    /// @dev Helper function to return an execution order.
+    function createExecutionOrder() private returns (uint256[] memory) {
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(address(failingContract), failSelector);
+        executionOrder[1] = packExecution(counterAddress, selector); 
+        
+        return executionOrder;
     }
 }
 
