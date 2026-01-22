@@ -86,6 +86,8 @@ pub struct TxEnv {
     ///
     /// [EIP-7702]: https://eips.ethereum.org/EIPS/eip-7702
     pub authorization_list: Vec<Either<SignedAuthorization, RecoveredAuthorization>>,
+    /// Transaction hash
+    pub tx_hash: B256,
 }
 
 impl Default for TxEnv {
@@ -226,6 +228,10 @@ impl Transaction for TxEnv {
     fn max_priority_fee_per_gas(&self) -> Option<u128> {
         self.gas_priority_fee
     }
+
+    fn tx_hash(&self) -> B256 {
+        self.tx_hash
+    }
 }
 
 /// Builder for constructing [`TxEnv`] instances
@@ -245,6 +251,7 @@ pub struct TxEnvBuilder {
     blob_hashes: Vec<B256>,
     max_fee_per_blob_gas: u128,
     authorization_list: Vec<Either<SignedAuthorization, RecoveredAuthorization>>,
+    tx_hash: B256,
 }
 
 impl TxEnvBuilder {
@@ -265,6 +272,7 @@ impl TxEnvBuilder {
             blob_hashes: Vec::new(),
             max_fee_per_blob_gas: 0,
             authorization_list: Vec::new(),
+            tx_hash: B256::ZERO,
         }
     }
 
@@ -374,6 +382,12 @@ impl TxEnvBuilder {
         self
     }
 
+    /// Set the transaction hash
+    pub fn tx_hash(mut self, tx_hash: B256) -> Self {
+        self.tx_hash = tx_hash;
+        self
+    }
+
     /// Set the authorization list
     pub fn authorization_list(
         mut self,
@@ -473,6 +487,7 @@ impl TxEnvBuilder {
             blob_hashes: self.blob_hashes,
             max_fee_per_blob_gas: self.max_fee_per_blob_gas,
             authorization_list: self.authorization_list,
+            tx_hash: self.tx_hash,
         };
 
         // if tx_type is not set, derive it from fields and fix errors.
@@ -565,6 +580,7 @@ impl TxEnvBuilder {
             blob_hashes: self.blob_hashes,
             max_fee_per_blob_gas: self.max_fee_per_blob_gas,
             authorization_list: self.authorization_list,
+            tx_hash: self.tx_hash,
         };
 
         // Derive tx type from fields, if some fields are wrongly set it will return an error.
@@ -626,6 +642,7 @@ impl TxEnv {
             blob_hashes,
             max_fee_per_blob_gas,
             authorization_list,
+            tx_hash,
         } = self;
 
         TxEnvBuilder::new()
@@ -643,6 +660,7 @@ impl TxEnv {
             .blob_hashes(blob_hashes)
             .max_fee_per_blob_gas(max_fee_per_blob_gas)
             .authorization_list(authorization_list)
+            .tx_hash(tx_hash)
     }
 }
 

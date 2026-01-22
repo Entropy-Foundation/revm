@@ -348,7 +348,7 @@ impl<SPEC: Into<SpecId> + Copy> Cfg for CfgEnv<SPEC> {
             }
         }
     }
-    
+
     fn is_automation_mode(&self) -> bool {
         self.automation_mode
     }
