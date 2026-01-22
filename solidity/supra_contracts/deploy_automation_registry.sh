@@ -1,13 +1,27 @@
 #!/bin/bash
 set -e
 
+MODE=$1   # optional: "anvil" or empty
+
 # --------------------------
-# CONFIGURATION
+# USER CONFIG (used when NOT anvil)
 # --------------------------
-RPC_URL="http://127.0.0.1:8545"
+RPC_URL="http://localhost:27002/rpc/v1/eth/wallet_integration"
 DEPLOY_LOG="deploy.log"
 ENV_FILE="deployed.env"
 PRIVATE_KEY=""
+
+START_ANVIL=false
+ANVIL_PID=""
+
+if [[ "$MODE" == "anvil" ]]; then
+    RPC_URL="http://127.0.0.1:8545"
+    START_ANVIL=true
+    echo "Mode: ANVIL"
+else
+    echo "Mode: EXTERNAL RPC"
+    echo "RPC: $RPC_URL"
+fi
 
 # Helper for cleaner + safer extraction
 extract() {
@@ -17,29 +31,19 @@ extract() {
 }
 
 # ------------------------------------------------------------
-# 1. START ANVIL
+# 1. START ANVIL (only if mode = anvil)
 # ------------------------------------------------------------
-echo "=== Starting Anvil with DEFAULT settings ==="
 
-echo "Checking if port 8545 is in use..."
-EXISTING_PID=$(lsof -ti:8545 || true)
-
-if [ ! -z "$EXISTING_PID" ]; then
-    echo "Port is busy. Killing $EXISTING_PID ..."
-    kill -9 "$EXISTING_PID"
-    sleep 1
+if [[ "$START_ANVIL" == true ]]; then
+    echo "=== Starting Anvil ==="
+    anvil > anvil.log 2>&1 &
+    ANVIL_PID=$!
+    sleep 2
+    echo "Anvil launched (PID $ANVIL_PID)"
 fi
 
-echo "Starting Anvil..."
-anvil > anvil.log 2>&1 &
-ANVIL_PID=$!
-sleep 2
-
-echo "Anvil launched (PID $ANVIL_PID)"
-echo "RPC URL: $RPC_URL"
-
 # ------------------------------------------------------------
-# 2. RUN DEPLOY SCRIPT
+# 2. RUN FOUNDRY DEPLOY SCRIPT
 # ------------------------------------------------------------
 echo ""
 echo "=== Deploying contracts ==="
@@ -54,16 +58,16 @@ forge script script/DeployAutomationRegistry.s.sol:DeployAutomationRegistry \
 echo "Deployment logs saved to $DEPLOY_LOG"
 
 # ------------------------------------------------------------
-# 3. PARSE DEPLOYED ADDRESSES
+# 3. PARSE DEPLOYED CONTRACT ADDRESSES
 # ------------------------------------------------------------
 echo ""
 echo "=== Extracting deployed addresses ==="
 
 ERC20_SUPRA=$(extract "ERC20Supra deployed at:")
+AUTOMATION_CORE_IMPL=$(extract "AutomationCore implementation deployed at:")
+AUTOMATION_CORE_PROXY=$(extract "AutomationCore proxy deployed at:")
 AUTOMATION_REGISTRY_IMPL=$(extract "AutomationRegistry implementation deployed at:")
 AUTOMATION_REGISTRY_PROXY=$(extract "AutomationRegistry proxy deployed at:")
-BLOCKMETA_IMPL=$(extract "BlockMeta implementation deployed at:")
-BLOCKMETA_PROXY=$(extract "BlockMeta proxy deployed at:")
 AUTOMATION_CONTROLLER_IMPL=$(extract "AutomationController implementation deployed at:")
 AUTOMATION_CONTROLLER_PROXY=$(extract "AutomationController proxy deployed at:")
 
@@ -79,14 +83,16 @@ cat <<EOF > "$ENV_FILE"
 
 ERC20_SUPRA=$ERC20_SUPRA
 
+AUTOMATION_CORE_IMPL=$AUTOMATION_CORE_IMPL
+AUTOMATION_CORE_PROXY=$AUTOMATION_CORE_PROXY
+
 AUTOMATION_REGISTRY_IMPL=$AUTOMATION_REGISTRY_IMPL
 AUTOMATION_REGISTRY_PROXY=$AUTOMATION_REGISTRY_PROXY
 
-BLOCKMETA_IMPL=$BLOCKMETA_IMPL
-BLOCKMETA_PROXY=$BLOCKMETA_PROXY
-
 AUTOMATION_CONTROLLER_IMPL=$AUTOMATION_CONTROLLER_IMPL
 AUTOMATION_CONTROLLER_PROXY=$AUTOMATION_CONTROLLER_PROXY
+
+RPC_URL=$RPC_URL
 EOF
 
 cat "$ENV_FILE"
@@ -95,13 +101,10 @@ echo ""
 echo "=== Deployment Complete ==="
 
 # ------------------------------------------------------------
-# 5. STOP ANVIL
+# 5. STOP ANVIL (only if started by this script)
 # ------------------------------------------------------------
-# echo "Stopping Anvil (PID $ANVIL_PID)"
 
-# if kill -0 "$ANVIL_PID" 2>/dev/null; then
-#     kill "$ANVIL_PID"
-#     echo "Anvil stopped successfully."
-# else
-#     echo "Anvil already exited."
-# fi
+if [[ "$START_ANVIL" == true ]]; then
+    echo "Stopping Anvil..."
+    kill "$ANVIL_PID"
+fi

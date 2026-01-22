@@ -10,7 +10,7 @@ if (!registryAddress || !taskIndex || !rpcUrl) {
 
 // Replace with your contract ABI (minimal, only getTaskDetails)
 const registryAbi = [
-    "function getTaskDetails(uint64 _taskIndex) view returns (tuple(uint128 maxGasAmount,uint128 gasPriceCap,uint128 automationFeeCapForCycle,uint128 lockedFeeForNextCycle,bytes32 txHash,uint64 taskIndex,uint64 registrationTime,uint64 expiryTime,address owner,uint8 state,bytes payloadTx,bytes[] auxData))"
+    "function getTaskDetails(uint64 _taskIndex) view returns (tuple(uint128 maxGasAmount,uint128 gasPriceCap,uint128 automationFeeCapForCycle,uint128 lockedFeeForNextCycle,bytes32 txHash,uint64 taskIndex,uint64 registrationTime,uint64 expiryTime,uint64 priority,uint8 taskType,uint8 state,address owner,bytes payloadTx,bytes[] auxData))"
 ];
 
 const provider = new ethers.JsonRpcProvider(rpcUrl);
