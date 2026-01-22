@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+source .env
+
+: "${RPC_URL:?Missing RPC_URL in .env}"
+: "${PRIVATE_KEY:?Missing PRIVATE_KEY in .env}"
+: "${ADMIN_PRIVATE_KEY:?Missing ADMIN_PRIVATE_KEY in .env}"
+
 # -------------------------------
 # Load deployed contract addresses
 # -------------------------------
@@ -16,7 +22,6 @@ source deployed.env
 # -------------------------------
 # Validate env variables
 # -------------------------------
-: "${RPC_URL:?Missing RPC_URL in deployed.env}"
 : "${ERC20_SUPRA:?Missing ERC20_SUPRA in deployed.env}"
 : "${AUTOMATION_CORE_PROXY:?Missing AUTOMATION_CORE_PROXY in deployed.env}"
 : "${AUTOMATION_REGISTRY_PROXY:?Missing AUTOMATION_REGISTRY_PROXY in deployed.env}"
@@ -33,12 +38,6 @@ echo "=== Starting Automation CLI ==="
 ERC20_SUPRA="$ERC20_SUPRA"
 AUTOMATION_CORE="$AUTOMATION_CORE_PROXY"
 REGISTRY="$AUTOMATION_REGISTRY_PROXY"
-
-# -------------------------------
-# Ask user for private key
-# -------------------------------
-echo -n "Enter PRIVATE_KEY (0x...): "
-read -r PRIVATE_KEY
 
 ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
 echo ""
@@ -282,24 +281,20 @@ while true; do
         ;;
 
         grant-authorization)
-            echo -n "Enter Admin PRIVATE_KEY (0x...): "
-            read -r PVT_KEY
-            echo -n "Address to grant authorization: "
+            echo -n "Address to grant authorization to: "
             read -r -a address
             cast send "$REGISTRY" "grantAuthorization(address)" "$address" \
                 --rpc-url "$RPC_URL" \
-                --private-key "$PVT_KEY" \
+                --private-key "$ADMIN_PRIVATE_KEY" \
                 --gas-limit 3000000
         ;;
 
         revoke-authorization)
-            echo -n "Enter Admin PRIVATE_KEY (0x...): "
-            read -r PVT_KEY
             echo -n "Address to revoke authorization on: "
             read -r -a address
             cast send "$REGISTRY" "revokeAuthorization(address)" "$address" \
                 --rpc-url "$RPC_URL" \
-                --private-key "$PVT_KEY" \
+                --private-key "$ADMIN_PRIVATE_KEY" \
                 --gas-limit 3000000
         ;;
 

@@ -5,7 +5,6 @@ import {Script, console} from "forge-std/Script.sol";
 import {AutomationCore} from "../src/AutomationCore.sol";
 import {AutomationController} from "../src/AutomationController.sol";
 import {AutomationRegistry} from "../src/AutomationRegistry.sol";
-import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract DeployAutomationRegistry is Script {
@@ -22,6 +21,7 @@ contract DeployAutomationRegistry is Script {
     uint128 sysRegistryMaxGasCap;
     uint16 sysTaskCapacity;
     address vmSigner;
+    address erc20Supra;    
 
     // Config values loaded from .env file
     function setUp() public {
@@ -38,12 +38,11 @@ contract DeployAutomationRegistry is Script {
         sysRegistryMaxGasCap = uint128(vm.envUint("SYS_REGISTRY_MAX_GAS_CAP"));
         sysTaskCapacity = uint16(vm.envUint("SYS_TASK_CAPACITY"));
         vmSigner = vm.envAddress("VM_SIGNER");
+        erc20Supra = vm.envAddress("ERC20_SUPRA");
     }
 
     function run() public {
         vm.startBroadcast();
-
-        ERC20Supra erc20Supra;                          // ERC20Supra contract
 
         AutomationCore coreImpl;                        // AutomationCore implementation contract
         ERC1967Proxy coreProxy;                         // AutomationCore proxy contract
@@ -57,12 +56,6 @@ contract DeployAutomationRegistry is Script {
         ERC1967Proxy controllerProxy;                   // AutomationController proxy contract
         AutomationController controller;                // Instance of AutomationController at proxy address
 
-        // ---------------------------------------------------------------------
-        // Deploy ERC20Supra
-        // ---------------------------------------------------------------------
-        erc20Supra = new ERC20Supra(msg.sender);
-        console.log("ERC20Supra deployed at: ", address(erc20Supra));
-        
         // ---------------------------------------------------------------------
         // Deploy AutomationCore
         // ---------------------------------------------------------------------
@@ -84,7 +77,7 @@ contract DeployAutomationRegistry is Script {
                 sysRegistryMaxGasCap,                   // sysRegistryMaxGasCap
                 sysTaskCapacity,                        // sysTaskCapacity
                 vmSigner,                               // VM Signer address
-                address(erc20Supra)                     // ERC20Supra address
+                erc20Supra                              // ERC20Supra address
             )
         );
         coreProxy = new ERC1967Proxy(address(coreImpl), coreInitData);
