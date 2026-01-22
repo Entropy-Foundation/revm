@@ -252,8 +252,10 @@ pub trait Handler {
     fn validate_caller(&self, evm: &mut Self::Evm) -> Result<(), Self::Error> {
         let ctx = evm.ctx_ref();
         let is_system_context = ctx.cfg().execution_mode().is_system();
+        let is_genesis = ctx.cfg().execution_mode().is_genesis();
         let caller = ctx.tx().caller();
-        if !is_system_context && is_supra_reserved(&caller) {
+        // Supra reserved address is allowed either in system execution mode or in genesis
+        if !(is_system_context || is_genesis) && is_supra_reserved(&caller) {
             Err(Self::Error::from_string(format!("Invalid caller: supra reserved address. TxnHash {}", ctx.tx().tx_hash())))
         } else if is_system_context && !is_vm_signer(&caller) {
             Err(Self::Error::from_string(String::from("Invalid caller: Expected VM_SIGNER as caller for system transactions.")))

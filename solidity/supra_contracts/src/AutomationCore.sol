@@ -534,7 +534,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return _safeUnlockLockedDeposit(_taskIndex, _lockedDeposit);
     }
 
-    /// @notice Refunds the deposit fee and any autoamtion fees of the task.
+    /// @notice Refunds the deposit fee and any automation fees of the task.
     function refundTaskFees(
         uint64 _currentTime,
         uint64 _refundDuration, 

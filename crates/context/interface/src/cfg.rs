@@ -17,6 +17,8 @@ pub enum ExecutionMode {
     AutomatedGasless,
     /// Executing governance native transaction.
     System,
+    /// When transactions are executed in genesis mode.
+    Genesis,
 }
 
 impl ExecutionMode {
@@ -26,18 +28,24 @@ impl ExecutionMode {
             ExecutionMode::User |
             ExecutionMode::Automated => true,
             ExecutionMode::AutomatedGasless |
-            ExecutionMode::System => false,
+            ExecutionMode::System |
+            ExecutionMode::Genesis => false,
         }
     }
 
     /// Returns true if nonce should be updated in case of successful execution.
     pub fn updates_nonce(&self) -> bool {
-        matches!(self, ExecutionMode::User)
+        matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }
 
     /// Returns true if the execution context is for governance native transaction
     pub fn is_system(&self) -> bool {
         matches!(self, ExecutionMode::System)
+    }
+
+    /// Returns true if the execution context is for governance genesis transaction
+    pub fn is_genesis(&self) -> bool {
+        matches!(self,  ExecutionMode::Genesis)
     }
 }
 
