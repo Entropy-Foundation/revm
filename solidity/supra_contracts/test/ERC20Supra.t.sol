@@ -57,7 +57,7 @@ contract ERC20SupraTest is Test {
         token.nativeToErc20Supra{value: 0}();
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'nativeToErc20SupraWithAllowance' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // ::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'nativeToErc20SupraWithAllowance' :::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' deposits native tokens, mint ERC20Supra 1:1 and increases allowance.
     function testNativeToErc20SupraWithAllowance() public {
@@ -120,6 +120,43 @@ contract ERC20SupraTest is Test {
 
         vm.prank(alice);
         token.nativeToErc20SupraWithAllowance{value: 1 ether}(address(0));
+    }
+
+    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' does not affect other spenders.
+    function testNativeToErc20SupraWithAllowanceDoesNotAffectOtherSpenders() public {
+        vm.startPrank(alice);
+        token.approve(bob, 4 ether);
+        token.nativeToErc20SupraWithAllowance{value: 2 ether}(owner);
+        vm.stopPrank();
+
+        assertEq(token.allowance(alice, bob), 4 ether);
+        assertEq(token.allowance(alice, owner), 2 ether);
+    }
+
+    /// @dev Test to ensure allowance granted by 'nativeToErc20SupraWithAllowance' can be consumed by 'transferFrom'.
+    function testNativeToErc20SupraWithAllowanceThenTransferFrom() public {
+        vm.prank(alice);
+        token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob);
+
+        vm.prank(bob);
+        token.transferFrom(alice, bob, 3 ether);
+
+        assertEq(token.balanceOf(bob), 3 ether);
+        assertEq(token.balanceOf(alice), 2 ether);
+        assertEq(token.allowance(alice, bob), 2 ether);
+    }
+
+    /// @dev Test to ensure allowance granted by 'nativeToErc20SupraWithAllowance' can be consumed by 'burnFrom'.
+    function testNativeToErc20SupraWithAllowanceThenBurnFrom() public {
+        vm.prank(alice);
+        token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob);
+
+        vm.prank(bob);
+        token.burnFrom(alice, 2 ether);
+
+        assertEq(token.balanceOf(alice), 3 ether);
+        assertEq(token.allowance(alice, bob), 3 ether);
+        assertEq(token.totalSupply(), 3 ether);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'receive' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
