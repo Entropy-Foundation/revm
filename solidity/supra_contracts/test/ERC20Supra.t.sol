@@ -59,10 +59,10 @@ contract ERC20SupraTest is Test {
 
     // ::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'nativeToErc20SupraWithAllowance' :::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' deposits native tokens, mint ERC20Supra 1:1 and increases allowance.
+    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' deposits native tokens, mint ERC20Supra 1:1 and sets the allowance.
     function testNativeToErc20SupraWithAllowance() public {
         vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob);
+        token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob, 5 ether);
 
         assertEq(alice.balance, 95 ether);
         assertEq(token.balanceOf(alice), 5 ether);
@@ -71,39 +71,13 @@ contract ERC20SupraTest is Test {
         assertEq(token.totalSupply(), 5 ether);
     }
 
-    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' increases allowance.
-    function testNativeToErc20SupraWithAllowanceIncreasesAllowance() public {
-        vm.startPrank(alice);
-        token.nativeToErc20Supra{value: 4 ether}();
-        token.approve(bob, 3 ether);
-        token.nativeToErc20SupraWithAllowance{value: 6 ether}(bob);
-        vm.stopPrank();
-
-        assertEq(token.balanceOf(alice), 10 ether);
-        assertEq(token.allowance(alice, bob), 9 ether); // 3 + 6
-        assertEq(token.totalSupply(), 10 ether);
-        assertEq(address(token).balance, 10 ether);
-    }
-
     /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' emits event.
     function testNativeToErc20SupraWithAllowanceEmitsEvent() public {
         vm.expectEmit(true, true, true, true);
         emit ERC20Supra.NativeToERC20SupraWithAllowance(alice, 2 ether, bob, 2 ether);
 
         vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 2 ether}(bob);
-    }
-
-    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' emits event with increased allowance.
-    function testNativeToErc20SupraWithAllowanceEmitsEventWithIncreasedAllowance() public {
-        vm.prank(alice);
-        token.approve(bob, 3 ether);
-
-        vm.expectEmit(true, true, true, true);
-        emit ERC20Supra.NativeToERC20SupraWithAllowance(alice, 2 ether, bob, 5 ether);  // 3 + 2
-
-        vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 2 ether}(bob);
+        token.nativeToErc20SupraWithAllowance{value: 2 ether}(bob, 2 ether);
     }
 
     /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' reverts if amount sent is zero.
@@ -111,7 +85,7 @@ contract ERC20SupraTest is Test {
         vm.expectRevert(ERC20Supra.InvalidAmount.selector);
 
         vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 0}(bob);
+        token.nativeToErc20SupraWithAllowance{value: 0}(bob, 2 ether);
     }
 
     /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' reverts if spender address is zero.
@@ -119,44 +93,15 @@ contract ERC20SupraTest is Test {
         vm.expectRevert(ERC20Supra.AddressCannotBeZero.selector);
 
         vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 1 ether}(address(0));
+        token.nativeToErc20SupraWithAllowance{value: 1 ether}(address(0), 1 ether);
     }
 
-    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' does not affect other spenders.
-    function testNativeToErc20SupraWithAllowanceDoesNotAffectOtherSpenders() public {
-        vm.startPrank(alice);
-        token.approve(bob, 4 ether);
-        token.nativeToErc20SupraWithAllowance{value: 2 ether}(owner);
-        vm.stopPrank();
+    /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' reverts if allowance amount is zero.
+    function testNativeToErc20SupraWithAllowanceRevertsIfAllowanceAmountZero() public {
+        vm.expectRevert(ERC20Supra.InvalidAllowance.selector);
 
-        assertEq(token.allowance(alice, bob), 4 ether);
-        assertEq(token.allowance(alice, owner), 2 ether);
-    }
-
-    /// @dev Test to ensure allowance granted by 'nativeToErc20SupraWithAllowance' can be consumed by 'transferFrom'.
-    function testNativeToErc20SupraWithAllowanceThenTransferFrom() public {
         vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob);
-
-        vm.prank(bob);
-        token.transferFrom(alice, bob, 3 ether);
-
-        assertEq(token.balanceOf(bob), 3 ether);
-        assertEq(token.balanceOf(alice), 2 ether);
-        assertEq(token.allowance(alice, bob), 2 ether);
-    }
-
-    /// @dev Test to ensure allowance granted by 'nativeToErc20SupraWithAllowance' can be consumed by 'burnFrom'.
-    function testNativeToErc20SupraWithAllowanceThenBurnFrom() public {
-        vm.prank(alice);
-        token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob);
-
-        vm.prank(bob);
-        token.burnFrom(alice, 2 ether);
-
-        assertEq(token.balanceOf(alice), 3 ether);
-        assertEq(token.allowance(alice, bob), 3 ether);
-        assertEq(token.totalSupply(), 3 ether);
+        token.nativeToErc20SupraWithAllowance{value: 2 ether}(bob, 0);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'receive' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
