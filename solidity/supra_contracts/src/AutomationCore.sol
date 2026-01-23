@@ -28,7 +28,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @dev State variables 
     LibConfig.ConfigBuffer configBuffer;
     LibConfig.RegistryConfig regConfig;
-    LibConfig.Deposit deposit;
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -59,11 +58,8 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Emitted when the automation registry smart contract address is updated. 
     event AutomationRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
 
-    /// @notice Emitted when the cold wallet address is updated.
-    event ColdWalletUpdated(address indexed oldColdWallet, address indexed newColdWallet);
-
     /// @notice Emitted when the registry fees is withdrawn by the admin.
-    event RegistryFeeWithdrawn(address indexed coldWallet, uint256 indexed feesWithdrawn);
+    event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
 
     /// @notice Emitted when deposit fee is being refunded but total locked deposits is less than the locked deposit for the task.
     event ErrorUnlockTaskDepositFee(
@@ -390,10 +386,10 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint64 _taskIndex,
         uint128 _lockedDeposit
     ) private returns (bool) {
-        uint256 totalDeposited = deposit.totalDepositedAutomationFees;
+        uint256 totalDeposited = regConfig.totalDepositedAutomationFees;
         
         if(totalDeposited >= _lockedDeposit) {
-            deposit.totalDepositedAutomationFees = totalDeposited - _lockedDeposit;
+            regConfig.totalDepositedAutomationFees = totalDeposited - _lockedDeposit;
             return true;
         }
 
@@ -671,7 +667,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Helper function to increment the total deposited automation fees.
     function incTotalDepositedAutomationFees(uint256 _amount) external {
         onlyRegistry();
-        deposit.totalDepositedAutomationFees += _amount;
+        regConfig.totalDepositedAutomationFees += _amount;
     }
 
     /// @notice Internally calls _refund, reverts if caller is not AutomationRegistry.
@@ -889,31 +885,21 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
 
     /// @notice Function to withdraw the accumulated fees.
     /// @param _amount Amount to withdraw.
-    function withdrawFees(uint256 _amount) external onlyOwner {
-        address coldWallet = deposit.coldWallet;
-        if(coldWallet == address(0)) { revert ColdWalletNotSet(); }
+    /// @param _recipient Address to withdraw fees to.
+    function withdrawFees(uint256 _amount, address _recipient) external onlyOwner {
+        if(_amount == 0) { revert InvalidAmount(); }
+        if(_recipient == address(0)) { revert AddressCannotBeZero(); }
         uint256 balance = IERC20(regConfig.erc20Supra).balanceOf(address(this));
 
         if(balance < _amount) { revert InsufficientBalance(); }
 
         uint256 cycleLockedFees = IAutomationRegistry(regConfig.registry).getCycleLockedFees();
-        if(balance - _amount < cycleLockedFees + deposit.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
+        if(balance - _amount < cycleLockedFees + regConfig.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
 
-        bool sent = IERC20(regConfig.erc20Supra).transfer(coldWallet, _amount);
+        bool sent = IERC20(regConfig.erc20Supra).transfer(_recipient, _amount);
         if(!sent) { revert TransferFailed(); }
 
-        emit RegistryFeeWithdrawn(coldWallet, _amount);
-    }
-
-    /// @notice Function to update the cold wallet address.
-    /// @param _coldWallet Address for the new cold wallet.
-    function setColdWallet(address _coldWallet) external onlyOwner {
-        if(_coldWallet == address(0)) { revert AddressCannotBeZero(); }
-
-        address oldColdWallet = deposit.coldWallet;
-        deposit.coldWallet = _coldWallet;
-
-        emit ColdWalletUpdated(oldColdWallet, _coldWallet);
+        emit RegistryFeeWithdrawn(_recipient, _amount);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -993,14 +979,9 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return regConfig.config.cycleDurationSecs();
     }
 
-    /// @notice Returns the cold wallet address.
-    function getColdWallet() external view returns (address) {
-        return deposit.coldWallet;
-    }
-
     /// @notice Returns the total amount of automation fees deposited.
     function getTotalDepositedAutomationFees() external view returns (uint256) {
-        return deposit.totalDepositedAutomationFees;
+        return regConfig.totalDepositedAutomationFees;
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

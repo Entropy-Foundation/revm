@@ -9,14 +9,6 @@ library LibConfig {
     uint256 private constant MAX_UINT16 = type(uint16).max;
     uint256 private constant MAX_UINT8 = type(uint8).max;
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Deposit :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Deposit and fee related accounting.
-    struct Deposit {
-        uint256 totalDepositedAutomationFees;
-        address coldWallet;
-    }
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: AccessListEntry :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Struct representing an entry in access list.
@@ -41,6 +33,7 @@ library LibConfig {
         uint256 nextCycleRegistryMaxGasCap_nextCycleSysRegistryMaxGasCap;
         // address | bool | bool
         uint256 controller_registrationEnabled_automationEnabled;
+        uint256 totalDepositedAutomationFees;
         address vmSigner;
         address erc20Supra;
         address registry;

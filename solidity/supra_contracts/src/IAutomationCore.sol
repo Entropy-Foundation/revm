@@ -13,6 +13,7 @@ interface IAutomationCore {
     error CycleTransitionInProgress();
     error ErrorDepositRefund();
     error ErrorCycleFeeRefund();
+    error InvalidAmount();
     error InvalidMaxGasAmount();
     error InvalidTaskType();
     error InvalidTxHash();

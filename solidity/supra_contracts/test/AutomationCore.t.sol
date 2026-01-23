@@ -693,43 +693,6 @@ contract AutomationCoreTest is Test {
         automationCore.setErc20Supra(address(supraErc20));
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setColdWallet' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev Test to ensure 'setColdWallet' updates the cold wallet address.
-    function testSetColdWallet() public {
-        vm.prank(admin);
-        automationCore.setColdWallet(address(0x1001));
-
-        assertEq(automationCore.getColdWallet(), address(0x1001));
-    }
-
-    /// @dev Test to ensure 'setColdWallet' emits event 'ColdWalletUpdated'.
-    function testSetColdWalletEmitsEvent() public {
-        address oldColdWallet = automationCore.getColdWallet();
-    
-        vm.expectEmit(true, true, false, false);
-        emit AutomationCore.ColdWalletUpdated(oldColdWallet, address(0x1001));
-    
-        vm.prank(admin);
-        automationCore.setColdWallet(address(0x1001));
-    }
-
-    /// @dev Test to ensure 'setColdWallet' reverts if zero address is passed.
-    function testSetColdWalletRevertsIfZeroAddress() public {
-        vm.expectRevert(IAutomationCore.AddressCannotBeZero.selector);
-
-        vm.prank(admin);
-        automationCore.setColdWallet(address(0));
-    }
-
-    /// @dev Test to ensure 'setColdWallet' reverts if caller is not owner.
-    function testSetColdWalletRevertsIfNotOwner() public {
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
-
-        vm.prank(alice);
-        automationCore.setColdWallet(address(0x1001));
-    }
-
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateConfigBuffer' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Helper function that returns a valid config.
@@ -835,38 +798,38 @@ contract AutomationCoreTest is Test {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdrawFees' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'withdrawFees' reverts if cold wallet is not set.
-    function testWithdrawFeesRevertsIfColdWalletNotSet() public {
+    /// @dev Test to ensure 'withdrawFees' reverts if amount is zero.
+    function testWithdrawFeesRevertsIfAmountZero() public {
         vm.prank(admin);
 
-        vm.expectRevert(IAutomationCore.ColdWalletNotSet.selector);
-        automationCore.withdrawFees(1 ether);
+        vm.expectRevert(IAutomationCore.InvalidAmount.selector);
+        automationCore.withdrawFees(0, admin);
+    }
+
+    /// @dev Test to ensure 'withdrawFees' reverts if recipient address is zero.
+    function testWithdrawFeesRevertsIfRecipientAddressZero() public {
+        vm.prank(admin);
+
+        vm.expectRevert(IAutomationCore.AddressCannotBeZero.selector);
+        automationCore.withdrawFees(1 ether, address(0));
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if contract has insufficient balance.
     function testWithdrawFeesRevertsIfInsufficientBalance() public {
-        // Set cold wallet
-        vm.prank(admin);
-        automationCore.setColdWallet(address(0x1001));
-
         vm.expectRevert(IAutomationCore.InsufficientBalance.selector);
 
         vm.prank(admin);
-        automationCore.withdrawFees(1 ether);
+        automationCore.withdrawFees(1 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if request amount exceeds the locked balance.
     function testWithdrawFeesRevertsIfRequestExceedsLockedBalance() public {
         registerUST();
 
-        // Set cold wallet
-        vm.prank(admin);
-        automationCore.setColdWallet(address(0x1001));
-
         vm.expectRevert(IAutomationCore.RequestExceedsLockedBalance.selector);
 
         vm.prank(admin);
-        automationCore.withdrawFees(0.04 ether);
+        automationCore.withdrawFees(0.04 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if caller is not owner.
@@ -874,25 +837,20 @@ contract AutomationCoreTest is Test {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        automationCore.withdrawFees(1 ether);
+        automationCore.withdrawFees(1 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' withdraws the requested amount and updates the balance.
     function testWithdrawFees() public {
         registerUST();
 
-        // Set cold wallet
-        address coldWallet = address(0x1001);
-        vm.prank(admin);
-        automationCore.setColdWallet(coldWallet);
-
-        assertEq(erc20Supra.balanceOf(coldWallet), 0);
+        assertEq(erc20Supra.balanceOf(admin), 0);
         assertEq(erc20Supra.balanceOf(address(automationCore)), 0.502 ether);
 
         vm.prank(admin);
-        automationCore.withdrawFees(0.002 ether);
+        automationCore.withdrawFees(0.002 ether, admin);
 
-        assertEq(erc20Supra.balanceOf(coldWallet), 0.002 ether);
+        assertEq(erc20Supra.balanceOf(admin), 0.002 ether);
         assertEq(erc20Supra.balanceOf(address(automationCore)), 0.5 ether);
     }
     
@@ -900,16 +858,11 @@ contract AutomationCoreTest is Test {
     function testWithdrawFeesEmitsEvent() public {
         registerUST();
 
-        // Set cold wallet
-        address coldWallet = address(0x1001);
-        vm.prank(admin);
-        automationCore.setColdWallet(coldWallet);
-
         vm.expectEmit(true, true, false, false);
-        emit AutomationCore.RegistryFeeWithdrawn(coldWallet, 0.002 ether);
+        emit AutomationCore.RegistryFeeWithdrawn(admin, 0.002 ether);
 
         vm.prank(admin);
-        automationCore.withdrawFees(0.002 ether);
+        automationCore.withdrawFees(0.002 ether, admin);
     }
 
     /// @dev Helper function to return payload.
