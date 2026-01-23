@@ -62,6 +62,12 @@ contract ERC20SupraTest is Test {
     /// @dev Test to ensure 'nativeToErc20SupraWithAllowance' deposits native tokens, mint ERC20Supra 1:1 and sets the allowance.
     function testNativeToErc20SupraWithAllowance() public {
         vm.prank(alice);
+        token.approve(bob, 2 ether);
+
+        assertEq(token.allowance(alice, bob), 2 ether);
+        
+        
+        vm.prank(alice);
         token.nativeToErc20SupraWithAllowance{value: 5 ether}(bob, 5 ether);
 
         assertEq(alice.balance, 95 ether);
