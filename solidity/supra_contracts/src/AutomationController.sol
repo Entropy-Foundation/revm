@@ -527,6 +527,15 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             // Registry is empty move to ready state directly
             updateCycleStateTo(CommonUtils.CycleState.READY);
         } else if (!cycleInfo.ifTransitionStateExists()) {
+            // Indicates that cycle was in STARTED state when suspention has been identified.
+            // It is safe to assert that cycleEndTime will always be greater than current chain time as
+            // the cycle end is check in the block metadata txn execution which proceeds any other transaction in the block.
+            // Including the transaction which caused transition to suspended state.
+            // So in case if cycleEndTime < currentTime then cycle end would have been identified
+            // and we would have enterend else branch instead.
+            // This holds true even if we identified suspention when moving from FINALIZED->STARTED state.
+            // As in this case we will first transition to the STARTED state and only then to SUSPENDED.
+            // And when transition to STARTED state we update the cycle start-time to be the current-chain-time.
             uint64 currentTime = uint64(block.timestamp);
 
             uint64 startTime = cycleInfo.startTime(); 
@@ -567,7 +576,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     }
 
     function tryMoveToSuspendedState() external {
-        if (msg.sender != address(registry)) { revert CallerNotRegistry(); }
+        if (msg.sender != address(automationCore)) { revert CallerNotAutomationCore(); }
         _tryMoveToSuspendedState();
     }
 
@@ -618,7 +627,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     }
 
     function moveToStartedState() external {
-        if (msg.sender != address(registry)) { revert CallerNotRegistry(); }
+        if (msg.sender != address(automationCore)) { revert CallerNotAutomationCore(); }
         _moveToStartedState();
     }
 
