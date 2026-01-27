@@ -34,7 +34,6 @@ interface IAutomationCore {
     error InvalidTaskCapacity();
     error InvalidTaskDuration();
     error RegistrationDisabled();
-    error RegisteredTaskInvalidType();
     error RequestExceedsLockedBalance();
     error TaskCapacityReached();
     error TaskExpiresBeforeNextCycle();
@@ -88,11 +87,11 @@ interface IAutomationCore {
         uint128 _lockedDeposit
     ) external returns (bool);
     function refundTaskFees(
-        uint64 _taskIndex,
         uint64 _currentTime,
         uint256 _cycleLockedFees,
         uint64 _refundDuration, 
-        uint128 _automationFeePerSec
+        uint128 _automationFeePerSec,
+        CommonUtils.TaskDetails memory _task
     ) external returns (uint256);
      function safeDepositRefund(
         uint64 _taskIndex,

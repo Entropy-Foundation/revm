@@ -173,9 +173,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @param _cycleIndex Input cycle index of the cycle being suspended.
     /// @param _taskIndexes Array of task indexes to be processed.
     function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
-        if (_taskIndexes.length == 0) {
-            return;
-        }
+        if (_taskIndexes.length == 0) { return; }
 
         if(cycleInfo.state() != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
         if(cycleInfo.index() != _cycleIndex) { revert InvalidInputCycleIndex(); }
@@ -191,6 +189,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         uint64 removedCounter;
         for (uint i = 0; i < taskIndexes.length; i++) {
             if(registry.ifTaskExists(taskIndexes[i])) {
+                CommonUtils.TaskDetails memory task = registry.getTaskDetails(taskIndexes[i]);
+
                 (bool removed, ) = address(registry).call(abi.encodeCall(IAutomationRegistry.removeTask, (taskIndexes[i], false)));
                 require(removed, RemoveTaskFailed());
 
@@ -198,11 +198,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 markTaskProcessed(taskIndexes[i]);
 
                 // Nothing to refund for GST tasks
-                if(registry.checkTaskType(taskIndexes[i], CommonUtils.TaskType.UST)) {                         
+                if (task.taskType == CommonUtils.TaskType.UST) {                         
                     (bool refunded, bytes memory data) = address(automationCore).call(
                         abi.encodeCall(
                             IAutomationCore.refundTaskFees, 
-                            (taskIndexes[i], currentTime, cycleLockedFees, cycleInfo.refundDuration(), cycleInfo.automationFeePerSec())
+                            (currentTime, cycleLockedFees, cycleInfo.refundDuration(), cycleInfo.automationFeePerSec(), task)
                         )
                     );
                     require(refunded, RefundFailed());   
@@ -667,16 +667,16 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             } else {
                 uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
+                // Updates transition state
                 cycleInfo.setRefundDuration(0);
                 cycleInfo.setNewCycleDuration(cycleInfo.durationSecs());
-                cycleInfo.setAutomationFeePerSec(0);
                 cycleInfo.setGasCommittedForNewCycle(registry.getGasCommittedForNextCycle());
                 cycleInfo.setGasCommittedForNextCycle(0);
                 cycleInfo.setSysGasCommittedForNextCycle (0);
                 cycleInfo.transitionState.lockedFees = 0;
                 cycleInfo.setNextTaskIndexPosition(0);
-
                 updateExpectedTasks(expectedTasksToBeProcessed);
+                
                 cycleInfo.setTransitionStateExists(true);
 
                 // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.

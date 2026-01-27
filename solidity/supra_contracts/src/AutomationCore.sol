@@ -447,7 +447,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
             return result;
         }
 
-        result = safeRefund( _taskIndex, _taskOwner, _refundableDeposit, DEPOSIT_CYCLE_FEE);
+        result = safeRefund(_taskIndex, _taskOwner, _refundableDeposit, DEPOSIT_CYCLE_FEE);
 
         if (result) { emit TaskDepositFeeRefund(_taskIndex, _taskOwner, _refundableDeposit); }
         return result;
@@ -548,30 +548,27 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
 
     /// @notice Refunds the deposit fee and any autoamtion fees of the task.
     function refundTaskFees(
-        uint64 _taskIndex,
         uint64 _currentTime,
         uint256 _cycleLockedFees,
         uint64 _refundDuration, 
-        uint128 _automationFeePerSec
+        uint128 _automationFeePerSec,
+        CommonUtils.TaskDetails memory _task
     ) external returns (uint256) {
         onlyController();
-        if(IAutomationRegistry(regConfig.registry).checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
-
-        CommonUtils.TaskDetails memory task = IAutomationRegistry(regConfig.registry).getTaskDetails(_taskIndex);
 
         // Do not attempt fee refund if remaining duration is 0
-        if (task.state != CommonUtils.TaskState.PENDING && _refundDuration != 0) {
+        if (_task.state != CommonUtils.TaskState.PENDING && _refundDuration != 0) {
             uint128 _refundFee = _calculateTaskFee(
-                task.state,
-                task.expiryTime,
-                task.maxGasAmount,
+                _task.state,
+                _task.expiryTime,
+                _task.maxGasAmount,
                 _refundDuration,
                 _currentTime,
                 _automationFeePerSec
             );
             ( , uint256 remainingCycleLockedFees) = safeFeeRefund(
-                    _taskIndex,
-                    task.owner,
+                    _task.taskIndex,
+                    _task.owner,
                     _cycleLockedFees,
                     uint64(_refundFee)
                 );
@@ -579,10 +576,10 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         }
 
         _safeDepositRefund(
-            _taskIndex,
-            task.owner,
-            task.lockedFeeForNextCycle,
-            task.lockedFeeForNextCycle
+            _task.taskIndex,
+            _task.owner,
+            _task.lockedFeeForNextCycle,
+            _task.lockedFeeForNextCycle
         );
 
         return _cycleLockedFees;
