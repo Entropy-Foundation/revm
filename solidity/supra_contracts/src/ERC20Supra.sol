@@ -8,6 +8,10 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     
+    /// @notice Error thrown if address(0) is passed. 
+    error AddressCannotBeZero();
+    /// @notice Error thrown if allowance amount is zero. 
+    error InvalidAllowance();
     /// @notice Error thrown if user has insufficient balance.
     error InsufficientBalance();
     /// @notice Error thrown if 0 is passed as amount.
@@ -21,7 +25,19 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
     /// @param account Address of the depositer.
     /// @param amount Amount deposited.
     event NativeToERC20Supra(address indexed account, uint256 indexed amount);
-    
+
+    /// @notice Emitted when native tokens are deposited, ERC20Supra tokens are minted, and the spender's allowance is set..
+    /// @param account The address that deposited native tokens and received ERC20Supra.
+    /// @param amount The amount of native tokens deposited and ERC20Supra minted.
+    /// @param spender The address whose allowance was set.
+    /// @param allowance The new allowance set for the 'spender'.
+    event NativeToERC20SupraWithAllowance(
+        address indexed account, 
+        uint256 indexed amount, 
+        address indexed spender, 
+        uint256 allowance
+    );
+
     /// @notice Emitted when native tokens are withdrawn by burning ERC20Supra tokens. 
     /// @param account Address withdrawing.
     /// @param amount Amount withdrawn.
@@ -39,6 +55,20 @@ contract ERC20Supra is ERC20, ERC20Burnable, Ownable2Step, ERC20Permit {
         _mint(msg.sender, msg.value);
 
         emit NativeToERC20Supra(msg.sender, msg.value);
+    }
+
+    /// @notice Deposits native tokens, mints ERC20Supra tokens 1:1, and sets an allowance for a spender.
+    /// @param _spender The address whose allowance will be set.    
+    /// @param _allowanceAmount The new allowance to set for the spender.
+    function nativeToErc20SupraWithAllowance(address _spender, uint256 _allowanceAmount) external payable {
+        if (msg.value == 0) revert InvalidAmount();
+        if (_spender == address(0)) revert AddressCannotBeZero();
+        if (_allowanceAmount == 0) revert InvalidAllowance();
+
+        _mint(msg.sender, msg.value);
+        _approve(msg.sender, _spender, _allowanceAmount);
+
+        emit NativeToERC20SupraWithAllowance(msg.sender, msg.value, _spender, _allowanceAmount);
     }
 
     /// @notice Withdraw native token → Burn ERC20Supra 1:1
