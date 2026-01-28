@@ -142,26 +142,27 @@ while true; do
     echo "Automation Registry CLI"
     echo ""
     echo "Commands:"
-    echo "  native-balance          Show native balance"
-    echo "  erc20Supra-balance      Show ERC20Supra balance"
-    echo "  allowance               Check ERC20 approval to registry"
-    echo "  nativeToErc20Supra      Deposit native → mint ERC20Supra"
-    echo "  approve                 Approve ERC20Supra for fees"
-    echo "  register                Register a user task"
-    echo "  register-system         Register a system task"
-    echo "  cancel                  Cancel a user task"
-    echo "  cancel-system           Cancel a system task"
-    echo "  stop                    Stop user tasks"
-    echo "  stop-system             Stop system tasks"
-    echo "  grant-authorization     Grant authorization to submit GST"
-    echo "  revoke-authorization    Revoke authorization to submit GST"
-    echo "  is-submitter            Check if authorized submitter"
-    echo "  task-details            View details of a task"
-    echo "  registry-locked-balance View registry's locked balance"
-    echo "  registry-balance        View ERC20Supra balance of registry contract"
-    echo "  task-list               View all task IDs"
-    echo "  total-tasks             View number of tasks"
-    echo "  exit                    Quit"
+    echo "  native-balance                      Show native balance"
+    echo "  erc20Supra-balance                  Show ERC20Supra balance"
+    echo "  allowance                           Check ERC20 approval to registry"
+    echo "  nativeToErc20Supra                  Deposit native → mint ERC20Supra"
+    echo "  nativeToErc20SupraWithAllowance     Deposit native to mint ERC20Supra and grant allowance"
+    echo "  approve                             Approve ERC20Supra for fees"
+    echo "  register                            Register a user task"
+    echo "  register-system                     Register a system task"
+    echo "  cancel                              Cancel a user task"
+    echo "  cancel-system                       Cancel a system task"
+    echo "  stop                                Stop user tasks"
+    echo "  stop-system                         Stop system tasks"
+    echo "  grant-authorization                 Grant authorization to submit GST"
+    echo "  revoke-authorization                Revoke authorization to submit GST"
+    echo "  is-submitter                        Check if authorized submitter"
+    echo "  task-details                        View details of a task"
+    echo "  registry-locked-balance             View registry's locked balance"
+    echo "  registry-balance                    View ERC20Supra balance of registry contract"
+    echo "  task-list                           View all task IDs"
+    echo "  total-tasks                         View number of tasks"
+    echo "  exit                                Quit"
     echo -n "Command> "
     read -r CMD
     echo ""
@@ -177,6 +178,26 @@ while true; do
             weiAmount=$(cast --to-wei "$ethAmount")
             echo "Depositing $ethAmount ETH..."
             send_tx "$ERC20_SUPRA" "nativeToErc20Supra()" --value "$weiAmount"
+        ;;
+
+        nativeToErc20SupraWithAllowance)
+            echo "Enter: <depositEth> <spenderAddress> <allowanceEth>"
+            read -r depositEth spender allowanceEth
+
+            if [ -z "$depositEth" ] || [ -z "$spender" ] || [ -z "$allowanceEth" ]; then
+                echo "Invalid input. Expected: <depositEth> <spenderAddress> <allowanceEth>"
+                exit 1
+            fi
+
+            depositWei=$(cast --to-wei "$depositEth")
+            allowanceWei=$(cast --to-wei "$allowanceEth")
+
+            echo "Depositing $depositEth ETH, and approving $spender for $allowanceEth ERC20Supra..."
+
+            send_tx "$ERC20_SUPRA" \
+                "nativeToErc20SupraWithAllowance(address,uint256)" \
+                "$spender" "$allowanceWei" \
+                --value "$depositWei"
         ;;
 
         approve)

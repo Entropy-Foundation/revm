@@ -253,7 +253,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
 
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
+        if(task.taskType == CommonUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
         if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
         if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         
@@ -305,11 +305,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         if(!ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
-        
-        // Check if GST
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
 
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
+
+        // Check if GST
+        if(task.taskType == CommonUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
 
         if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
         if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
@@ -371,7 +371,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 if(msg.sender != task.owner) { revert UnauthorizedAccount(); }
                 
                 // Check if UST
-                if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.GST)) { revert UnsupportedTaskOperation(); }
+                if(task.taskType == CommonUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
 
                 // Remove task from the registry
                 _removeTask(_taskIndexes[i], false);
@@ -463,7 +463,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
 
                 // Check if GST
-                if(checkTaskType(_taskIndexes[i], CommonUtils.TaskType.UST)) { revert UnsupportedTaskOperation(); }
+                if(task.taskType == CommonUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
                 _removeTask(_taskIndexes[i], true);
                 // Remove from active tasks
                 require(regState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
@@ -619,7 +619,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     ) external {
         onlyController();
         // Check if task is UST
-        if(checkTaskType(_taskIndex, CommonUtils.TaskType.GST)) { revert RegisteredTaskInvalidType(); }
+        if (regState.tasks[_taskIndex].taskType() == CommonUtils.TaskType.GST) { revert RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
         _removeTask(_taskIndex, false);
@@ -707,7 +707,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Validates the input task type against the task type.
     /// @param _taskIndex Index of the task.
     /// @param _type Input task type.
-    function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
+    function checkTaskType(uint64 _taskIndex, CommonUtils.TaskType _type) external view returns (bool) {
+        if (!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         return _type == regState.tasks[_taskIndex].taskType();
     }
 
@@ -777,7 +778,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Checks whether there is an active task in registry with specified input task index of the input type.
     /// The type can be either 0 for user submitted tasks, and 1 for governance authorized tasks.
     function hasActiveTaskOfType(address _account, uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
-        return regState.tasks[_taskIndex].owner() == _account && LibRegistry.state(regState.tasks[_taskIndex]) != CommonUtils.TaskState.PENDING && checkTaskType(_taskIndex, _type);
+        LibRegistry.TaskMetadata storage task = regState.tasks[_taskIndex]; 
+        return task.owner() == _account && task.state() != CommonUtils.TaskState.PENDING && task.taskType() == _type;
     }
 
     /// @notice Estimates automation fee for the next cycle for specified task occupancy for the configured cycle-interval

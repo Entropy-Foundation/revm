@@ -268,8 +268,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         if(registry.ifTaskExists(_taskIndex)) {
             markTaskProcessed(_taskIndex);
 
-            bool isUst = registry.checkTaskType(_taskIndex, CommonUtils.TaskType.UST);
             CommonUtils.TaskDetails memory task = registry.getTaskDetails(_taskIndex);
+            bool isUst = task.taskType == CommonUtils.TaskType.UST;
             
             // Task is cancelled or expired
             if(task.state == CommonUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
