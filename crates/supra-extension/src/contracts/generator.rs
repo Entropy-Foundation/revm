@@ -12,11 +12,8 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-/// Output path of the compiled smart contracts
-const OUTPUT_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../solidity/supra_contracts/out"
-);
+/// Output path of the compiled smart contracts, exported by build script.
+const OUTPUT_PATH: &str = env!("COMPILED_CONTRACTS_DIR");
 
 /////////////// Multi-Signature-Wallet related contracts and init APIs /////////////////////////////
 const MULTISIG_WALLET: &str = "MultiSignatureWallet";
@@ -68,16 +65,16 @@ sol! {
 /// Genesis Transaction generator configuration details
 #[derive(Debug, Clone)]
 pub struct GenesisTransactionGeneratorConfig {
-    /// List of EOAs to setup multisig foundation wallet
+    /// List of EOAs to set up multisig foundation wallet.
     pub foundation_owners: Vec<Address>,
-    /// Threshold of the foundation multisig wallet
+    /// Threshold of the foundation multisig wallet.
     pub foundation_threshold: u64,
-    /// Flag indicating the set of g
+    /// Flag indicating whether full set of genesis transaction should be generated or only mandatory once.
     pub full_set: bool,
 }
 
 /// Genesis Transaction generator using configured address as transaction owner.
-/// It provides means to generate minimal mandator set of genesis transactions to set up evm state,
+/// It provides means to generate minimal mandatory set of genesis transactions to set up evm state,
 /// and conditionally generates non-mandatory set of transactions.
 #[derive(Debug)]
 pub struct GenesisTransactionGenerator {

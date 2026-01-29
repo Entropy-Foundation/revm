@@ -1,19 +1,20 @@
 //! Prepares supra-extension by compiling smart-contracts and building rust bindings
 
-use foundry_compilers::artifacts::{Optimizer, Remapping, Settings};
+use anyhow::Result;
+use foundry_compilers::artifacts::Remapping;
 use foundry_compilers::multi::MultiCompilerSettings;
 use foundry_compilers::solc::SolcSettings;
-use foundry_compilers::{Project, ProjectPathsConfig};
+use foundry_compilers::{utils, Project, ProjectPathsConfig};
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-use anyhow::Result;
+
+const CURRENT_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 fn rebuild_rust_bindings() {
     // 1. Tell Cargo to rerun the script if the contracts directory changes
-    let cargo_dir = PathBuf::from(
-        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR environment variable not set"),
-    );
+    let cargo_dir = PathBuf::from(CURRENT_DIR);
     println!(
         "cargo:rerun-if-changed={}/../../solidity/supra_contracts/src/SupraContractsBindings.sol",
         cargo_dir.display()
@@ -54,48 +55,74 @@ fn rebuild_rust_bindings() {
     //bind_cmd.run().expect("Failed to execute bind command");
 }
 
-const CONTRACTS_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../solidity/supra_contracts/"
-);
-fn compile_contracts() -> Result<()> {
-    let path = foundry_compilers::utils::canonicalize(Path::new(CONTRACTS_PATH))?;
-    let mut settings = Settings::default();
-    settings.via_ir = Some(true);
-    settings.optimizer = Optimizer {
-        enabled: Some(true),
-        runs: Some(200),
-        details: None,
-    };
-    let mut multi_compiler_settings = MultiCompilerSettings::default();
-    let mut solc_settings = SolcSettings::default();
-    solc_settings.settings = settings;
-    multi_compiler_settings.solc = solc_settings;
+#[derive(Serialize, Deserialize, Debug)]
+struct CompileConfig {
+    dapp_relative_path: PathBuf,
+    solc_settings: SolcSettings,
+    #[serde(default)]
+    remappings: Vec<(String, String)>,
+}
 
-    // configure the project with all its paths, solc, cache etc.
-    // @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
-    let remappings = Remapping {
-        context: None,
-        name: "@openzeppelin/contracts/".to_string(),
-        path: path
-            .join("lib/openzeppelin-contracts/contracts/").as_os_str().to_string_lossy().to_string()
-    };
-    let mut paths = ProjectPathsConfig::dapptools(&path)?;
-    paths.remappings.insert(0, remappings);
+impl CompileConfig {
+    fn load() -> Result<CompileConfig> {
+        let path = Path::new(CURRENT_DIR).join("compile_config.toml");
+        toml::from_str::<CompileConfig>(&std::fs::read_to_string(path)?)
+            .map_err(|e| e.into())
+            .inspect_err(|e| println!("Error: {}", e))
+    }
+
+    fn dapp_path(&self) -> PathBuf {
+        utils::canonicalize(Path::new(CURRENT_DIR).join(&self.dapp_relative_path))
+            .expect("failed to canonicalize dapp path")
+    }
+
+    fn remappings(&self) -> Vec<Remapping> {
+        self.remappings
+            .iter()
+            .map(|(name, rel_path)| Remapping {
+                context: None,
+                name: name.clone(),
+                path: self
+                    .dapp_path()
+                    .join(rel_path)
+                    .to_string_lossy()
+                    .into_owned(),
+            })
+            .collect()
+    }
+
+    fn to_multi_compiler_settings(self) -> MultiCompilerSettings {
+        let mut settings = MultiCompilerSettings::default();
+        settings.solc = self.solc_settings;
+        settings
+    }
+}
+
+fn compile_contracts() -> Result<()> {
+    let config = CompileConfig::load()?;
+
+    let mut paths = ProjectPathsConfig::dapptools(&config.dapp_path())?;
+    for (idx, value) in config.remappings().into_iter().enumerate() {
+        paths.remappings.insert(idx, value)
+    }
+
     let project = Project::builder()
         .paths(paths)
-        .settings(multi_compiler_settings)
+        .settings(config.to_multi_compiler_settings())
         .build(Default::default())?;
-    let output = project.compile().unwrap();
+    let output = project.compile()?;
     let _ = output.succeeded();
     // Tell Cargo that if a source file changes, to rerun this build script.
     project.rerun_if_sources_changed();
+    println!("cargo:rerun-if-changed={}/compile_config.toml", CURRENT_DIR);
+    println!("cargo:rustc-env=COMPILED_CONTRACTS_DIR={}", project.paths.artifacts.display());
+
     Ok(())
 }
 
 fn main() {
     rebuild_rust_bindings();
-    compile_contracts().inspect_err(|e|{
-        panic!("{e:?}")
-    }).unwrap()
+    compile_contracts()
+        .inspect_err(|e| panic!("{e:?}"))
+        .unwrap()
 }
