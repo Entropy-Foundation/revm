@@ -105,7 +105,8 @@ contract DeployAutomationRegistry is Script {
             AutomationController.initialize,
             (
                 address(automationCore),
-                address(registry)
+                address(registry),
+                true
             )
         );
         controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);

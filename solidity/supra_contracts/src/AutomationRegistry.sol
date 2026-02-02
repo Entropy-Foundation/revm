@@ -21,13 +21,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
 
-    /// @dev Defines the cycle state, used to update the registry.
-    uint8 constant SUSPENDED = 0;
-    uint8 constant FINISHED = 1;
-    
     /// @dev State variables 
     LibRegistry.RegistryState regState;
-    LibRegistry.RegistryStateSystemTasks regSysState;
     address public automationCore;
     address public automationController;
 
@@ -116,10 +111,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint8 _type,
         bytes[] memory _auxData
     ) external {
-        uint128 flatRegistrationFeeWei = IAutomationCore(automationCore).flatRegistrationFeeWei();
+        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         uint64 regTime = uint64(block.timestamp);
-        uint128 gasCommittedForNextCycle = regState.gasCommittedForNextCycle();
         IAutomationCore(automationCore).validateRegistration(
             totalTasks(),
             _type,
@@ -129,13 +126,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _payloadTx, 
             _maxGasAmount, 
             _txHash,
-            gasCommittedForNextCycle,
             _gasPriceCap,
-            _automationFeeCapForCycle
+            _automationFeeCapForCycle,
+            startTime + durationSecs
         );
 
-        uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;
-        regState.setGasCommittedForNextCycle(gasCommitted);
         uint64 taskIndex = regState.currentIndex; 
 
         LibRegistry.TaskMetadata memory taskMetadata = LibRegistry.createTaskMetadata(
@@ -160,6 +155,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         regState.currentIndex += 1;
 
         IAutomationCore(automationCore).incTotalDepositedAutomationFees(_automationFeeCapForCycle);
+        uint128 flatRegistrationFeeWei = IAutomationCore(automationCore).flatRegistrationFeeWei();
         uint128 fee = flatRegistrationFeeWei + _automationFeeCapForCycle;
         IAutomationCore(automationCore).chargeFees(msg.sender, fee);
 
@@ -183,10 +179,13 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint8 _type,
         bytes[] memory _auxData
     ) external {
+        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
+        
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        if (state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         uint64 regTime = uint64(block.timestamp);
-        uint128 gasCommittedForNextCycle = regSysState.gasCommittedForNextCycle();
         IAutomationCore(automationCore).validateRegistration(
             totalSystemTasks(),
             _type,
@@ -196,16 +195,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _payloadTx, 
             _maxGasAmount, 
             _txHash,
-            gasCommittedForNextCycle,
             0,
-            0
+            0,
+            startTime + durationSecs
         );
                 
-        uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;
-        regSysState.setGasCommittedForNextCycle(gasCommitted);
-
         uint64 taskIndex = regState.currentIndex; 
-
         uint64 taskPriority = _priority == 0 ? taskIndex : _priority;   // Defaults to taskIndex as priority if 0 is passed
         LibRegistry.TaskMetadata memory taskMetadata = LibRegistry.createTaskMetadata(
             _maxGasAmount,
@@ -226,7 +221,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         regState.tasks[taskIndex] = taskMetadata; 
         require(regState.taskIdList.add(taskIndex), TaskIndexNotUnique());
-        require(regSysState.taskIds.add(taskIndex), TaskIndexNotUnique());
+        require(regState.sysTaskIds.add(taskIndex), TaskIndexNotUnique());
         regState.currentIndex += 1;
 
         emit SystemTaskRegistered(taskIndex, msg.sender, block.timestamp, regState.tasks[taskIndex].getTaskDetails());
@@ -244,7 +239,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _taskIndex
     ) external {
         // Check if automation is enabled
-        if (!IAutomationCore(automationCore).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
         ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
 
@@ -276,11 +271,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         if (task.expiryTime > (startTime + durationSecs)) {
-            uint128 gasCommittedForNextCycle = regState.gasCommittedForNextCycle();
-            if(gasCommittedForNextCycle < task.maxGasAmount) { revert GasCommittedValueUnderflow(); }
-          
-            // Adjust the gas committed for the next cycle by subtracting the gas amount of the cancelled task
-            regState.setGasCommittedForNextCycle(gasCommittedForNextCycle - task.maxGasAmount);
+            IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
         emit TaskCancelled( _taskIndex, task.owner, task.txHash);
@@ -298,7 +289,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _taskIndex
     ) external {
         // Check if automation is enabled
-        if (!IAutomationCore(automationCore).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
         ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
 
@@ -323,11 +314,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         if(task.expiryTime > startTime + durationSecs) {
-            uint128 gasCommittedForNextCycle = regSysState.gasCommittedForNextCycle();
-            if(gasCommittedForNextCycle < task.maxGasAmount) { revert GasCommittedValueUnderflow(); }
-
-            // Adjust the gas committed for the next cycle by subtracting the gas amount of the cancelled task
-            regSysState.setGasCommittedForNextCycle(gasCommittedForNextCycle - task.maxGasAmount);
+            IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
         emit TaskCancelled(_taskIndex, msg.sender, task.txHash);
@@ -343,7 +330,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64[] memory _taskIndexes
     ) external {
         // Check if automation is enabled
-        if (!IAutomationCore(automationCore).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
         address erc20Supra = IAutomationCore(automationCore).erc20Supra();
 
@@ -355,7 +342,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint256 counter = 0;
         
         uint128 totalRefundFee = 0;
-        uint256 cycleLockedFees = regState.cycleLockedFees;
 
         // Calculate refundable fee for this remaining time task in current cycle
         uint256 currentTime = block.timestamp;
@@ -382,25 +368,19 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
                 // Also it checks that task should not be cancelled.
                 if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
-                    // Prevent underflow in gas committed
-                    uint128 gasCommittedForNextCycle = regState.gasCommittedForNextCycle();
-                    if(gasCommittedForNextCycle < task.maxGasAmount) { revert GasCommittedValueUnderflow(); }
                     // Reduce committed gas by the stopped task's max gas
-                    regState.setGasCommittedForNextCycle(gasCommittedForNextCycle - task.maxGasAmount);
+                    IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
-                (uint256 remainingCycleLockedFees, uint128 cycleFeeRefund, uint128 depositRefund) = IAutomationCore(automationCore).unlockDepositAndCycleFee(
+                (uint128 cycleFeeRefund, uint128 depositRefund) = IAutomationCore(automationCore).unlockDepositAndCycleFee(
                     _taskIndexes[i],
                     task.state,
-                    regState.gasCommittedForThisCycle(),
                     task.expiryTime,
                     task.maxGasAmount,
                     residualInterval,
                     uint64(currentTime),
-                    task.lockedFeeForNextCycle,
-                    cycleLockedFees
+                    task.lockedFeeForNextCycle
                 );
-                cycleLockedFees = remainingCycleLockedFees;
                 totalRefundFee += (cycleFeeRefund + depositRefund);
 
 
@@ -441,7 +421,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64[] memory _taskIndexes
     ) external {
         // Check if automation is enabled
-        if (!IAutomationCore(automationCore).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
         ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
@@ -469,10 +449,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 require(regState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
                 if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
-                    // Prevent underflow in gas committed
-                    uint128 gasCommittedForNextCycle = regSysState.gasCommittedForNextCycle();
-                    if(gasCommittedForNextCycle < task.maxGasAmount) { revert GasCommittedValueUnderflow(); } 
-                    regSysState.setGasCommittedForNextCycle(gasCommittedForNextCycle - task.maxGasAmount);
+                    IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
                 // Add to stopped tasks
@@ -498,20 +475,12 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Helper function to update the active task indexes.
-    function updateActiveTaskIds() private {
-        uint256[] memory taskIds = regState.taskIdList.values();
-        for (uint256 i = 0; i < taskIds.length; i++) {
-            regState.activeTaskIds.add(taskIds[i]);
-        }
-    }
-
     /// @notice Function to remove a task from the registry.
     /// @param _taskIndex Index of the task to remove. 
     /// @param _removeFromSysReg Wheather to remove from system task registry.
     function _removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
         if(_removeFromSysReg) {
-            require(regSysState.taskIds.remove(_taskIndex), TaskIndexNotFound());
+            require(regState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
         }
 
         delete regState.tasks[_taskIndex];
@@ -528,14 +497,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Grants authorization to the input account to submit system automation tasks.
     /// @param _account Address to grant authorization to.
     function grantAuthorization(address _account) external onlyOwner {
-        require(regSysState.authorizedAccounts.add(_account), AddressAlreadyExists());
+        require(regState.authorizedAccounts.add(_account), AddressAlreadyExists());
         emit AuthorizationGranted(_account, block.timestamp);
     }
 
     /// @notice Revokes authorization from the input account to submit system automation tasks. 
     /// @param _account Address to revoke authorization from. 
     function revokeAuthorization(address _account) external onlyOwner {
-        require(regSysState.authorizedAccounts.remove(_account), AddressDoesNotExist());
+        require(regState.authorizedAccounts.remove(_account), AddressDoesNotExist());
         emit AuthorizationRevoked(_account, block.timestamp);
     }
 
@@ -577,32 +546,20 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         LibRegistry.setState(regState.tasks[_taskIndex], uint8(_taskState));
     }
 
-    /// @notice Function to update registry state.
-    /// @param _sysGasCommittedForNextCycle Updated system gas committed for next cycle 
-    /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
-    /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
-    /// @param _lockedFees Updated cycle locked fees
+    /// @notice Function to update tasks lists.
     /// @param _state Cycle transition state executing the update.
-    function updateRegistryState(
-        uint128 _sysGasCommittedForNextCycle,
-        uint128 _gasCommittedForNextCycle,
-        uint128 _gasCommittedForNewCycle,
-        uint256 _lockedFees,
-        uint8 _state
-    ) external {
+    function updateTasks(CommonUtils.CycleState _state) external {
         onlyController();
-        regSysState.setGasCommittedForNextCycle(_sysGasCommittedForNextCycle);
-        regSysState.setGasCommittedForThisCycle(_sysGasCommittedForNextCycle);
-        regState.setGasCommittedForNextCycle(_gasCommittedForNextCycle);
-        regState.setGasCommittedForThisCycle(_gasCommittedForNewCycle);
-        regState.cycleLockedFees  = _lockedFees;
 
         regState.activeTaskIds.clear();
 
-        if(_state == FINISHED) {
-            updateActiveTaskIds();
+        if(_state == CommonUtils.CycleState.FINISHED) {
+            uint256[] memory taskIds = regState.taskIdList.values();
+            for (uint256 i = 0; i < taskIds.length; i++) {
+                regState.activeTaskIds.add(taskIds[i]);
+            }
         } else {
-            regSysState.taskIds.clear();
+            regState.sysTaskIds.clear();
         }
     }
 
@@ -633,15 +590,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         );
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Returns the total amount locked which comprises of 'cycleLockedFees' and 'totalDepositedAutomationFees'. 
-    function getTotalLockedBalance() external view returns (uint256) {
-        uint256 getTotalDepositedAutomationFees = IAutomationCore(automationCore).getTotalDepositedAutomationFees();
-
-        // return regState.cycleLockedFees + deposit.totalDepositedAutomationFees;
-        return regState.cycleLockedFees + getTotalDepositedAutomationFees;
-    }    
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
 
     /// @notice Retrieves the details of automation tasks by their task index. Skips a task if it doesn't exist.
     /// @param _taskIndexes Input task indexes to get details of.
@@ -677,7 +626,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Returns the number of total system tasks.
     function totalSystemTasks() public view returns (uint256) {
-        return regSysState.taskIds.length();
+        return regState.sysTaskIds.length();
     }
 
     /// @notice Returns the next task index.
@@ -701,7 +650,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Checks if a system task exist.
     /// @param _taskIndex Task index to check if a system task exists against it.
     function ifSysTaskExists(uint64 _taskIndex) public view returns (bool) {
-        return regSysState.taskIds.contains(_taskIndex);
+        return regState.sysTaskIds.contains(_taskIndex);
     }
 
     /// @notice Validates the input task type against the task type.
@@ -723,31 +672,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     function getTaskState(uint64 _taskIndex) external view returns (CommonUtils.TaskState) {
         return LibRegistry.state(regState.tasks[_taskIndex]);
     }
-
-    /// @notice Returns the gas committed for the next cycle.
-    function getGasCommittedForNextCycle() external view returns (uint128) {
-        return regState.gasCommittedForNextCycle();
-    }
-
-    /// @notice Returns the gas committed for the current cycle.
-    function getGasCommittedForCurrentCycle() external view returns (uint128) {
-        return regState.gasCommittedForThisCycle();
-    }
-
-    /// @notice Returns the system gas committed for the next cycle.
-    function getSystemGasCommittedForNextCycle() external view returns (uint128) {
-        return regSysState.gasCommittedForNextCycle();
-    }
-
-    /// @notice Returns the system gas committed for the current cycle.
-    function getSystemGasCommittedForCurrentCycle() external view returns (uint128) {
-        return regSysState.gasCommittedForThisCycle();
-    }
     
     /// @notice Checks if the input account is an authorized submitter to submit system automation tasks.
     /// @param _account Address to check if it's authorized.
     function isAuthorizedSubmitter(address _account) public view returns (bool) {
-        return regSysState.authorizedAccounts.contains(_account);
+        return regState.authorizedAccounts.contains(_account);
     }
 
     /// @notice Returns the total number of active tasks.
@@ -758,11 +687,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Returns all the active task indexes.
     function getAllActiveTaskIds() external view returns (uint256[] memory) {
         return regState.activeTaskIds.values();
-    }
-    
-    /// @notice Returns the locked fees for the cycle. 
-    function getCycleLockedFees() external view returns (uint256) {
-        return regState.cycleLockedFees;
     }
 
     /// @notice Checks whether there is an active task in registry with specified input task index.
@@ -780,26 +704,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     function hasActiveTaskOfType(address _account, uint64 _taskIndex, CommonUtils.TaskType _type) public view returns (bool) {
         LibRegistry.TaskMetadata storage task = regState.tasks[_taskIndex]; 
         return task.owner() == _account && task.state() != CommonUtils.TaskState.PENDING && task.taskType() == _type;
-    }
-
-    /// @notice Estimates automation fee for the next cycle for specified task occupancy for the configured cycle-interval
-    /// referencing the current automation registry fee parameters, current total occupancy and registry maximum allowed
-    /// occupancy for the next cycle.
-    function estimateAutomationFee(uint128 _taskOccupancy) external view returns (uint128) {
-        return estimateAutomationFeeWithCommittedOccupancy(_taskOccupancy, regState.gasCommittedForNextCycle());
-    }
-
-    /// @notice Estimates automation fee the next cycle for specified task occupancy for the configured cycle-interval
-    /// referencing the current automation registry fee parameters, specified total/committed occupancy and registry
-    /// maximum allowed occupancy for the next cycle.
-    function estimateAutomationFeeWithCommittedOccupancy(
-        uint128 _taskOccupancy,
-        uint128 _committedOccupancy
-    ) public view returns (uint128) {
-        return IAutomationCore(automationCore).estimateAutomationFeeWithCommittedOccupancyInternal(
-            _taskOccupancy,
-            _committedOccupancy
-        );
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

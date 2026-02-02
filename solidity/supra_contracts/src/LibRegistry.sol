@@ -11,7 +11,6 @@ library LibRegistry {
     uint256 private constant MAX_UINT128 = type(uint128).max;
     uint256 private constant MAX_UINT160 = type(uint160).max;
     uint256 private constant MAX_UINT64 = type(uint64).max;
-    uint256 private constant MAX_UINT16 = type(uint16).max;
     uint256 private constant MAX_UINT8 = type(uint8).max;
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: TaskMetadata ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -186,76 +185,15 @@ library LibRegistry {
 
     /// @notice Tracks per-cycle automation state and task indexes.
     struct RegistryState {
-        uint256 cycleLockedFees;
-        
-        // uint128 | uint128
-        uint256 gasCommittedForNextCycle_gasCommittedForThisCycle;
-        
         uint64 currentIndex;
         
         EnumerableSet.UintSet activeTaskIds;
         EnumerableSet.UintSet taskIdList;
         mapping(uint64 => TaskMetadata) tasks;   
         // mapping(address => uint64[]) userTasks       TO_DO: user to their tasks, need to decide on this 
-    }
 
-    // gasCommittedForNextCycle (uint128) | gasCommittedForThisCycle (uint128)
-    function gasCommittedForNextCycle(RegistryState storage r) internal view returns (uint128) {
-        return uint128(r.gasCommittedForNextCycle_gasCommittedForThisCycle >> 128);
-    }
-
-    function gasCommittedForThisCycle(RegistryState storage r) internal view returns (uint128) {
-        return uint128(r.gasCommittedForNextCycle_gasCommittedForThisCycle);
-    }
-
-    function setGasCommittedForNextCycle(RegistryState storage r, uint128 _value) internal {
-        // Clear upper 128 bits
-        r.gasCommittedForNextCycle_gasCommittedForThisCycle &= MAX_UINT128; 
-        // Insert new upper 128 bits
-        r.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value) << 128;
-    }
-
-    function setGasCommittedForThisCycle(RegistryState storage r, uint128 _value) internal {
-        // Clear lower 128 bits
-        r.gasCommittedForNextCycle_gasCommittedForThisCycle &= MAX_UINT128 << 128;
-        // Insert new lower 128 bits
-        r.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value);
-    }
-
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: RegistryStateSystemTasks :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Tracks per-cycle automation state and task indexes for system tasks.
-    struct RegistryStateSystemTasks {
-        // uint128 | uint128
-        uint256 gasCommittedForNextCycle_gasCommittedForThisCycle;
-        
-        EnumerableSet.UintSet taskIds;
+        EnumerableSet.UintSet sysTaskIds;
         EnumerableSet.AddressSet authorizedAccounts;
-    }
-
-    // gasCommittedForNextCycle (uint128) | gasCommittedForThisCycle (uint128)
-    function gasCommittedForNextCycle(RegistryStateSystemTasks storage s) internal view returns (uint128){
-        return uint128(s.gasCommittedForNextCycle_gasCommittedForThisCycle >> 128);
-    }
-
-    function gasCommittedForThisCycle(RegistryStateSystemTasks storage s) internal view returns (uint128){
-        return uint128(s.gasCommittedForNextCycle_gasCommittedForThisCycle);
-    }
-
-    function setGasCommittedForNextCycle(RegistryStateSystemTasks storage s, uint128 _value) internal {
-        // Clear upper 128 bits
-        s.gasCommittedForNextCycle_gasCommittedForThisCycle &= MAX_UINT128; // mask = lower 128 bits all 1s
-
-        // Insert new upper 128 bits
-        s.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value) << 128;
-    }
-
-    function setGasCommittedForThisCycle(RegistryStateSystemTasks storage s, uint128 _value) internal {
-        // Clear lower 128 bits
-        s.gasCommittedForNextCycle_gasCommittedForThisCycle &= MAX_UINT128 << 128; // mask = upper 128 bits all 1s
-
-        // Insert new lower 128 bits
-        s.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value);
     }
 
     /// @notice Struct representing a stopped task.

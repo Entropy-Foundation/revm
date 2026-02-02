@@ -14,8 +14,8 @@ library LibController {
 
     /// @notice Struct representing the state of current cycle.
     struct AutomationCycleInfo{
-        // uint64 | uint64 | uint64 | CycleState | bool
-        uint256 index_startTime_durationSecs_state_ifTransitionStateExists;
+        // uint64 | uint64 | uint64 | CycleState(uint8) | bool(1 bit) | bool(1 bit)
+        uint256 index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled;
         TransitionState transitionState;
     }
 
@@ -38,59 +38,70 @@ library LibController {
         uint64 _index,
         uint64 _startTime,
         uint64 _durationSecs,
-        CommonUtils.CycleState _cycleState
+        CommonUtils.CycleState _cycleState,
+        bool _automationEnabled 
     ) internal {
-        _cycleInfo.index_startTime_durationSecs_state_ifTransitionStateExists = 
+        _cycleInfo.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled = 
             (uint256(_index) << 192) |
             (uint256(_startTime) << 128) |
             (uint256(_durationSecs) << 64) |
-            (uint256(_cycleState) << 56);
+            (uint256(_cycleState) << 56) |
+            (_automationEnabled ? (uint256(1) << 54) : 0);
     }
 
-    // index (uint64) | startTime (uint64) | durationSecs (uint64) | state (CycleState/uint8) | ifTransitionStateExists (bool) [stored at bit 55]
+    // index(uint64) | startTime(uint64) | durationSecs(uint64) | state(CycleState/uint8) | ifTransitionStateExists(bool)[bit 55] | automationEnabled(bool)[bit 54]
     function index(AutomationCycleInfo storage cycle) internal view returns (uint64) {
-        return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 192);
+        return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled >> 192);
     }
 
     function startTime(AutomationCycleInfo storage cycle) internal view returns (uint64) {
-        return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 128);
+        return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled >> 128);
     }
 
     function durationSecs(AutomationCycleInfo storage cycle) internal view returns (uint64) {
-        return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 64);
+        return uint64(cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled >> 64);
     }
 
     function state(AutomationCycleInfo storage cycle) internal view returns (CommonUtils.CycleState) {
-        return CommonUtils.CycleState(uint8(cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 56));
+        return CommonUtils.CycleState(uint8(cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled >> 56));
     }
 
     function ifTransitionStateExists(AutomationCycleInfo storage cycle) internal view returns (bool) {
-        return ((cycle.index_startTime_durationSecs_state_ifTransitionStateExists >> 55) & 1) != 0;
+        return ((cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled >> 55) & 1) != 0;
+    }
+
+    function automationEnabled(AutomationCycleInfo storage cycle) internal view returns (bool) {
+        return ((cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled >> 54) & 1) != 0;
     }
 
     function setIndex(AutomationCycleInfo storage cycle, uint64 _index) internal {
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists &= ~(MAX_UINT64 << 192);     // Clear old bits
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists |= uint256(_index) << 192;   // Set new value
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled &= ~(MAX_UINT64 << 192);     // Clear old bits
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled |= uint256(_index) << 192;   // Set new value
     }
 
     function setStartTime(AutomationCycleInfo storage cycle, uint64 _startTime) internal {
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists &= ~(MAX_UINT64 << 128);
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists |= uint256(_startTime) << 128;
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled &= ~(MAX_UINT64 << 128);
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled |= uint256(_startTime) << 128;
     }
 
     function setDurationSecs(AutomationCycleInfo storage cycle, uint64 _durationSecs) internal {
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists &= ~(MAX_UINT64 << 64);
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists |= uint256(_durationSecs) << 64;
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled &= ~(MAX_UINT64 << 64);
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled |= uint256(_durationSecs) << 64;
     }
 
     function setState(AutomationCycleInfo storage cycle, uint8 _state) internal {
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists &= ~(MAX_UINT8 << 56);
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists |= uint256(_state) << 56;
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled &= ~(MAX_UINT8 << 56);
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled |= uint256(_state) << 56;
     }
 
     function setTransitionStateExists(AutomationCycleInfo storage cycle, bool exists) internal {
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists &= ~(uint256(1) << 55);
-        cycle.index_startTime_durationSecs_state_ifTransitionStateExists |= exists ? (uint256(1) << 55) : 0;
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled &= ~(uint256(1) << 55);
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled |= exists ? (uint256(1) << 55) : 0;
+    }
+
+    function setAutomationEnabled(AutomationCycleInfo storage cycle, bool enabled) internal {
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled &= ~(uint256(1) << 54);
+        cycle.index_startTime_durationSecs_state_ifTransitionStateExists_automationEnabled |= enabled ? (uint256(1) << 54) : 0;
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: TransitionState ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

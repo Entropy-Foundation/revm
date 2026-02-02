@@ -40,12 +40,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Emitted when task registration is disabled.
     event TaskRegistrationDisabled(bool indexed status);
 
-    /// @notice Emitted when automation is enabled.
-    event AutomationEnabled(bool indexed status);
-    
-    /// @notice Emitted when automation is disabled.
-    event AutomationDisabled(bool indexed status);
-
     /// @notice Emitted when the VM Signer address is updated.
     event VmSignerUpdated(address indexed oldVmSigner, address indexed newVmSigner);
 
@@ -168,7 +162,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         regConfig = LibConfig.createRegistryConfig(
             _registryMaxGasCap,
             _sysRegistryMaxGasCap,
-            true,
             true,
             _vmSigner,
             _erc20Supra,
@@ -365,7 +358,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     function estimateAutomationFeeWithCommittedOccupancyInternal(
         uint128 _taskOccupancy,
         uint128 _committedOccupancy
-    ) public view returns (uint128) {
+    ) private view returns (uint128) {
         ( , , uint64 durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
 
         uint128 totalCommittedGas = _taskOccupancy + _committedOccupancy;
@@ -497,22 +490,21 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return (result, remainingLockedFees);   
     }
 
-    /// @notice Helper function to update the registry configuration.
-    function _applyPendingConfig() private {
-        if (configBuffer.ifExists) {
-            regConfig.config = configBuffer.pendingConfig;
-            configBuffer.ifExists = false;
-
-            IAutomationController(regConfig.automationController()).updateCyleDuration(configBuffer.pendingConfig.cycleDurationSecs());
-        }
-    }
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONTROLLER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Function to update the registry configuration, reverts if caller is not AutomationController.
-    function applyPendingConfig() external {
+    function applyPendingConfig() external returns (bool, uint64) {
         onlyController();
-        _applyPendingConfig();
+
+        if (!configBuffer.ifExists) {
+            return (false, 0);
+        } 
+        uint64 pendingCycleDuration = configBuffer.pendingConfig.cycleDurationSecs();
+        regConfig.config = configBuffer.pendingConfig;
+        
+        delete configBuffer;
+        
+        return (true, pendingCycleDuration);        
     }
 
     /// @notice Internally calls _calculateTaskFee, reverts if caller is not AutomationController.
@@ -549,11 +541,10 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Refunds the deposit fee and any autoamtion fees of the task.
     function refundTaskFees(
         uint64 _currentTime,
-        uint256 _cycleLockedFees,
         uint64 _refundDuration, 
         uint128 _automationFeePerSec,
         CommonUtils.TaskDetails memory _task
-    ) external returns (uint256) {
+    ) external {
         onlyController();
 
         // Do not attempt fee refund if remaining duration is 0
@@ -569,10 +560,10 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
             ( , uint256 remainingCycleLockedFees) = safeFeeRefund(
                     _task.taskIndex,
                     _task.owner,
-                    _cycleLockedFees,
+                    regConfig.cycleLockedFees,
                     uint64(_refundFee)
                 );
-            _cycleLockedFees = remainingCycleLockedFees;
+            regConfig.cycleLockedFees = remainingCycleLockedFees;
         }
 
         _safeDepositRefund(
@@ -581,16 +572,13 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
             _task.lockedFeeForNextCycle,
             _task.lockedFeeForNextCycle
         );
-
-        return _cycleLockedFees;
     }
 
     function calculateAutomationFeeMultiplierForCurrentCycleInternal() external view returns (uint128) {
         onlyController();
         // Compute the automation fee multiplier for this cycle
-        uint128 gasCommittedForThisCycle = IAutomationRegistry(regConfig.registry).getGasCommittedForCurrentCycle();
         return calculateAutomationFeeMultiplierForCycle(
-            gasCommittedForThisCycle,
+            regConfig.gasCommittedForThisCycle(),
             regConfig.registryMaxGasCap()
         );
     }
@@ -609,6 +597,26 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         );
     }
 
+    /// @notice Function to update the cycle locked fees and gas committed.
+    /// @param _lockedFees Updated cycle locked fees
+    /// @param _sysGasCommittedForNextCycle Updated system gas committed for next cycle 
+    /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
+    /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
+    function updateGasCommittedAndCycleLockedFees(
+        uint256 _lockedFees,
+        uint128 _sysGasCommittedForNextCycle,
+        uint128 _gasCommittedForNextCycle,
+        uint128 _gasCommittedForNewCycle
+    ) external {
+        onlyController();
+
+        regConfig.cycleLockedFees  = _lockedFees;
+        regConfig.setSysGasCommittedForNextCycle(_sysGasCommittedForNextCycle);
+        regConfig.setSysGasCommittedForThisCycle(_sysGasCommittedForNextCycle);
+        regConfig.setGasCommittedForNextCycle(_gasCommittedForNextCycle);
+        regConfig.setGasCommittedForThisCycle(_gasCommittedForNewCycle);
+    }
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: REGISTRY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Helper function to perform validation while registering a task.
@@ -621,28 +629,28 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         bytes memory _payloadTx, 
         uint128 _maxGasAmount, 
         bytes32 _txHash,
-        uint128 _gasCommittedForNextCycle,
         uint128 _gasPriceCap,
-        uint128 _automationFeeCapForCycle
-    ) external view {
+        uint128 _automationFeeCapForCycle,
+        uint64 _cycleEndTime
+    ) external {
         onlyRegistry();
 
-        // Check if automation and registration is enabled
-        if (!regConfig.automationEnabled()) { revert AutomationNotEnabled(); }
+        // Check if registration is enabled
         if (!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
         if(_inputType != uint8(_taskType)) { revert InvalidTaskType(); }
         
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(regConfig.automationController()).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
-
-        uint128 nextCycleRegistryMaxGasCap;
+        bool isUST = _taskType == CommonUtils.TaskType.UST;
+   
         uint64 taskDurationCap;
-        if (_taskType == CommonUtils.TaskType.UST) {
+        uint128 gasCommittedForNextCycle;
+        uint128 nextCycleRegistryMaxGasCap;
+        if (isUST) {
             if(_totalTasks >= regConfig.taskCapacity()) { revert TaskCapacityReached(); }
             if(_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
 
-            uint128 estimatedAutomationFeeForCycle = estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, _gasCommittedForNextCycle);
+            gasCommittedForNextCycle = regConfig.gasCommittedForNextCycle();
+            uint128 estimatedAutomationFeeForCycle = estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
             if(_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(); }
 
             taskDurationCap = regConfig.taskDurationCapSecs();
@@ -650,15 +658,38 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         } else {
             if(_totalTasks >= regConfig.sysTaskCapacity()) { revert TaskCapacityReached(); }
 
+            gasCommittedForNextCycle = regConfig.sysGasCommittedForNextCycle();
             taskDurationCap = regConfig.sysTaskDurationCapSecs();
             nextCycleRegistryMaxGasCap = regConfig.nextCycleSysRegistryMaxGasCap();
         }
 
-        validateTaskDuration(_regTime, _expiryTime, taskDurationCap, startTime + durationSecs);
+        validateTaskDuration(_regTime, _expiryTime, taskDurationCap, _cycleEndTime);
         validateInputs(_payloadTx, _maxGasAmount, _txHash);
 
-        uint128 gasCommitted = _maxGasAmount + _gasCommittedForNextCycle;
+        uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;
         if(gasCommitted > nextCycleRegistryMaxGasCap) { revert GasCommittedExceedsMaxGasCap(); }
+
+        if (isUST) {
+            regConfig.setGasCommittedForNextCycle(gasCommitted);
+        } else {
+            regConfig.setSysGasCommittedForNextCycle(gasCommitted);
+        } 
+    }
+
+    function updateGasCommittedForNextCycle(CommonUtils.TaskType _taskType, uint128 _maxGasAmount) external {
+        onlyRegistry();
+
+        bool isUST = _taskType == CommonUtils.TaskType.UST;
+
+        uint128 gasCommittedForNextCycle = isUST ? regConfig.gasCommittedForNextCycle(): regConfig.sysGasCommittedForNextCycle();
+        if (gasCommittedForNextCycle < _maxGasAmount) { revert GasCommittedValueUnderflow(); }
+       
+        // Adjust the gas committed for the next cycle by subtracting the gas amount of the cancelled/stopped task
+        if (isUST) {
+            regConfig.setGasCommittedForNextCycle(gasCommittedForNextCycle - _maxGasAmount);
+        } else {
+            regConfig.setSysGasCommittedForNextCycle(gasCommittedForNextCycle - _maxGasAmount);
+        }
     }
 
     /// @notice Helper function to increment the total deposited automation fees.
@@ -688,14 +719,12 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         CommonUtils.TaskState _taskState,
-        uint128 _gasCommittedForThisCycle,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint64 _residualInterval,
         uint64 _currentTime,
-        uint128 _lockedFeeForNextCycle,
-        uint256 _cycleLockedFees
-    )  external returns (uint256, uint128, uint128) {
+        uint128 _lockedFeeForNextCycle
+    )  external returns (uint128, uint128) {
         onlyRegistry();
 
         uint128 cycleFeeRefund;
@@ -703,7 +732,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
 
         if(_taskState != CommonUtils.TaskState.PENDING) {
             // Compute the automation fee multiplier for cycle
-            uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(_gasCommittedForThisCycle, regConfig.registryMaxGasCap());
+            uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(regConfig.gasCommittedForThisCycle(), regConfig.registryMaxGasCap());
 
             uint128 taskFee = _calculateTaskFee(
                 _taskState,
@@ -725,10 +754,12 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         bool result = _safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
         if(!result) { revert ErrorDepositRefund(); }
 
-        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(_cycleLockedFees, uint64(cycleFeeRefund), _taskIndex);
+        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(regConfig.cycleLockedFees, uint64(cycleFeeRefund), _taskIndex);
         if(!hasLockedFee) { revert ErrorCycleFeeRefund(); }
 
-        return (remainingCycleLockedFees, cycleFeeRefund, depositRefund);
+        regConfig.cycleLockedFees = remainingCycleLockedFees;
+
+        return (cycleFeeRefund, depositRefund);
     }
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -760,11 +791,8 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
             _sysTaskCapacity
         );
 
-        uint128 gasCommittedForNextCycle =  IAutomationRegistry(regConfig.registry).getGasCommittedForNextCycle();
-        uint128 systemGasCommittedForNextCycle = IAutomationRegistry(regConfig.registry).getSystemGasCommittedForNextCycle();
-
-        if(gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
-        if(systemGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
+        if(regConfig.gasCommittedForNextCycle() > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
+        if(regConfig.sysGasCommittedForNextCycle() > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
 
         // Add new config to the buffer
         LibConfig.Config memory pendingConfig = LibConfig.createConfig(
@@ -803,37 +831,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         regConfig.setRegistrationEnabled(false);
 
         emit TaskRegistrationDisabled(regConfig.registrationEnabled());   
-    }
-
-    /// @notice Function to enable the automation.
-    function enableAutomation() external onlyOwner {
-        if(regConfig.automationEnabled()) { revert AlreadyEnabled(); }
-
-        IAutomationController controller = IAutomationController(regConfig.automationController());
-        ( , , , CommonUtils.CycleState state) = controller.getCycleInfo();
-        regConfig.setAutomationEnabled(true);
-        
-        if (state == CommonUtils.CycleState.READY) {
-            controller.moveToStartedState();
-            _applyPendingConfig();
-        }
-
-        emit AutomationEnabled(regConfig.automationEnabled());
-    }
-    
-    /// @notice Function to disable the automation.
-    function disableAutomation() external onlyOwner {
-        if(!regConfig.automationEnabled()) { revert AlreadyDisabled(); }
-
-        IAutomationController controller = IAutomationController(regConfig.automationController());
-        ( , , , CommonUtils.CycleState state) = controller.getCycleInfo();
-
-        regConfig.setAutomationEnabled(false);
-        if (state == CommonUtils.CycleState.FINISHED && !controller.isTransitionInProgress()) {
-            controller.tryMoveToSuspendedState();
-        }
-
-        emit AutomationDisabled(regConfig.automationEnabled());
     }
 
     /// @notice Function to update the VM Signer address.
@@ -889,9 +886,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint256 balance = IERC20(regConfig.erc20Supra).balanceOf(address(this));
 
         if(balance < _amount) { revert InsufficientBalance(); }
-
-        uint256 cycleLockedFees = IAutomationRegistry(regConfig.registry).getCycleLockedFees();
-        if(balance - _amount < cycleLockedFees + regConfig.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
+        if(balance - _amount < regConfig.cycleLockedFees + regConfig.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
 
         bool sent = IERC20(regConfig.erc20Supra).transfer(_recipient, _amount);
         if(!sent) { revert TransferFailed(); }
@@ -921,14 +916,29 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return regConfig.registry;
     }
 
-    /// @notice Returns if automation is enabled.
-    function isAutomationEnabled() external view returns (bool) {
-        return regConfig.automationEnabled();
-    }
-
     /// @notice Returns if task registration is enabled.
     function isRegistrationEnabled() external view returns (bool) {
         return regConfig.registrationEnabled();
+    }
+
+    /// @notice Returns the gas committed for the next cycle.
+    function getGasCommittedForNextCycle() external view returns (uint128) {
+        return regConfig.gasCommittedForNextCycle();
+    }
+
+    /// @notice Returns the gas committed for the current cycle.
+    function getGasCommittedForCurrentCycle() external view returns (uint128) {
+        return regConfig.gasCommittedForThisCycle();
+    }
+
+    /// @notice Returns the system gas committed for the next cycle.
+    function getSystemGasCommittedForNextCycle() external view returns (uint128) {
+        return regConfig.sysGasCommittedForNextCycle();
+    }
+
+    /// @notice Returns the system gas committed for the current cycle.
+    function getSystemGasCommittedForCurrentCycle() external view returns (uint128) {
+        return regConfig.sysGasCommittedForThisCycle();
     }
 
     /// @notice Returns the registry max gas cap for the next cycle.    
@@ -976,9 +986,39 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return regConfig.config.cycleDurationSecs();
     }
 
+    /// @notice Returns the locked fees for the cycle. 
+    function getCycleLockedFees() external view returns (uint256) {
+        return regConfig.cycleLockedFees;
+    }
+
     /// @notice Returns the total amount of automation fees deposited.
     function getTotalDepositedAutomationFees() external view returns (uint256) {
         return regConfig.totalDepositedAutomationFees;
+    }
+
+    /// @notice Returns the total amount locked which comprises of 'cycleLockedFees' and 'totalDepositedAutomationFees'. 
+    function getTotalLockedBalance() external view returns (uint256) {
+        return regConfig.cycleLockedFees + regConfig.totalDepositedAutomationFees;
+    }
+
+    /// @notice Estimates automation fee for the next cycle for specified task occupancy for the configured cycle-interval
+    /// referencing the current automation registry fee parameters, current total occupancy and registry maximum allowed
+    /// occupancy for the next cycle.
+    function estimateAutomationFee(uint128 _taskOccupancy) external view returns (uint128) {
+        return estimateAutomationFeeWithCommittedOccupancyInternal(_taskOccupancy, regConfig.gasCommittedForNextCycle());
+    }
+
+    /// @notice Estimates automation fee the next cycle for specified task occupancy for the configured cycle-interval
+    /// referencing the current automation registry fee parameters, specified total/committed occupancy and registry
+    /// maximum allowed occupancy for the next cycle.
+    function estimateAutomationFeeWithCommittedOccupancy(
+        uint128 _taskOccupancy,
+        uint128 _committedOccupancy
+    ) external view returns (uint128) {
+        return estimateAutomationFeeWithCommittedOccupancyInternal(
+            _taskOccupancy,
+            _committedOccupancy
+        );
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

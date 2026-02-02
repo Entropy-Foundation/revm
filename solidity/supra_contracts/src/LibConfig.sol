@@ -30,9 +30,15 @@ library LibConfig {
     /// @notice Configuration of the automation registry.
     struct RegistryConfig {
         // uint128 | uint128
+        uint256 gasCommittedForNextCycle_gasCommittedForThisCycle;
+        // uint128 | uint128
+        uint256 sysGasCommittedForNextCycle_sysGasCommittedForThisCycle;
+
+        // uint128 | uint128
         uint256 nextCycleRegistryMaxGasCap_nextCycleSysRegistryMaxGasCap;
-        // address | bool | bool
-        uint256 controller_registrationEnabled_automationEnabled;
+        // address | bool(1 bit)
+        uint256 controller_registrationEnabled;
+        uint256 cycleLockedFees;
         uint256 totalDepositedAutomationFees;
         address vmSigner;
         address erc20Supra;
@@ -44,7 +50,6 @@ library LibConfig {
         uint128 _nextCycleRegistryMaxGasCap,
         uint128 _nextCycleSysRegistryMaxGasCap,
         bool _registrationEnabled,
-        bool _automationEnabled,
         address _vmSigner,
         address _erc20Supra,
         Config memory _config
@@ -54,17 +59,63 @@ library LibConfig {
             (uint256(_nextCycleRegistryMaxGasCap) << 128) |
             uint256(_nextCycleSysRegistryMaxGasCap);
 
-        // Pack controller (address) | registrationEnabled (bool at bit 95) | automationEnabled (bool at bit 94)
+        // Pack controller (address) | registrationEnabled (bool at bit 95)
         // Sets controller as address(0)
-        rcfg.controller_registrationEnabled_automationEnabled = 
-            (_registrationEnabled ? (uint256(1) << 95) : 0) |
-            (_automationEnabled ? (uint256(1) << 94) : 0);
+        rcfg.controller_registrationEnabled = _registrationEnabled ? uint256(1) << 95 : 0;
 
         rcfg.vmSigner = _vmSigner;
         rcfg.erc20Supra = _erc20Supra;
         
         // Assign inner Config
         rcfg.config = _config;
+    }
+
+    // gasCommittedForNextCycle (uint128) | gasCommittedForThisCycle (uint128)
+    function gasCommittedForNextCycle(RegistryConfig storage r) internal view returns (uint128) {
+        return uint128(r.gasCommittedForNextCycle_gasCommittedForThisCycle >> 128);
+    }
+
+    function gasCommittedForThisCycle(RegistryConfig storage r) internal view returns (uint128) {
+        return uint128(r.gasCommittedForNextCycle_gasCommittedForThisCycle);
+    }
+
+    function setGasCommittedForNextCycle(RegistryConfig storage r, uint128 _value) internal {
+        // Clear upper 128 bits
+        r.gasCommittedForNextCycle_gasCommittedForThisCycle &= MAX_UINT128; 
+        // Insert new upper 128 bits
+        r.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value) << 128;
+    }
+
+    function setGasCommittedForThisCycle(RegistryConfig storage r, uint128 _value) internal {
+        // Clear lower 128 bits
+        r.gasCommittedForNextCycle_gasCommittedForThisCycle &= MAX_UINT128 << 128;
+        // Insert new lower 128 bits
+        r.gasCommittedForNextCycle_gasCommittedForThisCycle |= uint256(_value);
+    }
+
+    // sysGasCommittedForNextCycle (uint128) | sysGasCommittedForThisCycle (uint128)
+    function sysGasCommittedForNextCycle(RegistryConfig storage r) internal view returns (uint128){
+        return uint128(r.sysGasCommittedForNextCycle_sysGasCommittedForThisCycle >> 128);
+    }
+
+    function sysGasCommittedForThisCycle(RegistryConfig storage r) internal view returns (uint128){
+        return uint128(r.sysGasCommittedForNextCycle_sysGasCommittedForThisCycle);
+    }
+
+    function setSysGasCommittedForNextCycle(RegistryConfig storage r, uint128 _value) internal {
+        // Clear upper 128 bits
+        r.sysGasCommittedForNextCycle_sysGasCommittedForThisCycle &= MAX_UINT128; // mask = lower 128 bits all 1s
+
+        // Insert new upper 128 bits
+        r.sysGasCommittedForNextCycle_sysGasCommittedForThisCycle |= uint256(_value) << 128;
+    }
+
+    function setSysGasCommittedForThisCycle(RegistryConfig storage r, uint128 _value) internal {
+        // Clear lower 128 bits
+        r.sysGasCommittedForNextCycle_sysGasCommittedForThisCycle &= MAX_UINT128 << 128; // mask = upper 128 bits all 1s
+
+        // Insert new lower 128 bits
+        r.sysGasCommittedForNextCycle_sysGasCommittedForThisCycle |= uint256(_value);
     }
 
     // nextCycleRegistryMaxGasCap (uint128) | nextCycleSysRegistryMaxGasCap (uint128)
@@ -88,41 +139,29 @@ library LibConfig {
         r.nextCycleRegistryMaxGasCap_nextCycleSysRegistryMaxGasCap |= uint256(value);
     }
 
-    // controller (address) | registrationEnabled (bool) [stored at bit 95] | automationEnabled (bool) [stored at bit 94]
+    // controller (address) | registrationEnabled (bool)[bit 95]
     function automationController(RegistryConfig storage r) internal view returns (address) {
-        return address(uint160(r.controller_registrationEnabled_automationEnabled >> 96));
+        return address(uint160(r.controller_registrationEnabled >> 96));
     }
 
     function registrationEnabled(RegistryConfig storage r) internal view returns (bool) {
-        return (r.controller_registrationEnabled_automationEnabled >> 95) & 1 != 0;
-    }
-
-    function automationEnabled(RegistryConfig storage r) internal view returns (bool) {
-        return (r.controller_registrationEnabled_automationEnabled >> 94) & 1 != 0;
+        return (r.controller_registrationEnabled >> 95) & 1 != 0;
     }
 
     function setAutomationController(RegistryConfig storage r, address _controller) internal {
         // clear top 160 bits
-        r.controller_registrationEnabled_automationEnabled &= ~(MAX_UINT160 << 96);
+        r.controller_registrationEnabled &= ~(MAX_UINT160 << 96);
 
         // insert 160-bit address
-        r.controller_registrationEnabled_automationEnabled |= uint256(uint160(_controller)) << 96;
+        r.controller_registrationEnabled |= uint256(uint160(_controller)) << 96;
     }
 
     function setRegistrationEnabled(RegistryConfig storage r, bool enabled) internal {
         // clear bit 95
-        r.controller_registrationEnabled_automationEnabled &= ~(uint256(1) << 95);
+        r.controller_registrationEnabled &= ~(uint256(1) << 95);
 
         // set bit 95 if enabled
-        r.controller_registrationEnabled_automationEnabled |= enabled ? (uint256(1) << 95) : 0;
-    }
-
-    function setAutomationEnabled(RegistryConfig storage r, bool enabled) internal {
-        // clear bit 94
-        r.controller_registrationEnabled_automationEnabled &= ~(uint256(1) << 94);
-
-        // set bit 94 if enabled
-        r.controller_registrationEnabled_automationEnabled |= enabled ? (uint256(1) << 94) : 0;
+        r.controller_registrationEnabled |= enabled ? (uint256(1) << 95) : 0;
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Config :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

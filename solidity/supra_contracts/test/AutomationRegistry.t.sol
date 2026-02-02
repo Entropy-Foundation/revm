@@ -1216,4 +1216,47 @@ contract AutomationRegistryTest is Test {
         vm.prank(bob);
         registry.stopSystemTasks(taskIndexes);
     }
+    
+    /// @dev Test to ensure 'removeTask' reverts if caller is not AutomationController.
+    function testRemoveTaskRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationRegistry.CallerNotController.selector);
+
+        vm.prank(address(automationCore));
+        registry.removeTask(0, false);
+    }
+
+    /// @dev Test to ensure 'updateTaskState' reverts if caller is not AutomationController.
+    function testUpdateTaskStateRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationRegistry.CallerNotController.selector);
+
+        vm.prank(address(automationCore));
+        registry.updateTaskState(0, CommonUtils.TaskState.ACTIVE);
+    }
+
+    /// @dev Test to ensure 'updateRegistryState' reverts if caller is not AutomationController.
+    function testUpdateRegistryStateRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationRegistry.CallerNotController.selector);
+
+        vm.prank(address(automationCore));
+        registry.updateRegistryState(
+            1000000,
+            1000000,
+            1000000,
+            0.1 ether,
+            0   
+        );
+    }
+
+    /// @dev Test to ensure 'refundDepositAndDrop' reverts if caller is not AutomationController.
+    function testRefundDepositAndDropRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationRegistry.CallerNotController.selector);
+
+        vm.prank(address(automationCore));
+        registry.refundDepositAndDrop(
+            0,
+            alice,
+            0.01 ether,
+            0.1 ether
+        );
+    }
 }
