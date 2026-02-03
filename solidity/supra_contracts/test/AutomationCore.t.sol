@@ -17,7 +17,7 @@ contract AutomationCoreTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
     AutomationCore automationCore;              // AutomationCore instance on proxy address
     AutomationRegistry registry;                // AutomationRegistry instance on proxy address
-    address automationController;               // AutomationController proxy address
+    AutomationController automationController;  // AutomationController instance on proxy address
 
     address admin = address(0xA11CE);
     address vmSigner = address(0x53555000);
@@ -50,7 +50,8 @@ contract AutomationCoreTest is Test {
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
                 vmSigner,                   // VM Signer address
-                address(erc20Supra)         // ERC20Supra address
+                address(erc20Supra),        // ERC20Supra address
+                true                        // automationEnabled
             )
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
@@ -60,13 +61,15 @@ contract AutomationCoreTest is Test {
         bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore)));
         ERC1967Proxy registryProxy = new ERC1967Proxy(address(registryImpl), registryInitData);
         registry = AutomationRegistry(address(registryProxy));
-        automationCore.setAutomationRegistry(address(registry));
 
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry)));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
-        automationController = address(controllerProxy);
-        automationCore.setAutomationController(automationController);
+        automationController = AutomationController(address(controllerProxy));
+
+        automationCore.setAutomationRegistry(address(registry));
+        automationCore.setAutomationController(address(automationController));
+        registry.setAutomationController(address(automationController));
 
         vm.stopPrank();
     }
@@ -74,11 +77,18 @@ contract AutomationCoreTest is Test {
     /// @dev Test to ensure all state variables are initialized correctly.
     function testInitialize() public view {
         assertEq(automationCore.owner(), admin);
+
+        (uint64 index, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = automationCore.getCycleInfo();
+        assertEq(index, 1);
+        assertEq(startTime, block.timestamp);
+        assertEq(durationSecs, 2000);
+        assertEq(uint8(state), uint8(CommonUtils.CycleState.STARTED));
+
         assertEq(automationCore.getNextCycleRegistryMaxGasCap(), 10_000_000);
         assertEq(automationCore.getNextCycleSysRegistryMaxGasCap(), 5_000_000);
-        assertEq(automationCore.getAutomationController(), automationController);
+        assertEq(automationCore.getAutomationController(), address(automationController));
         assertTrue(automationCore.isRegistrationEnabled());
-        assertTrue(automationCore.isAutomationEnabled());
+        assertTrue(automationController.isAutomationEnabled());
         assertEq(automationCore.getVmSigner(), vmSigner);
         assertEq(automationCore.erc20Supra(), address(erc20Supra));
 
@@ -105,7 +115,7 @@ contract AutomationCoreTest is Test {
         vm.prank(admin);    
         automationCore.initialize(
             3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
-            500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+            500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
         );
     }
 
@@ -119,7 +129,7 @@ contract AutomationCoreTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500,
                 address(0),                             // VM Signer as zero
-                address(erc20Supra)
+                address(erc20Supra), true
             )
         );
 
@@ -136,7 +146,8 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, 
-                address(0)                              // address(0) as ERC20Supra
+                address(0),                              // address(0) as ERC20Supra
+                true
             )
         );
 
@@ -153,7 +164,8 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, 
-                admin                                   // EOA address as ERC20Supra
+                admin,                                   // EOA address as ERC20Supra
+                true            
             )
         );
 
@@ -171,7 +183,7 @@ contract AutomationCoreTest is Test {
                 2000,                                   // task duration
                 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
                 2000,                                   // cycle duration
-                3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+                3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -189,7 +201,7 @@ contract AutomationCoreTest is Test {
                 3600,
                 0,                                      // registry max gas cap
                 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
-                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
         
@@ -206,7 +218,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether,
                 101,                                    // congestion threshold percentage > 100
-                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -223,7 +235,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 0,                                      // congestion exponent
-                500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+                500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -240,7 +252,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
                 0,                                      // 0 as task capacity 
-                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -257,7 +269,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
                 0,                                      // cycle duration 
-                3600, 5_000_000, 500, vmSigner, address(erc20Supra)
+                3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -275,7 +287,7 @@ contract AutomationCoreTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
                 2000,                                   // cycle duration
                 2000,                                   // system task duration
-                5_000_000, 500, vmSigner, address(erc20Supra)
+                5_000_000, 500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -292,7 +304,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2000, 3600,
                 0,                                      // system registry max gas cap 
-                500, vmSigner, address(erc20Supra)
+                500, vmSigner, address(erc20Supra), true
             )
         );
 
@@ -310,7 +322,7 @@ contract AutomationCoreTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000,
                 0,                                      // system task capacity
-                vmSigner, address(erc20Supra)
+                vmSigner, address(erc20Supra), true
             )
         );
 
@@ -400,89 +412,6 @@ contract AutomationCoreTest is Test {
         automationCore.enableRegistration();
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'disableAutomation' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    
-    /// @dev Test to ensure 'disableAutomation' disables the automation.
-    function testDisableAutomation() public {
-        // Already enabled in initialize()
-        vm.prank(admin);
-        automationCore.disableAutomation();
-
-        assertFalse(automationCore.isAutomationEnabled());
-    }
-
-    /// @dev Test to ensure 'disableAutomation' emits event 'AutomationDisabled'.
-    function testDisableAutomationEmitsEvent() public {
-        vm.expectEmit(true, false, false, false);
-        emit AutomationCore.AutomationDisabled(false);
-
-        vm.prank(admin);
-        automationCore.disableAutomation();
-    }
-
-    /// @dev Test to ensure 'disableAutomation' reverts if automation is already disabled.
-    function testDisableAutomationRevertsIfAlreadyDisabled() public {
-        // Disable automation
-        testDisableAutomation();
-
-        // Disable again → revert
-        vm.expectRevert(IAutomationCore.AlreadyDisabled.selector);
-
-        vm.prank(admin);
-        automationCore.disableAutomation();
-    }
-
-    /// @dev Test to ensure 'disableAutomation' reverts if caller is not owner.
-    function testDisableAutomationRevertsIfNotOwner() public {
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
-
-        vm.prank(alice);
-        automationCore.disableAutomation();
-    }
-
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'enableAutomation' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev Test to ensure 'enableAutomation' enables the automation.
-    function testEnableAutomation() public {
-        // Disable automation
-        testDisableAutomation();
-
-        // Enable automation
-        vm.prank(admin);
-        automationCore.enableAutomation();
-
-        assertTrue(automationCore.isAutomationEnabled());
-    }
-
-    /// @dev Test to ensure 'enableAutomation' emits event 'AutomationEnabled'.
-    function testEnableAutomationEmitsEvent() public {
-        // Disable automation
-        testDisableAutomation();
-
-        vm.expectEmit(true, false, false, false);
-        emit AutomationCore.AutomationEnabled(true);
-
-        vm.prank(admin);
-        automationCore.enableAutomation();
-    }
-
-    /// @dev Test to ensure 'enableAutomation' reverts if automation is already enabled.
-    function testEnableAutomationRevertsIfAlreadyEnabled() public {
-        // Already enabled in initialize()
-        vm.expectRevert(IAutomationCore.AlreadyEnabled.selector);
-
-        vm.prank(admin);
-        automationCore.enableAutomation();
-    }
-
-    /// @dev Test to ensure 'enableAutomation' reverts if caller is not owner.
-    function testEnableAutomationRevertsIfNotOwner() public {
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector,alice));
-
-        vm.prank(alice);
-        automationCore.enableAutomation();
-    }
-
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setAutomationRegistry' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Helper function that deploys AutomationRegistry and returns its address.
@@ -549,7 +478,7 @@ contract AutomationCoreTest is Test {
     function deployAutomationController() internal returns (address) {
         // Deploy AutomationController proxy
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry)));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
 
         return address(controllerProxy);
@@ -865,6 +794,136 @@ contract AutomationCoreTest is Test {
         automationCore.withdrawFees(0.002 ether, admin);
     }
 
+    /// @dev Test to ensure 'applyPendingConfig' reverts if caller is not AutomationController.
+    function testApplyPendingConfigRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationCore.CallerNotController.selector);
+
+        vm.prank(address(registry));
+        automationCore.applyPendingConfig(false);
+    }
+
+    /// @dev Test to ensure 'calculateTaskFee' reverts if caller is not AutomationController.
+    function testCalculateTaskFeeRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationCore.CallerNotController.selector);
+
+        vm.prank(address(registry));
+        automationCore.calculateTaskFee(
+            CommonUtils.TaskState.ACTIVE ,
+            uint64(block.timestamp) + 10000000,
+            1000000,
+            10000000,
+            uint64(block.timestamp),
+            0.0001 ether
+        );
+    }
+
+    /// @dev Test to ensure 'safeUnlockLockedDeposit' reverts if caller is not AutomationController.
+    function testSafeUnlockLockedDepositRevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationCore.CallerNotController.selector);
+
+        vm.prank(address(registry));
+        automationCore.safeUnlockLockedDeposit(0, 0.01 ether);
+    }
+
+    /// @dev Test to ensure 'calculateAutomationFeeMultiplierForCurrentCycleInternal' reverts if caller is not AutomationController.
+    function test_calculateAutomationFeeMultiplierForCurrentCycleInternal_RevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationCore.CallerNotController.selector);
+
+        vm.prank(address(registry));
+        automationCore.calculateAutomationFeeMultiplierForCurrentCycleInternal();
+    }
+
+    /// @dev Test to ensure 'calculateAutomationFeeMultiplierForCommittedOccupancy' reverts if caller is not AutomationController.
+    function test_calculateAutomationFeeMultiplierForCommittedOccupancy_RevertsIfCallerNotAutomationController() public {
+        vm.expectRevert(IAutomationCore.CallerNotController.selector);
+
+        vm.prank(address(registry));
+        automationCore.calculateAutomationFeeMultiplierForCommittedOccupancy(1000000);
+    }
+
+    /// @dev Test to ensure 'refundTaskFees' reverts if caller is not AutomationController.
+    function testRefundTaskFeesRevertsIfCallerNotAutomationController() public {
+        registerUST();
+        CommonUtils.TaskDetails memory task = registry.getTaskDetails(0);
+
+        vm.expectRevert(IAutomationCore.CallerNotController.selector);
+
+        vm.prank(address(registry));
+        automationCore.refundTaskFees(
+            uint64(block.timestamp),
+            uint64(block.timestamp) + 100000, 
+            0.0001 ether,
+            task
+        );
+    }
+
+    /// @dev Test to ensure 'validateRegistration' reverts if caller is not AutomationRegistry.
+    function testValidateRegistrationRevertsIfCallerNotAutomationRegistry() public {
+        bytes memory payload = createPayload(0, address(erc20Supra)); 
+        
+        vm.expectRevert(IAutomationCore.CallerNotRegistry.selector);
+
+        vm.prank(address(automationController));
+        automationCore.validateRegistration(
+            10,
+            0,
+            uint64(block.timestamp),
+            uint64(block.timestamp) + 2250,
+            CommonUtils.TaskType.UST,
+            payload,
+            1000000,
+            keccak256("txHash"),
+            1000000,
+            0.001 ether,
+            0.01 ether
+        );
+    }
+
+    /// @dev Test to ensure 'incTotalDepositedAutomationFees' reverts if caller is not AutomationRegistry.
+    function testIncTotalDepositedAutomationFeesRevertsIfCallerNotAutomationRegistry() public {
+        vm.expectRevert(IAutomationCore.CallerNotRegistry.selector);
+
+        vm.prank(address(automationController));
+        automationCore.incTotalDepositedAutomationFees(0.01 ether);
+    }
+
+    /// @dev Test to ensure 'refund' reverts if caller is not AutomationRegistry.
+    function testRefundRevertsIfCallerNotAutomationRegistry() public {
+        vm.expectRevert(IAutomationCore.CallerNotRegistry.selector);
+
+        vm.prank(address(automationController));
+        automationCore.refund(alice, 0.01 ether);
+    }
+
+    /// @dev Test to ensure 'safeDepositRefund' reverts if caller is not AutomationRegistry.
+    function testSafeDepositRefundRevertsIfCallerNotAutomationRegistry() public {
+        vm.expectRevert(IAutomationCore.CallerNotRegistry.selector);
+
+        vm.prank(address(automationController));
+        automationCore.safeDepositRefund(
+            0,
+            alice,
+            0.01 ether,
+            0.05 ether
+        );
+    }
+
+    /// @dev Test to ensure 'unlockDepositAndCycleFee' reverts if caller is not AutomationRegistry.
+    function testUnlockDepositAndCycleFeeRevertsIfCallerNotAutomationRegistry() public {
+        vm.expectRevert(IAutomationCore.CallerNotRegistry.selector);
+
+        vm.prank(address(automationController));
+        automationCore.unlockDepositAndCycleFee(
+            0,
+            CommonUtils.TaskState.ACTIVE,
+            uint64(block.timestamp) + 2250,
+            1000000,
+            2000,
+            uint64(block.timestamp),
+            0.01 ether
+        );
+    }
+    
     /// @dev Helper function to return payload.
     /// @param _value Value to be sent along with the transaction.
     /// @param _target Address of the destination smart contract.

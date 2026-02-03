@@ -174,7 +174,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         regConfig = LibConfig.createRegistryConfig(
             cycleId,
             uint64(block.timestamp),
-            regConfig.config.cycleDurationSecs(),
+            _cycleDurationSecs,
             state,
             _registryMaxGasCap,
             _sysRegistryMaxGasCap,

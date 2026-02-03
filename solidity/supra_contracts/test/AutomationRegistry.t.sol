@@ -19,7 +19,7 @@ contract AutomationRegistryTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
     AutomationCore automationCore;              // AutomationCore instance on proxy address
     AutomationRegistry registry;                // AutomationRegistry instance on proxy address
-    address controller;                         // AutomationController proxy address
+    AutomationController controller;            // AutomationController instance on proxy address
 
     address admin = address(0xA11CE);
     address vmSigner = address(0x53555000);
@@ -52,7 +52,8 @@ contract AutomationRegistryTest is Test {
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
                 vmSigner,                   // VM Signer address
-                address(erc20Supra)         // ERC20Supra address
+                address(erc20Supra),        // ERC20Supra address
+                true                        // automationEnabled
             )
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
@@ -64,14 +65,13 @@ contract AutomationRegistryTest is Test {
         registry = AutomationRegistry(address(registryProxy));
 
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry)));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
-        controller = address(controllerProxy);
+        controller = AutomationController(address(controllerProxy));
 
         automationCore.setAutomationRegistry(address(registry));
-        automationCore.setAutomationController(controller);
-
-        registry.setAutomationController(controller);
+        automationCore.setAutomationController(address(controller));
+        registry.setAutomationController(address(controller));
 
         vm.stopPrank();
     }
@@ -80,7 +80,7 @@ contract AutomationRegistryTest is Test {
     function testInitialize() public view {
         assertEq(registry.owner(), admin);
         assertEq(registry.automationCore(), address(automationCore));
-        assertEq(registry.automationController(), controller);
+        assertEq(registry.automationController(), address(controller));
     }
 
     /// @dev Test to ensure reinitialization fails.
@@ -117,7 +117,7 @@ contract AutomationRegistryTest is Test {
     function deployAutomationController() internal returns (address) {
         // Deploy AutomationController proxy
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry)));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
 
         return address(controllerProxy);
@@ -283,7 +283,7 @@ contract AutomationRegistryTest is Test {
     function testRegisterRevertsIfAutomationNotEnabled() public {
         // Disable automation
         vm.prank(admin);
-        automationCore.disableAutomation();
+        controller.disableAutomation();
         
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));
@@ -586,7 +586,7 @@ contract AutomationRegistryTest is Test {
         assertTrue(registry.ifTaskExists(0));
         assertEq(registry.totalTasks(), 1);
         assertEq(registry.getNextTaskIndex(), 1);
-        assertEq(registry.getGasCommittedForNextCycle(), 1_000_000);
+        assertEq(automationCore.getGasCommittedForNextCycle(), 1_000_000);
         assertEq(automationCore.getTotalDepositedAutomationFees(), 0.5 ether);
         assertEq(erc20Supra.balanceOf(address(automationCore)), 0.502 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.498 ether);
@@ -676,7 +676,7 @@ contract AutomationRegistryTest is Test {
         testGrantAuthorization();
         
         vm.prank(admin);
-        automationCore.disableAutomation();
+        controller.disableAutomation();
 
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra)); 
@@ -803,7 +803,7 @@ contract AutomationRegistryTest is Test {
         assertEq(registry.totalTasks(), 1);
         assertEq(registry.totalSystemTasks(), 1);
         assertEq(registry.getNextTaskIndex(), 1);
-        assertEq(registry.getSystemGasCommittedForNextCycle(), 1_000_000);
+        assertEq(automationCore.getSystemGasCommittedForNextCycle(), 1_000_000);
 
         assertEq(taskMetadata.maxGasAmount, 1_000_000);
         assertEq(taskMetadata.gasPriceCap, 0);
@@ -865,7 +865,7 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'cancelTask' reverts if automation is not enabled.
     function testCancelTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        automationCore.disableAutomation();
+        controller.disableAutomation();
         
         vm.expectRevert(IAutomationRegistry.AutomationNotEnabled.selector);
 
@@ -908,7 +908,7 @@ contract AutomationRegistryTest is Test {
 
         assertFalse(registry.ifTaskExists(0));
         assertEq(registry.totalTasks(), 0);
-        assertEq(registry.getGasCommittedForNextCycle(), 0);
+        assertEq(automationCore.getGasCommittedForNextCycle(), 0);
         assertEq(automationCore.getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(address(automationCore)), 0.252 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.748 ether);
@@ -930,7 +930,7 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'cancelSystemTask' reverts if automation is not enabled. 
     function testCancelSystemTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        automationCore.disableAutomation();
+        controller.disableAutomation();
         
         vm.expectRevert(IAutomationRegistry.AutomationNotEnabled.selector);
 
@@ -975,7 +975,7 @@ contract AutomationRegistryTest is Test {
         assertFalse(registry.ifSysTaskExists(0));
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.totalSystemTasks(), 0);
-        assertEq(registry.getSystemGasCommittedForNextCycle(), 0);
+        assertEq(automationCore.getSystemGasCommittedForNextCycle(), 0);
     }
 
     /// @dev Test to ensure 'cancelSystemTask' emits event 'TaskCancelled'. 
@@ -994,7 +994,7 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'stopTasks' reverts if automation is not enabled. 
     function testStopTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        automationCore.disableAutomation();
+        controller.disableAutomation();
         
         uint64[] memory taskIndexes;
         vm.expectRevert(IAutomationRegistry.AutomationNotEnabled.selector);
@@ -1074,7 +1074,7 @@ contract AutomationRegistryTest is Test {
 
         assertFalse(registry.ifTaskExists(0));
         assertEq(registry.totalTasks(), 0);
-        assertEq(registry.getGasCommittedForNextCycle(), 0);
+        assertEq(automationCore.getGasCommittedForNextCycle(), 0);
         assertEq(automationCore.getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(address(automationCore)), 0.18955 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.81045 ether);
@@ -1109,7 +1109,7 @@ contract AutomationRegistryTest is Test {
     /// @dev Test to ensure 'stopSystemTasks' reverts if automation is not enabled.
     function testStopSystemTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        automationCore.disableAutomation();
+        controller.disableAutomation();
         
         uint64[] memory taskIndexes;
         vm.expectRevert(IAutomationRegistry.AutomationNotEnabled.selector);
@@ -1189,7 +1189,7 @@ contract AutomationRegistryTest is Test {
         assertFalse(registry.ifSysTaskExists(0));
         assertEq(registry.totalTasks(), 0);
         assertEq(registry.totalSystemTasks(), 0);
-        assertEq(registry.getSystemGasCommittedForNextCycle(), 1000000);
+        assertEq(automationCore.getSystemGasCommittedForNextCycle(), 1000000);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
@@ -1233,18 +1233,12 @@ contract AutomationRegistryTest is Test {
         registry.updateTaskState(0, CommonUtils.TaskState.ACTIVE);
     }
 
-    /// @dev Test to ensure 'updateRegistryState' reverts if caller is not AutomationController.
-    function testUpdateRegistryStateRevertsIfCallerNotAutomationController() public {
+    /// @dev Test to ensure 'updateTasks' reverts if caller is not AutomationController.
+    function testUpdateTasksRevertsIfCallerNotAutomationController() public {
         vm.expectRevert(IAutomationRegistry.CallerNotController.selector);
 
         vm.prank(address(automationCore));
-        registry.updateRegistryState(
-            1000000,
-            1000000,
-            1000000,
-            0.1 ether,
-            0   
-        );
+        registry.updateTasks(CommonUtils.CycleState.STARTED);
     }
 
     /// @dev Test to ensure 'refundDepositAndDrop' reverts if caller is not AutomationController.
