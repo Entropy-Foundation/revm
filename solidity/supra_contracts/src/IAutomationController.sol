@@ -21,7 +21,6 @@ interface IAutomationController {
     error UpdateTaskStateFailed();
 
     // View functions
-    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState);
     function getTransitionInfo() external view returns (uint64, uint128);
     function isAutomationEnabled() external view returns (bool);
     function isTransitionInProgress() external view returns (bool);

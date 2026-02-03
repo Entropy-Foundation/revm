@@ -55,6 +55,15 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Emitted when the registry fees is withdrawn by the admin.
     event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
 
+    /// @notice Emitted when the cycle state transitions.
+    event AutomationCycleEvent(
+        uint64 indexed index,
+        CommonUtils.CycleState indexed state,
+        uint64 startTime,
+        uint64 durationSecs,
+        CommonUtils.CycleState indexed oldState
+    );
+
     /// @notice Emitted when deposit fee is being refunded but total locked deposits is less than the locked deposit for the task.
     event ErrorUnlockTaskDepositFee(
         uint64 indexed taskIndex, 
@@ -113,6 +122,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @param _sysTaskCapacity Maximum number of system tasks that the registry can hold.
     /// @param _vmSigner Address for the VM Signer.
     /// @param _erc20Supra Address of the ERC20Supra contract.
+    /// @param _automationEnabled Bool to set automation enabled status.
     function initialize(
         uint64 _taskDurationCapSecs,
         uint128 _registryMaxGasCap,
@@ -127,7 +137,8 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity,
         address _vmSigner,
-        address _erc20Supra
+        address _erc20Supra,
+        bool _automationEnabled
     ) public initializer {
         validateConfigParameters(
             _taskDurationCapSecs,
@@ -159,7 +170,12 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
             _congestionExponent
         );
         
+        (CommonUtils.CycleState state, uint64 cycleId) = _automationEnabled ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
         regConfig = LibConfig.createRegistryConfig(
+            cycleId,
+            uint64(block.timestamp),
+            regConfig.config.cycleDurationSecs(),
+            state,
             _registryMaxGasCap,
             _sysRegistryMaxGasCap,
             true,
@@ -359,15 +375,13 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint128 _taskOccupancy,
         uint128 _committedOccupancy
     ) private view returns (uint128) {
-        ( , , uint64 durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
-
         uint128 totalCommittedGas = _taskOccupancy + _committedOccupancy;
          
         uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(totalCommittedGas, regConfig.nextCycleRegistryMaxGasCap());
 
         if(automationFeePerSec == 0) return 0;
 
-        return calculateAutomationFeeForInterval(durationSecs, _taskOccupancy, automationFeePerSec, regConfig.nextCycleRegistryMaxGasCap());
+        return calculateAutomationFeeForInterval(regConfig.durationSecs(), _taskOccupancy, automationFeePerSec, regConfig.nextCycleRegistryMaxGasCap());
     }
 
     /// @notice Unlocks the deposit paid by the task from the total automation fees deposited.
@@ -490,10 +504,26 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return (result, remainingLockedFees);   
     }
 
+    /// @notice Helper function to update the cycle state.
+    /// @param _state Input state to update cycle state with.
+    function _updateCycleStateTo(CommonUtils.CycleState _state) private {
+        CommonUtils.CycleState oldState = regConfig.state();
+        regConfig.setState(uint8(_state));
+
+        emit AutomationCycleEvent (
+            regConfig.index(),
+            regConfig.state(),
+            regConfig.startTime(),
+            regConfig.durationSecs(),
+            oldState
+        );
+    }
+
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CONTROLLER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Function to update the registry configuration, reverts if caller is not AutomationController.
-    function applyPendingConfig() external returns (bool, uint64) {
+    /// @param _ifTransitionStateExists Bool representing if transition state exists. 
+    function applyPendingConfig(bool _ifTransitionStateExists) external returns (bool, uint64) {
         onlyController();
 
         if (!configBuffer.ifExists) {
@@ -501,6 +531,11 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         } 
         uint64 pendingCycleDuration = configBuffer.pendingConfig.cycleDurationSecs();
         regConfig.config = configBuffer.pendingConfig;
+
+        // Check if transition state does not exist
+        if (!_ifTransitionStateExists) {
+            regConfig.setDurationSecs(pendingCycleDuration);
+        }  
         
         delete configBuffer;
         
@@ -615,6 +650,30 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         regConfig.setSysGasCommittedForThisCycle(_sysGasCommittedForNextCycle);
         regConfig.setGasCommittedForNextCycle(_gasCommittedForNextCycle);
         regConfig.setGasCommittedForThisCycle(_gasCommittedForNewCycle);
+    }
+
+    /// @notice Function to update the cycle state.
+    /// @param _state Input state to update cycle state with.
+    function updateCycleStateTo(CommonUtils.CycleState _state) external {
+        onlyController();
+        _updateCycleStateTo(_state);
+    }
+
+    /// @notice Transitions cycle state to the STARTED state. 
+    /// @param _ifTransitionStateExists Bool representing if transition state exists. 
+    /// @param _newCycleDuration New cycle duration.
+    function moveToStarted(bool _ifTransitionStateExists, uint64 _newCycleDuration) external {
+        onlyController();
+
+        regConfig.setIndex(regConfig.index() + 1);
+        regConfig.setStartTime(uint64(block.timestamp));
+
+        // Check if the transition state exists
+        if (_ifTransitionStateExists) {
+            regConfig.setDurationSecs(_newCycleDuration);
+        }
+
+        _updateCycleStateTo(CommonUtils.CycleState.STARTED);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: REGISTRY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -896,6 +955,11 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
+    /// @notice Returns the index, start time, duration and state of the current cycle. 
+    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState) {
+        return (regConfig.index(), regConfig.startTime(), regConfig.durationSecs(), regConfig.state());
+    }
+
     /// @notice Returns the VM Signer address.
     function getVmSigner() external view returns (address) {
         return regConfig.vmSigner;

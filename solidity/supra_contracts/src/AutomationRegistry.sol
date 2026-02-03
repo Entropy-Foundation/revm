@@ -113,7 +113,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     ) external {
         if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
         
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationCore(automationCore).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         uint64 regTime = uint64(block.timestamp);
@@ -182,7 +182,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
         
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationCore(automationCore).getCycleInfo();
         if (state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         uint64 regTime = uint64(block.timestamp);
@@ -241,7 +241,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationCore(automationCore).getCycleInfo();
 
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
@@ -291,7 +291,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationCore(automationCore).getCycleInfo();
 
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
@@ -334,7 +334,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         address erc20Supra = IAutomationCore(automationCore).erc20Supra();
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationCore(automationCore).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
@@ -423,7 +423,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         // Check if automation is enabled
         if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
+        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationCore(automationCore).getCycleInfo();
         if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
