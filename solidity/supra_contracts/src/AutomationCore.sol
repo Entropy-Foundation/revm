@@ -359,14 +359,13 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint128 _taskOccupancy,
         uint128 _committedOccupancy
     ) private view returns (uint128) {
-        ( , , uint64 durationSecs, ) = IAutomationController(regConfig.automationController()).getCycleInfo();
-
         uint128 totalCommittedGas = _taskOccupancy + _committedOccupancy;
          
         uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(totalCommittedGas, regConfig.nextCycleRegistryMaxGasCap());
 
         if(automationFeePerSec == 0) return 0;
 
+        uint64 durationSecs = IAutomationController(regConfig.automationController()).getCycleDuration();
         return calculateAutomationFeeForInterval(durationSecs, _taskOccupancy, automationFeePerSec, regConfig.nextCycleRegistryMaxGasCap());
     }
 
@@ -630,14 +629,16 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint128 _maxGasAmount, 
         bytes32 _txHash,
         uint128 _gasPriceCap,
-        uint128 _automationFeeCapForCycle,
-        uint64 _cycleEndTime
+        uint128 _automationFeeCapForCycle
     ) external {
         onlyRegistry();
 
-        // Check if registration is enabled
+        // Check if automation and registration is enabled
+        IAutomationController automationController = IAutomationController(regConfig.automationController()); 
+        if (!automationController.isAutomationEnabled()) { revert AutomationNotEnabled(); }
         if (!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
+        if (!automationController.isCycleStarted()) { revert CycleTransitionInProgress(); }
         if(_inputType != uint8(_taskType)) { revert InvalidTaskType(); }
         
         bool isUST = _taskType == CommonUtils.TaskType.UST;
@@ -663,7 +664,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
             nextCycleRegistryMaxGasCap = regConfig.nextCycleSysRegistryMaxGasCap();
         }
 
-        validateTaskDuration(_regTime, _expiryTime, taskDurationCap, _cycleEndTime);
+        validateTaskDuration(_regTime, _expiryTime, taskDurationCap, automationController.getCycleEndTime());
         validateInputs(_payloadTx, _maxGasAmount, _txHash);
 
         uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;

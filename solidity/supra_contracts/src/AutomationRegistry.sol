@@ -110,14 +110,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _priority,
         uint8 _type,
         bytes[] memory _auxData
-    ) external {
-        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
-        
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
-
+    ) external {        
         uint64 regTime = uint64(block.timestamp);
-        IAutomationCore(automationCore).updateStateForValidRegistration(
+        
+        IAutomationCore core = IAutomationCore(automationCore);
+        core.updateStateForValidRegistration(
             totalTasks(),
             _type,
             regTime,
@@ -127,8 +124,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _maxGasAmount, 
             _txHash,
             _gasPriceCap,
-            _automationFeeCapForCycle,
-            startTime + durationSecs
+            _automationFeeCapForCycle
         );
 
         uint64 taskIndex = regState.currentIndex; 
@@ -154,10 +150,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         require(regState.taskIdList.add(taskIndex), TaskIndexNotUnique());
         regState.currentIndex += 1;
 
-        IAutomationCore(automationCore).incTotalDepositedAutomationFees(_automationFeeCapForCycle);
-        uint128 flatRegistrationFeeWei = IAutomationCore(automationCore).flatRegistrationFeeWei();
+        core.incTotalDepositedAutomationFees(_automationFeeCapForCycle);
+        uint128 flatRegistrationFeeWei = core.flatRegistrationFeeWei();
         uint128 fee = flatRegistrationFeeWei + _automationFeeCapForCycle;
-        IAutomationCore(automationCore).chargeFees(msg.sender, fee);
+        core.chargeFees(msg.sender, fee);
 
         emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFeeWei, _automationFeeCapForCycle, regState.tasks[taskIndex].getTaskDetails());
     }
@@ -179,12 +175,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint8 _type,
         bytes[] memory _auxData
     ) external {
-        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
         
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
-        if (state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
-
         uint64 regTime = uint64(block.timestamp);
         IAutomationCore(automationCore).updateStateForValidRegistration(
             totalSystemTasks(),
@@ -196,8 +188,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _maxGasAmount, 
             _txHash,
             0,
-            0,
-            startTime + durationSecs
+            0
         );
                 
         uint64 taskIndex = regState.currentIndex; 
@@ -239,11 +230,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _taskIndex
     ) external {
         // Check if automation is enabled
-        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        IAutomationController controller = IAutomationController(automationController);
+        if (!controller.isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
-
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        if(!controller.isCycleStarted()) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         
         CommonUtils.TaskDetails memory task = regState.tasks[_taskIndex].getTaskDetails();
@@ -252,10 +242,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
         if(task.state == CommonUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         
+        IAutomationCore core = IAutomationCore(automationCore);
         if (task.state == CommonUtils.TaskState.PENDING) {
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
             _removeTask(_taskIndex, false); 
-            bool result = IAutomationCore(automationCore).safeDepositRefund(
+            bool result = core.safeDepositRefund(
                 _taskIndex,
                 task.owner,
                 task.lockedFeeForNextCycle / REFUND_FACTOR,
@@ -270,8 +261,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-        if (task.expiryTime > (startTime + durationSecs)) {
-            IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
+        if (task.expiryTime > controller.getCycleEndTime()) {
+            core.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
         emit TaskCancelled( _taskIndex, task.owner, task.txHash);
@@ -289,11 +280,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 _taskIndex
     ) external {
         // Check if automation is enabled
-        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        IAutomationController controller = IAutomationController(automationController);
+        if (!controller.isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
-
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        if(!controller.isCycleStarted()) { revert CycleTransitionInProgress(); }
         if(!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         if(!ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
 
@@ -313,7 +303,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-        if(task.expiryTime > startTime + durationSecs) {
+        if(task.expiryTime > controller.getCycleEndTime()) {
             IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
@@ -330,12 +320,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64[] memory _taskIndexes
     ) external {
         // Check if automation is enabled
-        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        IAutomationController controller = IAutomationController(automationController);
+        if (!controller.isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        address erc20Supra = IAutomationCore(automationCore).erc20Supra();
-
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        if(!controller.isCycleStarted()) { revert CycleTransitionInProgress(); }
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
         LibRegistry.TaskStopped[] memory stoppedTaskDetails = new LibRegistry.TaskStopped[](_taskIndexes.length);
@@ -344,9 +332,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint128 totalRefundFee = 0;
 
         // Calculate refundable fee for this remaining time task in current cycle
-        uint256 currentTime = block.timestamp;
-        uint128 cycleEndTime = startTime + durationSecs;
-        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : uint64(cycleEndTime - currentTime);
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 cycleEndTime = controller.getCycleEndTime();
+        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
+
+        IAutomationCore core = IAutomationCore(automationCore);
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
@@ -369,10 +359,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 // Also it checks that task should not be cancelled.
                 if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     // Reduce committed gas by the stopped task's max gas
-                    IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
+                    core.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
-                (uint128 cycleFeeRefund, uint128 depositRefund) = IAutomationCore(automationCore).unlockDepositAndCycleFee(
+                (uint128 cycleFeeRefund, uint128 depositRefund) = core.unlockDepositAndCycleFee(
                     _taskIndexes[i],
                     task.state,
                     task.expiryTime,
@@ -397,11 +387,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         }
 
         // Refund and emit event if any tasks were stopped
-        if(stoppedTaskDetails.length > 0) {            
-            uint256 balance = IERC20(erc20Supra).balanceOf(automationCore);
+        if(stoppedTaskDetails.length > 0) {  
+            uint256 balance = IERC20(core.erc20Supra()).balanceOf(automationCore);
 
             if(balance < totalRefundFee) { revert InsufficientBalanceForRefund(); }
-            IAutomationCore(automationCore).refund(msg.sender, totalRefundFee);
+            core.refund(msg.sender, totalRefundFee);
 
             // Emit task stopped event
             emit TasksStopped(
@@ -421,19 +411,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64[] memory _taskIndexes
     ) external {
         // Check if automation is enabled
-        if (!IAutomationController(automationController).isAutomationEnabled()) { revert AutomationNotEnabled(); }
+        IAutomationController controller = IAutomationController(automationController);
+        if (!controller.isAutomationEnabled()) { revert AutomationNotEnabled(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = IAutomationController(automationController).getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED) { revert CycleTransitionInProgress(); }
+        if(!controller.isCycleStarted()) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
         if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
         LibRegistry.TaskStopped[] memory stoppedTaskDetails = new LibRegistry.TaskStopped[](_taskIndexes.length);
         uint256 counter = 0;
-
-        // Calculate refundable fee for this remaining time task in current cycle
-        uint128 cycleEndTime = startTime + durationSecs;
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
@@ -448,7 +435,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                 // Remove from active tasks
                 require(regState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
-                if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
+                if(task.state != CommonUtils.TaskState.CANCELLED && task.expiryTime > controller.getCycleEndTime()) {
                     IAutomationCore(automationCore).updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 

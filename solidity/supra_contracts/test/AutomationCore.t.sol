@@ -870,7 +870,6 @@ contract AutomationCoreTest is Test {
             payload,
             1000000,
             keccak256("txHash"),
-            1000000,
             0.001 ether,
             0.01 ether
         );

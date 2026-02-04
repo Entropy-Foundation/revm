@@ -6,6 +6,7 @@ import {CommonUtils} from "./CommonUtils.sol";
 interface IAutomationCore {
     // Custom errors
     error AddressCannotBeZero();
+    error AutomationNotEnabled();
     error CallerNotController();
     error CallerNotRegistry();
     error CycleTransitionInProgress();
@@ -70,8 +71,7 @@ interface IAutomationCore {
         uint128 _maxGasAmount, 
         bytes32 _txHash,
         uint128 _gasPriceCap,
-        uint128 _automationFeeCapForCycle,
-        uint64 _cycleEndTime
+        uint128 _automationFeeCapForCycle
     ) external;
 
     // State updating functions
