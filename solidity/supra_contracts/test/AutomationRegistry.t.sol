@@ -52,8 +52,7 @@ contract AutomationRegistryTest is Test {
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
                 vmSigner,                   // VM Signer address
-                address(erc20Supra),        // ERC20Supra address
-                true                        // automationEnabled
+                address(erc20Supra)         // ERC20Supra address
             )
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);

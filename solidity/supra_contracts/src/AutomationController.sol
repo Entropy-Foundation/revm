@@ -49,6 +49,15 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         uint128 fee
     );
 
+    /// @notice Emitted when the cycle state transitions.
+    event AutomationCycleEvent(
+        uint64 indexed index,
+        CommonUtils.CycleState indexed state,
+        uint64 startTime,
+        uint64 durationSecs,
+        CommonUtils.CycleState indexed oldState
+    );
+
     /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
     event ActiveTasks(uint256[] indexed taskIndexes);
     
@@ -88,7 +97,16 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
         automationCore = IAutomationCore(_automationCore); 
         registry = IAutomationRegistry(_registry);
-        cycleInfo.automationEnabled = _automationEnabled;
+
+        (CommonUtils.CycleState state, uint64 cycleId) = _automationEnabled ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
+
+        cycleInfo.initializeCycle(
+            cycleId,
+            uint64(block.timestamp),
+            automationCore.cycleDurationSecs(),
+            state,
+            _automationEnabled
+        ); 
 
         __Ownable2Step_init();
         __Ownable_init(msg.sender);
@@ -101,7 +119,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         // Check caller is VM Signer
         if (msg.sender != automationCore.getVmSigner()) { revert CallerNotVmSigner(); }
         
-        ( , , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
+        CommonUtils.CycleState state = cycleInfo.state(); 
 
         if(state == CommonUtils.CycleState.FINISHED) {
             onCycleTransition(_cycleIndex, _taskIndexes);
@@ -115,8 +133,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     function monitorCycleEnd() external {
         if (tx.origin != automationCore.getVmSigner()) { revert CallerNotVmSigner(); }
 
-        ( , uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = automationCore.getCycleInfo();
-        if(state != CommonUtils.CycleState.STARTED || startTime + durationSecs > block.timestamp) {
+        if(!isCycleStarted() || cycleInfo.startTime() + cycleInfo.durationSecs() > block.timestamp) {
             return;
         }
         
@@ -135,12 +152,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
         if(_taskIndexes.length == 0) { return; }
 
-        (uint64 index , , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
-        if(state != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+        if(cycleInfo.state() != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
         
         // Check if transition state exists
-        if(!cycleInfo.ifTransitionStateExists) { revert InvalidRegistryState(); }
-        if(index + 1 != _cycleIndex) { revert InvalidInputCycleIndex(); }
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
+        if(cycleInfo.index() + 1 != _cycleIndex) { revert InvalidInputCycleIndex(); }
 
         LibController.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
         
@@ -163,11 +179,10 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) private {
         if (_taskIndexes.length == 0) { return; }
 
-        (uint64 index , , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
-        if(state != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
-        if(index != _cycleIndex) { revert InvalidInputCycleIndex(); }
+        if(cycleInfo.state() != CommonUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+        if(cycleInfo.index() != _cycleIndex) { revert InvalidInputCycleIndex(); }
         // Check if transition state exists
-        if(!cycleInfo.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
 
         uint64 currentTime = uint64(block.timestamp);
             
@@ -432,12 +447,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// Expectation will be that native layer catches this double transition and issues refund for the new cycle fees which will not be proceeded further in any case.
     function updateCycleTransitionStateFromFinished() private {
         // Check if transition state exists
-        if(!cycleInfo.ifTransitionStateExists) { revert InvalidRegistryState(); }
-        ( , , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
 
         bool transitionFinalized = isTransitionFinalized();
         if (transitionFinalized) {
-            if (!cycleInfo.automationEnabled && state == CommonUtils.CycleState.FINISHED) {
+            if (!cycleInfo.automationEnabled() && cycleInfo.state() == CommonUtils.CycleState.FINISHED) {
                 tryMoveToSuspendedState();
             } else {
                 (bool updated, ) = address(automationCore).call(
@@ -478,7 +492,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     ///  - or Started -> Finished -> {Started, Suspended}
     function updateCycleTransitionStateFromSuspended() private {
         // Check if transition state exists
-        if(!cycleInfo.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if(!cycleInfo.ifTransitionStateExists()) { revert InvalidRegistryState(); }
         if(!isTransitionFinalized()) {
             return; 
         }
@@ -489,7 +503,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         registry.updateTasks(CommonUtils.CycleState.SUSPENDED);
 
         // Check if automation is enabled
-        if (cycleInfo.automationEnabled) {
+        if (cycleInfo.automationEnabled()) {
             // Update the config in case if transition flow is STARTED -> SUSPENDED-> STARTED.
             // to reflect new configs for the new cycle if it has been updated during SUSPENDED state processing
             updateConfigFromBuffer();
@@ -514,12 +528,10 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     ///      and postponed till the cycle transition concludes
     /// In all the cases if there are no tasks in registry the state will be updated directly to READY state.
     function tryMoveToSuspendedState() private {
-        ( , uint64 startTime, uint64 cycleDuration, CommonUtils.CycleState state) = automationCore.getCycleInfo();
-
         if(registry.totalTasks() == 0) {
             // Registry is empty move to ready state directly
-            automationCore.updateCycleStateTo(CommonUtils.CycleState.READY);
-        } else if (!cycleInfo.ifTransitionStateExists) {
+            updateCycleStateTo(CommonUtils.CycleState.READY);
+        } else if (!cycleInfo.ifTransitionStateExists()) {
             // Indicates that cycle was in STARTED state when suspention has been identified.
             // It is safe to assert that cycleEndTime will always be greater than current chain time as
             // the cycle end is check in the block metadata txn execution which proceeds any other transaction in the block.
@@ -530,11 +542,13 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             // As in this case we will first transition to the STARTED state and only then to SUSPENDED.
             // And when transition to STARTED state we update the cycle start-time to be the current-chain-time.
             uint64 currentTime = uint64(block.timestamp);
+            uint64 startTime = cycleInfo.startTime(); 
+            uint64 cycleDuration = cycleInfo.durationSecs();
             uint64 cycleEndTime = startTime + cycleDuration;
 
             if(currentTime < startTime) { revert InvalidRegistryState(); }
             if(currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
-            if(state != CommonUtils.CycleState.STARTED) { revert InvalidRegistryState(); }
+            if(!isCycleStarted()) { revert InvalidRegistryState(); }
 
             uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
@@ -548,11 +562,11 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             cycleInfo.setNextTaskIndexPosition(0);
 
             updateExpectedTasks(expectedTasksToBeProcessed);
-            cycleInfo.ifTransitionStateExists = true;
+            cycleInfo.setTransitionStateExists(true);
             
-            automationCore.updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
+            updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
         } else {
-            if(state != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+            if(cycleInfo.state() != CommonUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
             if(isTransitionInProgress()) { revert InvalidRegistryState(); }
 
             // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
@@ -561,7 +575,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             cycleInfo.setAutomationFeePerSec(0);
             cycleInfo.setGasCommittedForNewCycle(0);
             
-            automationCore.updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
+            updateCycleStateTo(CommonUtils.CycleState.SUSPENDED);
         }
     }
 
@@ -576,14 +590,12 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         // match the finalized/summerized cycle since its start, including cycle duration.
 
         // Check if transition state exists
-        if(cycleInfo.ifTransitionStateExists) {
-            ( , , uint64 durationSecs, ) = automationCore.getCycleInfo();
-
-            if (cycleInfo.newCycleDuration() == durationSecs) {
+        if(cycleInfo.ifTransitionStateExists()) {
+            if (cycleInfo.newCycleDuration() == cycleInfo.durationSecs()) {
                 // Delete transition state
                 cycleInfo.transitionState.expectedTasksToBeProcessed.clear();
                 delete cycleInfo.transitionState;
-                cycleInfo.ifTransitionStateExists = false;
+                cycleInfo.setTransitionStateExists(false);
             } else {
                 // Reset all except new cycle duration
                 cycleInfo.setRefundDuration(0);  
@@ -596,19 +608,36 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 cycleInfo.transitionState.expectedTasksToBeProcessed.clear();
             }
         }
-        automationCore.updateCycleStateTo(CommonUtils.CycleState.READY);
+        updateCycleStateTo(CommonUtils.CycleState.READY);
     }
 
     /// @notice Transitions cycle state to the STARTED state. 
     function moveToStartedState() private {
-        bool ifTransitionStateExists = cycleInfo.ifTransitionStateExists;
-        
-        uint64 newCycleDuration;
-        if (ifTransitionStateExists) {
-            newCycleDuration = cycleInfo.newCycleDuration();
+        cycleInfo.setIndex(cycleInfo.index() + 1);
+
+        cycleInfo.setStartTime(uint64(block.timestamp));
+
+        // Check if the transition state exists
+        if(cycleInfo.ifTransitionStateExists()) {
+            cycleInfo.setDurationSecs(cycleInfo.newCycleDuration());
         }
 
-        automationCore.moveToStarted(ifTransitionStateExists, newCycleDuration);
+        updateCycleStateTo(CommonUtils.CycleState.STARTED);
+    }
+    
+    /// @notice Updates the state of the cycle.
+    /// @param _state Input state to update cycle state with.
+    function updateCycleStateTo(CommonUtils.CycleState _state) private {
+        CommonUtils.CycleState oldState = cycleInfo.state();
+        cycleInfo.setState(uint8(_state));
+
+        emit AutomationCycleEvent (
+            cycleInfo.index(),
+            cycleInfo.state(),
+            cycleInfo.startTime(),
+            cycleInfo.durationSecs(),
+            oldState
+        );
     }
 
     /// @notice Helper function to update the expected tasks of the transition state.
@@ -622,7 +651,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Helper function called when cycle end is identified.
     function onCycleEndInternal() private {
-        if (!cycleInfo.automationEnabled) {
+        if (!cycleInfo.automationEnabled()) {
             tryMoveToSuspendedState();
         } else{
             if(registry.totalTasks() == 0) {
@@ -633,9 +662,8 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 uint256[] memory expectedTasksToBeProcessed = registry.getTaskIdList().sortUint256();
 
                 // Updates transition state
-                ( , , uint64 durationSecs, ) = automationCore.getCycleInfo();
                 cycleInfo.setRefundDuration(0);
-                cycleInfo.setNewCycleDuration(durationSecs);
+                cycleInfo.setNewCycleDuration(cycleInfo.durationSecs());
                 cycleInfo.setGasCommittedForNewCycle(automationCore.getGasCommittedForNextCycle());
                 cycleInfo.setGasCommittedForNextCycle(0);
                 cycleInfo.setSysGasCommittedForNextCycle (0);
@@ -643,7 +671,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 cycleInfo.setNextTaskIndexPosition(0);
                 updateExpectedTasks(expectedTasksToBeProcessed);
                 
-                cycleInfo.ifTransitionStateExists = true;
+                cycleInfo.setTransitionStateExists(true);
 
                 // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.
                 updateConfigFromBuffer();
@@ -652,22 +680,22 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
                 // and will be used to charge tasks during transition process.
                 cycleInfo.setAutomationFeePerSec(automationCore.calculateAutomationFeeMultiplierForCommittedOccupancy(cycleInfo.gasCommittedForNewCycle()));
-                automationCore.updateCycleStateTo(CommonUtils.CycleState.FINISHED);
+                updateCycleStateTo(CommonUtils.CycleState.FINISHED);
             }
         }
     }
     
     /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
     function updateConfigFromBuffer() private {
-        bool ifTransitionStateExists = cycleInfo.ifTransitionStateExists;
-
-        (bool applied, uint64 cycleDuration) = automationCore.applyPendingConfig(ifTransitionStateExists);
+        (bool applied, uint64 cycleDuration) = automationCore.applyPendingConfig();
         if (!applied) return;
 
         // Check if transition state exists
-        if (ifTransitionStateExists) {
+        if (cycleInfo.ifTransitionStateExists()) {
             cycleInfo.setNewCycleDuration(cycleDuration); 
-        } 
+        } else {
+            cycleInfo.setDurationSecs(cycleDuration);
+        }    
     }
 
     /// @notice Checks if the cycle transition is finalized.
@@ -676,13 +704,23 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         return cycleInfo.transitionState.expectedTasksToBeProcessed.length() == cycleInfo.nextTaskIndexPosition();
     }
 
+    /// @notice Checks whether cycle is in STARTED state.
+    function isCycleStarted() private view returns (bool) {
+        return cycleInfo.state() == CommonUtils.CycleState.STARTED;
+    }
+    
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
     /// @notice Checks if the cycle transition is in progress.
     /// @return Bool representing if the cycle transition is in progress.
     function isTransitionInProgress() public view returns (bool) {
         return cycleInfo.nextTaskIndexPosition() != 0;
     }
     
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    /// @notice Returns the index, start time, duration and state of the current cycle. 
+    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState) {
+        return (cycleInfo.index(), cycleInfo.startTime(), cycleInfo.durationSecs(), cycleInfo.state());
+    }
 
     /// @notice Returns the refund duration and automation fee per sec of the transtition state.
     /// @return Refund duration
@@ -693,7 +731,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Returns if automation is enabled.
     function isAutomationEnabled() external view returns (bool) {
-        return cycleInfo.automationEnabled;
+        return cycleInfo.automationEnabled();
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -722,33 +760,29 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
 
     /// @notice Function to enable the automation.
     function enableAutomation() external onlyOwner {
-        if (cycleInfo.automationEnabled) { revert AlreadyEnabled(); }
+        if (cycleInfo.automationEnabled()) { revert AlreadyEnabled(); }
 
-        cycleInfo.automationEnabled = true;
+        cycleInfo.setAutomationEnabled(true);
         
-        ( , , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
-        
-        if (state == CommonUtils.CycleState.READY) {
+        if (cycleInfo.state() == CommonUtils.CycleState.READY) {
             moveToStartedState();           
             updateConfigFromBuffer();
         }
 
-        emit AutomationEnabled(cycleInfo.automationEnabled);
+        emit AutomationEnabled(cycleInfo.automationEnabled());
     }
     
     /// @notice Function to disable the automation.
     function disableAutomation() external onlyOwner {
-        if(!cycleInfo.automationEnabled) { revert AlreadyDisabled(); }
+        if(!cycleInfo.automationEnabled()) { revert AlreadyDisabled(); }
         
-        cycleInfo.automationEnabled = false;
+        cycleInfo.setAutomationEnabled(false);
 
-        ( , , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
-
-        if (state == CommonUtils.CycleState.FINISHED && !isTransitionInProgress()) {
+        if (cycleInfo.state() == CommonUtils.CycleState.FINISHED && !isTransitionInProgress()) {
             tryMoveToSuspendedState();
         }
 
-        emit AutomationDisabled(cycleInfo.automationEnabled);
+        emit AutomationDisabled(cycleInfo.automationEnabled());
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::

@@ -44,7 +44,6 @@ interface IAutomationCore {
     // View functions
     function flatRegistrationFeeWei() external view returns (uint128);
     function getAutomationController() external view returns (address);
-    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState);
     function erc20Supra() external view returns (address);
     function calculateTaskFee(
         CommonUtils.TaskState _state,
@@ -61,7 +60,7 @@ interface IAutomationCore {
     function getGasCommittedForNextCycle() external view returns (uint128);
     function getCycleLockedFees() external view returns (uint256);
     function getTotalDepositedAutomationFees() external view returns (uint256);
-    function validateRegistration(
+    function updateStateForValidRegistration(
         uint256 _totalTasks, 
         uint8 _inputType,
         uint64 _regTime,
@@ -76,7 +75,7 @@ interface IAutomationCore {
     ) external;
 
     // State updating functions
-    function applyPendingConfig(bool _ifTransitionStateExists) external returns (bool, uint64);
+    function applyPendingConfig() external returns (bool, uint64);
     function incTotalDepositedAutomationFees(uint256 _totalDepositedAutomationFees) external;
     function chargeFees(address _from, uint256 _amount) external;
     function safeUnlockLockedDeposit(
@@ -112,6 +111,4 @@ interface IAutomationCore {
         uint128 _gasCommittedForNextCycle,
         uint128 _gasCommittedForNewCycle
     ) external;
-    function updateCycleStateTo(CommonUtils.CycleState _state) external;
-    function moveToStarted(bool _ifTransitionStateExists, uint64 _newCycleDuration) external;
 }

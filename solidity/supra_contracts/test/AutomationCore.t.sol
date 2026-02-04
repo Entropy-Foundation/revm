@@ -50,8 +50,7 @@ contract AutomationCoreTest is Test {
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
                 vmSigner,                   // VM Signer address
-                address(erc20Supra),        // ERC20Supra address
-                true                        // automationEnabled
+                address(erc20Supra)         // ERC20Supra address
             )
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
@@ -78,7 +77,7 @@ contract AutomationCoreTest is Test {
     function testInitialize() public view {
         assertEq(automationCore.owner(), admin);
 
-        (uint64 index, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = automationCore.getCycleInfo();
+        (uint64 index, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState state) = automationController.getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
         assertEq(durationSecs, 2000);
@@ -115,7 +114,7 @@ contract AutomationCoreTest is Test {
         vm.prank(admin);    
         automationCore.initialize(
             3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
-            500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+            500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
         );
     }
 
@@ -129,7 +128,7 @@ contract AutomationCoreTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500,
                 address(0),                             // VM Signer as zero
-                address(erc20Supra), true
+                address(erc20Supra)
             )
         );
 
@@ -146,8 +145,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, 
-                address(0),                              // address(0) as ERC20Supra
-                true
+                address(0)                              // address(0) as ERC20Supra
             )
         );
 
@@ -164,8 +162,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, 
-                admin,                                   // EOA address as ERC20Supra
-                true            
+                admin                                   // EOA address as ERC20Supra            
             )
         );
 
@@ -183,7 +180,7 @@ contract AutomationCoreTest is Test {
                 2000,                                   // task duration
                 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
                 2000,                                   // cycle duration
-                3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+                3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -201,7 +198,7 @@ contract AutomationCoreTest is Test {
                 3600,
                 0,                                      // registry max gas cap
                 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
-                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
         
@@ -218,7 +215,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether,
                 101,                                    // congestion threshold percentage > 100
-                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+                0.002 ether, 2, 500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -235,7 +232,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 0,                                      // congestion exponent
-                500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+                500, 2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -252,7 +249,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2,
                 0,                                      // 0 as task capacity 
-                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+                2000, 3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -269,7 +266,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500,
                 0,                                      // cycle duration 
-                3600, 5_000_000, 500, vmSigner, address(erc20Supra), true
+                3600, 5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -287,7 +284,7 @@ contract AutomationCoreTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 
                 2000,                                   // cycle duration
                 2000,                                   // system task duration
-                5_000_000, 500, vmSigner, address(erc20Supra), true
+                5_000_000, 500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -304,7 +301,7 @@ contract AutomationCoreTest is Test {
             (
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2000, 3600,
                 0,                                      // system registry max gas cap 
-                500, vmSigner, address(erc20Supra), true
+                500, vmSigner, address(erc20Supra)
             )
         );
 
@@ -322,7 +319,7 @@ contract AutomationCoreTest is Test {
                 3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether,
                 2, 500, 2000, 3600, 5_000_000,
                 0,                                      // system task capacity
-                vmSigner, address(erc20Supra), true
+                vmSigner, address(erc20Supra)
             )
         );
 
@@ -799,7 +796,7 @@ contract AutomationCoreTest is Test {
         vm.expectRevert(IAutomationCore.CallerNotController.selector);
 
         vm.prank(address(registry));
-        automationCore.applyPendingConfig(false);
+        automationCore.applyPendingConfig();
     }
 
     /// @dev Test to ensure 'calculateTaskFee' reverts if caller is not AutomationController.
@@ -857,14 +854,14 @@ contract AutomationCoreTest is Test {
         );
     }
 
-    /// @dev Test to ensure 'validateRegistration' reverts if caller is not AutomationRegistry.
-    function testValidateRegistrationRevertsIfCallerNotAutomationRegistry() public {
+    /// @dev Test to ensure 'updateStateForValidRegistration' reverts if caller is not AutomationRegistry.
+    function test_UpdateStateForValidRegistration_RevertsIfCallerNotAutomationRegistry() public {
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.expectRevert(IAutomationCore.CallerNotRegistry.selector);
 
         vm.prank(address(automationController));
-        automationCore.validateRegistration(
+        automationCore.updateStateForValidRegistration(
             10,
             0,
             uint64(block.timestamp),

@@ -22,7 +22,6 @@ contract DeployAutomationRegistry is Script {
     uint16 sysTaskCapacity;
     address vmSigner;
     address erc20Supra;  
-    bool automationEnabled;  
 
     // Config values loaded from .env file
     function setUp() public {
@@ -40,7 +39,6 @@ contract DeployAutomationRegistry is Script {
         sysTaskCapacity = uint16(vm.envUint("SYS_TASK_CAPACITY"));
         vmSigner = vm.envAddress("VM_SIGNER");
         erc20Supra = vm.envAddress("ERC20_SUPRA");
-        automationEnabled = true;
     }
 
     function run() public {
@@ -79,8 +77,7 @@ contract DeployAutomationRegistry is Script {
                 sysRegistryMaxGasCap,                   // sysRegistryMaxGasCap
                 sysTaskCapacity,                        // sysTaskCapacity
                 vmSigner,                               // VM Signer address
-                erc20Supra,                             // ERC20Supra address
-                automationEnabled                       // automationEnabled
+                erc20Supra                              // ERC20Supra address
             )
         );
         coreProxy = new ERC1967Proxy(address(coreImpl), coreInitData);

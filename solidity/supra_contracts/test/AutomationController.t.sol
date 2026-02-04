@@ -50,8 +50,7 @@ contract AutomationControllerTest is Test {
                 5_000_000,                  // sysRegistryMaxGasCap
                 500,                        // sysTaskCapacity
                 vmSigner,                   // VM Signer address
-                address(erc20Supra),        // ERC20Supra address
-                true                        // automationEnabled
+                address(erc20Supra)         // ERC20Supra address
             )
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
@@ -230,12 +229,12 @@ contract AutomationControllerTest is Test {
 
     /// @dev Test to ensure 'monitorCycleEnd' does nothing before cycle expiry.
     function testMonitorCycleEndDoesNothingBeforeCycleExpiry() public {
-        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
 
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
 
         assertEq(indexAfter, indexBefore);
         assertEq(startAfter, startBefore);
@@ -273,11 +272,11 @@ contract AutomationControllerTest is Test {
 
         assertFalse(controller.isAutomationEnabled());
 
-        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
         vm.warp(startBefore + durationBefore);
         
         vm.expectEmit(true, true, false, true);
-        emit AutomationCore.AutomationCycleEvent(
+        emit AutomationController.AutomationCycleEvent(
             indexBefore, 
             CommonUtils.CycleState.READY,
             startBefore,
@@ -288,7 +287,7 @@ contract AutomationControllerTest is Test {
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
 
         assertEq(indexAfter, indexBefore);
         assertEq(startAfter, startBefore);
@@ -298,12 +297,12 @@ contract AutomationControllerTest is Test {
 
     /// @dev Test to ensure 'monitorCycleEnd' moves cycle state to STARTED if automation is enabled and no tasks exist.
     function testMonitorCycleEndWhenAutomationEnabledNoTasks() public {
-        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
 
         vm.warp(startBefore + durationBefore);
 
         vm.expectEmit(true, true, false, true);
-        emit AutomationCore.AutomationCycleEvent(
+        emit AutomationController.AutomationCycleEvent(
             indexBefore + 1,
             CommonUtils.CycleState.STARTED, 
             uint64(block.timestamp), 
@@ -314,7 +313,7 @@ contract AutomationControllerTest is Test {
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
 
         assertEq(indexAfter, indexBefore + 1);
         assertEq(startAfter, block.timestamp);
@@ -326,11 +325,11 @@ contract AutomationControllerTest is Test {
     function testMonitorCycleEndWhenAutomationEnabledAndTasksExist() public {
         registerTask();
 
-        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
         vm.warp(startBefore + durationBefore);
 
         vm.expectEmit(true, true, false, true);
-        emit AutomationCore.AutomationCycleEvent(
+        emit AutomationController.AutomationCycleEvent(
             indexBefore,
             CommonUtils.CycleState.FINISHED,
             startBefore,
@@ -341,7 +340,7 @@ contract AutomationControllerTest is Test {
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
 
         assertEq(indexAfter, indexBefore);
         assertEq(startAfter, startBefore);
@@ -379,13 +378,13 @@ contract AutomationControllerTest is Test {
     function testProcessTasksWhenCycleStateFinished() public {
         registerTask();
 
-        ( , uint64 startTime, uint64 duration, ) = automationCore.getCycleInfo();
+        ( , uint64 startTime, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(startTime + duration);
 
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        (uint64 index, , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
+        (uint64 index, , , CommonUtils.CycleState state) = controller.getCycleInfo();
         assertEq(uint8(state), uint8(CommonUtils.CycleState.FINISHED));
 
         uint64[] memory tasks = new uint64[](1);
@@ -400,7 +399,7 @@ contract AutomationControllerTest is Test {
         vm.prank(vmSigner, vmSigner);
         controller.processTasks(index + 1, tasks);
 
-        (uint64 newIndex, uint64 newStart, uint64 newDuration, CommonUtils.CycleState newState) = automationCore.getCycleInfo();
+        (uint64 newIndex, uint64 newStart, uint64 newDuration, CommonUtils.CycleState newState) = controller.getCycleInfo();
         assertEq(newIndex, index + 1);
         assertEq(newStart, uint64(block.timestamp));
         assertEq(newDuration, 2000);
@@ -418,13 +417,13 @@ contract AutomationControllerTest is Test {
     function testProcessTasksRevertsIfInvalidCycleIndexWhenCycleStateFinished() public {
         registerTask();
 
-        ( , uint64 startTime, uint64 duration, ) = automationCore.getCycleInfo();
+        ( , uint64 startTime, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(startTime + duration);
         
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        (uint64 index, , , CommonUtils.CycleState state) = automationCore.getCycleInfo();
+        (uint64 index, , , CommonUtils.CycleState state) = controller.getCycleInfo();
         assertEq(uint8(state), uint8(CommonUtils.CycleState.FINISHED));
         
         uint64[] memory tasks = new uint64[](1);
@@ -440,21 +439,21 @@ contract AutomationControllerTest is Test {
     function testProcessTasksWhenCycleStateSuspendedAutomationDisabled() public {
         registerTask();
 
-        ( , uint64 start, uint64 duration, ) = automationCore.getCycleInfo();
+        ( , uint64 start, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(start + duration);
         
         // Moves state to FINISHED
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        ( , , , CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        ( , , , CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
         assertEq(uint8(stateBefore), uint8(CommonUtils.CycleState.FINISHED));
 
         // Disable automation → moves state to SUSPENDED
         vm.prank(admin);
         controller.disableAutomation();
 
-        (uint64 indexAfter, , , CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, , , CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
         assertEq(uint8(stateAfter), uint8(CommonUtils.CycleState.SUSPENDED));
 
         uint64[] memory tasks = new uint64[](1);
@@ -466,7 +465,7 @@ contract AutomationControllerTest is Test {
         vm.prank(vmSigner, vmSigner);
         controller.processTasks(indexAfter, tasks);
 
-        ( , , , CommonUtils.CycleState newState) = automationCore.getCycleInfo();
+        ( , , , CommonUtils.CycleState newState) = controller.getCycleInfo();
         assertEq(uint8(newState), uint8(CommonUtils.CycleState.READY));
         assertFalse(registry.ifTaskExists(tasks[0]));
     }   
@@ -475,21 +474,21 @@ contract AutomationControllerTest is Test {
     function testProcessTasksWhenCycleStateSuspendedAutomationEnabled() public {
         registerTask();
 
-        ( , uint64 start, uint64 duration, ) = automationCore.getCycleInfo();
+        ( , uint64 start, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(start + duration);
         
         // Moves state to FINISHED
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        ( , , , CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        ( , , , CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
         assertEq(uint8(stateBefore), uint8(CommonUtils.CycleState.FINISHED));
 
         // Disable automation → moves state to SUSPENDED
         vm.prank(admin);
         controller.disableAutomation();
 
-        (uint64 indexAfter, , , CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, , , CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
         assertEq(uint8(stateAfter), uint8(CommonUtils.CycleState.SUSPENDED));
 
         // Enable automation
@@ -505,7 +504,7 @@ contract AutomationControllerTest is Test {
         vm.prank(vmSigner, vmSigner);
         controller.processTasks(indexAfter, tasks);
 
-        (uint64 newIndex, uint64 newStart, uint64 newDuration, CommonUtils.CycleState newState) = automationCore.getCycleInfo();
+        (uint64 newIndex, uint64 newStart, uint64 newDuration, CommonUtils.CycleState newState) = controller.getCycleInfo();
         assertEq(newIndex, indexAfter + 1);
         assertEq(newStart, uint64(block.timestamp));
         assertEq(newDuration, 2000);
@@ -517,21 +516,21 @@ contract AutomationControllerTest is Test {
     function testProcessTasksRevertsIfInvalidCycleIndexWhenCycleStateSuspended() public {
         registerTask();
 
-        ( , uint64 start, uint64 duration, ) = automationCore.getCycleInfo();
+        ( , uint64 start, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(start + duration);
 
         // Moves state to FINISHED
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
-        ( , , , CommonUtils.CycleState stateBefore) = automationCore.getCycleInfo();
+        ( , , , CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
         assertEq(uint8(stateBefore), uint8(CommonUtils.CycleState.FINISHED));
 
         // Disable automation → moves state to SUSPENDED
         vm.prank(admin);
         controller.disableAutomation();
 
-        (uint64 indexAfter, , , CommonUtils.CycleState stateAfter) = automationCore.getCycleInfo();
+        (uint64 indexAfter, , , CommonUtils.CycleState stateAfter) = controller.getCycleInfo();
         assertEq(uint8(stateAfter), uint8(CommonUtils.CycleState.SUSPENDED));
 
         uint64[] memory tasks = new uint64[](1);

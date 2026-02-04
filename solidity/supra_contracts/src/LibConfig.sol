@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {CommonUtils} from "./CommonUtils.sol";
-
 // Helper library used by AutomationConfig.
 library LibConfig {
     uint256 private constant MAX_UINT128 = type(uint128).max;
@@ -31,8 +29,6 @@ library LibConfig {
 
     /// @notice Configuration of the automation registry.
     struct RegistryConfig {
-        // uint64 | uint64 | uint64 | CycleState(uint8)
-        uint256 index_startTime_durationSecs_state;
         // uint128 | uint128
         uint256 gasCommittedForNextCycle_gasCommittedForThisCycle;
         // uint128 | uint128
@@ -51,10 +47,6 @@ library LibConfig {
     }
     
     function createRegistryConfig(
-        uint64 _index,
-        uint64 _startTime,
-        uint64 _durationSecs,
-        CommonUtils.CycleState _cycleState,
         uint128 _nextCycleRegistryMaxGasCap,
         uint128 _nextCycleSysRegistryMaxGasCap,
         bool _registrationEnabled,
@@ -62,13 +54,6 @@ library LibConfig {
         address _erc20Supra,
         Config memory _config
     ) internal pure returns (RegistryConfig memory rcfg) {
-        // Pack index(uint64) | startTime(uint64) | durationSecs(uint64) | cycleState(uint8)
-        rcfg.index_startTime_durationSecs_state = 
-            (uint256(_index) << 192) |
-            (uint256(_startTime) << 128) |
-            (uint256(_durationSecs) << 64) |
-            (uint256(uint8(_cycleState)) << 56);
-
         // Pack nextCycleRegistryMaxGasCap | nextCycleSysRegistryMaxGasCap
         rcfg.nextCycleRegistryMaxGasCap_nextCycleSysRegistryMaxGasCap =
             (uint256(_nextCycleRegistryMaxGasCap) << 128) |
@@ -83,43 +68,6 @@ library LibConfig {
         
         // Assign inner Config
         rcfg.config = _config;
-    }
-
-    // index(uint64) | startTime(uint64) | durationSecs(uint64) | state(CycleState/uint8)
-    function index(RegistryConfig storage r) internal view returns (uint64) {
-        return uint64(r.index_startTime_durationSecs_state >> 192);
-    }
-
-    function startTime(RegistryConfig storage r) internal view returns (uint64) {
-        return uint64(r.index_startTime_durationSecs_state >> 128);
-    }
-
-    function durationSecs(RegistryConfig storage r) internal view returns (uint64) {
-        return uint64(r.index_startTime_durationSecs_state >> 64);
-    }
-
-    function state(RegistryConfig storage r) internal view returns (CommonUtils.CycleState) {
-        return CommonUtils.CycleState(uint8(r.index_startTime_durationSecs_state >> 56));
-    }
-
-    function setIndex(RegistryConfig storage r, uint64 _index) internal {
-        r.index_startTime_durationSecs_state &= ~(MAX_UINT64 << 192);     // Clear old bits
-        r.index_startTime_durationSecs_state |= uint256(_index) << 192;   // Set new value
-    }
-
-    function setStartTime(RegistryConfig storage r, uint64 _startTime) internal {
-        r.index_startTime_durationSecs_state &= ~(MAX_UINT64 << 128);
-        r.index_startTime_durationSecs_state |= uint256(_startTime) << 128;
-    }
-
-    function setDurationSecs(RegistryConfig storage r, uint64 _durationSecs) internal {
-        r.index_startTime_durationSecs_state &= ~(MAX_UINT64 << 64);
-        r.index_startTime_durationSecs_state |= uint256(_durationSecs) << 64;
-    }
-
-    function setState(RegistryConfig storage r, uint8 _state) internal {
-        r.index_startTime_durationSecs_state &= ~(MAX_UINT8 << 56);
-        r.index_startTime_durationSecs_state |= uint256(_state) << 56;
     }
 
     // gasCommittedForNextCycle (uint128) | gasCommittedForThisCycle (uint128)
