@@ -388,9 +388,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
         // Refund and emit event if any tasks were stopped
         if(stoppedTaskDetails.length > 0) {  
-            uint256 balance = IERC20(core.erc20Supra()).balanceOf(automationCore);
-
-            if(balance < totalRefundFee) { revert InsufficientBalanceForRefund(); }
             core.refund(msg.sender, totalRefundFee);
 
             // Emit task stopped event
@@ -535,7 +532,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Function to update tasks lists.
     /// @param _state Cycle transition state executing the update.
-    function updateTasks(CommonUtils.CycleState _state) external {
+    function updateTaskIds(CommonUtils.CycleState _state) external {
         onlyController();
 
         regState.activeTaskIds.clear();

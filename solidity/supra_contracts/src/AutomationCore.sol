@@ -702,6 +702,9 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Internally calls _refund, reverts if caller is not AutomationRegistry.
     function refund(address _to, uint128 _amount) external {
         onlyRegistry();
+        uint256 balance = IERC20(regConfig.erc20Supra).balanceOf(address(this));
+
+        if(balance < _amount) { revert InsufficientBalanceForRefund(); }
         _refund(_to, _amount);
     }
 

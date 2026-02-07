@@ -473,7 +473,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 require(updated, UpdateGasCommittedAndCycleLockedFeesFailed());
                 
                 IAutomationRegistry automationRegistry = IAutomationRegistry(registry);
-                automationRegistry.updateTasks(CommonUtils.CycleState.FINISHED);
+                automationRegistry.updateTaskIds(CommonUtils.CycleState.FINISHED);
 
                 // Set current timestamp as cycle start time
                 // Increment the cycle and update the state to STARTED
@@ -506,7 +506,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         (bool updated, )= automationCore.call(abi.encodeCall(IAutomationCore.updateGasCommittedAndCycleLockedFees, (0, 0, 0, 0)));
         require(updated, UpdateGasCommittedAndCycleLockedFeesFailed());
 
-        IAutomationRegistry(registry).updateTasks(CommonUtils.CycleState.SUSPENDED);
+        IAutomationRegistry(registry).updateTaskIds(CommonUtils.CycleState.SUSPENDED);
 
         // Check if automation is enabled
         if (cycleInfo.automationEnabled()) {

@@ -17,7 +17,6 @@ interface IAutomationRegistry {
     error ErrorDepositRefund();
     error SystemTaskDoesNotExist();
     error TaskIndexesCannotBeEmpty();
-    error InsufficientBalanceForRefund();
     error RegisteredTaskInvalidType();
     error TaskIndexNotFound();
     error TaskIndexNotUnique();
@@ -34,7 +33,7 @@ interface IAutomationRegistry {
     // State updating functions
     function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external;
     function updateTaskState(uint64 _taskIndex, CommonUtils.TaskState _taskState) external;
-    function updateTasks(CommonUtils.CycleState _state) external;
+    function updateTaskIds(CommonUtils.CycleState _state) external;
     function refundDepositAndDrop(
         uint64 _taskIndex,
         address _taskOwner,

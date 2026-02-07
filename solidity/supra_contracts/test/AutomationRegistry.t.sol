@@ -1237,7 +1237,7 @@ contract AutomationRegistryTest is Test {
         vm.expectRevert(IAutomationRegistry.CallerNotController.selector);
 
         vm.prank(address(automationCore));
-        registry.updateTasks(CommonUtils.CycleState.STARTED);
+        registry.updateTaskIds(CommonUtils.CycleState.STARTED);
     }
 
     /// @dev Test to ensure 'refundDepositAndDrop' reverts if caller is not AutomationController.

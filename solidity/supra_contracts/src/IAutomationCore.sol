@@ -22,6 +22,7 @@ interface IAutomationCore {
     error GasCommittedValueUnderflow();
     error InsufficientBalance();
     error InsufficientFeeCapForCycle();
+    error InsufficientBalanceForRefund();
     error InvalidCongestionExponent();
     error InvalidCongestionThreshold();
     error InvalidCycleDuration();
