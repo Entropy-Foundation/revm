@@ -90,12 +90,15 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @notice Initializes the configuration parameters of the contract, can only be called once.
     /// @param _automationCore Address of the AutomationCore smart contract.
     /// @param _registry Address of the AutomationRegistry smart contract.
+    /// @param _owner Address of the contract owner.
     /// @param _automationEnabled Bool to set automation enabled status.
-    function initialize(address _automationCore, address _registry, bool _automationEnabled) public initializer {
-        _automationCore.validateContractAddress();
-        _registry.validateContractAddress();
+    /// @param _cycleDurationSecs uint64 to set automation cycle duration
+    function initialize(address _automationCore, address _registry, address _owner, bool _automationEnabled, uint64 _cycleDurationSecs) public initializer {
+        _automationCore.validateAddress();
+        _registry.validateAddress();
+        _owner.validateAddress();
 
-        automationCore = _automationCore; 
+        automationCore = _automationCore;
         registry = _registry;
 
         (CommonUtils.CycleState state, uint64 cycleId) = _automationEnabled ? (CommonUtils.CycleState.STARTED, 1) : (CommonUtils.CycleState.READY, 0);
@@ -103,13 +106,13 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         cycleInfo.initializeCycle(
             cycleId,
             uint64(block.timestamp),
-            IAutomationCore(_automationCore).cycleDurationSecs(),
+            _cycleDurationSecs,
             state,
             _automationEnabled
-        ); 
+        );
 
         __Ownable2Step_init();
-        __Ownable_init(msg.sender);
+        __Ownable_init(_owner);
     }
 
     /// @notice Called by the VM Signer on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.

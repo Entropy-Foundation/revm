@@ -21,7 +21,7 @@ interface IAutomationCore {
     error GasCommittedExceedsMaxGasCap();
     error GasCommittedValueUnderflow();
     error InsufficientBalance();
-    error InsufficientFeeCapForCycle();
+    error InsufficientFeeCapForCycle(uint64 expected);
     error InsufficientBalanceForRefund();
     error InvalidCongestionExponent();
     error InvalidCongestionThreshold();

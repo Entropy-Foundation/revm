@@ -31,6 +31,7 @@ interface IAutomationRegistry {
     function getTaskIdList() external view returns (uint256[] memory);
     function getTotalActiveTasks() external view returns (uint256);
     function totalTasks() external view returns (uint256);
+    function getNextTaskIndex() external view returns (uint64);
     
     // State updating functions
     function removeTask(uint64 _taskIndex, bool _removeFromSysReg) external;
@@ -41,5 +42,15 @@ interface IAutomationRegistry {
         address _taskOwner,
         uint128 _refundableDeposit,
         uint128 _lockedDeposit
+    ) external;
+
+    function register(
+        bytes memory _payloadTx,
+        uint64 _expiryTime,
+        uint128 _maxGasAmount,
+        uint128 _gasPriceCap,
+        uint128 _automationFeeCapForCycle,
+        uint64 _priority,
+        bytes[] memory _auxData
     ) external;
 }

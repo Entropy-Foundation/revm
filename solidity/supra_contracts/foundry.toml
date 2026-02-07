@@ -4,5 +4,9 @@ out = "out"
 libs = ["lib"]
 via_ir = true
 optimizer = true
+# Uncomment when running agains supra chain
+# eth_rpc_url = "http://localhost:27000/rpc/v1/eth/wallet_integration"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+
