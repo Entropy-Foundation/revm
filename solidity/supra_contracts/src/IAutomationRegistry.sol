@@ -21,7 +21,7 @@ interface IAutomationRegistry {
     error TaskIndexNotFound();
     error TaskIndexNotUnique();
     error FailedToCallTxHashPrecompile();
-    error InvalidTxHashLength();
+    error TxnHashLengthShouldBe32(uint64);
 
     // View functions
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);

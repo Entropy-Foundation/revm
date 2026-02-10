@@ -22,7 +22,6 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     uint8 constant REFUND_FACTOR = 2;
 
     /// @notice Address of the transaction hash precompile.
-    // TO_DO: Update the precompile address once it's finalized and available.
     address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
 
     /// @dev State variables 
@@ -452,13 +451,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
-    function readTxHash() private pure returns (bytes32) {
-        // (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
-        // require(ok, FailedToCallTxHashPrecompile());
-        // require(out.length == 32, InvalidTxHashLength());
-        // return abi.decode(out, (bytes32));
-        // TO_DO
-        return keccak256("txHash"); // --- IGNORE ---
+    function readTxHash() private view returns (bytes32) {
+        (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
+        require(ok, FailedToCallTxHashPrecompile());
+        require(out.length == 32, TxnHashLengthShouldBe32(uint64(out.length)));
+        return abi.decode(out, (bytes32));
     }
     
     /// @notice Function to remove a task from the registry.
