@@ -799,43 +799,12 @@ contract AutomationCoreTest is Test {
         automationCore.applyPendingConfig();
     }
 
-    /// @dev Test to ensure 'calculateTaskFee' reverts if caller is not AutomationController.
-    function testCalculateTaskFeeRevertsIfCallerNotAutomationController() public {
-        vm.expectRevert(IAutomationCore.CallerNotController.selector);
-
-        vm.prank(address(registry));
-        automationCore.calculateTaskFee(
-            CommonUtils.TaskState.ACTIVE ,
-            uint64(block.timestamp) + 10000000,
-            1000000,
-            10000000,
-            uint64(block.timestamp),
-            0.0001 ether
-        );
-    }
-
     /// @dev Test to ensure 'safeUnlockLockedDeposit' reverts if caller is not AutomationController.
     function testSafeUnlockLockedDepositRevertsIfCallerNotAutomationController() public {
         vm.expectRevert(IAutomationCore.CallerNotController.selector);
 
         vm.prank(address(registry));
         automationCore.safeUnlockLockedDeposit(0, 0.01 ether);
-    }
-
-    /// @dev Test to ensure 'calculateAutomationFeeMultiplierForCurrentCycleInternal' reverts if caller is not AutomationController.
-    function test_calculateAutomationFeeMultiplierForCurrentCycleInternal_RevertsIfCallerNotAutomationController() public {
-        vm.expectRevert(IAutomationCore.CallerNotController.selector);
-
-        vm.prank(address(registry));
-        automationCore.calculateAutomationFeeMultiplierForCurrentCycleInternal();
-    }
-
-    /// @dev Test to ensure 'calculateAutomationFeeMultiplierForCommittedOccupancy' reverts if caller is not AutomationController.
-    function test_calculateAutomationFeeMultiplierForCommittedOccupancy_RevertsIfCallerNotAutomationController() public {
-        vm.expectRevert(IAutomationCore.CallerNotController.selector);
-
-        vm.prank(address(registry));
-        automationCore.calculateAutomationFeeMultiplierForCommittedOccupancy(1000000);
     }
 
     /// @dev Test to ensure 'refundTaskFees' reverts if caller is not AutomationController.
@@ -863,13 +832,11 @@ contract AutomationCoreTest is Test {
         vm.prank(address(automationController));
         automationCore.updateStateForValidRegistration(
             10,
-            0,
             uint64(block.timestamp),
             uint64(block.timestamp) + 2250,
             CommonUtils.TaskType.UST,
             payload,
             1000000,
-            keccak256("txHash"),
             0.001 ether,
             0.01 ether
         );
@@ -958,12 +925,10 @@ contract AutomationCoreTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
             4,
-            0,
             auxData
         );
         vm.stopPrank();

@@ -21,6 +21,10 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
 
+    /// @notice Address of the transaction hash precompile.
+    // TO_DO: Update the precompile address once it's finalized and available.
+    address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
+
     /// @dev State variables 
     LibRegistry.RegistryState regState;
     address public automationCore;
@@ -93,22 +97,18 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Function used to register a user task for automation.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
     /// @param _expiryTime Time after which the task gets expired.
-    /// @param _txHash Transaction hash of the request transaction.
     /// @param _maxGasAmount Maximum amount of gas for the automation task.
     /// @param _gasPriceCap Maximum gas willing to pay for the task.
     /// @param _automationFeeCapForCycle Maximum automation fee for a cycle to be paid ever.
     /// @param _priority Priority for the task. 0 for default priority.
-    /// @param _type Type of task.
     /// @param _auxData Auxiliary data to be passed.
     function register(
         bytes memory _payloadTx,
         uint64 _expiryTime,
-        bytes32 _txHash,
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
         uint128 _automationFeeCapForCycle,
         uint64 _priority,
-        uint8 _type,
         bytes[] memory _auxData
     ) external {        
         uint64 regTime = uint64(block.timestamp);
@@ -116,13 +116,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         IAutomationCore core = IAutomationCore(automationCore);
         core.updateStateForValidRegistration(
             totalTasks(),
-            _type,
             regTime,
             _expiryTime,
             CommonUtils.TaskType.UST,
             _payloadTx, 
             _maxGasAmount, 
-            _txHash,
             _gasPriceCap,
             _automationFeeCapForCycle
         );
@@ -134,7 +132,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             _gasPriceCap,
             _automationFeeCapForCycle,
             _automationFeeCapForCycle ,
-            _txHash,
+            readTxHash(),
             taskIndex,
             regTime,
             _expiryTime,
@@ -161,18 +159,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
     /// @notice Function to register a system task. Reverts if caller is not authorized.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
     /// @param _expiryTime Time after which the task gets expired.
-    /// @param _txHash Transaction hash of the request transaction.
     /// @param _maxGasAmount Maximum amount of gas for the automation task.
     /// @param _priority Priority for the task. 0 for default priority.
-    /// @param _type Type of task.
     /// @param _auxData Auxiliary data to be passed.
     function registerSystemTask(
         bytes memory _payloadTx,
         uint64 _expiryTime,
-        bytes32 _txHash,
         uint128 _maxGasAmount,
         uint64 _priority,
-        uint8 _type,
         bytes[] memory _auxData
     ) external {
         if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
@@ -180,13 +174,11 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         uint64 regTime = uint64(block.timestamp);
         IAutomationCore(automationCore).updateStateForValidRegistration(
             totalSystemTasks(),
-            _type,
             regTime,
             _expiryTime,
             CommonUtils.TaskType.GST,
             _payloadTx, 
             _maxGasAmount, 
-            _txHash,
             0,
             0
         );
@@ -198,7 +190,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             0,
             0,
             0,
-            _txHash,
+            readTxHash(),
             taskIndex,
             regTime,
             _expiryTime,
@@ -249,8 +241,8 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
             bool result = core.safeDepositRefund(
                 _taskIndex,
                 task.owner,
-                task.lockedFeeForNextCycle / REFUND_FACTOR,
-                task.lockedFeeForNextCycle
+                task.depositFee / REFUND_FACTOR,
+                task.depositFee
             );
             if(!result) { revert ErrorDepositRefund(); }            
         } else { 
@@ -369,7 +361,7 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
                     task.maxGasAmount,
                     residualInterval,
                     uint64(currentTime),
-                    task.lockedFeeForNextCycle
+                    task.depositFee
                 );
                 totalRefundFee += (cycleFeeRefund + depositRefund);
 
@@ -459,6 +451,16 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
+    /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
+    function readTxHash() private pure returns (bytes32) {
+        // (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
+        // require(ok, FailedToCallTxHashPrecompile());
+        // require(out.length == 32, InvalidTxHashLength());
+        // return abi.decode(out, (bytes32));
+        // TO_DO
+        return keccak256("txHash"); // --- IGNORE ---
+    }
+    
     /// @notice Function to remove a task from the registry.
     /// @param _taskIndex Index of the task to remove. 
     /// @param _removeFromSysReg Wheather to remove from system task registry.

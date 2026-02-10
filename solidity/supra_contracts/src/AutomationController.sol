@@ -282,7 +282,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                     (bool sent, ) = registryAddr.call(
                         abi.encodeCall(
                             IAutomationRegistry.refundDepositAndDrop,
-                            (_taskIndex, task.owner, task.lockedFeeForNextCycle, task.lockedFeeForNextCycle)
+                            (_taskIndex, task.owner, task.depositFee, task.depositFee)
                         )
                     );
                     require(sent, RefundDepositAndDropFailed());
@@ -323,7 +323,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                     task.owner,
                     task.maxGasAmount,
                     task.expiryTime,
-                    task.lockedFeeForNextCycle,
+                    task.depositFee,
                     fee,
                     _currentCycleEndTime,
                     task.automationFeeCapForCycle,
@@ -350,7 +350,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
     /// @param _owner Owner of the task.
     /// @param _maxGasAmount Max gas amount of the task.
     /// @param _expiryTime Expiry time of the task.
-    /// @param _lockedFeeForNextCycle Locked fees of the task.
+    /// @param _depositFee Deposit fees of the task.
     /// @param _fee Fees to be charged for the task. 
     /// @param _currentCycleEndTime End time of the current cycle.
     /// @param _automationFeeCapForCycle Max automation fee for a cycle to be paid.
@@ -363,7 +363,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         address _owner,
         uint128 _maxGasAmount,
         uint64 _expiryTime,
-        uint128 _lockedFeeForNextCycle,
+        uint128 _depositFee,
         uint128 _fee,
         uint64 _currentCycleEndTime,
         uint128 _automationFeeCapForCycle,
@@ -383,7 +383,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
             (bool sent, ) = registryAddr.call(
                 abi.encodeCall(
                     IAutomationRegistry.refundDepositAndDrop, 
-                    (_taskIndex, _owner, _lockedFeeForNextCycle,  _lockedFeeForNextCycle)
+                    (_taskIndex, _owner, _depositFee,  _depositFee)
                 )
             );
             require(sent, RefundDepositAndDropFailed());
@@ -405,7 +405,7 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
                 (bool unlocked, ) = automationCoreAddr.call(
                     abi.encodeCall(
                         IAutomationCore.safeUnlockLockedDeposit, 
-                        (_taskIndex, _lockedFeeForNextCycle)
+                        (_taskIndex, _depositFee)
                     )
                 );
                 require(unlocked, UnlockLockedDepositFailed());

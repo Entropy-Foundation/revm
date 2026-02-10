@@ -21,7 +21,7 @@ library LibRegistry {
         uint256 maxGasAmount_gasPriceCap;
         
         // uint128 | uint128
-        uint256 automationFeeCapForCycle_lockedFeeForNextCycle;
+        uint256 automationFeeCapForCycle_depositFee;
 
         bytes32 txHash;
         
@@ -39,7 +39,7 @@ library LibRegistry {
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
         uint128 _automationFeeCapForCycle,
-        uint128 _lockedFeeForNextCycle,
+        uint128 _depositFee,
         bytes32 _txHash,
         uint64 _taskIndex,
         uint64 _registrationTime,
@@ -55,7 +55,7 @@ library LibRegistry {
         t.maxGasAmount_gasPriceCap = (uint256(_maxGasAmount) << 128) | uint256(_gasPriceCap);
 
         // Pack (uint128 | uint128)
-        t.automationFeeCapForCycle_lockedFeeForNextCycle = (uint256(_automationFeeCapForCycle) << 128) | uint256(_lockedFeeForNextCycle);
+        t.automationFeeCapForCycle_depositFee = (uint256(_automationFeeCapForCycle) << 128) | uint256(_depositFee);
 
         // Direct fields
         t.txHash = _txHash;
@@ -97,23 +97,23 @@ library LibRegistry {
         t.maxGasAmount_gasPriceCap |= uint256(_value);          // insert lower 128
     }
 
-    // automationFeeCapForCycle (uint128) | lockedFeeForNextCycle (uint128)
+    // automationFeeCapForCycle (uint128) | depositFee (uint128)
     function automationFeeCapForCycle(TaskMetadata storage t) internal view returns (uint128) {
-        return uint128(t.automationFeeCapForCycle_lockedFeeForNextCycle >> 128);
+        return uint128(t.automationFeeCapForCycle_depositFee >> 128);
     }
 
-    function lockedFeeForNextCycle(TaskMetadata storage t) internal view returns (uint128) {
-        return uint128(t.automationFeeCapForCycle_lockedFeeForNextCycle);
+    function depositFee(TaskMetadata storage t) internal view returns (uint128) {
+        return uint128(t.automationFeeCapForCycle_depositFee);
     }
 
     function setAutomationFeeCapForCycle(TaskMetadata storage t, uint128 _value) internal {
-        t.automationFeeCapForCycle_lockedFeeForNextCycle &= MAX_UINT128;
-        t.automationFeeCapForCycle_lockedFeeForNextCycle |= uint256(_value) << 128;
+        t.automationFeeCapForCycle_depositFee &= MAX_UINT128;
+        t.automationFeeCapForCycle_depositFee |= uint256(_value) << 128;
     }
 
-    function setLockedFeeForNextCycle(TaskMetadata storage t, uint128 _value) internal {
-        t.automationFeeCapForCycle_lockedFeeForNextCycle &= (MAX_UINT128 << 128);
-        t.automationFeeCapForCycle_lockedFeeForNextCycle |= uint256(_value);
+    function setDepositFee(TaskMetadata storage t, uint128 _value) internal {
+        t.automationFeeCapForCycle_depositFee &= (MAX_UINT128 << 128);
+        t.automationFeeCapForCycle_depositFee |= uint256(_value);
     }
 
     // taskIndex (uint64) | registrationTime (uint64) | expiryTime (uint64) | priority (uint64)

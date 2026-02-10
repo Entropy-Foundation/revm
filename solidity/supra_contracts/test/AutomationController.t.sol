@@ -637,12 +637,10 @@ contract AutomationControllerTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
             2,
-            0,
             auxData
         );
         vm.stopPrank();

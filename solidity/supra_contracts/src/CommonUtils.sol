@@ -39,7 +39,7 @@ library CommonUtils {
         uint128 maxGasAmount;
         uint128 gasPriceCap;
         uint128 automationFeeCapForCycle;
-        uint128 lockedFeeForNextCycle;
+        uint128 depositFee;
         bytes32 txHash;
         uint64 taskIndex;
         uint64 registrationTime;
@@ -60,10 +60,10 @@ library CommonUtils {
         details.gasPriceCap = uint128(t.maxGasAmount_gasPriceCap);
 
         // --- Decode automationFeeCapForCycle (upper 128 bits) ---
-        details.automationFeeCapForCycle = uint128(t.automationFeeCapForCycle_lockedFeeForNextCycle >> 128);
+        details.automationFeeCapForCycle = uint128(t.automationFeeCapForCycle_depositFee >> 128);
 
-        // --- Decode lockedFeeForNextCycle (lower 128 bits) ---
-        details.lockedFeeForNextCycle = uint128(t.automationFeeCapForCycle_lockedFeeForNextCycle);
+        // --- Decode depositFee (lower 128 bits) ---
+        details.depositFee = uint128(t.automationFeeCapForCycle_depositFee);
 
         // --- Direct values ---
         details.txHash = t.txHash;

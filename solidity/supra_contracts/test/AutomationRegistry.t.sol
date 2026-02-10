@@ -293,12 +293,10 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             uint128(10 gwei),                   // gasPriceCap
             uint128(0.5 ether),                 // automationFeeCapForCycle
             0,                                  // priority
-            0,                                  // task type
             auxData                             // aux data
         );
     }
@@ -318,34 +316,11 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             uint128(10 gwei),                   // gasPriceCap
             uint128(0.5 ether),                 // automationFeeCapForCycle
             0,                                  // priority
-            0,                                  // task type
             auxData                             // aux data
-        );
-    }
-
-    /// @dev Test to ensure 'register' reverts if task type is not UST.
-    function testRegisterRevertsIfTaskTypeNotUST() public {
-        bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20Supra));      
-
-        vm.expectRevert(IAutomationCore.InvalidTaskType.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
-            0,
-            1,                                  // Task type not UST
-            auxData
         );
     }
 
@@ -360,11 +335,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp),        // Invalid expiryTime
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -381,11 +354,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 3601),     // Invalid task duration
-            keccak256("txHash"),                
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -402,11 +373,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2000),     // Task expires before next cycle
-            keccak256("txHash"),                
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -423,11 +392,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),                
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -444,11 +411,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),                
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -465,11 +430,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(0),                         // maxGasAmount
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -486,32 +449,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(0),                       // gasPriceCap         
             uint128(0.5 ether),
-            0,
-            0,
-            auxData
-        );
-    }
-
-    /// @dev Test to ensure 'register' reverts if transaction hash is bytes32(0).
-    function testRegisterRevertsIfInvalidTxHash() public {
-        bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20Supra)); 
-
-        vm.expectRevert(IAutomationCore.InvalidTxHash.selector);
-
-        vm.prank(alice);
-        registry.register(
-            payload,
-            uint64(block.timestamp + 2250),
-            bytes32(0),                     // Invalid tx hash            
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -528,11 +468,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0),                       // automationFeeCapForCycle
-            0,
             0,
             auxData
         );
@@ -549,11 +487,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(10_000_001),            // Gas exceeds max gas cap
             uint128(10 gwei),
             uint128(7.01 ether),
-            0,
             0,
             auxData
         );
@@ -571,12 +507,10 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
             4,
-            0,
             auxData
         );
         vm.stopPrank();
@@ -593,7 +527,7 @@ contract AutomationRegistryTest is Test {
         assertEq(taskMetadata.maxGasAmount, 1_000_000);
         assertEq(taskMetadata.gasPriceCap, 10 gwei);
         assertEq(taskMetadata.automationFeeCapForCycle, 0.5 ether);
-        assertEq(taskMetadata.lockedFeeForNextCycle, 0.5 ether);
+        assertEq(taskMetadata.depositFee, 0.5 ether);
         assertEq(taskMetadata.txHash, keccak256("txHash"));
         assertEq(taskMetadata.taskIndex, 0);
         assertEq(taskMetadata.registrationTime, uint64(block.timestamp));
@@ -638,11 +572,9 @@ contract AutomationRegistryTest is Test {
         registry.register(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(1_000_000),
             uint128(10 gwei),
             uint128(0.5 ether),
-            0,
             0,
             auxData
         );
@@ -662,10 +594,8 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             2,                                  // priority
-            1,                                  // task type
             auxData                             // aux data
         );
     }
@@ -686,10 +616,8 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             2,                                  // priority
-            1,                                  // task type
             auxData                             // aux data
         );
     }
@@ -710,32 +638,9 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             2,                                  // priority
-            1,                                  // task type
             auxData                             // aux data
-        );
-    }
-
-    /// @dev Test to ensure 'registerSystemTask' reverts if task type is not GST.
-    function testRegisterSystemTaskRevertsIfTaskTypeNotGST() public {
-        testGrantAuthorization();
-
-        bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20Supra));
-
-        vm.expectRevert(IAutomationCore.InvalidTaskType.selector);
-
-        vm.prank(bob);
-        registry.registerSystemTask(
-            payload,
-            uint64(block.timestamp + 2250),
-            keccak256("txHash"),
-            uint128(1_000_000),
-            2,
-            0,                                  // Task type not GST
-            auxData
         );
     }
 
@@ -751,10 +656,8 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,
             uint64(block.timestamp + 3601),     // Invalid task duration
-            keccak256("txHash"),
             uint128(1_000_000), 
             2, 
-            1, 
             auxData
         );   
     }
@@ -771,10 +674,8 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,
             uint64(block.timestamp + 2250),
-            keccak256("txHash"),
             uint128(5_000_001),                 // Gas exceeds max gas cap
             2,
-            1,
             auxData
         );
     }
@@ -789,10 +690,8 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             2,                                  // priority
-            1,                                  // task type
             auxData                             // aux data
         );
         
@@ -807,7 +706,7 @@ contract AutomationRegistryTest is Test {
         assertEq(taskMetadata.maxGasAmount, 1_000_000);
         assertEq(taskMetadata.gasPriceCap, 0);
         assertEq(taskMetadata.automationFeeCapForCycle, 0);
-        assertEq(taskMetadata.lockedFeeForNextCycle, 0);
+        assertEq(taskMetadata.depositFee, 0);
         assertEq(taskMetadata.txHash, keccak256("txHash"));
         assertEq(taskMetadata.taskIndex, 0);
         assertEq(taskMetadata.registrationTime, uint64(block.timestamp));
@@ -851,10 +750,8 @@ contract AutomationRegistryTest is Test {
         registry.registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
-            keccak256("txHash"),                // txHash
             uint128(1_000_000),                 // maxGasAmount
             2,                                  // priority
-            1,                                  // task type
             auxData                             // aux data
         );
     }

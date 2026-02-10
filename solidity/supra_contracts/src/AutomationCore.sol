@@ -213,12 +213,11 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     }
 
     /// @notice Helper function to validate the inputs while registering a task.
-    function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount, bytes32 _txHash) private view {
+    function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
         ( , address payloadTarget, , ) = abi.decode(_payloadTx, (uint128, address, bytes, LibConfig.AccessListEntry[]));
         payloadTarget.validateContractAddress();
         
         if(_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
-        if(_txHash == bytes32(0)) { revert InvalidTxHash(); }
     }
 
     /// @notice Function to ensure that AutomationController contract is the caller.
@@ -506,7 +505,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return (true, pendingCycleDuration);        
     }
 
-    /// @notice Internally calls _calculateTaskFee, reverts if caller is not AutomationController.
+    /// @notice Internally calls _calculateTaskFee.
     function calculateTaskFee(
         CommonUtils.TaskState _state,
         uint64 _expiryTime,
@@ -515,8 +514,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint64 _currentTime,
         uint128 _automationFeePerSec
     ) external view returns (uint128) {
-        onlyController();
-
         return _calculateTaskFee(
             _state,
             _expiryTime,
@@ -568,13 +565,12 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         _safeDepositRefund(
             _task.taskIndex,
             _task.owner,
-            _task.lockedFeeForNextCycle,
-            _task.lockedFeeForNextCycle
+            _task.depositFee,
+            _task.depositFee
         );
     }
 
     function calculateAutomationFeeMultiplierForCurrentCycleInternal() external view returns (uint128) {
-        onlyController();
         // Compute the automation fee multiplier for this cycle
         return calculateAutomationFeeMultiplierForCycle(
             regConfig.gasCommittedForThisCycle(),
@@ -588,7 +584,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     function calculateAutomationFeeMultiplierForCommittedOccupancy(
         uint128 _totalCommittedMaxGas
     ) external view returns (uint128) {
-        onlyController();
         // Compute the automation fee multiplier for cycle        
         return calculateAutomationFeeMultiplierForCycle(
             _totalCommittedMaxGas,
@@ -621,13 +616,11 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     /// @notice Helper function that performs validation and updates state for a valid task.
     function updateStateForValidRegistration(
         uint256 _totalTasks, 
-        uint8 _inputType,
         uint64 _regTime,
         uint64 _expiryTime,
         CommonUtils.TaskType _taskType,
         bytes memory _payloadTx, 
         uint128 _maxGasAmount, 
-        bytes32 _txHash,
         uint128 _gasPriceCap,
         uint128 _automationFeeCapForCycle
     ) external {
@@ -639,7 +632,6 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         if (!regConfig.registrationEnabled()) { revert RegistrationDisabled(); }
 
         if (!automationController.isCycleStarted()) { revert CycleTransitionInProgress(); }
-        if(_inputType != uint8(_taskType)) { revert InvalidTaskType(); }
         
         bool isUST = _taskType == CommonUtils.TaskType.UST;
    
@@ -665,7 +657,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         }
 
         validateTaskDuration(_regTime, _expiryTime, taskDurationCap, automationController.getCycleEndTime());
-        validateInputs(_payloadTx, _maxGasAmount, _txHash);
+        validateInputs(_payloadTx, _maxGasAmount);
 
         uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;
         if(gasCommitted > nextCycleRegistryMaxGasCap) { revert GasCommittedExceedsMaxGasCap(); }
@@ -727,7 +719,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         uint128 _maxGasAmount,
         uint64 _residualInterval,
         uint64 _currentTime,
-        uint128 _lockedFeeForNextCycle
+        uint128 _depositFee
     )  external returns (uint128, uint128) {
         onlyRegistry();
 
@@ -749,13 +741,13 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
 
             // Refund full deposit and the half of the remaining run-time fee when task is active or cancelled stage
             cycleFeeRefund = taskFee / REFUND_FRACTION; 
-            depositRefund = _lockedFeeForNextCycle;
+            depositRefund = _depositFee;
         } else {
             cycleFeeRefund = 0;
-            depositRefund = _lockedFeeForNextCycle / REFUND_FRACTION;
+            depositRefund = _depositFee / REFUND_FRACTION;
         }
 
-        bool result = _safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
+        bool result = _safeUnlockLockedDeposit(_taskIndex, _depositFee);
         if(!result) { revert ErrorDepositRefund(); }
 
         (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(regConfig.cycleLockedFees, uint64(cycleFeeRefund), _taskIndex);

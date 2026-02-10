@@ -64,13 +64,11 @@ interface IAutomationCore {
     function getTotalDepositedAutomationFees() external view returns (uint256);
     function updateStateForValidRegistration(
         uint256 _totalTasks, 
-        uint8 _inputType,
         uint64 _regTime,
         uint64 _expiryTime,
         CommonUtils.TaskType _taskType,
         bytes memory _payloadTx, 
         uint128 _maxGasAmount, 
-        bytes32 _txHash,
         uint128 _gasPriceCap,
         uint128 _automationFeeCapForCycle
     ) external;
@@ -103,7 +101,7 @@ interface IAutomationCore {
         uint128 _maxGasAmount,
         uint64 _residualInterval,
         uint64 _currentTime,
-        uint128 _lockedFeeForNextCycle
+        uint128 _depositFee
     )  external returns (uint128, uint128);
     function updateGasCommittedForNextCycle(CommonUtils.TaskType _taskType, uint128 _maxGasAmount) external;
     function updateGasCommittedAndCycleLockedFees(
