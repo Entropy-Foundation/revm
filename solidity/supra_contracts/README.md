@@ -1,6 +1,13 @@
 ## Supra EVM Automation Registry
 
-**This repository includes Supra EVM Automation Registry contract and related contracts.**
+**This repository includes following smart contracts:**
+- MultiSignatureWallet and MultisigBeacon
+- ERC20Supra
+- BlockMeta
+- Automation Registry smart contracts
+    - AutomationCore: manages configuration, refunds, fee accounting and other helper functions 
+    - AutomationRegistry: user facing contract to register/cancel/stop a task
+    - AutomationController: manages cycle transition and processing of tasks
 
 Foundry consists of:
 
@@ -34,40 +41,8 @@ $ forge build
 $ forge test
 ```
 
-### Format
+### Deploying Automation Registry smart contracts
 
 ```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+$ forge script script/DeployAutomationRegistry.s.sol:DeployAutomationRegistry --rpc-url <your_rpc_url> --private-key <your_private_key>
 ```

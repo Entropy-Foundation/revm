@@ -21,6 +21,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
      */
 
+
     /// @notice Ordered list of functions to be executed
     /// @dev Layout: [target[160] | selector[32] | 0[64]]
     uint256[] private executions;
@@ -89,6 +90,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     /// @param _selector Function selector to be called on target contract.
     function register(address _targetContract, bytes4 _selector) external onlyOwner {
         _targetContract.validateContractAddress();
+
         require(_selector != bytes4(0), InvalidSelector());
 
         uint256 executionEntry = packExecution(_targetContract, _selector);

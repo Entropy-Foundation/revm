@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "ethers": "^6.16.0"
+  },
+  "type": "module"
+}
