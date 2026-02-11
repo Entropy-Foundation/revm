@@ -4,6 +4,43 @@ use core::fmt::Debug;
 use core::hash::Hash;
 use primitives::{hardfork::SpecId, Address, TxKind, U256};
 
+/// Describes execution context of the transaction.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub enum ExecutionMode {
+    #[default]
+    /// Executing user submitted transaction.
+    User,
+    /// Executing automated transaction.
+    Automated,
+    /// Executing governance sponsored automated transaction.
+    AutomatedGasless,
+    /// Executing governance native transaction.
+    System,
+}
+
+impl ExecutionMode {
+    /// Returns true if gas should be charged for execution.
+    pub fn charges_gas(&self) -> bool {
+        match self {
+            ExecutionMode::User |
+            ExecutionMode::Automated => true,
+            ExecutionMode::AutomatedGasless |
+            ExecutionMode::System => false,
+        }
+    }
+
+    /// Returns true if nonce should be updated in case of successful execution.
+    pub fn updates_nonce(&self) -> bool {
+        matches!(self, ExecutionMode::User)
+    }
+
+    /// Returns true if the execution context is for governance native transaction
+    pub fn is_system(&self) -> bool {
+        matches!(self, ExecutionMode::System)
+    }
+}
+
 /// Configuration for the EVM.
 #[auto_impl(&, &mut, Box, Arc)]
 pub trait Cfg {
@@ -60,7 +97,8 @@ pub trait Cfg {
     fn is_priority_fee_check_disabled(&self) -> bool;
 
     /// Returns whether the automation mode is enabled.
-    fn is_automation_mode(&self) -> bool;
+    fn execution_mode(&self) -> &ExecutionMode;
+
 }
 
 /// What bytecode analysis to perform

@@ -12,6 +12,7 @@ use context_interface::{
 };
 use interpreter::interpreter_action::FrameInit;
 use interpreter::{Gas, InitialAndFloorGas, SharedMemory};
+use primitives::supra_constants::{is_supra_reserved, is_vm_signer};
 use primitives::U256;
 
 /// Trait for errors that can occur during EVM execution.
@@ -153,13 +154,16 @@ pub trait Handler {
         self.execution_result(evm, exec_result)
     }
 
-    /// Validates the execution environment and transaction parameters.
+    /// Validates the execution environment, transaction parameters and caller address.
+    ///
+    /// The transaction caller is verified to not be one of the SUPRA reserved addresses for user transactions.
     ///
     /// Calculates initial and floor gas requirements and verifies they are covered by the gas limit.
     ///
     /// Validation against state is done later in pre-execution phase in deduct_caller function.
     #[inline]
     fn validate(&self, evm: &mut Self::Evm) -> Result<InitialAndFloorGas, Self::Error> {
+        self.validate_caller(evm)?;
         self.validate_env(evm)?;
         self.validate_initial_tx_gas(evm)
     }
@@ -240,6 +244,22 @@ pub trait Handler {
     #[inline]
     fn validate_env(&self, evm: &mut Self::Evm) -> Result<(), Self::Error> {
         validation::validate_env(evm.ctx())
+    }
+
+    /// Validates caller, to reject user transactions having caller address matching any of
+    /// the SUPRA reserved addresses.
+    #[inline]
+    fn validate_caller(&self, evm: &mut Self::Evm) -> Result<(), Self::Error> {
+        let ctx = evm.ctx_ref();
+        let is_system_context = ctx.cfg().execution_mode().is_system();
+        let caller = ctx.tx().caller();
+        if !is_system_context && is_supra_reserved(&caller) {
+            Err(Self::Error::from_string(format!("Invalid caller: supra reserved address. TxnHash {}", ctx.tx().tx_hash())))
+        } else if is_system_context && !is_vm_signer(&caller) {
+            Err(Self::Error::from_string(String::from("Invalid caller: Expected VM_SIGNER as caller for system transactions.")))
+        } else {
+            Ok(())
+        }
     }
 
     /// Calculates initial gas costs based on transaction type and input data.
