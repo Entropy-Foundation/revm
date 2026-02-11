@@ -27,7 +27,7 @@ use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
 };
-use primitives::{keccak256, Address, Bytes, B256, U256};
+use primitives::{keccak256, Address, Bytes, U256};
 use state::Bytecode;
 use std::borrow::ToOwned;
 use std::boxed::Box;
@@ -279,7 +279,7 @@ impl EthFrame<EthInterpreter> {
         inputs: Box<CreateInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
         let spec = context.cfg().spec().into();
-        let is_automation = context.cfg().is_automation_mode();
+        let should_update_nonce = context.cfg().execution_mode().updates_nonce();
         let return_error = |e| {
             Ok(ItemOrResult::Result(FrameResult::Create(CreateOutcome {
                 result: InterpreterResult {
@@ -310,7 +310,7 @@ impl EthFrame<EthInterpreter> {
             return return_error(InstructionResult::OutOfFunds);
         }
         let old_nonce = caller_info.nonce;
-        if !is_automation {
+        if should_update_nonce {
             // Increase nonce of caller and check if it overflows
             let Some(new_nonce) = old_nonce.checked_add(1) else {
                 return return_error(InstructionResult::Return);

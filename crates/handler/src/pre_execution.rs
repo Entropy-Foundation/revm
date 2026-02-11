@@ -114,12 +114,14 @@ pub fn validate_against_state_and_deduct_caller<
 >(
     context: &mut CTX,
 ) -> Result<(), ERROR> {
-    let automation_mode = context.cfg().is_automation_mode();
+    let should_update_nonce = context.cfg().execution_mode().updates_nonce();
     let basefee = context.block().basefee() as u128;
     let blob_price = context.block().blob_gasprice().unwrap_or_default();
     let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
     let is_eip3607_disabled = context.cfg().is_eip3607_disabled();
-    let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled();
+    // nonce check will not be done if it is disabled, or execution mode does not assume nonce-change.
+    let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled()
+        || ! should_update_nonce;
 
     let (tx, journal) = context.tx_journal_mut();
 
@@ -167,7 +169,7 @@ pub fn validate_against_state_and_deduct_caller<
     caller_account.mark_touch();
     caller_account.info.balance = new_balance;
 
-    if !automation_mode {
+    if should_update_nonce {
         // Bump the nonce for calls. Nonce for CREATE will be bumped in `make_create_frame`.
         if tx.kind().is_call() {
             // Nonce is already checked
