@@ -21,6 +21,9 @@ contract AutomationRegistryTest is Test {
     AutomationRegistry registry;                // AutomationRegistry instance on proxy address
     AutomationController controller;            // AutomationController instance on proxy address
 
+    /// @dev Address of the transaction hash precompile.
+    address constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
+
     address admin = address(0xA11CE);
     address vmSigner = address(0x53555000);
     address alice = address(0x123);
@@ -73,6 +76,12 @@ contract AutomationRegistryTest is Test {
         registry.setAutomationController(address(controller));
 
         vm.stopPrank();
+
+        vm.mockCall(
+            TX_HASH_PRECOMPILE,
+            bytes(""),
+            abi.encode(keccak256("txHash"))
+        );
     }
 
     /// @dev Test to ensure all state variables are initialized correctly.
