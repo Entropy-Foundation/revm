@@ -25,7 +25,7 @@ contract MintErc20Supra is Script {
         console.log("Sender ", msg.sender);
         console.log("Token balance ", erc20supraImpl.balanceOf(msg.sender));
 
-        //erc20supraImpl.nativeToErc20SupraWithAllowance{value: value}(authority, uint256(allowance));
+        erc20supraImpl.nativeToErc20SupraWithAllowance{value: value}(authority, uint256(allowance));
 
         console.log("Sender ", msg.sender);
         console.log("Token balance ", erc20supraImpl.balanceOf(msg.sender));

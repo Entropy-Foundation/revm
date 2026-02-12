@@ -5,13 +5,13 @@ use crate::errors::SupraExtensionError;
 use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBindings::blockPrologueCall;
 use crate::value_or_error;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
-use alloy_sol_types::SolCall;
-use context::TransactionType;
-use primitives::supra_constants::VM_SIGNER;
-use alloy_eips::eip2718::Typed2718;
 use alloy_consensus::transaction::Transaction;
+use alloy_eips::eip2718::Typed2718;
+use alloy_sol_types::SolCall;
 use context::transaction::{AccessList, SignedAuthorization};
+use context::TransactionType;
 use primitives::eip7825::TX_GAS_LIMIT_CAP;
+use primitives::supra_constants::VM_SIGNER;
 use primitives::TxKind;
 
 /// EVM system transaction generated based on the block sent for execution.
@@ -42,7 +42,6 @@ pub struct BlockMetadata {
 }
 
 impl Transaction for BlockMetadata {
-
     #[inline]
     fn chain_id(&self) -> Option<ChainId> {
         Some(self.chain_id)
@@ -131,7 +130,6 @@ impl Typed2718 for BlockMetadata {
     fn ty(&self) -> u8 {
         TransactionType::Custom as u8
     }
-
 }
 
 /// Builder for [`BlockMetadata`] transaction.

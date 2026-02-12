@@ -120,8 +120,7 @@ pub fn validate_against_state_and_deduct_caller<
     let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
     let is_eip3607_disabled = context.cfg().is_eip3607_disabled();
     // nonce check will not be done if it is disabled, or execution mode does not assume nonce-change.
-    let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled()
-        || ! should_update_nonce;
+    let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled() || !should_update_nonce;
 
     let (tx, journal) = context.tx_journal_mut();
 

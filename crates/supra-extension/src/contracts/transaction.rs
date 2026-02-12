@@ -1,9 +1,9 @@
 //! Encloses data representing genesis contracts.
 
 use derive_getters::{Dissolve, Getters};
+use derive_more::Constructor;
 use primitives::Address;
 use std::fmt::Debug;
-use derive_more::Constructor;
 
 /// Represents data required to construct genesis contracts deployment transaction
 #[derive(Clone, Getters, Dissolve, Constructor)]
@@ -35,10 +35,10 @@ pub enum GenesisTransactionTags {
     Erc20Supra = 3,
     BlockMetadataImpl = 4,
     BlockMetadata = 5,
-    AutomationControllerImpl = 6,
-    AutomationController = 7,
-    AutomationCoreImpl = 8,
-    AutomationCore = 9,
-    AutomationRegistryImpl = 10,
-    AutomationRegistry = 11,
+    AutomationCoreImpl = 6,
+    AutomationCore = 7,
+    AutomationRegistryImpl = 8,
+    AutomationRegistry = 9,
+    AutomationControllerImpl = 10,
+    AutomationController = 11,
 }

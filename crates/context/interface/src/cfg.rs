@@ -25,11 +25,10 @@ impl ExecutionMode {
     /// Returns true if gas should be charged for execution.
     pub fn charges_gas(&self) -> bool {
         match self {
-            ExecutionMode::User |
-            ExecutionMode::Automated => true,
-            ExecutionMode::AutomatedGasless |
-            ExecutionMode::System |
-            ExecutionMode::Genesis => false,
+            ExecutionMode::User | ExecutionMode::Automated => true,
+            ExecutionMode::AutomatedGasless | ExecutionMode::System | ExecutionMode::Genesis => {
+                false
+            }
         }
     }
 
@@ -45,7 +44,7 @@ impl ExecutionMode {
 
     /// Returns true if the execution context is for governance genesis transaction
     pub fn is_genesis(&self) -> bool {
-        matches!(self,  ExecutionMode::Genesis)
+        matches!(self, ExecutionMode::Genesis)
     }
 }
 
@@ -106,7 +105,6 @@ pub trait Cfg {
 
     /// Returns whether the automation mode is enabled.
     fn execution_mode(&self) -> &ExecutionMode;
-
 }
 
 /// What bytecode analysis to perform

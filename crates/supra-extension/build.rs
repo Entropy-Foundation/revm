@@ -115,7 +115,10 @@ fn compile_contracts() -> Result<()> {
     // Tell Cargo that if a source file changes, to rerun this build script.
     project.rerun_if_sources_changed();
     println!("cargo:rerun-if-changed={}/compile_config.toml", CURRENT_DIR);
-    println!("cargo:rustc-env=COMPILED_CONTRACTS_DIR={}", project.paths.artifacts.display());
+    println!(
+        "cargo:rustc-env=COMPILED_CONTRACTS_DIR={}",
+        project.paths.artifacts.display()
+    );
 
     Ok(())
 }

@@ -254,10 +254,17 @@ pub trait Handler {
         let execution_mode = ctx.cfg().execution_mode();
         let caller = ctx.tx().caller();
         // Supra reserved address is allowed either in system execution mode or in genesis
-        if  is_supra_reserved(&caller) && !(execution_mode.is_system() || execution_mode.is_genesis()) {
-            Err(Self::Error::from_string(format!("Invalid caller: supra reserved address. TxnHash {}", ctx.tx().tx_hash())))
+        if is_supra_reserved(&caller)
+            && !(execution_mode.is_system() || execution_mode.is_genesis())
+        {
+            Err(Self::Error::from_string(format!(
+                "Invalid caller: supra reserved address. TxnHash {}",
+                ctx.tx().tx_hash()
+            )))
         } else if !is_vm_signer(&caller) && execution_mode.is_system() {
-            Err(Self::Error::from_string(String::from("Invalid caller: Expected VM_SIGNER as caller for system transactions.")))
+            Err(Self::Error::from_string(String::from(
+                "Invalid caller: Expected VM_SIGNER as caller for system transactions.",
+            )))
         } else {
             Ok(())
         }
