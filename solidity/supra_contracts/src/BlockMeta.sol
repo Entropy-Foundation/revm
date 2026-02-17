@@ -3,10 +3,10 @@ pragma solidity 0.8.27;
 
 import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {CommonUtils} from "./CommonUtils.sol";
+import {LibUtils} from "./libraries/LibUtils.sol";
 
 contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
-    using CommonUtils for address;
+    using LibUtils for address;
 
     /// @dev Custom errors
     error CallerNotVmSigner();

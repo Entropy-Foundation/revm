@@ -1,0 +1,697 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.27;
+
+import {LibUtils} from "./LibUtils.sol";
+import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
+import {LibRegistry} from "./LibRegistry.sol";
+import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+
+library LibCore {
+    using LibUtils for *;
+    using EnumerableSet for EnumerableSet.UintSet;
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CUSTOM ERRORS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    
+    error InconsistentTransitionState();
+    error InvalidInputCycleIndex();
+    error InvalidRegistryState();
+    error OutOfOrderTaskProcessingRequest();
+    error TaskIndexNotFound();
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
+    event ActiveTasks(uint256[] indexed taskIndexes);
+
+    /// @notice Event emitted on cycle transition containing removed task indexes.
+    event RemovedTasks(uint64[] indexed taskIndexes);
+
+    /// @notice Emitted when the cycle state transitions.
+    event AutomationCycleEvent(
+        uint64 indexed index,
+        LibUtils.CycleState indexed state,
+        uint64 startTime,
+        uint64 durationSecs,
+        LibUtils.CycleState indexed oldState
+    );
+
+    /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
+    event TaskCycleFeeWithdraw(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 fee
+    );
+
+    /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
+    event TaskCancelledCapacitySurpassed(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 fee,
+        uint128 automationFeeCapForCycle,
+        bytes32 registrationHash
+    );
+
+    /// @notice Emitted when a task is removed due to insufficient balance.
+    event TaskCancelledInsufficentBalance(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 fee,
+        uint256 balance,
+        bytes32 registrationHash
+    );
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Function to remove a task from the registry.
+    /// @param _taskIndex Index of the task to remove. 
+    /// @param _removeFromSysReg Wheather to remove from system task registry.
+    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if(_removeFromSysReg) {
+            require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
+        }
+
+        delete s.registryState.tasks[_taskIndex];
+        require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
+    }
+
+    /// @notice Function to update the cycle locked fees, gas committed and tasks lists.
+    /// @param _lockedFees Updated cycle locked fees
+    /// @param _sysGasCommittedForNextCycle Updated system gas committed for next cycle 
+    /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
+    /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
+    /// @param _state Cycle transition state executing the update.
+    function updateRegistryState(
+        uint256 _lockedFees,
+        uint128 _sysGasCommittedForNextCycle,
+        uint128 _gasCommittedForNextCycle,
+        uint128 _gasCommittedForNewCycle,
+        LibUtils.CycleState _state
+    ) private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        s.registryState.cycleLockedFees  = _lockedFees;
+        s.registryState.sysGasCommittedForNextCycle = _sysGasCommittedForNextCycle;
+        s.registryState.sysGasCommittedForThisCycle = _sysGasCommittedForNextCycle;
+        s.registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
+        s.registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
+
+        s.registryState.activeTaskIds.clear();
+        if (_state == LibUtils.CycleState.FINISHED) {
+            uint256[] memory taskIds = s.registryState.taskIdList.values();
+            for (uint256 i = 0; i < taskIds.length; i++) {
+                s.registryState.activeTaskIds.add(taskIds[i]);
+            }
+        } else {
+            s.registryState.sysTaskIds.clear();
+        }
+    }
+
+    /// @notice Function to update the registry configuration, reverts if caller is not AutomationController.
+    function applyPendingConfig() private returns (bool, uint64) {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (!s.ifBufferExists) {
+            return (false, 0);
+        } 
+        uint64 pendingCycleDuration = s.configBuffer.cycleDurationSecs;
+        s.activeConfig = s.configBuffer;
+        
+        delete s.configBuffer;
+        
+        return (true, pendingCycleDuration);        
+    }
+
+    /// @notice Updates the state of the cycle.
+    /// @param _state Input state to update cycle state with.
+    function updateCycleStateTo(LibUtils.CycleState _state) private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        LibUtils.CycleState oldState = s.cycleState;
+        s.cycleState = _state;
+
+        emit AutomationCycleEvent (
+            s.index,
+            s.cycleState,
+            s.startTime,
+            s.durationSecs,
+            oldState
+        );
+    }
+
+    /// @notice Helper function to update the expected tasks of the transition state.
+    function updateExpectedTasks(uint256[] memory _expectedTasks) private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        s.transitionState.expectedTasksToBeProcessed.clear();
+
+        for (uint256 i = 0; i < _expectedTasks.length; i++) {
+            s.transitionState.expectedTasksToBeProcessed.add(_expectedTasks[i]);
+        }
+    }
+
+    /// @notice Transitions cycle state to the READY state. 
+    function moveToReadyState() private {
+        // If the cycle duration updated has been identified during transtion, then the transition state is kept
+        // with reset values except new cycle duration to have it properly set for the next new cycle.
+        // This may happen in case if cycle was ended and feature-flag has been disbaled before any task has
+        // been processed for the cycle transition.
+        // Note that we want to have consistent data in ready state which says that the cycle pointed in the ready state
+        // has been finished/summerized, and we are ready to start the next new cycle, and all the cycle information should
+        // match the finalized/summerized cycle since its start, including cycle duration.
+
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        // Check if transition state exists
+        if (s.ifTransitionStateExists) {
+            if (s.transitionState.newCycleDuration == s.durationSecs) {
+                // Delete transition state
+                s.transitionState.expectedTasksToBeProcessed.clear();
+                delete s.transitionState;
+                s.ifTransitionStateExists = false;
+            } else {
+                // Reset all except new cycle duration
+                s.transitionState.refundDuration = 0;
+                s.transitionState.automationFeePerSec = 0;
+                s.transitionState.gasCommittedForNewCycle = 0;
+                s.transitionState.gasCommittedForNextCycle = 0;
+                s.transitionState.sysGasCommittedForNextCycle = 0;
+                s.transitionState.lockedFees = 0;
+                s.transitionState.nextTaskIndexPosition = 0;
+                s.transitionState.expectedTasksToBeProcessed.clear();
+            }
+        }
+        updateCycleStateTo(LibUtils.CycleState.READY);
+    }
+
+    /// @notice Updates the cycle state if the transition is identified to be finalized.
+    /// As transition happens from suspended state and while transition was in progress
+    ///    - if the feature was enabled back, then the transition will happen direclty to STARTED state,
+    ///    - otherwise the transition will be done to the READY state.
+    ///
+    /// In both cases config will be updated. In this case we will make sure to keep the consistency of state
+    /// when transition to READY state happens through paths
+    ///  - Started -> Suspended -> Ready
+    ///  - or Started-> {Finished, Suspended} -> Ready
+    ///  - or Started -> Finished -> {Started, Suspended}
+    function updateCycleTransitionStateFromSuspended() private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        // Check if transition state exists
+        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if (!isTransitionFinalized()) {
+            return; 
+        }
+        
+        updateRegistryState(0, 0, 0, 0, LibUtils.CycleState.SUSPENDED);
+
+        // Check if automation is enabled
+        if (s.automationEnabled) {
+            // Update the config in case if transition flow is STARTED -> SUSPENDED-> STARTED.
+            // to reflect new configs for the new cycle if it has been updated during SUSPENDED state processing
+            updateConfigFromBuffer();
+            moveToStartedState();
+        } else {
+            moveToReadyState();
+        }
+    }
+
+    /// @notice Marks a task as processed.
+    /// @param _taskIndex Index of the task to be marked as processed.
+    function markTaskProcessed(uint64 _taskIndex) private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        uint64 nextTaskIndexPosition = s.transitionState.nextTaskIndexPosition;
+
+        if (nextTaskIndexPosition >= s.transitionState.expectedTasksToBeProcessed.length()) { revert InconsistentTransitionState(); }
+        uint64 expectedTask = uint64(s.transitionState.expectedTasksToBeProcessed.at(nextTaskIndexPosition));
+
+        if (expectedTask != _taskIndex) { revert OutOfOrderTaskProcessingRequest(); } 
+        s.transitionState.nextTaskIndexPosition = nextTaskIndexPosition + 1;  
+    }
+
+    /// @notice Updates the cycle state if the transition is identified to be finalized.
+    /// From FINISHED state we always move to the next cycle and in STARTED state.
+    /// But if it happened so that there was a suspension during cycle transition which was ignored, then immediately cycle state is updated to suspended.
+    /// Expectation will be that native layer catches this double transition and issues refund for the new cycle fees which will not be proceeded further in any case.
+    function updateCycleTransitionStateFromFinished() private {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        // Check if transition state exists
+        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+
+        if (isTransitionFinalized()) {
+            if (!s.automationEnabled && s.cycleState == LibUtils.CycleState.FINISHED) {
+                tryMoveToSuspendedState();
+            } else {
+                updateRegistryState(
+                    s.transitionState.lockedFees,
+                    s.transitionState.sysGasCommittedForNextCycle,
+                    s.transitionState.gasCommittedForNextCycle,
+                    s.transitionState.gasCommittedForNewCycle,
+                    LibUtils.CycleState.FINISHED
+                );
+
+                // Set current timestamp as cycle start time
+                // Increment the cycle and update the state to STARTED
+                moveToStartedState();
+                if (LibRegistry.getTotalActiveTasks() > 0 ) {
+                    uint256[] memory activeTasks = LibRegistry.getAllActiveTaskIds();
+                    emit ActiveTasks(activeTasks);
+                }
+            }
+        }
+    }
+
+    /// @notice Traverses all input task indexes and either drops or tries to charge automation fee if possible.
+    /// @param _taskIndexes Input task indexes.
+    /// @return intermediateState Returns the intermediate state.
+    function dropOrChargeTasks(
+        uint64[] memory _taskIndexes
+    ) private returns (LibUtils.IntermediateStateOfCycleChange memory intermediateState) {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 currentCycleEndTime = currentTime + s.transitionState.newCycleDuration;
+
+        // Sort task indexes to charge automation fees in their chronological order
+        uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+
+        uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
+        uint256 removedCount;
+
+        // Process each active task and calculate fee for the cycle for the tasks
+        for (uint256 i = 0; i < taskIndexes.length; i++) {
+            LibUtils.TransitionResult memory result = dropOrChargeTask(
+                taskIndexes[i],
+                currentTime,
+                currentCycleEndTime
+            );
+
+            if (result.isRemoved) {
+                removedBuffer[removedCount] = taskIndexes[i];
+                removedCount += 1; 
+            }
+
+            intermediateState.gasCommittedForNextCycle += result.gas;
+            intermediateState.sysGasCommittedForNextCycle += result.sysGas;
+            intermediateState.cycleLockedFees += result.fees;
+        }
+
+        uint64[] memory removedTasks = new uint64[](removedCount);
+        for (uint256 j = 0; j < removedCount; j++) {
+            removedTasks[j] = removedBuffer[j];
+        }
+        intermediateState.removedTasks = removedTasks;
+    }
+
+    /// @notice Drops or charges the input task. If the task is already processed or missing from the registry then nothing is done.
+    /// @param _taskIndex Task index to be dropped or charged.
+    /// @param _currentTime Current time.
+    /// @param _currentCycleEndTime End time of the current cycle.
+    /// @return result Returns the TransitionResult.
+    function dropOrChargeTask(
+        uint64 _taskIndex,
+        uint64 _currentTime,
+        uint64 _currentCycleEndTime
+    ) private returns (LibUtils.TransitionResult memory result) {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (LibRegistry.ifTaskExists(_taskIndex)) {
+            markTaskProcessed(_taskIndex);
+
+            TaskMetadata memory task = LibRegistry.getTask(_taskIndex);
+            bool isUst = task.taskType == LibUtils.TaskType.UST;
+            
+            // Task is cancelled or expired
+            if (task.taskState == LibUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
+                if (isUst) {
+                    LibRegistry.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
+                } else {
+                    // Remove the task from registry and system registry
+                    removeTask(_taskIndex, true);
+                }
+                result.isRemoved = true;
+            } else if (!isUst) {
+                // Active GST
+                // Governance submitted tasks are not charged
+
+                result.sysGas = task.maxGasAmount;                
+                s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.ACTIVE;
+            } else {
+                // Active UST
+                uint128 fee = LibRegistry.calculateTaskFee(
+                    task.taskState,
+                    task.expiryTime,
+                    task.maxGasAmount,
+                    s.transitionState.newCycleDuration,
+                    _currentTime,
+                    s.transitionState.automationFeePerSec
+                );
+
+                // If the task reached this phase that means it is a valid active task for the new cycle.
+                // During cleanup all expired tasks has been removed from the registry but the state of the tasks is not updated.
+                // As here we need to distinguish new tasks from already existing active tasks,
+                // as the fee calculation for them will be different based on their active duration in the cycle.
+                // For more details see calculateTaskFee function.
+                
+                s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.ACTIVE;
+                (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
+                    _taskIndex,
+                    task.owner,
+                    task.maxGasAmount,
+                    task.expiryTime,
+                    task.depositFee,
+                    fee,
+                    _currentCycleEndTime,
+                    task.automationFeeCapForCycle,
+                    task.txHash
+                );
+            }
+        }
+    }
+
+    /// @notice Helper function to withdraw automation task fees for an active task.
+    /// @param _taskIndex Index of the task.
+    /// @param _owner Owner of the task.
+    /// @param _maxGasAmount Max gas amount of the task.
+    /// @param _expiryTime Expiry time of the task.
+    /// @param _lockedFeeForNextCycle Locked fees of the task.
+    /// @param _fee Fees to be charged for the task. 
+    /// @param _currentCycleEndTime End time of the current cycle.
+    /// @param _automationFeeCapForCycle Max automation fee for a cycle to be paid.
+    /// @param _regHash Tx hash of the task.
+    /// @return Bool representing if the task was removed.
+    /// @return Amount to add to gasCommittedForNextCycle 
+    /// @return Amount to add to cycleLockedFees 
+    function tryWithdrawTaskAutomationFee(
+        uint64 _taskIndex,
+        address _owner,
+        uint128 _maxGasAmount,
+        uint64 _expiryTime,
+        uint128 _lockedFeeForNextCycle,
+        uint128 _fee,
+        uint64 _currentCycleEndTime,
+        uint128 _automationFeeCapForCycle,
+        bytes32 _regHash
+    ) private returns (bool, uint128, uint128) {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        // Remove the automation task if the cycle fee cap is exceeded.
+        // It might happen that task has been expired by the time charging is being done.
+        // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
+        
+        bool isRemoved;
+        uint128 gas;
+        uint128 fees;
+        if (_fee > _automationFeeCapForCycle) {
+            LibRegistry.refundDepositAndDrop(_taskIndex, _owner, _lockedFeeForNextCycle,  _lockedFeeForNextCycle);
+
+            isRemoved = true;
+
+            emit TaskCancelledCapacitySurpassed(
+                _taskIndex,
+                _owner,
+                _fee,
+                _automationFeeCapForCycle,
+                _regHash
+            );
+        } else {
+            uint256 userBalance = IERC20(s.erc20Supra).balanceOf(_owner);
+            if (userBalance < _fee) {
+                // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
+
+                // require(unlocked, UnlockLockedDepositFailed());
+                LibRegistry.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
+                removeTask(_taskIndex, false);
+
+                isRemoved = true;
+
+                emit TaskCancelledInsufficentBalance(
+                    _taskIndex,
+                    _owner,
+                    _fee,
+                    userBalance,
+                    _regHash
+                );
+            } else {
+                if (_fee != 0)  {
+                    // Charge the fee    
+                    LibRegistry.chargeFees(_owner, _fee);
+                    fees = _fee;
+                }
+              
+                emit TaskCycleFeeWithdraw(
+                    _taskIndex,
+                    _owner,
+                    _fee
+                );
+
+                // Calculate gas commitment for the next cycle only for valid active tasks
+                if (_expiryTime > _currentCycleEndTime) {
+                    gas = _maxGasAmount;
+                }
+            }
+        }
+
+        return (isRemoved, gas, fees);
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Returns the cycle end time.
+    function getCycleEndTime() internal view returns (uint64 cycleEndTime) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        cycleEndTime = s.startTime + s.durationSecs;
+    }
+
+    /// @notice Checks whether cycle is in STARTED state.
+    function isCycleStarted() internal view returns (bool) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        return s.cycleState == LibUtils.CycleState.STARTED;
+    }
+
+    /// @notice Checks if the cycle transition is finalized.
+    /// @return Bool representing if the cycle transition is finalized.
+    function isTransitionFinalized() internal view returns (bool) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        return s.transitionState.expectedTasksToBeProcessed.length() == s.transitionState.nextTaskIndexPosition;
+    }
+
+    /// @notice Checks if the cycle transition is in progress.
+    /// @return Bool representing if the cycle transition is in progress.
+    function isTransitionInProgress() internal view returns (bool) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        return s.transitionState.nextTaskIndexPosition != 0;
+    }
+
+    /// @notice Traverses the list of the tasks and based on the task state and expiry information either charges or drops the task after refunding eligable fees.
+    /// Tasks are checked not to be processed more than once.
+    /// This function should be called only if registry is in FINISHED state, meaning a normal cycle transition is happening.
+    /// After processing all input tasks, intermediate transition state is updated and transition end is checked (whether all expected tasks has been processed already).
+    /// In case if transition end is detected a start of the new cycle is given (if during trasition period suspention is not requested) and corresponding event is emitted.
+    /// @param _cycleIndex Cycle index of the new cycle to which the transition is being done.
+    /// @param _taskIndexes Array of task indexes to be processed.
+    function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (_taskIndexes.length == 0) { return; }
+
+        if (s.cycleState != LibUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+        
+        // Check if transition state exists
+        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if (s.index + 1 != _cycleIndex) { revert InvalidInputCycleIndex(); }
+
+        LibUtils.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
+        
+        s.transitionState.lockedFees += intermediateState.cycleLockedFees;
+        s.transitionState.gasCommittedForNextCycle += intermediateState.gasCommittedForNextCycle;        
+        s.transitionState.sysGasCommittedForNextCycle += intermediateState.sysGasCommittedForNextCycle;
+
+        updateCycleTransitionStateFromFinished();
+        if (intermediateState.removedTasks.length > 0) {
+            emit RemovedTasks(intermediateState.removedTasks);
+        }
+    }
+
+    /// @notice Traverses the list of the tasks and refunds automation(if not PENDING) and deposit fees for all tasks and removes from registry.
+    /// This function is called only if automation feature is disabled, i.e. cycle is in SUSPENDED state.
+    /// After processing input set of tasks the end of suspention process is checked(i.e. all expected tasks have been processed).
+    /// In case if end is identified, the registry state is update to READY and corresponding event is emitted.
+    /// @param _cycleIndex Input cycle index of the cycle being suspended.
+    /// @param _taskIndexes Array of task indexes to be processed.
+    function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (_taskIndexes.length == 0) { return; }
+
+        if (s.cycleState != LibUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+        if (s.index != _cycleIndex) { revert InvalidInputCycleIndex(); }
+        // Check if transition state exists
+        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+
+        uint64 currentTime = uint64(block.timestamp);
+            
+        // Sort task indexes as order is important
+        uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+        uint64[] memory removedTasks = new uint64[](taskIndexes.length);
+        
+        uint64 removedCounter;
+        for (uint i = 0; i < taskIndexes.length; i++) {
+            if (LibRegistry.ifTaskExists(taskIndexes[i])) {
+                TaskMetadata memory task = LibRegistry.getTask(taskIndexes[i]);
+
+                removeTask(taskIndexes[i], false);
+
+                removedTasks[removedCounter++] = taskIndexes[i];
+                markTaskProcessed(taskIndexes[i]);
+
+                // Nothing to refund for GST tasks
+                if (task.taskType == LibUtils.TaskType.UST) {
+                    LibRegistry.refundTaskFees(currentTime, s.transitionState.refundDuration, s.transitionState.automationFeePerSec, task);
+                }
+            }
+        }
+        
+        updateCycleTransitionStateFromSuspended();
+        emit RemovedTasks(removedTasks);
+    }
+
+    /// @notice Helper function called when cycle end is identified.
+    function onCycleEndInternal() internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (!s.automationEnabled) {
+            tryMoveToSuspendedState();
+        } else {
+            if (LibRegistry.totalTasks() == 0) {
+                // Registry is empty update config buffer and move to STARTED state directly
+                updateConfigFromBuffer();
+                moveToStartedState();
+            } else {
+                uint256[] memory expectedTasksToBeProcessed = LibRegistry.getTaskIdList().sortUint256();
+
+                // Updates transition state
+                s.transitionState.refundDuration = 0;
+                s.transitionState.newCycleDuration = s.durationSecs;
+                s.transitionState.gasCommittedForNewCycle = s.registryState.gasCommittedForNextCycle;
+                s.transitionState.gasCommittedForNextCycle = 0;
+                s.transitionState.sysGasCommittedForNextCycle = 0;
+                s.transitionState.lockedFees = 0;
+                s.transitionState.nextTaskIndexPosition = 0;
+                updateExpectedTasks(expectedTasksToBeProcessed);
+
+                s.ifTransitionStateExists = true;
+
+                // During cycle transition we update config only after transition state is created in order to have new cycle duration as transition state parameter.
+                updateConfigFromBuffer();
+
+                // Calculate automation fee per second for the new cycle only after configuration is updated.
+                // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
+                // and will be used to charge tasks during transition process.
+                s.transitionState.automationFeePerSec = LibRegistry.calculateAutomationFeeMultiplierForCommittedOccupancy(s.transitionState.gasCommittedForNewCycle);
+                updateCycleStateTo(LibUtils.CycleState.FINISHED);
+            }
+        }
+    }
+
+    /// @notice Transition to suspended state is expected to be called
+    ///   a) when cycle is active and in progress
+    ///     - here we simply move to suspended state so native layer can start requesting tasks processing
+    ///       which will end up in refunds and cleanup. Note that refund will be done based on total gas-committed
+    ///       for the current cycle defined at the begining for the cycle, and using current automation fee parameters
+    ///   b) when cycle has just finished and there was another transaction causing feature suspension
+    ///     - as this both events happen in scope of the same block, then we will simply update the state to suspended
+    ///       and the native layer should identify the transition and request processing of the all available tasks.
+    ///       Note that in this case automation fee refund will not be expected and suspention and cycle end matched and
+    ///       no fee was yet charged to be refunded.
+    ///       So the duration for refund and automation-fee-per-second for refund will be 0
+    ///   c) when cycle transition was in progress and there was a feature suspension, but it could not be applied,
+    ///      and postponed till the cycle transition concludes
+    /// In all the cases if there are no tasks in registry the state will be updated directly to READY state.
+    function tryMoveToSuspendedState() internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+        
+        if (LibRegistry.totalTasks() == 0) {
+            // Registry is empty move to ready state directly
+            updateCycleStateTo(LibUtils.CycleState.READY);
+        } else if (!s.ifTransitionStateExists) {
+            // Indicates that cycle was in STARTED state when suspention has been identified.
+            // It is safe to assert that cycleEndTime will always be greater than current chain time as
+            // the cycle end is check in the block metadata txn execution which proceeds any other transaction in the block.
+            // Including the transaction which caused transition to suspended state.
+            // So in case if cycleEndTime < currentTime then cycle end would have been identified
+            // and we would have enterend else branch instead.
+            // This holds true even if we identified suspention when moving from FINALIZED->STARTED state.
+            // As in this case we will first transition to the STARTED state and only then to SUSPENDED.
+            // And when transition to STARTED state we update the cycle start-time to be the current-chain-time.
+            uint64 currentTime = uint64(block.timestamp); 
+            uint64 cycleEndTime = getCycleEndTime();
+
+            if (currentTime < s.startTime) { revert InvalidRegistryState(); }
+            if (currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
+            if (!isCycleStarted()) { revert InvalidRegistryState(); }
+
+            uint256[] memory tasksIdList = LibRegistry.getTaskIdList();
+            uint256[] memory expectedTasksToBeProcessed = tasksIdList.sortUint256();
+
+            s.transitionState.refundDuration = cycleEndTime - currentTime;
+            s.transitionState.newCycleDuration = s.durationSecs;
+            s.transitionState.automationFeePerSec = LibRegistry.calculateAutomationFeeMultiplierForCurrentCycle();
+            s.transitionState.gasCommittedForNewCycle = 0;
+            s.transitionState.gasCommittedForNextCycle = 0;
+            s.transitionState.sysGasCommittedForNextCycle = 0;
+            s.transitionState.lockedFees = 0;
+            s.transitionState.nextTaskIndexPosition = 0;
+
+            updateExpectedTasks(expectedTasksToBeProcessed);
+            s.ifTransitionStateExists = true;
+            
+            updateCycleStateTo(LibUtils.CycleState.SUSPENDED);
+        } else {
+            if (s.cycleState != LibUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+            if (isTransitionInProgress()) { revert InvalidRegistryState(); }
+
+            // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
+            // So the tasks sent for refund, will get only deposit refunded.  
+            s.transitionState.refundDuration = 0;
+            s.transitionState.automationFeePerSec = 0;
+            s.transitionState.gasCommittedForNewCycle = 0;
+            
+            updateCycleStateTo(LibUtils.CycleState.SUSPENDED);
+        }
+    }
+
+    /// @notice Transitions cycle state to the STARTED state. 
+    function moveToStartedState() internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+        
+        s.index += 1;
+        s.startTime = uint64(block.timestamp);
+
+        // Check if the transition state exists
+        if (s.ifTransitionStateExists) {
+            s.durationSecs = s.transitionState.newCycleDuration;
+        }
+
+        updateCycleStateTo(LibUtils.CycleState.STARTED);
+    }
+
+    /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
+    function updateConfigFromBuffer() internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        (bool applied, uint64 cycleDuration) = applyPendingConfig();
+        if (!applied) return;
+
+        // Check if transition state exists
+        if (s.ifTransitionStateExists) {
+            s.transitionState.newCycleDuration = cycleDuration; 
+        } else {
+            s.durationSecs = cycleDuration;
+        }    
+    }
+}

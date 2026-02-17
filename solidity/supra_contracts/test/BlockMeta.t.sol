@@ -6,7 +6,7 @@ import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC196
 import {OwnableUpgradeable} from"../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {Counter} from "./Counter.sol";
-import {CommonUtils} from "../src/CommonUtils.sol";
+import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 contract BlockMetaTest is Test {
     BlockMeta blockMeta;                        // BlockMeta instance on proxy address
@@ -86,14 +86,14 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'register' reverts if address(0) is passed.
     function testRegisterRevertsIfAddressZero() public {
-        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         register(address(0), selector);
     }
 
     /// @dev Test to ensure 'register' reverts if EOA is passed.
     function testRegisterRevertsIfEOA() public {
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         register(alice, selector);
     }
@@ -282,7 +282,7 @@ contract BlockMetaTest is Test {
         executionOrder[0] = packExecution(counterAddress, selector); 
         executionOrder[1] = packExecution(address(0), selector);
 
-        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -294,7 +294,7 @@ contract BlockMetaTest is Test {
         executionOrder[0] = packExecution(counterAddress, selector); 
         executionOrder[1] = packExecution(alice, selector);
 
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);

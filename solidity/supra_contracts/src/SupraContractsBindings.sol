@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {CommonUtils} from "./CommonUtils.sol";
+import {LibUtils} from "./libraries/LibUtils.sol";
+import {TaskMetadata} from "./libraries/LibAppStorage.sol";
 
 interface SupraContractsBindings {
 
-    // View functions of AutomationRegistry
+    // View functions of RegistryFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-    function getAllActiveTaskIds() external view returns (uint256[] memory);
-    function getTaskIdList() external view returns (uint256[] memory);
+    function getActiveTaskIds() external view returns (uint256[] memory);
+    function getTaskIds() external view returns (uint256[] memory);
+    function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
+    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
+
+    // View functions of CoreFacet
     function isAutomationEnabled() external view returns (bool);
-
-    function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory);
-    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (CommonUtils.TaskDetails[] memory);
-
-    // View functions of AutomationController
-    function getCycleInfo() external view returns(uint64, uint64, uint64, CommonUtils.CycleState);
+    function getCycleInfo() external view returns (uint64, uint64, uint64, LibUtils.CycleState);
     function getTransitionInfo() external view returns (uint64, uint128);
 
     // Entry function to be called by node runtime for bookkeeping
