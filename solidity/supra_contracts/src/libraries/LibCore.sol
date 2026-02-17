@@ -69,7 +69,7 @@ library LibCore {
     function removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        if(_removeFromSysReg) {
+        if (_removeFromSysReg) {
             require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
         }
 
@@ -423,7 +423,6 @@ library LibCore {
             if (userBalance < _fee) {
                 // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
 
-                // require(unlocked, UnlockLockedDepositFailed());
                 LibRegistry.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
                 removeTask(_taskIndex, false);
 

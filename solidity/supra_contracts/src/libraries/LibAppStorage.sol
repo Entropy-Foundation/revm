@@ -65,9 +65,9 @@ struct RegistryState {
     uint64 currentIndex;
     EnumerableSet.UintSet activeTaskIds;
     EnumerableSet.UintSet taskIdList;
-    mapping(uint64 => TaskMetadata) tasks;   
     EnumerableSet.UintSet sysTaskIds;
-    // mapping(address => uint64[]) userTasks       TO_DO: user to their tasks, need to decide on this 
+    mapping(uint64 => TaskMetadata) tasks;   
+    mapping(address => EnumerableSet.UintSet) userTasks; 
 }
 
 /// @notice Central AppStorage layout for Diamond proxy

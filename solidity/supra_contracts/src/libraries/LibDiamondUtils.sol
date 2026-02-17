@@ -229,7 +229,7 @@ library LibDiamondUtils {
         //                      RegistryFacet
         // ------------------------------------------------------------
         {
-            bytes4[] memory selectors = new bytes4[](35);
+            bytes4[] memory selectors = new bytes4[](36);
             selectors[0] = RegistryFacet.register.selector;
             selectors[1] = RegistryFacet.registerSystemTask.selector;
             selectors[2] = RegistryFacet.cancelTask.selector;
@@ -266,6 +266,7 @@ library LibDiamondUtils {
             selectors[32] = RegistryFacet.estimateAutomationFeeWithCommittedOccupancy.selector;
             selectors[33] = RegistryFacet.ifTaskExists.selector;
             selectors[34] = RegistryFacet.ifSysTaskExists.selector;
+            selectors[35] = RegistryFacet.getUserTasks.selector;
 
             cut[3] = IDiamondCut.FacetCut({
                 facetAddress: registryFacet,

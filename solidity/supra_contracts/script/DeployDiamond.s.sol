@@ -2,14 +2,7 @@
 pragma solidity 0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
-import {Diamond} from "../src/Diamond.sol";
-import {IDiamondCut} from "../src/interfaces/IDiamondCut.sol";
-import {DiamondCutFacet} from "../src/facets/DiamondCutFacet.sol";
-import {DiamondLoupeFacet} from "../src/facets/DiamondLoupeFacet.sol";
 import {OwnershipFacet} from "../src/facets/OwnershipFacet.sol";
-import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
-import {CoreFacet} from "../src/facets/CoreFacet.sol";
-import {DiamondInit} from "../src/upgradeInitializers/DiamondInit.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 
 contract DeployDiamond is Script {

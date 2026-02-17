@@ -5,6 +5,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {ConfigFacet} from "../src/facets/ConfigFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
 
@@ -17,7 +18,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ConfigFacet(diamondAddr).grantAuthorization(alice);
 
-        // assertTrue(ConfigFacet(diamondAddr).isAuthorizedSubmitter(alice));
+        assertTrue(IRegistryFacet(diamondAddr).isAuthorizedSubmitter(alice));
     }
 
     /// @dev Test to ensure 'grantAuthorization' emits event 'AuthorizationGranted'.
@@ -59,7 +60,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ConfigFacet(diamondAddr).revokeAuthorization(alice);
 
-        // assertFalse(ConfigFacet(diamondAddr).isAuthorizedSubmitter(alice));
+        assertFalse(IRegistryFacet(diamondAddr).isAuthorizedSubmitter(alice));
     }
 
     /// @dev Test to ensure 'revokeAuthorization' emits event 'AuthorizationRevoked'.
@@ -157,7 +158,6 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'enableRegistration' reverts if registration is already enabled.
     function testEnableRegistrationRevertsIfAlreadyEnabled() public {
-        // Already enabled in initialize()
         vm.expectRevert(IConfigFacet.AlreadyEnabled.selector);
 
         vm.prank(admin);

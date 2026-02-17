@@ -107,6 +107,7 @@ contract RegistryFacet is IRegistryFacet {
         
         s.registryState.tasks[taskIndex] = taskMetadata; 
         require(s.registryState.taskIdList.add(taskIndex), TaskIndexNotUnique());
+        require(s.registryState.userTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
         s.registryState.currentIndex += 1;
         s.registryState.totalDepositedAutomationFees += _automationFeeCapForCycle;
 
@@ -130,7 +131,7 @@ contract RegistryFacet is IRegistryFacet {
         uint64 _priority,
         bytes[] memory _auxData
     ) external {
-        if(!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
+        if (!isAuthorizedSubmitter(msg.sender)) { revert UnauthorizedAccount(); }
         
         uint64 regTime = uint64(block.timestamp);
         LibRegistry.updateStateForValidRegistration(
@@ -165,6 +166,7 @@ contract RegistryFacet is IRegistryFacet {
 
         s.registryState.tasks[taskIndex] = taskMetadata; 
         require(s.registryState.taskIdList.add(taskIndex), TaskIndexNotUnique());
+        require(s.registryState.userTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
         require(s.registryState.sysTaskIds.add(taskIndex), TaskIndexNotUnique());
         s.registryState.currentIndex += 1;
 
@@ -185,25 +187,25 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if(!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
-        if(!LibRegistry.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
+        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibRegistry.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
 
         TaskMetadata memory task = s.registryState.tasks[_taskIndex];
 
-        if(task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
-        if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
-        if(task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if (task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
+        if (task.owner != msg.sender) { revert UnauthorizedAccount(); }
+        if (task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         
         if (task.taskState == LibUtils.TaskState.PENDING) {
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
-            _removeTask(_taskIndex, false); 
+            removeTask(_taskIndex, task.owner, false); 
             bool result = LibRegistry.safeDepositRefund(
                 _taskIndex,
                 task.owner,
                 task.depositFee / REFUND_FACTOR,
                 task.depositFee
             );
-            if(!result) { revert ErrorDepositRefund(); }            
+            if (!result) { revert ErrorDepositRefund(); }            
         } else { 
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
             // Active tasks will be refunded the deposited amount fully at the end of the cycle.
@@ -233,27 +235,27 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if(!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
-        if(!LibRegistry.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
-        if(!LibRegistry.ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
+        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibRegistry.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
+        if (!LibRegistry.ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
 
         TaskMetadata memory task = s.registryState.tasks[_taskIndex];
 
         // Check if GST
-        if(task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
+        if (task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
 
-        if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
-        if(task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if (task.owner != msg.sender) { revert UnauthorizedAccount(); }
+        if (task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
 
-        if(task.taskState == LibUtils.TaskState.PENDING) {
-            _removeTask(_taskIndex, true);
+        if (task.taskState == LibUtils.TaskState.PENDING) {
+            removeTask(_taskIndex, task.owner, true);
         } else {
             s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.CANCELLED;
         }
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-        if(task.expiryTime > LibCore.getCycleEndTime()) {
+        if (task.expiryTime > LibCore.getCycleEndTime()) {
             LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
@@ -272,8 +274,8 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if(!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
-        if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
+        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
         LibUtils.TaskStopped[] memory stoppedTaskDetails = new LibUtils.TaskStopped[](_taskIndexes.length);
         uint256 counter = 0;
@@ -287,24 +289,24 @@ contract RegistryFacet is IRegistryFacet {
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
-            if(LibRegistry.ifTaskExists(_taskIndexes[i])) {
+            if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
                 TaskMetadata memory task = s.registryState.tasks[_taskIndexes[i]];
 
                 // Check if authorised
-                if(msg.sender != task.owner) { revert UnauthorizedAccount(); }
+                if (msg.sender != task.owner) { revert UnauthorizedAccount(); }
                 
                 // Check if UST
-                if(task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
+                if (task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
 
                 // Remove task from the registry
-                _removeTask(_taskIndexes[i], false);
+                removeTask(_taskIndexes[i], task.owner, false);
                 // Remove from active tasks
                 require(s.registryState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
                 // This check means the task was expected to be executed in the next cycle, but it has been stopped.
                 // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
                 // Also it checks that task should not be cancelled.
-                if(task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
+                if (task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     // Reduce committed gas by the stopped task's max gas
                     LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
@@ -334,7 +336,7 @@ contract RegistryFacet is IRegistryFacet {
         }
 
         // Refund and emit event if any tasks were stopped
-        if(stoppedTaskDetails.length > 0) {  
+        if (stoppedTaskDetails.length > 0) {  
             LibRegistry.refund(msg.sender, totalRefundFee);
 
             // Emit task stopped event
@@ -357,28 +359,28 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if(!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
-        if(_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
+        if (_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
         LibUtils.TaskStopped[] memory stoppedTaskDetails = new LibUtils.TaskStopped[](_taskIndexes.length);
         uint256 counter = 0;
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
-            if(LibRegistry.ifTaskExists(_taskIndexes[i])) {
+            if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
                 TaskMetadata memory task = s.registryState.tasks[_taskIndexes[i]];
 
-                if(task.owner != msg.sender) { revert UnauthorizedAccount(); }
+                if (task.owner != msg.sender) { revert UnauthorizedAccount(); }
 
                 // Check if GST
-                if(task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
-                _removeTask(_taskIndexes[i], true);
+                if (task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
+                removeTask(_taskIndexes[i], task.owner, true);
                 // Remove from active tasks
                 require(s.registryState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
-                if(task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > LibCore.getCycleEndTime()) {
+                if (task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > LibCore.getCycleEndTime()) {
                     LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
@@ -394,7 +396,7 @@ contract RegistryFacet is IRegistryFacet {
             }
         }
 
-        if(stoppedTaskDetails.length > 0) {
+        if (stoppedTaskDetails.length > 0) {
             // Emit task stopped event
             emit TasksStopped(
                 stoppedTaskDetails,
@@ -414,15 +416,17 @@ contract RegistryFacet is IRegistryFacet {
     }
     
     /// @notice Function to remove a task from the registry.
-    /// @param _taskIndex Index of the task to remove. 
+    /// @param _taskIndex Index of the task to remove.
+    /// @param _owner Address of the task owner.  
     /// @param _removeFromSysReg Wheather to remove from system task registry.
-    function _removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
-        if(_removeFromSysReg) {
+    function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg) private {
+        if (_removeFromSysReg) {
             require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
         }
 
         delete s.registryState.tasks[_taskIndex];
         require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
+        require(s.registryState.userTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
@@ -430,6 +434,12 @@ contract RegistryFacet is IRegistryFacet {
     /// @notice Returns all the automation tasks available in the registry.
     function getTaskIds() external view returns (uint256[] memory) {
         return s.registryState.taskIdList.values();
+    }
+
+    /// @notice Returns all the automation tasks registered by a user.
+    /// @param _user Address of the user to fetch registered tasks for.
+    function getUserTasks(address _user) external view returns (uint256[] memory) {
+        return s.registryState.userTasks[_user].values();
     }
 
     /// @notice Returns all the system tasks available in the registry.
@@ -484,7 +494,7 @@ contract RegistryFacet is IRegistryFacet {
         uint256 exists;
 
         for (uint256 i = 0; i < count; i++) {
-            if(LibRegistry.ifTaskExists(_taskIndexes[i])) {
+            if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
                 temp[exists] = s.registryState.tasks[_taskIndexes[i]];
                 exists += 1; 
             }

@@ -18,9 +18,6 @@ contract BlockMetaTest is Test {
     address vmAddress = address(0x99);
     address alice = address(0x123);
 
-    // Address of the VM Signer: SUP0
-    address constant VM_SIGNER = address(0x53555000);
-
     /// @dev Sets up initial state for testing.
     /// @dev Deploys and initializes BlockMeta and AutomationController contracts.
     function setUp() public {
@@ -360,7 +357,7 @@ contract BlockMetaTest is Test {
 	    assertEq(counter.counter(), 0);
         testRegister();
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
 	    assertEq(counter.counter(), 1);
     }
@@ -384,7 +381,7 @@ contract BlockMetaTest is Test {
         vm.expectEmit(true, true, false, true);
         emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
     }
 
@@ -395,7 +392,7 @@ contract BlockMetaTest is Test {
         vm.expectEmit(true, true, false, false);
         emit BlockMeta.CallSucceeded(counterAddress, selector);
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
     }
 
@@ -417,7 +414,7 @@ contract BlockMetaTest is Test {
         vm.expectEmit(true, true, false, false);
         emit BlockMeta.CallSucceeded(counterAddress, selector);
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
 
         // Counter must still be incremented even though the first call failed

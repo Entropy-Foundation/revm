@@ -115,15 +115,15 @@ library LibUtils {
         uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity
     ) internal pure {
-        if(_taskDurationCapSecs <= _cycleDurationSecs) { revert InvalidTaskDuration(); }
-        if(_registryMaxGasCap == 0) { revert InvalidRegistryMaxGasCap(); }
-        if(_congestionThresholdPercentage > 100) { revert InvalidCongestionThreshold(); }
-        if(_congestionExponent == 0) { revert InvalidCongestionExponent(); }
-        if(_taskCapacity == 0) { revert InvalidTaskCapacity(); }
-        if(_cycleDurationSecs == 0) { revert InvalidCycleDuration(); }
-        if(_sysTaskDurationCapSecs <= _cycleDurationSecs) { revert InvalidSysTaskDuration(); }
-        if(_sysRegistryMaxGasCap == 0) { revert InvalidSysRegistryMaxGasCap(); }
-        if(_sysTaskCapacity == 0) { revert InvalidSysTaskCapacity(); }
+        if (_taskDurationCapSecs <= _cycleDurationSecs) { revert InvalidTaskDuration(); }
+        if (_registryMaxGasCap == 0) { revert InvalidRegistryMaxGasCap(); }
+        if (_congestionThresholdPercentage > 100) { revert InvalidCongestionThreshold(); }
+        if (_congestionExponent == 0) { revert InvalidCongestionExponent(); }
+        if (_taskCapacity == 0) { revert InvalidTaskCapacity(); }
+        if (_cycleDurationSecs == 0) { revert InvalidCycleDuration(); }
+        if (_sysTaskDurationCapSecs <= _cycleDurationSecs) { revert InvalidSysTaskDuration(); }
+        if (_sysRegistryMaxGasCap == 0) { revert InvalidSysRegistryMaxGasCap(); }
+        if (_sysTaskCapacity == 0) { revert InvalidSysTaskCapacity(); }
     }
     
     /// @notice Helper function to sort an array.

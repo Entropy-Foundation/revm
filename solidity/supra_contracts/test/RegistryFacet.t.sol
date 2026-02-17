@@ -254,6 +254,11 @@ contract RegistryFacetTest is BaseDiamondTest {
         TaskMetadata memory taskMetadata = RegistryFacet(diamondAddr).getTaskDetails(0);
         assertTrue(RegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(RegistryFacet(diamondAddr).totalTasks(), 1);
+
+        uint256[] memory userTasks = RegistryFacet(diamondAddr).getUserTasks(alice);
+        assertEq(userTasks.length, 1);
+        assertEq(userTasks[0], 0);
+
         assertEq(RegistryFacet(diamondAddr).getNextTaskIndex(), 1);
         assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 1_000_000);
         assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
@@ -429,6 +434,11 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertTrue(RegistryFacet(diamondAddr).ifSysTaskExists(0));
         assertEq(RegistryFacet(diamondAddr).totalTasks(), 1);
         assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 1);
+
+        uint256[] memory userTasks = RegistryFacet(diamondAddr).getUserTasks(bob);
+        assertEq(userTasks.length, 1);
+        assertEq(userTasks[0], 0);
+
         assertEq(RegistryFacet(diamondAddr).getNextTaskIndex(), 1);
         assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1_000_000);
 
@@ -531,6 +541,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(RegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
         assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.252 ether);
@@ -596,6 +607,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
         assertFalse(RegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(RegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
         assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
         assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 0);
         assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
@@ -683,7 +695,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
 
         vm.warp(2002);
-        vm.startPrank(vmSigner, vmSigner);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();        
         CoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
@@ -696,6 +708,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(RegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
         assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.18955 ether);
@@ -710,7 +723,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
 
         vm.warp(2002);
-        vm.startPrank(vmSigner, vmSigner);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();        
         CoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
@@ -796,10 +809,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
 
         vm.warp(2002);
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
-        vm.prank(vmSigner);
+        vm.prank(LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
         vm.prank(bob);
@@ -807,6 +820,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
         assertFalse(RegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(RegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
         assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
         assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 0);
         assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1000000);
@@ -820,10 +834,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
 
         vm.warp(2002);
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
-        vm.prank(vmSigner);
+        vm.prank(LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
         LibUtils.TaskStopped[] memory stoppedTasks = new LibUtils.TaskStopped[](1);

@@ -21,7 +21,6 @@ abstract contract BaseDiamondTest is Test {
     address constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
 
     address admin = address(0xA11CE);
-    address vmSigner = address(0x53555000);
     address alice = address(0x123);
     address bob = address(0x456);
 
@@ -36,7 +35,7 @@ abstract contract BaseDiamondTest is Test {
 
         defaultParams = LibDiamondUtils.defaultInitParams();
         deployment = LibDiamondUtils.deploy(admin);
-        LibDiamondUtils.executeCut(vmSigner, address(erc20Supra), defaultParams, deployment);
+        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), defaultParams, deployment);
 
         diamond  = Diamond(payable(deployment.diamond));
         diamondAddr = deployment.diamond;

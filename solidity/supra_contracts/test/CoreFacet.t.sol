@@ -2,7 +2,6 @@
 pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
-import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
 import {CoreFacet} from "../src/facets/CoreFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -16,7 +15,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testMonitorCycleEndRevertsIfTxOriginNotVm() public {
         vm.expectRevert(ICoreFacet.CallerNotVmSigner.selector);
 
-        vm.prank(vmSigner);
+        vm.prank(LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
     }
 
@@ -24,7 +23,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testMonitorCycleEndDoesNothingBeforeCycleExpiry() public {
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibUtils.CycleState stateBefore) = CoreFacet(diamondAddr).getCycleInfo();
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibUtils.CycleState stateAfter) = CoreFacet(diamondAddr).getCycleInfo();
@@ -56,7 +55,7 @@ contract CoreFacetTest is BaseDiamondTest {
         }); 
 
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        LibDiamondUtils.executeCut(vmSigner, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
 
         address diamondAddr = deployment.diamond;
         vm.stopPrank();
@@ -66,7 +65,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.warp(startBefore + durationBefore);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibUtils.CycleState stateAfter) = CoreFacet(diamondAddr).getCycleInfo();
@@ -97,7 +96,7 @@ contract CoreFacetTest is BaseDiamondTest {
             stateBefore
         );
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibUtils.CycleState stateAfter) = CoreFacet(diamondAddr).getCycleInfo();
@@ -123,7 +122,7 @@ contract CoreFacetTest is BaseDiamondTest {
             stateBefore
         );
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibUtils.CycleState stateAfter) = CoreFacet(diamondAddr).getCycleInfo();
@@ -150,7 +149,7 @@ contract CoreFacetTest is BaseDiamondTest {
             stateBefore
         );
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibUtils.CycleState stateAfter) = CoreFacet(diamondAddr).getCycleInfo();
@@ -183,7 +182,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.expectRevert(ICoreFacet.InvalidRegistryState.selector);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(1, tasks);
     }
 
@@ -194,7 +193,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , uint64 startTime, uint64 duration, ) = CoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 index, , , LibUtils.CycleState state) = CoreFacet(diamondAddr).getCycleInfo();
@@ -209,7 +208,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.expectEmit(true, false, false, false);
         emit LibCore.ActiveTasks(activeTasks);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(index + 1, tasks);
 
         (uint64 newIndex, uint64 newStart, uint64 newDuration, LibUtils.CycleState newState) = CoreFacet(diamondAddr).getCycleInfo();
@@ -233,7 +232,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , uint64 startTime, uint64 duration, ) = CoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
         
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         (uint64 index, , , LibUtils.CycleState state) = CoreFacet(diamondAddr).getCycleInfo();
@@ -244,7 +243,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(index, tasks);
     }
 
@@ -256,7 +255,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.warp(start + duration);
         
         // Moves state to FINISHED
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         ( , , , LibUtils.CycleState stateBefore) = CoreFacet(diamondAddr).getCycleInfo();
@@ -275,7 +274,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.expectEmit(true, false, false, false);
         emit LibCore.RemovedTasks(tasks);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(indexAfter, tasks);
 
         ( , , , LibUtils.CycleState newState) = CoreFacet(diamondAddr).getCycleInfo();
@@ -291,7 +290,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.warp(start + duration);
         
         // Moves state to FINISHED
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         ( , , , LibUtils.CycleState stateBefore) = CoreFacet(diamondAddr).getCycleInfo();
@@ -314,7 +313,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.expectEmit(true, false, false, false);
         emit LibCore.RemovedTasks(tasks);
 
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(indexAfter, tasks);
 
         (uint64 newIndex, uint64 newStart, uint64 newDuration, LibUtils.CycleState newState) = CoreFacet(diamondAddr).getCycleInfo();
@@ -333,7 +332,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.warp(start + duration);
 
         // Moves state to FINISHED
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).monitorCycleEnd();
 
         ( , , , LibUtils.CycleState stateBefore) = CoreFacet(diamondAddr).getCycleInfo();
@@ -351,7 +350,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
         
-        vm.prank(vmSigner, vmSigner);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         CoreFacet(diamondAddr).processTasks(indexAfter + 1, tasks);
     }
 
@@ -359,7 +358,6 @@ contract CoreFacetTest is BaseDiamondTest {
     
     /// @dev Test to ensure 'disableAutomation' disables the automation.
     function testDisableAutomation() public {
-        // Already enabled in initialize()
         vm.prank(admin);
         CoreFacet(diamondAddr).disableAutomation();
 
@@ -423,7 +421,6 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'enableAutomation' reverts if automation is already enabled.
     function testEnableAutomationRevertsIfAlreadyEnabled() public {
-        // Already enabled during initialization
         vm.expectRevert(ICoreFacet.AlreadyEnabled.selector);
 
         vm.prank(admin);

@@ -64,7 +64,7 @@ contract ConfigFacet is IConfigFacet {
     function enableRegistration() external {
         LibDiamond.enforceIsContractOwner();
 
-        if(s.registrationEnabled) { revert AlreadyEnabled(); }
+        if (s.registrationEnabled) { revert AlreadyEnabled(); }
         s.registrationEnabled = true;
 
         emit TaskRegistrationEnabled(s.registrationEnabled);
@@ -74,7 +74,7 @@ contract ConfigFacet is IConfigFacet {
     function disableRegistration() external {
         LibDiamond.enforceIsContractOwner();
 
-        if(!s.registrationEnabled) { revert AlreadyDisabled(); }
+        if (!s.registrationEnabled) { revert AlreadyDisabled(); }
         s.registrationEnabled = false;
 
         emit TaskRegistrationDisabled(s.registrationEnabled);   
@@ -85,7 +85,7 @@ contract ConfigFacet is IConfigFacet {
     function setVmSigner(address _vmSigner) external {
         LibDiamond.enforceIsContractOwner();
 
-        if(_vmSigner == address(0)) { revert AddressCannotBeZero(); }
+        if (_vmSigner == address(0)) { revert AddressCannotBeZero(); }
 
         address oldVmSigner = s.vmSigner;
         s.vmSigner = _vmSigner;
@@ -112,15 +112,15 @@ contract ConfigFacet is IConfigFacet {
     function withdrawFees(uint256 _amount, address _recipient) external {
         LibDiamond.enforceIsContractOwner();
 
-        if(_amount == 0) { revert InvalidAmount(); }
-        if(_recipient == address(0)) { revert AddressCannotBeZero(); }
+        if (_amount == 0) { revert InvalidAmount(); }
+        if (_recipient == address(0)) { revert AddressCannotBeZero(); }
         uint256 balance = IERC20(s.erc20Supra).balanceOf(address(this));
 
-        if(balance < _amount) { revert InsufficientBalance(); }
-        if(balance - _amount < s.registryState.cycleLockedFees + s.registryState.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
+        if (balance < _amount) { revert InsufficientBalance(); }
+        if (balance - _amount < s.registryState.cycleLockedFees + s.registryState.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
 
         bool sent = IERC20(s.erc20Supra).transfer(_recipient, _amount);
-        if(!sent) { revert TransferFailed(); }
+        if (!sent) { revert TransferFailed(); }
 
         emit RegistryFeeWithdrawn(_recipient, _amount);
     }
@@ -154,8 +154,8 @@ contract ConfigFacet is IConfigFacet {
             _sysTaskCapacity
         );
 
-        if(s.registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
-        if(s.registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
+        if (s.registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
+        if (s.registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
 
         // Add new config to the buffer
         Config memory configBuffer = Config({ 
