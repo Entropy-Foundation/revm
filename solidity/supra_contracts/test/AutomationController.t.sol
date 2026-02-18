@@ -27,6 +27,27 @@ contract AutomationControllerTest is Test {
     address alice = address(0x123);
     address bob = address(0x456);
 
+    function defaultInitParams(address _controller, address _registry, address _owner) internal view returns (LibConfig.InitializeParams memory) {
+        return LibConfig.InitializeParams({
+            taskDurationCapSecs: 3600,
+            registryMaxGasCap: 10_000_000,
+            automationBaseFeeWeiPerSec: 0.001 ether,
+            flatRegistrationFeeWei: 0.002 ether,
+            congestionThresholdPercentage: 50,
+            congestionBaseFeeWeiPerSec: 0.002 ether,
+            congestionExponent: 2,
+            taskCapacity: 500,
+            cycleDurationSecs: 2000,
+            sysTaskDurationCapSecs: 3600,
+            sysRegistryMaxGasCap: 5_000_000,
+            sysTaskCapacity: 500,
+            vmSigner: vmSigner,
+            erc20Supra: address(erc20Supra),
+            controller: _controller,
+            registry: _registry,
+            owner: _owner
+        });
+    }
     /// @dev Sets up initial state for testing.
     /// @dev Sets balance of 'alice' to 100 ether.
     /// @dev Deploys and initializes all contracts with required parameters. 
@@ -36,42 +57,29 @@ contract AutomationControllerTest is Test {
         vm.startPrank(admin);
         erc20Supra = new ERC20Supra(msg.sender);
 
+        uint256 currentNonce = vm.getNonce(admin);
+        address coreProxyAddr = computeCreateAddress(admin, currentNonce + 1);
+        address registryProxyAddr = computeCreateAddress(admin, currentNonce + 3);
+        address controllerProxyAddr = computeCreateAddress(admin, currentNonce + 5);
+
+
         AutomationCore automationCoreImpl = new AutomationCore();
+        LibConfig.InitializeParams memory initParams = defaultInitParams(controllerProxyAddr, registryProxyAddr, admin);
         bytes memory automationCoreInitData = abi.encodeCall(
-            AutomationCore.initialize,
-            (
-                3600,                       // taskDurationCapSecs
-                10_000_000,                 // registryMaxGasCap
-                0.001 ether,                // automationBaseFeeWeiPerSec
-                0.002 ether,                // flatRegistrationFeeWei
-                50,                         // congestionThresholdPercentage
-                0.002 ether,                // congestionBaseFeeWeiPerSec
-                2,                          // congestionExponent
-                500,                        // taskCapacity
-                2000,                       // cycleDurationSecs
-                3600,                       // sysTaskDurationCapSecs
-                5_000_000,                  // sysRegistryMaxGasCap
-                500,                        // sysTaskCapacity
-                vmSigner,                   // VM Signer address
-                address(erc20Supra)         // ERC20Supra address
-            )
+            AutomationCore.initialize, initParams
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
         automationCore = AutomationCore(address(automationCoreProxy));
         
         AutomationRegistry registryImpl = new AutomationRegistry();
-        bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore)));
+        bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore), controllerProxyAddr, admin));
         ERC1967Proxy registryProxy = new ERC1967Proxy(address(registryImpl), registryInitData);
         registry = AutomationRegistry(address(registryProxy));
 
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), admin, true, initParams.cycleDurationSecs));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
         controller = AutomationController(address(controllerProxy));
-
-        automationCore.setAutomationRegistry(address(registry));
-        automationCore.setAutomationController(address(controller));
-        registry.setAutomationController(address(controller));
 
         vm.stopPrank();
 
@@ -95,44 +103,44 @@ contract AutomationControllerTest is Test {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         
         vm.prank(admin);
-        controller.initialize(address(automationCore), address(registry), true);
+        controller.initialize(address(automationCore), address(registry), admin, true, 1000);
     }
 
     /// @dev Test to ensure initialize reverts if AutomationCore address is zero.
     function testInitializeRevertsIfAutomationCoreAddressZero() public {
         AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(0), address(registry), true));
+        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(0), address(registry), admin, true, 1000));
 
         vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
         new ERC1967Proxy(address(impl), initData);
     }
 
-    /// @dev Test to ensure initialize reverts if AutomationCore address is EOA.
-    function testInitializeRevertsIfAutomationCoreEoa() public {
-        AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize, (alice, address(registry), true));
-
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
-        new ERC1967Proxy(address(impl), initData);
-    }
-
+//    /// @dev Test to ensure initialize reverts if AutomationCore address is EOA.
+//    function testInitializeRevertsIfAutomationCoreEoa() public {
+//        AutomationController impl = new AutomationController();
+//        bytes memory initData = abi.encodeCall(AutomationController.initialize, (alice, address(registry), admin, true, 1000));
+//
+//        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+//        new ERC1967Proxy(address(impl), initData);
+//    }
+//
     /// @dev Test to ensure initialize reverts if AutomationRegistry address is zero.
     function testInitializeRevertsIfRegistryZero() public {
         AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(automationCore), address(0), true));
+        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(automationCore), address(0), admin, true, 1000));
 
         vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
         new ERC1967Proxy(address(impl), initData);
     }
 
-    /// @dev Test to ensure initialize reverts if AutomationRegistry address is EOA.
-    function testInitializeRevertsIfRegistryEoa() public {
-        AutomationController impl = new AutomationController();
-        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(automationCore), alice, true));
-
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
-        new ERC1967Proxy(address(impl), initData);
-    }
+//    /// @dev Test to ensure initialize reverts if AutomationRegistry address is EOA.
+//    function testInitializeRevertsIfRegistryEoa() public {
+//        AutomationController impl = new AutomationController();
+//        bytes memory initData = abi.encodeCall(AutomationController.initialize, (address(automationCore), alice, admin, true, 1000));
+//
+//        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+//        new ERC1967Proxy(address(impl), initData);
+//    }
     
     /// @dev Test to ensure 'setAutomationRegistry' reverts if caller is not owner.
     function testSetAutomationRegistryRevertsIfNotOwner() public {
@@ -190,7 +198,7 @@ contract AutomationControllerTest is Test {
         vm.prank(alice);
         controller.setAutomationCore(address(automationCoreImpl));
     }
-    
+
     /// @dev Test to ensure 'setAutomationCore' reverts if address is zero.
     function testSetAutomationCoreRevertsIfAddressZero() public {
         vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
@@ -283,10 +291,10 @@ contract AutomationControllerTest is Test {
 
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, CommonUtils.CycleState stateBefore) = controller.getCycleInfo();
         vm.warp(startBefore + durationBefore);
-        
+
         vm.expectEmit(true, true, false, true);
         emit AutomationController.AutomationCycleEvent(
-            indexBefore, 
+            indexBefore,
             CommonUtils.CycleState.READY,
             startBefore,
             durationBefore,
@@ -313,9 +321,9 @@ contract AutomationControllerTest is Test {
         vm.expectEmit(true, true, false, true);
         emit AutomationController.AutomationCycleEvent(
             indexBefore + 1,
-            CommonUtils.CycleState.STARTED, 
-            uint64(block.timestamp), 
-            durationBefore, 
+            CommonUtils.CycleState.STARTED,
+            uint64(block.timestamp),
+            durationBefore,
             stateBefore
         );
 
@@ -376,7 +384,7 @@ contract AutomationControllerTest is Test {
     function testProcessTasksRevertsIfInvalidState() public {
         uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
-        
+
         vm.expectRevert(IAutomationController.InvalidRegistryState.selector);
 
         vm.prank(vmSigner, vmSigner);
@@ -428,13 +436,13 @@ contract AutomationControllerTest is Test {
 
         ( , uint64 startTime, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(startTime + duration);
-        
+
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
 
         (uint64 index, , , CommonUtils.CycleState state) = controller.getCycleInfo();
         assertEq(uint8(state), uint8(CommonUtils.CycleState.FINISHED));
-        
+
         uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
@@ -450,7 +458,7 @@ contract AutomationControllerTest is Test {
 
         ( , uint64 start, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(start + duration);
-        
+
         // Moves state to FINISHED
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
@@ -477,7 +485,7 @@ contract AutomationControllerTest is Test {
         ( , , , CommonUtils.CycleState newState) = controller.getCycleInfo();
         assertEq(uint8(newState), uint8(CommonUtils.CycleState.READY));
         assertFalse(registry.ifTaskExists(tasks[0]));
-    }   
+    }
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is enabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationEnabled() public {
@@ -485,7 +493,7 @@ contract AutomationControllerTest is Test {
 
         ( , uint64 start, uint64 duration, ) = controller.getCycleInfo();
         vm.warp(start + duration);
-        
+
         // Moves state to FINISHED
         vm.prank(vmSigner, vmSigner);
         controller.monitorCycleEnd();
@@ -546,13 +554,13 @@ contract AutomationControllerTest is Test {
         tasks[0] = 0;
 
         vm.expectRevert(IAutomationController.InvalidInputCycleIndex.selector);
-        
+
         vm.prank(vmSigner, vmSigner);
         controller.processTasks(indexAfter + 1, tasks);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'disableAutomation' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    
+
     /// @dev Test to ensure 'disableAutomation' disables the automation.
     function testDisableAutomation() public {
         // Already enabled in initialize()
@@ -637,8 +645,8 @@ contract AutomationControllerTest is Test {
     /// @dev Helper function to register a UST.
     function registerTask() private {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20Supra)); 
-        
+        bytes memory payload = createPayload(0, address(erc20Supra));
+
         vm.startPrank(alice);
         erc20Supra.nativeToErc20Supra{value: 5 ether}();
         erc20Supra.approve(address(automationCore), type(uint256).max);
@@ -660,8 +668,8 @@ contract AutomationControllerTest is Test {
     /// @param _target Address of destination smart contract.
     function createPayload(uint128 _value, address _target) private pure returns (bytes memory) {
         LibConfig.AccessListEntry[] memory accessList = new LibConfig.AccessListEntry[](2);
-        
-        bytes32[] memory keys = new bytes32[](2); 
+
+        bytes32[] memory keys = new bytes32[](2);
         keys[0] = bytes32(uint256(0));
         keys[1] = bytes32(uint256(1));
 
@@ -678,6 +686,6 @@ contract AutomationControllerTest is Test {
         bytes memory callData = abi.encodeCall(ERC20Supra.erc20SupraToNative, 100);
         bytes memory payload = abi.encode(_value, _target, callData, accessList);
 
-        return payload;   
+        return payload;
     }
 }

@@ -82,13 +82,18 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
 
     /// @notice Initializes the owner and AutomationCore contract address, can only be called once.
     /// @param _automationCore Address of the AutomationCore contract.
-    function initialize(address _automationCore) public initializer {
-        _automationCore.validateContractAddress();
-        
+    /// @param _automationController Address of the AutomationController contract.
+    /// @param _owner Address of the contract owner.
+    function initialize(address _automationCore, address _automationController, address _owner) public initializer {
+        _automationCore.validateAddress();
+        _automationController.validateAddress();
+        if(_owner == address(0)) revert CommonUtils.AddressCannotBeZero();
+
         automationCore = _automationCore;
+        automationController = _automationController;
 
         __Ownable2Step_init();
-        __Ownable_init(msg.sender);
+        __Ownable_init(_owner);
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: TASKS RELATED FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -111,7 +116,14 @@ contract AutomationRegistry is IAutomationRegistry, Ownable2StepUpgradeable, UUP
         bytes[] memory _auxData
     ) external {        
         uint64 regTime = uint64(block.timestamp);
-        
+
+
+        (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
+        require(ok, "txhash precompile call failed");
+
+        if (out.length != 32) { revert TxnHashLengthShouldBe32(uint64 (out.length)); }
+        bytes32 _txHash = bytes32(out);
+
         IAutomationCore core = IAutomationCore(automationCore);
         core.updateStateForValidRegistration(
             totalTasks(),

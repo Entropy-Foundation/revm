@@ -115,6 +115,11 @@ library CommonUtils {
         if (!isContract(_contractAddr)) { revert AddressCannotBeEOA(); }
     }
 
+    /// @notice Validates a contract address.
+    function validateAddress(address _contractAddr) internal view {
+        if (_contractAddr == address(0)) { revert AddressCannotBeZero(); }
+    }
+
     /// @notice Checks if an address is VM Signer.
     /// @param _addr Address to check.
     /// @return bool If it is VM Signer.

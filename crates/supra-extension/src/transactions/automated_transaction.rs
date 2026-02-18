@@ -1,16 +1,16 @@
 //! AutomatedTransaction generated based on the registered active automation task.
 
+use crate::errors::SupraExtensionError;
+use crate::supra_contract_bindings::supra_contracts_bindings::CommonUtils::TaskDetails;
+use crate::value_or_error;
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
-use alloy_eips::eip2718::Typed2718;
 use alloy_consensus::transaction::Transaction;
+use alloy_eips::eip2718::Typed2718;
 use alloy_sol_types::SolType;
 use context::transaction::{AccessListItem, SignedAuthorization};
 use context::TransactionType;
 use primitives::TxKind;
-use crate::errors::SupraExtensionError;
-use crate::supra_contract_bindings::supra_contracts_bindings::CommonUtils::TaskDetails;
-use crate::value_or_error;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -22,7 +22,7 @@ pub enum AutomatedTransactionType {
     #[default]
     UST,
     /// Governance submitted/authorized automation task based. Will be gasless transaction
-    GST
+    GST,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -77,7 +77,10 @@ pub struct AutomatedTransaction {
     // instead of an (empty) array. This is due to certain RPC providers (e.g., Filecoin's)
     // sometimes returning `null` instead of an empty array `[]`.
     // More details in <https://github.com/alloy-rs/alloy/pull/2450>.
-    #[cfg_attr(feature = "serde", serde(deserialize_with = "alloy_serde::null_as_default"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "alloy_serde::null_as_default")
+    )]
     pub access_list: AccessList,
     /// Input has two uses depending if `to` field is Create or Call.
     /// pub init: An unlimited size byte array specifying the
@@ -88,7 +91,6 @@ pub struct AutomatedTransaction {
 }
 
 impl Transaction for AutomatedTransaction {
-
     #[inline]
     fn chain_id(&self) -> Option<ChainId> {
         Some(self.chain_id)
@@ -126,15 +128,11 @@ impl Transaction for AutomatedTransaction {
 
     #[inline]
     fn priority_fee_or_price(&self) -> u128 {
-       0
+        0
     }
 
     fn effective_gas_price(&self, base_fee: Option<u64>) -> u128 {
-        alloy_eips::eip1559::calc_effective_gas_price(
-            self.max_fee_per_gas,
-            0,
-            base_fee,
-        )
+        alloy_eips::eip1559::calc_effective_gas_price(self.max_fee_per_gas, 0, base_fee)
     }
 
     #[inline]
@@ -230,7 +228,7 @@ impl TryFrom<u8> for AutomationTaskState {
             0 => Ok(Self::Pending),
             1 => Ok(Self::Active),
             2 => Ok(Self::Cancelled),
-            _ => Err(SupraExtensionError::InvalidAutomationTaskStateValue(value))
+            _ => Err(SupraExtensionError::InvalidAutomationTaskStateValue(value)),
         }
     }
 }
@@ -425,7 +423,9 @@ impl AutomatedTransactionBuilder {
     /// timestamp threshold value
     /// If no expiry timestamp is specified, the potential underlying task is not considered as expired.
     pub fn is_expired(&self, threshold: u64) -> bool {
-        self.expiry_timestamp.map(|t| t < threshold).unwrap_or(false)
+        self.expiry_timestamp
+            .map(|t| t < threshold)
+            .unwrap_or(false)
     }
 }
 
@@ -453,7 +453,7 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
         } = value;
 
         if AutomationTaskState::try_from(state)? == AutomationTaskState::Pending {
-            return Err(SupraExtensionError::InvalidAutomationTaskStateForBuilder)
+            return Err(SupraExtensionError::InvalidAutomationTaskStateForBuilder);
         }
 
         let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(payloadTx.as_ref())?;
@@ -481,9 +481,9 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
 
 #[cfg(test)]
 mod test {
+    use crate::transactions::automated_transaction::ExpandedPayloadTy;
     use alloy::hex;
     use alloy_sol_types::SolType;
-    use crate::transactions::automated_transaction::ExpandedPayloadTy;
     #[test]
     fn check_decode() {
         let encoded = hex!("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000006b182f1488e8efeb2eb298155ed5bd7ff8a14042000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000242e1a7d4d0000000000000000000000000000000000000000000000000000000000000064000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000001111000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000022220000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");

@@ -1,6 +1,6 @@
 //! This module contains [`CfgEnv`] and implements [`Cfg`] trait for it.
-pub use context_interface::Cfg;
 use context_interface::cfg::ExecutionMode;
+pub use context_interface::Cfg;
 use primitives::{eip170, eip3860, eip7825, hardfork::SpecId};
 
 /// EVM configuration

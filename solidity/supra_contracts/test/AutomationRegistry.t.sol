@@ -29,6 +29,29 @@ contract AutomationRegistryTest is Test {
     address alice = address(0x123);
     address bob = address(0x456);
 
+    /// @dev Helper function that returns default initialization parameters.
+    function defaultInitParams(address _controller, address _registry, address _owner) internal view returns (LibConfig.InitializeParams memory) {
+        return LibConfig.InitializeParams({
+            taskDurationCapSecs: 3600,
+            registryMaxGasCap: 10_000_000,
+            automationBaseFeeWeiPerSec: 0.001 ether,
+            flatRegistrationFeeWei: 0.002 ether,
+            congestionThresholdPercentage: 50,
+            congestionBaseFeeWeiPerSec: 0.002 ether,
+            congestionExponent: 2,
+            taskCapacity: 500,
+            cycleDurationSecs: 2000,
+            sysTaskDurationCapSecs: 3600,
+            sysRegistryMaxGasCap: 5_000_000,
+            sysTaskCapacity: 500,
+            vmSigner: vmSigner,
+            erc20Supra: address(erc20Supra),
+            controller: _controller,
+            registry: _registry,
+            owner: _owner
+        });
+    }
+
     /// @dev Sets up initial state for testing.
     /// @dev Sets balance of 'alice' to 100 ether.
     /// @dev Deploys and initializes all contracts with required parameters. 
@@ -38,36 +61,28 @@ contract AutomationRegistryTest is Test {
         vm.startPrank(admin);
         erc20Supra = new ERC20Supra(msg.sender);
 
+        // Get current nonce for admin (after ERC20Supra deployment)
+        uint256 currentNonce = vm.getNonce(admin);
+        address coreProxyAddr = computeCreateAddress(admin, currentNonce + 1);
+        address registryProxyAddr = computeCreateAddress(admin, currentNonce + 3);
+        address controllerProxyAddr = computeCreateAddress(admin, currentNonce + 5);
+
         AutomationCore automationCoreImpl = new AutomationCore();
+        LibConfig.InitializeParams memory initParams = defaultInitParams(controllerProxyAddr, registryProxyAddr, admin);
         bytes memory automationCoreInitData = abi.encodeCall(
             AutomationCore.initialize,
-            (
-                3600,                       // taskDurationCapSecs
-                10_000_000,                 // registryMaxGasCap
-                0.001 ether,                // automationBaseFeeWeiPerSec
-                0.002 ether,                // flatRegistrationFeeWei
-                50,                         // congestionThresholdPercentage
-                0.002 ether,                // congestionBaseFeeWeiPerSec
-                2,                          // congestionExponent
-                500,                        // taskCapacity
-                2000,                       // cycleDurationSecs
-                3600,                       // sysTaskDurationCapSecs
-                5_000_000,                  // sysRegistryMaxGasCap
-                500,                        // sysTaskCapacity
-                vmSigner,                   // VM Signer address
-                address(erc20Supra)         // ERC20Supra address
-            )
+            (initParams)
         );
         ERC1967Proxy automationCoreProxy = new ERC1967Proxy(address(automationCoreImpl), automationCoreInitData);
         automationCore = AutomationCore(address(automationCoreProxy));
 
         AutomationRegistry registryImpl = new AutomationRegistry();
-        bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore)));
+        bytes memory registryInitData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore), controllerProxyAddr, admin));
         ERC1967Proxy registryProxy = new ERC1967Proxy(address(registryImpl), registryInitData);
         registry = AutomationRegistry(address(registryProxy));
 
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), admin, true, initParams.cycleDurationSecs));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
         controller = AutomationController(address(controllerProxy));
 
@@ -98,26 +113,35 @@ contract AutomationRegistryTest is Test {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         
         vm.prank(admin);    
-        registry.initialize(address(automationCoreImplementation));
+        registry.initialize(address(automationCoreImplementation), address(controller), admin);
     }
 
     /// @dev Test to ensure initialization fails if AutomationCore address is zero.
     function testInitializeRevertsIfAutomationCoreAddressIsZero() public {
         AutomationRegistry implementation = new AutomationRegistry();
-        bytes memory initData = abi.encodeCall(AutomationRegistry.initialize, (address(0)));
+        bytes memory initData = abi.encodeCall(AutomationRegistry.initialize, (address(0), address (controller), admin));
 
         vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
         new ERC1967Proxy(address(implementation), initData);
     }
-  
-    /// @dev Test to ensure initialization fails if EOA is passed as AutomationCore address.
-    function testInitializeRevertsIfAutomationCoreAddressIsEoa() public {
-        AutomationRegistry implementation = new AutomationRegistry();
-        bytes memory initData = abi.encodeCall(AutomationRegistry.initialize, (admin));
 
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+    /// @dev Test to ensure initialization fails if AutomationCore address is zero.
+    function testInitializeRevertsIfAutomationControllerAddressIsZero() public {
+        AutomationRegistry implementation = new AutomationRegistry();
+        bytes memory initData = abi.encodeCall(AutomationRegistry.initialize, (address(automationCore), address (0), admin));
+
+        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
         new ERC1967Proxy(address(implementation), initData);
     }
+
+//    /// @dev Test to ensure initialization fails if EOA is passed as AutomationCore address.
+//    function testInitializeRevertsIfAutomationCoreAddressIsEoa() public {
+//        AutomationRegistry implementation = new AutomationRegistry();
+//        bytes memory initData = abi.encodeCall(AutomationRegistry.initialize, (admin));
+//
+//        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+//        new ERC1967Proxy(address(implementation), initData);
+//    }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setAutomationController' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -125,7 +149,7 @@ contract AutomationRegistryTest is Test {
     function deployAutomationController() internal returns (address) {
         // Deploy AutomationController proxy
         AutomationController controllerImpl = new AutomationController();
-        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), true));
+        bytes memory controllerInitData = abi.encodeCall(AutomationController.initialize,(address(automationCore), address(registry), admin, true, 1000));
         ERC1967Proxy controllerProxy = new ERC1967Proxy(address(controllerImpl), controllerInitData);
 
         return address(controllerProxy);
@@ -471,7 +495,7 @@ contract AutomationRegistryTest is Test {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));  
 
-        vm.expectRevert(IAutomationCore.InsufficientFeeCapForCycle.selector);
+        vm.expectPartialRevert(IAutomationCore.InsufficientFeeCapForCycle.selector);
 
         vm.prank(alice);
         registry.register(

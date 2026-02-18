@@ -98,78 +98,71 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
     }
 
     /// @notice Initializes the configuration parameters of the registry, can only be called once.
-    /// @param _taskDurationCapSecs Maximum allowable duration (in seconds) from the registration time that a user automation task can run.
-    /// @param _registryMaxGasCap Maximum gas allocation for automation tasks per cycle.
-    /// @param _automationBaseFeeWeiPerSec Base fee per second for the full capacity of the automation registry, measured in wei/sec.
-    /// @param _flatRegistrationFeeWei Flat registration fee charged by default for each task.
-    /// @param _congestionThresholdPercentage Percentage representing the acceptable upper limit of committed gas amount relative to registry_max_gas_cap.
-    /// Beyond this threshold, congestion fees apply.
-    /// @param _congestionBaseFeeWeiPerSec Base fee per second for the full capacity of the automation registry when the congestion threshold is exceeded.
-    /// @param _congestionExponent The congestion fee increases exponentially based on this value, ensuring higher fees as the registry approaches full capacity.
-    /// @param _taskCapacity Maximum number of tasks that the registry can hold.
-    /// @param _cycleDurationSecs Automation cycle duration in seconds.
-    /// @param _sysTaskDurationCapSecs Maximum allowable duration (in seconds) from the registration time that a system automation task can run.
-    /// @param _sysRegistryMaxGasCap Maximum gas allocation for system automation tasks per cycle.
-    /// @param _sysTaskCapacity Maximum number of system tasks that the registry can hold.
-    /// @param _vmSigner Address for the VM Signer.
-    /// @param _erc20Supra Address of the ERC20Supra contract.
-    function initialize(
-        uint64 _taskDurationCapSecs,
-        uint128 _registryMaxGasCap,
-        uint128 _automationBaseFeeWeiPerSec,
-        uint128 _flatRegistrationFeeWei,
-        uint8 _congestionThresholdPercentage,
-        uint128 _congestionBaseFeeWeiPerSec,
-        uint8 _congestionExponent,
-        uint16 _taskCapacity,
-        uint64 _cycleDurationSecs,
-        uint64 _sysTaskDurationCapSecs,
-        uint128 _sysRegistryMaxGasCap,
-        uint16 _sysTaskCapacity,
-        address _vmSigner,
-        address _erc20Supra
-    ) public initializer {
+    /// @param params Struct containing all initialization parameters:
+    ///   - taskDurationCapSecs: Maximum allowable duration (in seconds) from the registration time that a user automation task can run.
+    ///   - registryMaxGasCap: Maximum gas allocation for automation tasks per cycle.
+    ///   - automationBaseFeeWeiPerSec: Base fee per second for the full capacity of the automation registry, measured in wei/sec.
+    ///   - flatRegistrationFeeWei: Flat registration fee charged by default for each task.
+    ///   - congestionThresholdPercentage: Percentage representing the acceptable upper limit of committed gas amount relative to registry_max_gas_cap.
+    ///     Beyond this threshold, congestion fees apply.
+    ///   - congestionBaseFeeWeiPerSec: Base fee per second for the full capacity of the automation registry when the congestion threshold is exceeded.
+    ///   - congestionExponent: The congestion fee increases exponentially based on this value, ensuring higher fees as the registry approaches full capacity.
+    ///   - taskCapacity: Maximum number of tasks that the registry can hold.
+    ///   - cycleDurationSecs: Automation cycle duration in seconds.
+    ///   - sysTaskDurationCapSecs: Maximum allowable duration (in seconds) from the registration time that a system automation task can run.
+    ///   - sysRegistryMaxGasCap: Maximum gas allocation for system automation tasks per cycle.
+    ///   - sysTaskCapacity: Maximum number of system tasks that the registry can hold.
+    ///   - vmSigner: Address for the VM Signer.
+    ///   - erc20Supra: Address of the ERC20Supra contract.
+    ///   - controller: Address of the AutomationController contract.
+    ///   - registry: Address of the AutomationRegistry contract.
+    ///   - owner: Address of the contract owner.
+    function initialize(LibConfig.InitializeParams calldata params) public initializer {
         validateConfigParameters(
-            _taskDurationCapSecs,
-            _registryMaxGasCap,
-            _congestionThresholdPercentage,
-            _congestionExponent,
-            _taskCapacity,
-            _cycleDurationSecs,
-            _sysTaskDurationCapSecs,
-            _sysRegistryMaxGasCap,
-            _sysTaskCapacity
+            params.taskDurationCapSecs,
+            params.registryMaxGasCap,
+            params.congestionThresholdPercentage,
+            params.congestionExponent,
+            params.taskCapacity,
+            params.cycleDurationSecs,
+            params.sysTaskDurationCapSecs,
+            params.sysRegistryMaxGasCap,
+            params.sysTaskCapacity
         );
-        if(_vmSigner == address(0)) revert AddressCannotBeZero();
-        _erc20Supra.validateContractAddress();
-
+        params.vmSigner.validateAddress();
+        params.owner.validateAddress();
+        params.erc20Supra.validateContractAddress();
+        params.controller.validateAddress();
+        params.registry.validateAddress();
 
         LibConfig.Config memory config = LibConfig.createConfig(
-            _registryMaxGasCap,
-            _sysRegistryMaxGasCap,
-            _automationBaseFeeWeiPerSec,
-            _flatRegistrationFeeWei,
-            _congestionBaseFeeWeiPerSec,
-            _taskDurationCapSecs,
-            _sysTaskDurationCapSecs,
-            _cycleDurationSecs,
-            _taskCapacity,
-            _sysTaskCapacity,
-            _congestionThresholdPercentage,
-            _congestionExponent
-        );
-        
-        regConfig = LibConfig.createRegistryConfig(
-            _registryMaxGasCap,
-            _sysRegistryMaxGasCap,
-            true,
-            _vmSigner,
-            _erc20Supra,
-            config  
+            params.registryMaxGasCap,
+            params.sysRegistryMaxGasCap,
+            params.automationBaseFeeWeiPerSec,
+            params.flatRegistrationFeeWei,
+            params.congestionBaseFeeWeiPerSec,
+            params.taskDurationCapSecs,
+            params.sysTaskDurationCapSecs,
+            params.cycleDurationSecs,
+            params.taskCapacity,
+            params.sysTaskCapacity,
+            params.congestionThresholdPercentage,
+            params.congestionExponent
         );
 
+        regConfig = LibConfig.createRegistryConfig(
+            params.registryMaxGasCap,
+            params.sysRegistryMaxGasCap,
+            true,
+            params.vmSigner,
+            params.erc20Supra,
+            config
+        );
+        regConfig.setAutomationController(params.controller);
+        regConfig.registry = params.registry;
+
         __Ownable2Step_init();
-        __Ownable_init(msg.sender);
+        __Ownable_init(params.owner);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -534,7 +527,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
         return _safeUnlockLockedDeposit(_taskIndex, _lockedDeposit);
     }
 
-    /// @notice Refunds the deposit fee and any autoamtion fees of the task.
+    /// @notice Refunds the deposit fee and any automation fees of the task.
     function refundTaskFees(
         uint64 _currentTime,
         uint64 _refundDuration, 
@@ -644,7 +637,7 @@ contract AutomationCore is IAutomationCore, Ownable2StepUpgradeable, UUPSUpgrade
 
             gasCommittedForNextCycle = regConfig.gasCommittedForNextCycle();
             uint128 estimatedAutomationFeeForCycle = estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
-            if(_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(); }
+            if(_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(uint64(estimatedAutomationFeeForCycle)); }
 
             taskDurationCap = regConfig.taskDurationCapSecs();
             nextCycleRegistryMaxGasCap = regConfig.nextCycleRegistryMaxGasCap();

@@ -4,12 +4,12 @@ use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBind
 use crate::value_or_error;
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};
-use alloy_sol_types::SolCall;
-use primitives::supra_constants::VM_SIGNER;
-use alloy_eips::eip2718::Typed2718;
-use context::TransactionType;
 use alloy_consensus::transaction::Transaction;
+use alloy_eips::eip2718::Typed2718;
+use alloy_sol_types::SolCall;
 use context::transaction::SignedAuthorization;
+use context::TransactionType;
+use primitives::supra_constants::VM_SIGNER;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -49,7 +49,6 @@ pub struct AutomationRegistryRecord {
 }
 
 impl Transaction for AutomationRegistryRecord {
-
     #[inline]
     fn chain_id(&self) -> Option<ChainId> {
         Some(self.chain_id)
@@ -139,7 +138,6 @@ impl Typed2718 for AutomationRegistryRecord {
     fn ty(&self) -> u8 {
         TransactionType::Custom as u8
     }
-
 }
 
 /// Builder for [`AutomationRegistryRecord`]
@@ -199,7 +197,8 @@ impl AutomationRecordBuilder {
     pub fn build(self) -> Result<AutomationRegistryRecord, SupraExtensionError> {
         let Self {
             to,
-            chain_id, block_height,
+            chain_id,
+            block_height,
             nonce,
             gas_limit,
             task_indexes,

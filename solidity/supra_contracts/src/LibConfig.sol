@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+    // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
 // Helper library used by AutomationConfig.
@@ -339,6 +339,27 @@ library LibConfig {
         uint16 sysTaskCapacity;
         uint8 congestionThresholdPercentage;
         uint8 congestionExponent;
+    }
+
+    /// @notice Struct representing initialization parameters for AutomationCore.
+    struct InitializeParams {
+        uint64 taskDurationCapSecs;
+        uint128 registryMaxGasCap;
+        uint128 automationBaseFeeWeiPerSec;
+        uint128 flatRegistrationFeeWei;
+        uint8 congestionThresholdPercentage;
+        uint128 congestionBaseFeeWeiPerSec;
+        uint8 congestionExponent;
+        uint16 taskCapacity;
+        uint64 cycleDurationSecs;
+        uint64 sysTaskDurationCapSecs;
+        uint128 sysRegistryMaxGasCap;
+        uint16 sysTaskCapacity;
+        address vmSigner;
+        address erc20Supra;
+        address controller;
+        address registry;
+        address owner;
     }
 
     function getConfig(Config memory cfg) internal pure returns (ConfigDetails memory config) {
