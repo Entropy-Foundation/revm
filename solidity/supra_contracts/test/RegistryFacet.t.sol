@@ -2,9 +2,8 @@
 pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
-import {ConfigFacet} from "../src/facets/ConfigFacet.sol";
-import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
-import {CoreFacet} from "../src/facets/CoreFacet.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibRegistry} from "../src/libraries/LibRegistry.sol";
@@ -18,7 +17,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testRegisterRevertsIfAutomationNotEnabled() public {
         // Disable automation
         vm.prank(admin);
-        CoreFacet(diamondAddr).disableAutomation();
+        ICoreFacet(diamondAddr).disableAutomation();
 
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));
@@ -26,7 +25,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -41,7 +40,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testRegisterRevertsIfRegistrationDisabled() public {
         // Disable registration
         vm.prank(admin);
-        ConfigFacet(diamondAddr).disableRegistration();
+        IConfigFacet(diamondAddr).disableRegistration();
 
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra)); 
@@ -49,7 +48,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.RegistrationDisabled.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -68,7 +67,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.InvalidExpiryTime.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp),        // Invalid expiryTime
             uint128(1_000_000),
@@ -87,7 +86,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.InvalidTaskDuration.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 3601),     // Invalid task duration
             uint128(1_000_000),
@@ -106,7 +105,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.TaskExpiresBeforeNextCycle.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2000),     // Task expires before next cycle
             uint128(1_000_000),
@@ -125,7 +124,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),
@@ -144,7 +143,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),
@@ -163,7 +162,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.InvalidMaxGasAmount.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(0),                         // maxGasAmount
@@ -182,7 +181,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.InvalidGasPriceCap.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),
@@ -201,7 +200,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.InsufficientFeeCapForCycle.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),
@@ -220,7 +219,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.GasCommittedExceedsMaxGasCap.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(10_000_001),            // Gas exceeds max gas cap
@@ -240,7 +239,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         erc20Supra.nativeToErc20Supra{value: 5 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),
@@ -251,17 +250,17 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        TaskMetadata memory taskMetadata = RegistryFacet(diamondAddr).getTaskDetails(0);
-        assertTrue(RegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 1);
+        TaskMetadata memory taskMetadata = IRegistryFacet(diamondAddr).getTaskDetails(0);
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
 
-        uint256[] memory userTasks = RegistryFacet(diamondAddr).getUserTasks(alice);
+        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getUserTasks(alice);
         assertEq(userTasks.length, 1);
         assertEq(userTasks[0], 0);
 
-        assertEq(RegistryFacet(diamondAddr).getNextTaskIndex(), 1);
-        assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 1_000_000);
-        assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
+        assertEq(IRegistryFacet(diamondAddr).getNextTaskIndex(), 1);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 1_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.502 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.498 ether);
 
@@ -308,9 +307,9 @@ contract RegistryFacetTest is BaseDiamondTest {
         });
 
         vm.expectEmit(true, true, false, true);
-        emit RegistryFacet.TaskRegistered(0, alice, 0.002 ether, 0.5 ether, taskMetadata);
+        emit IRegistryFacet.TaskRegistered(0, alice, 0.002 ether, 0.5 ether, taskMetadata);
 
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),
@@ -332,7 +331,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -344,7 +343,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' reverts if automation is not enabled.
     function testRegisterSystemTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        CoreFacet(diamondAddr).disableAutomation();
+        ICoreFacet(diamondAddr).disableAutomation();
 
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra)); 
@@ -352,7 +351,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -364,7 +363,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' reverts if registration is disabled.
     function testRegisterSystemTaskRevertsIfRegistrationDisabled() public {
         vm.prank(admin);
-        ConfigFacet(diamondAddr).disableRegistration();
+        IConfigFacet(diamondAddr).disableRegistration();
 
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));
@@ -372,7 +371,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.RegistrationDisabled.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -389,7 +388,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.InvalidTaskDuration.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,
             uint64(block.timestamp + 3601),     // Invalid task duration
             uint128(1_000_000), 
@@ -406,7 +405,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(LibRegistry.GasCommittedExceedsMaxGasCap.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,
             uint64(block.timestamp + 2250),
             uint128(5_000_001),                 // Gas exceeds max gas cap
@@ -421,7 +420,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20Supra)); 
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -429,18 +428,18 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData                             // aux data
         );
         
-        TaskMetadata memory taskMetadata = RegistryFacet(diamondAddr).getTaskDetails(0);
-        assertTrue(RegistryFacet(diamondAddr).ifTaskExists(0));
-        assertTrue(RegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 1);
+        TaskMetadata memory taskMetadata = IRegistryFacet(diamondAddr).getTaskDetails(0);
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
 
-        uint256[] memory userTasks = RegistryFacet(diamondAddr).getUserTasks(bob);
+        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getUserTasks(bob);
         assertEq(userTasks.length, 1);
         assertEq(userTasks[0], 0);
 
-        assertEq(RegistryFacet(diamondAddr).getNextTaskIndex(), 1);
-        assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getNextTaskIndex(), 1);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1_000_000);
 
         assertEq(taskMetadata.maxGasAmount, 1_000_000);
         assertEq(taskMetadata.gasPriceCap, 0);
@@ -481,10 +480,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         });
 
         vm.expectEmit(true, true, false, true);
-        emit RegistryFacet.SystemTaskRegistered(0, bob, block.timestamp, taskMetadata);
+        emit IRegistryFacet.SystemTaskRegistered(0, bob, block.timestamp, taskMetadata);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).registerSystemTask(
+        IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
             uint64(block.timestamp + 2250),     // expiryTime
             uint128(1_000_000),                 // maxGasAmount
@@ -498,12 +497,12 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'cancelTask' reverts if automation is not enabled.
     function testCancelTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        CoreFacet(diamondAddr).disableAutomation();
+        ICoreFacet(diamondAddr).disableAutomation();
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
     }
 
     /// @dev Test to ensure 'cancelTask' reverts if task does not exist.
@@ -511,7 +510,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.TaskDoesNotExist.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
     }
 
     /// @dev Test to ensure 'cancelTask' reverts if task type is not UST.
@@ -520,7 +519,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
     }
 
     /// @dev Test to ensure 'cancelTask' reverts if caller is not the task owner.
@@ -529,7 +528,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
     }
 
     /// @dev Test to ensure 'cancelTask' cancels a UST.
@@ -537,13 +536,13 @@ contract RegistryFacetTest is BaseDiamondTest {
         testRegister();
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
 
-        assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(RegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
-        assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.252 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.748 ether);
     }
@@ -553,10 +552,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         testRegister();
         
         vm.expectEmit(true, true, true, false);
-        emit RegistryFacet.TaskCancelled(0, alice, keccak256("txHash"));
+        emit IRegistryFacet.TaskCancelled(0, alice, keccak256("txHash"));
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelSystemTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -564,12 +563,12 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'cancelSystemTask' reverts if automation is not enabled. 
     function testCancelSystemTaskRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        CoreFacet(diamondAddr).disableAutomation();
+        ICoreFacet(diamondAddr).disableAutomation();
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTask(0);
     }
 
     /// @dev Test to ensure 'cancelSystemTask' reverts if task does not exist. 
@@ -577,7 +576,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.TaskDoesNotExist.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTask(0);
     }
 
     /// @dev Test to ensure 'cancelSystemTask' reverts if task does not exist in system tasks. 
@@ -586,7 +585,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.SystemTaskDoesNotExist.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTask(0);
     }
 
     /// @dev Test to ensure 'cancelSystemTask' reverts if caller is not the task owner. 
@@ -595,7 +594,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTask(0);
     }
 
     /// @dev Test to ensure 'cancelSystemTask' cancels a GST. 
@@ -603,14 +602,14 @@ contract RegistryFacetTest is BaseDiamondTest {
         testRegisterSystemTask();
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTask(0);
 
-        assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
-        assertFalse(RegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(RegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
     /// @dev Test to ensure 'cancelSystemTask' emits event 'TaskCancelled'. 
@@ -618,10 +617,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         testRegisterSystemTask();
 
         vm.expectEmit(true, true, true, false);
-        emit RegistryFacet.TaskCancelled(0, bob, keccak256("txHash"));
+        emit IRegistryFacet.TaskCancelled(0, bob, keccak256("txHash"));
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTask(0);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -629,13 +628,13 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'stopTasks' reverts if automation is not enabled. 
     function testStopTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        CoreFacet(diamondAddr).disableAutomation();
+        ICoreFacet(diamondAddr).disableAutomation();
 
         uint64[] memory taskIndexes;
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
     }
     
     /// @dev Test to ensure 'stopTasks' reverts if input array is empty. 
@@ -644,7 +643,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.TaskIndexesCannotBeEmpty.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopTasks' reverts if caller is not the task owner. 
@@ -657,7 +656,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopTasks' reverts if task type is not UST. 
@@ -670,7 +669,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopTasks' does nothing if task does not exist. 
@@ -681,10 +680,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 5;
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
 
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' stops the input UST tasks. 
@@ -696,21 +695,21 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.warp(2002);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        CoreFacet(diamondAddr).monitorCycleEnd();        
-        CoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        ICoreFacet(diamondAddr).monitorCycleEnd();        
+        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
 
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.702 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.298 ether);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
 
-        assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(RegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
-        assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(RegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.18955 ether);
         assertEq(erc20Supra.balanceOf(alice), 4.81045 ether);
     }
@@ -724,18 +723,18 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.warp(2002);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        CoreFacet(diamondAddr).monitorCycleEnd();        
-        CoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        ICoreFacet(diamondAddr).monitorCycleEnd();        
+        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
 
         LibUtils.TaskStopped[] memory stoppedTasks = new LibUtils.TaskStopped[](1);
         stoppedTasks[0] = LibUtils.TaskStopped(0, 0.5 ether, 0.01245 ether, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
-        emit RegistryFacet.TasksStopped(stoppedTasks, alice);
+        emit IRegistryFacet.TasksStopped(stoppedTasks, alice);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -743,13 +742,13 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'stopSystemTasks' reverts if automation is not enabled.
     function testStopSystemTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
-        CoreFacet(diamondAddr).disableAutomation();
+        ICoreFacet(diamondAddr).disableAutomation();
 
         uint64[] memory taskIndexes;
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' reverts if input array is empty.
@@ -758,7 +757,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.TaskIndexesCannotBeEmpty.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' reverts if caller is not the task owner.
@@ -771,7 +770,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' reverts if task type is not GST.
@@ -784,7 +783,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' does nothing if task does not exist.
@@ -795,10 +794,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 5;
 
         vm.prank(alice);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
 
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' stops the input GST tasks.
@@ -810,20 +809,20 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.warp(2002);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        CoreFacet(diamondAddr).monitorCycleEnd();
+        ICoreFacet(diamondAddr).monitorCycleEnd();
 
         vm.prank(LibUtils.VM_SIGNER);
-        CoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
 
-        assertFalse(RegistryFacet(diamondAddr).ifTaskExists(0));
-        assertFalse(RegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(RegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
-        assertEq(RegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(RegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1000000);
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1000000);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
@@ -835,18 +834,18 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.warp(2002);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        CoreFacet(diamondAddr).monitorCycleEnd();
+        ICoreFacet(diamondAddr).monitorCycleEnd();
 
         vm.prank(LibUtils.VM_SIGNER);
-        CoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
         LibUtils.TaskStopped[] memory stoppedTasks = new LibUtils.TaskStopped[](1);
         stoppedTasks[0] = LibUtils.TaskStopped(0, 0, 0, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
-        emit RegistryFacet.TasksStopped(stoppedTasks, bob);
+        emit IRegistryFacet.TasksStopped(stoppedTasks, bob);
 
         vm.prank(bob);
-        RegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
     }
 }

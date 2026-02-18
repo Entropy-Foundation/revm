@@ -3,8 +3,9 @@ pragma solidity 0.8.27;
 
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
-import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 
 library LibRegistry {
     using LibUtils for *;
@@ -20,85 +21,36 @@ library LibRegistry {
     /// @dev Refund fraction
     uint8 constant REFUND_FRACTION = 2;
 
+    /// @dev Defines divisor for refunds of deposit fees with penalty
+    /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
+    uint8 constant REFUND_FACTOR = 2;
+
+    /// @notice Address of the transaction hash precompile.
+    address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ERRORS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
     
     error TransferFailed();
     error ErrorCycleFeeRefund();
     error RegistrationDisabled();
-    error AddressAlreadyExists();
-    error AddressDoesNotExist();
     error AutomationNotEnabled();
-    error CallerNotController();
-    error UnauthorizedAccount();
     error CycleTransitionInProgress();
     error TaskDoesNotExist();
-    error UnsupportedTaskOperation();
-    error AlreadyCancelled();
     error ErrorDepositRefund();
-    error SystemTaskDoesNotExist();
-    error TaskIndexesCannotBeEmpty();
     error RegisteredTaskInvalidType();
     error TaskIndexNotFound();
-    error TaskIndexNotUnique();
     error FailedToCallTxHashPrecompile();
     error TxnHashLengthShouldBe32(uint64);
     error InvalidMaxGasAmount();
     error GasCommittedExceedsMaxGasCap();
     error GasCommittedValueUnderflow();
-    error InsufficientBalance();
     error InsufficientFeeCapForCycle();
     error InsufficientBalanceForRefund();
-    error InvalidCongestionExponent();
-    error InvalidCongestionThreshold();
-    error InvalidCycleDuration();
     error InvalidExpiryTime();
     error InvalidGasPriceCap();
-    error InvalidRegistryMaxGasCap();
-    error InvalidSysRegistryMaxGasCap();
-    error InvalidSysTaskCapacity();
-    error InvalidSysTaskDuration();
-    error InvalidTaskCapacity();
     error InvalidTaskDuration();
-    error RequestExceedsLockedBalance();
     error TaskCapacityReached();
     error TaskExpiresBeforeNextCycle();
-
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Emitted when an automation fee is refunded for an automation task at the end of the cycle for excessive
-    /// duration paid at the beginning of the cycle due to cycle duration reduction by governance.
-    event TaskFeeRefund(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        uint64 indexed amount
-    );
-
-    /// @notice Emitted when a deposit fee is refunded for an automation task.
-    event TaskDepositFeeRefund(uint64 indexed taskIndex, address owner, uint128 amount);
-
-    /// @notice Emitted when a task cycle fee is being refunded but locked cycle fees is less than the requested refund.
-    event ErrorUnlockTaskCycleFee(
-        uint64 indexed taskIndex,
-        uint256 indexed lockedCycleFees,
-        uint64 indexed refund
-    );
-
-    /// @notice Emitted during cycle transition when refunds to be paid is not possible due to insufficient contract balance.
-    /// Type of the refund can be related either to the deposit paid during registration (0), or to cycle fee caused by
-    /// the shortening of the cycle (1)
-    event ErrorInsufficientBalanceToRefund(
-        uint64 indexed _taskIndex,
-        address indexed _owner,
-        uint8 indexed _refundType,
-        uint128 _amount
-    );
-
-    /// @notice Emitted when deposit fee is being refunded but total locked deposits is less than the locked deposit for the task.
-    event ErrorUnlockTaskDepositFee(
-        uint64 indexed taskIndex, 
-        uint256 indexed totalDepositedAutomationFees, 
-        uint128 indexed lockedDeposit
-    );
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -155,20 +107,6 @@ library LibRegistry {
         task = s.registryState.tasks[_taskIndex];
     }
 
-    /// @notice Function to remove a task from the registry.
-    /// @param _taskIndex Index of the task to remove. 
-    /// @param _removeFromSysReg Wheather to remove from system task registry.
-    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
-
-        if (_removeFromSysReg) {
-            require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
-        }
-
-        delete s.registryState.tasks[_taskIndex];
-        require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
-    }
-
     /// @notice Refunds the specified amount of deposit to the task owner and unlocks full deposit from the total automation fees deposited.
     /// @param _taskIndex Index of the task.
     /// @param _taskOwner Owner of the task.
@@ -188,7 +126,7 @@ library LibRegistry {
 
         result = safeRefund(_taskIndex, _taskOwner, _refundableDeposit, DEPOSIT_CYCLE_FEE);
 
-        if (result) { emit TaskDepositFeeRefund(_taskIndex, _taskOwner, _refundableDeposit); }
+        if (result) { emit IRegistryFacet.TaskDepositFeeRefund(_taskIndex, _taskOwner, _refundableDeposit); }
         return result;
     }
     
@@ -308,7 +246,7 @@ library LibRegistry {
             // Unlock the refunded amount
             _cycleLockedFees = _cycleLockedFees - _refundableFee;
         } else {
-            emit ErrorUnlockTaskCycleFee(_taskIndex, _cycleLockedFees, _refundableFee);
+            emit IRegistryFacet.ErrorUnlockTaskCycleFee(_taskIndex, _cycleLockedFees, _refundableFee);
         }
         return (hasLockedFee, _cycleLockedFees);
     }
@@ -343,7 +281,7 @@ library LibRegistry {
         address erc20Supra = s.erc20Supra;
         uint256 balance = IERC20(erc20Supra).balanceOf(address(this));
         if (balance < _refundableAmount) {
-            emit ErrorInsufficientBalanceToRefund(_taskIndex, _taskOwner, _refundType, _refundableAmount);
+            emit IRegistryFacet.ErrorInsufficientBalanceToRefund(_taskIndex, _taskOwner, _refundType, _refundableAmount);
             return false;
         } else {
             return _refund(erc20Supra, _taskOwner, _refundableAmount);
@@ -366,7 +304,7 @@ library LibRegistry {
         if (!result) { return (result, remainingLockedFees); } 
         
         result = safeRefund( _taskIndex, _taskOwner, _refundableFee, CYCLE_FEE);
-        if (result) { emit TaskFeeRefund(_taskIndex, _taskOwner, _refundableFee); }
+        if (result) { emit IRegistryFacet.TaskFeeRefund(_taskIndex, _taskOwner, _refundableFee); }
         return (result, remainingLockedFees);   
     }
 
@@ -398,7 +336,7 @@ library LibRegistry {
             return true;
         }
 
-        emit ErrorUnlockTaskDepositFee(_taskIndex, totalDeposited, _lockedDeposit);
+        emit IRegistryFacet.ErrorUnlockTaskDepositFee(_taskIndex, totalDeposited, _lockedDeposit);
         return false;
     }
 
@@ -531,7 +469,7 @@ library LibRegistry {
         if (s.registryState.tasks[_taskIndex].taskType == LibUtils.TaskType.GST) { revert RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
-        removeTask(_taskIndex, false);
+        removeTask(_taskIndex, _taskOwner,false);
 
         // Refund
         safeDepositRefund(
@@ -707,5 +645,31 @@ library LibRegistry {
         s.registryState.cycleLockedFees = remainingCycleLockedFees;
 
         return (cycleFeeRefund, depositRefund);
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Function to remove a task from the registry.
+    /// @param _taskIndex Index of the task to remove.
+    /// @param _owner Address of the task owner.  
+    /// @param _removeFromSysReg Wheather to remove from system task registry.
+    function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg) internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (_removeFromSysReg) {
+            require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
+        }
+
+        delete s.registryState.tasks[_taskIndex];
+        require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
+        require(s.registryState.userTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
+    }
+
+    /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
+    function readTxHash() internal view returns (bytes32) {
+        (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
+        require(ok, FailedToCallTxHashPrecompile());
+        require(out.length == 32, TxnHashLengthShouldBe32(uint64(out.length)));
+        return abi.decode(out, (bytes32));
     }
 }

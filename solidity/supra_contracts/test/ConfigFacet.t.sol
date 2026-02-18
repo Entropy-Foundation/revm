@@ -3,7 +3,6 @@ pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
-import {ConfigFacet} from "../src/facets/ConfigFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
@@ -16,7 +15,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'grantAuthorization' grants authorization to an address.
     function testGrantAuthorization() public {
         vm.prank(admin);
-        ConfigFacet(diamondAddr).grantAuthorization(alice);
+        IConfigFacet(diamondAddr).grantAuthorization(alice);
 
         assertTrue(IRegistryFacet(diamondAddr).isAuthorizedSubmitter(alice));
     }
@@ -24,10 +23,10 @@ contract ConfigFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'grantAuthorization' emits event 'AuthorizationGranted'.
     function testGrantAuthorizationEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ConfigFacet.AuthorizationGranted(alice, block.timestamp);
+        emit IConfigFacet.AuthorizationGranted(alice, block.timestamp);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).grantAuthorization(alice);
+        IConfigFacet(diamondAddr).grantAuthorization(alice);
     }
 
     /// @dev Test to ensure 'grantAuthorization' reverts if address is already authorized.
@@ -38,7 +37,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.AddressAlreadyExists.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).grantAuthorization(alice);
+        IConfigFacet(diamondAddr).grantAuthorization(alice);
     }
 
     /// @dev Test to ensure 'grantAuthorization' reverts if caller is not owner.
@@ -46,7 +45,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).grantAuthorization(alice);
+        IConfigFacet(diamondAddr).grantAuthorization(alice);
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'revokeAuthorization' :::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -58,7 +57,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
         // Revoke authorization
         vm.prank(admin);
-        ConfigFacet(diamondAddr).revokeAuthorization(alice);
+        IConfigFacet(diamondAddr).revokeAuthorization(alice);
 
         assertFalse(IRegistryFacet(diamondAddr).isAuthorizedSubmitter(alice));
     }
@@ -69,10 +68,10 @@ contract ConfigFacetTest is BaseDiamondTest {
         testGrantAuthorization();
 
         vm.expectEmit(true, true, false, false);
-        emit ConfigFacet.AuthorizationRevoked(alice, block.timestamp);
+        emit IConfigFacet.AuthorizationRevoked(alice, block.timestamp);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).revokeAuthorization(alice);
+        IConfigFacet(diamondAddr).revokeAuthorization(alice);
     }
 
     /// @dev Test to ensure 'revokeAuthorization' reverts if address is not authorised.
@@ -80,7 +79,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.AddressDoesNotExist.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).revokeAuthorization(alice);
+        IConfigFacet(diamondAddr).revokeAuthorization(alice);
     }
 
     /// @dev Test to ensure 'revokeAuthorization' reverts if caller is not owner.
@@ -88,7 +87,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).revokeAuthorization(alice);
+        IConfigFacet(diamondAddr).revokeAuthorization(alice);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'disableRegistration' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -96,15 +95,15 @@ contract ConfigFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'disableRegistration' disables the registration.
     function testDisableRegistration() public {
         vm.prank(admin);
-        ConfigFacet(diamondAddr).disableRegistration();
+        IConfigFacet(diamondAddr).disableRegistration();
 
-        assertFalse(ConfigFacet(diamondAddr).isRegistrationEnabled());
+        assertFalse(IConfigFacet(diamondAddr).isRegistrationEnabled());
     }
     
     /// @dev Test to ensure 'disableRegistration' emits event 'TaskRegistrationDisabled'. 
     function testDisableRegistrationEmitsEvent() public {
         vm.expectEmit(true, false, false, false);
-        emit ConfigFacet.TaskRegistrationDisabled(false);
+        emit IConfigFacet.TaskRegistrationDisabled(false);
 
         testDisableRegistration();
     }
@@ -118,7 +117,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.AlreadyDisabled.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).disableRegistration();
+        IConfigFacet(diamondAddr).disableRegistration();
     }
 
     /// @dev Test to ensure 'disableRegistration' reverts if caller is not owner.
@@ -126,7 +125,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
         
         vm.prank(alice);
-        ConfigFacet(diamondAddr).disableRegistration();
+        IConfigFacet(diamondAddr).disableRegistration();
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'enableRegistration' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -138,9 +137,9 @@ contract ConfigFacetTest is BaseDiamondTest {
 
         // Enable registration
         vm.prank(admin);
-        ConfigFacet(diamondAddr).enableRegistration();
+        IConfigFacet(diamondAddr).enableRegistration();
 
-        assertTrue(ConfigFacet(diamondAddr).isRegistrationEnabled());
+        assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
     }
 
     /// @dev Test to ensure 'enableRegistration' emits event 'TaskRegistrationEnabled'.
@@ -149,11 +148,11 @@ contract ConfigFacetTest is BaseDiamondTest {
         testDisableRegistration();
 
         vm.expectEmit(true, false, false, false);
-        emit ConfigFacet.TaskRegistrationEnabled(true);
+        emit IConfigFacet.TaskRegistrationEnabled(true);
 
         // Enable registration
         vm.prank(admin);
-        ConfigFacet(diamondAddr).enableRegistration();
+        IConfigFacet(diamondAddr).enableRegistration();
     }
 
     /// @dev Test to ensure 'enableRegistration' reverts if registration is already enabled.
@@ -161,7 +160,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.AlreadyEnabled.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).enableRegistration();
+        IConfigFacet(diamondAddr).enableRegistration();
     }
 
     /// @dev Test to ensure 'enableRegistration' reverts if caller is not owner.
@@ -169,7 +168,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).enableRegistration();
+        IConfigFacet(diamondAddr).enableRegistration();
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setVmSigner' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -179,21 +178,21 @@ contract ConfigFacetTest is BaseDiamondTest {
         address newVmSigner = address(0x100);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setVmSigner(newVmSigner);
+        IConfigFacet(diamondAddr).setVmSigner(newVmSigner);
 
-        assertEq(ConfigFacet(diamondAddr).getVmSigner(), newVmSigner);
+        assertEq(IConfigFacet(diamondAddr).getVmSigner(), newVmSigner);
     }
 
     /// @dev Test to ensure 'setVmSigner' emits event 'VmSignerUpdated'.
     function testSetVmSignerEmitsEvent() public {
-        address oldVmSigner = ConfigFacet(diamondAddr).getVmSigner();
+        address oldVmSigner = IConfigFacet(diamondAddr).getVmSigner();
         address newVmSigner = address(0x100);
 
         vm.expectEmit(true, true, false, false);
-        emit ConfigFacet.VmSignerUpdated(oldVmSigner, newVmSigner);
+        emit IConfigFacet.VmSignerUpdated(oldVmSigner, newVmSigner);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setVmSigner(newVmSigner);
+        IConfigFacet(diamondAddr).setVmSigner(newVmSigner);
     }
 
     /// @dev Test to ensure 'setVmSigner' reverts if zero address is passed.
@@ -201,7 +200,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.AddressCannotBeZero.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setVmSigner(address(0));
+        IConfigFacet(diamondAddr).setVmSigner(address(0));
     }
 
     /// @dev Test to ensure 'setVmSigner' reverts if caller is not owner.
@@ -209,7 +208,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).setVmSigner(address(0x100));
+        IConfigFacet(diamondAddr).setVmSigner(address(0x100));
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'setErc20Supra' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -219,21 +218,21 @@ contract ConfigFacetTest is BaseDiamondTest {
         ERC20Supra supraErc20 = new ERC20Supra(msg.sender);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
+        IConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
 
-        assertEq(ConfigFacet(diamondAddr).erc20Supra(), address(supraErc20));
+        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(supraErc20));
     }
 
     /// @dev Test to ensure 'setErc20Supra' emits event 'Erc20SupraUpdated'. 
     function testSetErc20SupraEmitsEvent() public {
-        address oldAddr = ConfigFacet(diamondAddr).erc20Supra();
+        address oldAddr = IConfigFacet(diamondAddr).erc20Supra();
         ERC20Supra supraErc20 = new ERC20Supra(msg.sender);
 
         vm.expectEmit(true, true, false, false);
-        emit ConfigFacet.Erc20SupraUpdated(oldAddr, address(supraErc20));
+        emit IConfigFacet.Erc20SupraUpdated(oldAddr, address(supraErc20));
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
+        IConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
     }
 
     /// @dev Test to ensure 'setErc20Supra' reverts if zero address is passed. 
@@ -241,7 +240,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.AddressCannotBeZero.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setErc20Supra(address(0));
+        IConfigFacet(diamondAddr).setErc20Supra(address(0));
     }
 
     /// @dev Test to ensure 'setErc20Supra' reverts if EOA is passed. 
@@ -249,7 +248,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).setErc20Supra(alice);
+        IConfigFacet(diamondAddr).setErc20Supra(alice);
     }
 
     /// @dev Test to ensure 'setErc20Supra' reverts if caller is not owner. 
@@ -259,7 +258,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
+        IConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdrawFees' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -269,7 +268,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.prank(admin);
 
         vm.expectRevert(IConfigFacet.InvalidAmount.selector);
-        ConfigFacet(diamondAddr).withdrawFees(0, admin);
+        IConfigFacet(diamondAddr).withdrawFees(0, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if recipient address is zero.
@@ -277,7 +276,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.prank(admin);
 
         vm.expectRevert(IConfigFacet.AddressCannotBeZero.selector);
-        ConfigFacet(diamondAddr).withdrawFees(1 ether, address(0));
+        IConfigFacet(diamondAddr).withdrawFees(1 ether, address(0));
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if contract has insufficient balance.
@@ -285,7 +284,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.InsufficientBalance.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if request amount exceeds the locked balance.
@@ -295,7 +294,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.RequestExceedsLockedBalance.selector);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).withdrawFees(0.04 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(0.04 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if caller is not owner.
@@ -303,7 +302,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' withdraws the requested amount and updates the balance.
@@ -314,7 +313,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.502 ether);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
 
         assertEq(erc20Supra.balanceOf(admin), 0.002 ether);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.5 ether);
@@ -325,10 +324,10 @@ contract ConfigFacetTest is BaseDiamondTest {
         registerUST();
 
         vm.expectEmit(true, true, false, false);
-        emit ConfigFacet.RegistryFeeWithdrawn(admin, 0.002 ether);
+        emit IConfigFacet.RegistryFeeWithdrawn(admin, 0.002 ether);
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateConfigBuffer' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -356,7 +355,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         Config memory cfg = validConfig();
 
         vm.prank(admin);
-        ConfigFacet(diamondAddr).updateConfigBuffer(
+        IConfigFacet(diamondAddr).updateConfigBuffer(
             cfg.taskDurationCapSecs,
             cfg.registryMaxGasCap,
             cfg.automationBaseFeeWeiPerSec,
@@ -372,7 +371,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         );
     
         // Pending config should be updated
-        Config memory configBuffer = ConfigFacet(diamondAddr).getConfigBuffer();
+        Config memory configBuffer = IConfigFacet(diamondAddr).getConfigBuffer();
         assertEq(configBuffer.taskDurationCapSecs, cfg.taskDurationCapSecs);
         assertEq(configBuffer.registryMaxGasCap, cfg.registryMaxGasCap);
         assertEq(configBuffer.automationBaseFeeWeiPerSec, cfg.automationBaseFeeWeiPerSec);
@@ -392,10 +391,10 @@ contract ConfigFacetTest is BaseDiamondTest {
         Config memory cfg = validConfig();
 
         vm.expectEmit(true, false, false, false);
-        emit ConfigFacet.ConfigBufferUpdated(cfg);
+        emit IConfigFacet.ConfigBufferUpdated(cfg);
         
         vm.prank(admin);
-        ConfigFacet(diamondAddr).updateConfigBuffer(
+        IConfigFacet(diamondAddr).updateConfigBuffer(
             cfg.taskDurationCapSecs,
             cfg.registryMaxGasCap,
             cfg.automationBaseFeeWeiPerSec,
@@ -418,7 +417,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        ConfigFacet(diamondAddr).updateConfigBuffer(
+        IConfigFacet(diamondAddr).updateConfigBuffer(
             cfg.taskDurationCapSecs,
             cfg.registryMaxGasCap,
             cfg.automationBaseFeeWeiPerSec,

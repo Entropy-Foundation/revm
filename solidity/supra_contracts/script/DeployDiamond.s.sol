@@ -50,6 +50,7 @@ contract DeployDiamond is Script {
         console.log("DiamondCutFacet deployed at:", address(deployment.diamondCutFacet));
         console.log("DiamondLoupeFacet deployed at:", address(deployment.loupeFacet));
         console.log("OwnershipFacet deployed at:", address(deployment.ownershipFacet));
+        console.log("ConfigFacet deployed at:", address(deployment.configFacet));
         console.log("RegistryFacet deployed at:", address(deployment.registryFacet));
         console.log("CoreFacet deployed at:", address(deployment.coreFacet));
         console.log("DiamondInit deployed at:", address(deployment.diamondInit));

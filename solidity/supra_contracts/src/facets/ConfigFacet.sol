@@ -14,32 +14,6 @@ contract ConfigFacet is IConfigFacet {
     /// @dev State variables 
     AppStorage internal s;
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Emitted when an account is authorized as submitter for system tasks.
-    event AuthorizationGranted(address indexed account, uint256 indexed timestamp);
-    
-    /// @notice Emitted when authorization is revoked for an account to submit system tasks.
-    event AuthorizationRevoked(address indexed account, uint256 indexed timestamp);
-
-    /// @notice Emitted when task registration is enabled.
-    event TaskRegistrationEnabled(bool indexed status);
-
-    /// @notice Emitted when task registration is disabled.
-    event TaskRegistrationDisabled(bool indexed status);
-
-    /// @notice Emitted when the VM Signer address is updated.
-    event VmSignerUpdated(address indexed oldVmSigner, address indexed newVmSigner);
-
-    /// @notice Emitted when the ERC20Supra address is updated.
-    event Erc20SupraUpdated(address indexed oldErc20Supra, address indexed newErc20Supra);
-
-    /// @notice Emitted when the registry fees is withdrawn by the admin.
-    event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
-
-    /// @notice Emitted when a new config is added.
-    event ConfigBufferUpdated(Config indexed pendingConfig);
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Grants authorization to the input account to submit system automation tasks.

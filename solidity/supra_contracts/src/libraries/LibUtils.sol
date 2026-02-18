@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-// Helper library used by supra contracts
+// Helper library used by Supra contracts
 library LibUtils {
 
     // Custom errors

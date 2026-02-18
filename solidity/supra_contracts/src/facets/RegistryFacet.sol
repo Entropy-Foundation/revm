@@ -10,49 +10,9 @@ import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 
 contract RegistryFacet is IRegistryFacet {
     using EnumerableSet for *;
-    using LibRegistry for *;
-
-    /// @dev Defines divisor for refunds of deposit fees with penalty
-    /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
-    uint8 constant REFUND_FACTOR = 2;
-
-    /// @notice Address of the transaction hash precompile.
-    address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
 
     /// @dev State variables 
     AppStorage internal s;
-
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    
-    /// @notice Emitted when a user task is registered.
-    event TaskRegistered(
-        uint64 indexed taskIndex, 
-        address indexed owner, 
-        uint128 registrationFee, 
-        uint128 lockedDepositFee, 
-        TaskMetadata taskMetadata
-    );
-
-    /// @notice Emitted when a system task is registered.
-    event SystemTaskRegistered(
-        uint64 indexed taskIndex, 
-        address indexed owner, 
-        uint256 timestamp, 
-        TaskMetadata taskMetadata
-    );
-    
-    /// @notice Emitted when a task is cancelled.
-    event TaskCancelled(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        bytes32 indexed regHash
-    );
-
-    /// @notice Emitted when a task is stopped.
-    event TasksStopped(
-        LibUtils.TaskStopped[] indexed stoppedTasks,
-        address indexed owner
-    );
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: TASKS RELATED FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -93,7 +53,7 @@ contract RegistryFacet is IRegistryFacet {
             gasPriceCap: _gasPriceCap, 
             automationFeeCapForCycle: _automationFeeCapForCycle, 
             depositFee: _automationFeeCapForCycle, 
-            txHash: readTxHash(), 
+            txHash: LibRegistry.readTxHash(), 
             taskIndex: taskIndex, 
             registrationTime: regTime, 
             expiryTime: _expiryTime, 
@@ -152,7 +112,7 @@ contract RegistryFacet is IRegistryFacet {
             gasPriceCap: 0, 
             automationFeeCapForCycle: 0, 
             depositFee: 0, 
-            txHash: readTxHash(), 
+            txHash: LibRegistry.readTxHash(), 
             taskIndex: taskIndex, 
             registrationTime: regTime, 
             expiryTime: _expiryTime, 
@@ -198,11 +158,11 @@ contract RegistryFacet is IRegistryFacet {
         
         if (task.taskState == LibUtils.TaskState.PENDING) {
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
-            removeTask(_taskIndex, task.owner, false); 
+            LibRegistry.removeTask(_taskIndex, task.owner, false); 
             bool result = LibRegistry.safeDepositRefund(
                 _taskIndex,
                 task.owner,
-                task.depositFee / REFUND_FACTOR,
+                task.depositFee / LibRegistry.REFUND_FACTOR,
                 task.depositFee
             );
             if (!result) { revert ErrorDepositRefund(); }            
@@ -248,7 +208,7 @@ contract RegistryFacet is IRegistryFacet {
         if (task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
 
         if (task.taskState == LibUtils.TaskState.PENDING) {
-            removeTask(_taskIndex, task.owner, true);
+            LibRegistry.removeTask(_taskIndex, task.owner, true);
         } else {
             s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.CANCELLED;
         }
@@ -299,7 +259,7 @@ contract RegistryFacet is IRegistryFacet {
                 if (task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
 
                 // Remove task from the registry
-                removeTask(_taskIndexes[i], task.owner, false);
+                LibRegistry.removeTask(_taskIndexes[i], task.owner, false);
                 // Remove from active tasks
                 require(s.registryState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
@@ -336,7 +296,7 @@ contract RegistryFacet is IRegistryFacet {
         }
 
         // Refund and emit event if any tasks were stopped
-        if (stoppedTaskDetails.length > 0) {  
+        if (counter > 0) {  
             LibRegistry.refund(msg.sender, totalRefundFee);
 
             // Emit task stopped event
@@ -366,7 +326,8 @@ contract RegistryFacet is IRegistryFacet {
 
         LibUtils.TaskStopped[] memory stoppedTaskDetails = new LibUtils.TaskStopped[](_taskIndexes.length);
         uint256 counter = 0;
-
+        uint64 cycleEndTime = LibCore.getCycleEndTime();
+        
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
@@ -376,11 +337,11 @@ contract RegistryFacet is IRegistryFacet {
 
                 // Check if GST
                 if (task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
-                removeTask(_taskIndexes[i], task.owner, true);
+                LibRegistry.removeTask(_taskIndexes[i], task.owner, true);
                 // Remove from active tasks
                 require(s.registryState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
-                if (task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > LibCore.getCycleEndTime()) {
+                if (task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
@@ -396,37 +357,13 @@ contract RegistryFacet is IRegistryFacet {
             }
         }
 
-        if (stoppedTaskDetails.length > 0) {
+        if (counter > 0) {
             // Emit task stopped event
             emit TasksStopped(
                 stoppedTaskDetails,
                 msg.sender
             );
         }
-    }
-
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
-    function readTxHash() private view returns (bytes32) {
-        (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
-        require(ok, FailedToCallTxHashPrecompile());
-        require(out.length == 32, TxnHashLengthShouldBe32(uint64(out.length)));
-        return abi.decode(out, (bytes32));
-    }
-    
-    /// @notice Function to remove a task from the registry.
-    /// @param _taskIndex Index of the task to remove.
-    /// @param _owner Address of the task owner.  
-    /// @param _removeFromSysReg Wheather to remove from system task registry.
-    function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg) private {
-        if (_removeFromSysReg) {
-            require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
-        }
-
-        delete s.registryState.tasks[_taskIndex];
-        require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
-        require(s.registryState.userTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  

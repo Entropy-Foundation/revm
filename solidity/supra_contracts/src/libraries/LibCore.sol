@@ -4,6 +4,7 @@ pragma solidity 0.8.27;
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
 import {LibRegistry} from "./LibRegistry.sol";
+import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 
@@ -18,48 +19,6 @@ library LibCore {
     error InvalidRegistryState();
     error OutOfOrderTaskProcessingRequest();
     error TaskIndexNotFound();
-
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
-    event ActiveTasks(uint256[] indexed taskIndexes);
-
-    /// @notice Event emitted on cycle transition containing removed task indexes.
-    event RemovedTasks(uint64[] indexed taskIndexes);
-
-    /// @notice Emitted when the cycle state transitions.
-    event AutomationCycleEvent(
-        uint64 indexed index,
-        LibUtils.CycleState indexed state,
-        uint64 startTime,
-        uint64 durationSecs,
-        LibUtils.CycleState indexed oldState
-    );
-
-    /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
-    event TaskCycleFeeWithdraw(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        uint128 fee
-    );
-
-    /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
-    event TaskCancelledCapacitySurpassed(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        uint128 fee,
-        uint128 automationFeeCapForCycle,
-        bytes32 registrationHash
-    );
-
-    /// @notice Emitted when a task is removed due to insufficient balance.
-    event TaskCancelledInsufficentBalance(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        uint128 fee,
-        uint256 balance,
-        bytes32 registrationHash
-    );
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -132,7 +91,7 @@ library LibCore {
         LibUtils.CycleState oldState = s.cycleState;
         s.cycleState = _state;
 
-        emit AutomationCycleEvent (
+        emit ICoreFacet.AutomationCycleEvent (
             s.index,
             s.cycleState,
             s.startTime,
@@ -259,7 +218,7 @@ library LibCore {
                 moveToStartedState();
                 if (LibRegistry.getTotalActiveTasks() > 0 ) {
                     uint256[] memory activeTasks = LibRegistry.getAllActiveTaskIds();
-                    emit ActiveTasks(activeTasks);
+                    emit ICoreFacet.ActiveTasks(activeTasks);
                 }
             }
         }
@@ -411,7 +370,7 @@ library LibCore {
 
             isRemoved = true;
 
-            emit TaskCancelledCapacitySurpassed(
+            emit ICoreFacet.TaskCancelledCapacitySurpassed(
                 _taskIndex,
                 _owner,
                 _fee,
@@ -428,7 +387,7 @@ library LibCore {
 
                 isRemoved = true;
 
-                emit TaskCancelledInsufficentBalance(
+                emit ICoreFacet.TaskCancelledInsufficentBalance(
                     _taskIndex,
                     _owner,
                     _fee,
@@ -442,7 +401,7 @@ library LibCore {
                     fees = _fee;
                 }
               
-                emit TaskCycleFeeWithdraw(
+                emit ICoreFacet.TaskCycleFeeWithdraw(
                     _taskIndex,
                     _owner,
                     _fee
@@ -512,7 +471,7 @@ library LibCore {
 
         updateCycleTransitionStateFromFinished();
         if (intermediateState.removedTasks.length > 0) {
-            emit RemovedTasks(intermediateState.removedTasks);
+            emit ICoreFacet.RemovedTasks(intermediateState.removedTasks);
         }
     }
 
@@ -556,7 +515,7 @@ library LibCore {
         }
         
         updateCycleTransitionStateFromSuspended();
-        emit RemovedTasks(removedTasks);
+        emit ICoreFacet.RemovedTasks(removedTasks);
     }
 
     /// @notice Helper function called when cycle end is identified.

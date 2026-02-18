@@ -10,14 +10,6 @@ import {LibDiamond} from "../libraries/LibDiamond.sol";
 contract CoreFacet is ICoreFacet {
     /// @dev State variables
     AppStorage internal s;
-
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: EVENTS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Emitted when automation is enabled.
-    event AutomationEnabled(bool indexed status);
-    
-    /// @notice Emitted when automation is disabled.
-    event AutomationDisabled(bool indexed status);
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VM FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
