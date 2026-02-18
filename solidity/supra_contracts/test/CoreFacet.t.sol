@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
-import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibCore} from "../src/libraries/LibCore.sol";
@@ -216,12 +216,12 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(newDuration, 2000);
         assertEq(uint8(newState), uint8(LibUtils.CycleState.STARTED));
 
-        assertEq(RegistryFacet(diamondAddr).getActiveTaskIds(), activeTasks);
-        assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
-        assertEq(RegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
-        assertEq(RegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(RegistryFacet(diamondAddr).getGasCommittedForCurrentCycle(), 1000000);
-        assertEq(RegistryFacet(diamondAddr).getCycleLockedFees(), 200000000000000000);
+        assertEq(IRegistryFacet(diamondAddr).getActiveTaskIds(), activeTasks);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForCurrentCycle(), 1000000);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 200000000000000000);
     }
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is FINISHED.
@@ -278,7 +278,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         ( , , , LibUtils.CycleState newState) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(newState), uint8(LibUtils.CycleState.READY));
-        assertFalse(RegistryFacet(diamondAddr).ifTaskExists(tasks[0]));
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(tasks[0]));
     }   
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is enabled.
@@ -320,7 +320,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(newStart, uint64(block.timestamp));
         assertEq(newDuration, 2000);
         assertEq(uint8(newState), uint8(LibUtils.CycleState.STARTED));
-        assertFalse(RegistryFacet(diamondAddr).ifTaskExists(tasks[0]));
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(tasks[0]));
     }
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is SUSPENDED.

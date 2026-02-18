@@ -39,7 +39,7 @@ fi
 
 export ERC20_SUPRA
 
-forge script script/DeployAutomationRegistry.s.sol:DeployAutomationRegistry \
+forge script script/DeployDiamond.s.sol:DeployDiamond \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
@@ -54,12 +54,15 @@ echo "Deployment logs saved to $DEPLOY_LOG"
 echo ""
 echo "=== Extracting deployed addresses ==="
 
-AUTOMATION_CORE_IMPL=$(extract "AutomationCore implementation deployed at:")
-AUTOMATION_CORE_PROXY=$(extract "AutomationCore proxy deployed at:")
-AUTOMATION_REGISTRY_IMPL=$(extract "AutomationRegistry implementation deployed at:")
-AUTOMATION_REGISTRY_PROXY=$(extract "AutomationRegistry proxy deployed at:")
-AUTOMATION_CONTROLLER_IMPL=$(extract "AutomationController implementation deployed at:")
-AUTOMATION_CONTROLLER_PROXY=$(extract "AutomationController proxy deployed at:")
+DIAMOND_OWNER=$(extract "Diamond owner:")
+DIAMOND=$(extract "Diamond deployed at:")
+DIAMOND_CUT_FACET=$(extract "DiamondCutFacet deployed at:")
+DIAMOND_LOUPE_FACET=$(extract "DiamondLoupeFacet deployed at:")
+OWNERSHIP_FACET=$(extract "OwnershipFacet deployed at:")
+CONFIG_FACET=$(extract "ConfigFacet deployed at:")
+REGISTRY_FACET=$(extract "RegistryFacet deployed at:")
+CORE_FACET=$(extract "CoreFacet deployed at:")
+DIAMOND_INIT=$(extract "DiamondInit deployed at:")
 
 # ------------------------------------------------------------
 # WRITE TO .env
@@ -73,14 +76,15 @@ cat <<EOF > "$ENV_FILE"
 
 ERC20_SUPRA=$ERC20_SUPRA
 
-AUTOMATION_CORE_IMPL=$AUTOMATION_CORE_IMPL
-AUTOMATION_CORE_PROXY=$AUTOMATION_CORE_PROXY
-
-AUTOMATION_REGISTRY_IMPL=$AUTOMATION_REGISTRY_IMPL
-AUTOMATION_REGISTRY_PROXY=$AUTOMATION_REGISTRY_PROXY
-
-AUTOMATION_CONTROLLER_IMPL=$AUTOMATION_CONTROLLER_IMPL
-AUTOMATION_CONTROLLER_PROXY=$AUTOMATION_CONTROLLER_PROXY
+DIAMOND_OWNER=$DIAMOND_OWNER
+DIAMOND=$DIAMOND
+DIAMOND_CUT_FACET=$DIAMOND_CUT_FACET
+DIAMOND_LOUPE_FACET=$DIAMOND_LOUPE_FACET
+OWNERSHIP_FACET=$OWNERSHIP_FACET
+CONFIG_FACET=$CONFIG_FACET
+REGISTRY_FACET=$REGISTRY_FACET
+CORE_FACET=$CORE_FACET
+DIAMOND_INIT=$DIAMOND_INIT
 EOF
 
 cat "$ENV_FILE"

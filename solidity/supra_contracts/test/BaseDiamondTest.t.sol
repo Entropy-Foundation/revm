@@ -4,8 +4,8 @@ pragma solidity 0.8.27;
 import {Test} from "forge-std/Test.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {Diamond} from "../src/Diamond.sol";
-import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
-import {ConfigFacet} from "../src/facets/ConfigFacet.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 
@@ -40,7 +40,7 @@ abstract contract BaseDiamondTest is Test {
         diamond  = Diamond(payable(deployment.diamond));
         diamondAddr = deployment.diamond;
 
-        ConfigFacet(diamondAddr).grantAuthorization(bob);
+        IConfigFacet(diamondAddr).grantAuthorization(bob);
 
         vm.stopPrank();
 
@@ -60,7 +60,7 @@ abstract contract BaseDiamondTest is Test {
         erc20Supra.nativeToErc20Supra{value: 5 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
-        RegistryFacet(diamondAddr).register(
+        IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp + 2250),
             uint128(1_000_000),

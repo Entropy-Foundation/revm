@@ -23,29 +23,25 @@ source deployed.env
 # Validate env variables
 # -------------------------------
 : "${ERC20_SUPRA:?Missing ERC20_SUPRA in deployed.env}"
-: "${AUTOMATION_CORE_PROXY:?Missing AUTOMATION_CORE_PROXY in deployed.env}"
-: "${AUTOMATION_REGISTRY_PROXY:?Missing AUTOMATION_REGISTRY_PROXY in deployed.env}"
+: "${DIAMOND:?Missing DIAMOND in deployed.env}"
 
 echo ""
 echo "Contracts Loaded:"
 echo "ERC20_SUPRA:              $ERC20_SUPRA"
-echo "AUTOMATION_CORE:          $AUTOMATION_CORE_PROXY"
-echo "AUTOMATION_REGISTRY:      $AUTOMATION_REGISTRY_PROXY"
+echo "DIAMOND:                  $DIAMOND"
 
 echo ""
 echo "=== Starting Automation CLI ==="
 
 ERC20_SUPRA="$ERC20_SUPRA"
-AUTOMATION_CORE="$AUTOMATION_CORE_PROXY"
-REGISTRY="$AUTOMATION_REGISTRY_PROXY"
+DIAMOND="$DIAMOND"
 
 ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
 echo ""
 echo "Using RPC: $RPC_URL"
 echo "Wallet: $ADDRESS"
 echo "ERC20 Supra: $ERC20_SUPRA"
-echo "Automation Core proxy: $AUTOMATION_CORE"
-echo "Automation Registry proxy: $REGISTRY"
+echo "Diamond: $DIAMOND"
 echo ""
 
 # -------------------------------
@@ -78,7 +74,7 @@ get_erc20Supra_balance() {
 }
 
 get_allowance() {
-    RAW=$(cast erc20-token allowance "$ERC20_SUPRA" "$ADDRESS" "$AUTOMATION_CORE" --rpc-url "$RPC_URL" 2>/dev/null)
+    RAW=$(cast erc20-token allowance "$ERC20_SUPRA" "$ADDRESS" "$DIAMOND" --rpc-url "$RPC_URL" 2>/dev/null)
     DEC_WEI=$(echo "$RAW" | awk '{print $1}')
     DEC_WEI=${DEC_WEI:-0}
     SUPRA=$(cast --from-wei "$DEC_WEI")
@@ -94,26 +90,55 @@ view_task_details() {
     read -r index
     echo ""
     echo "=== Task Details ==="
-    node getTaskDetails.js "$REGISTRY" "$index" "$RPC_URL"
+
+    RAW=$(cast call "$DIAMOND" \
+    "getTaskDetails(uint64)((uint128,uint128,uint128,uint128,bytes32,uint64,uint64,uint64,uint64,address,uint8,uint8,bytes,bytes[]))" \
+    "$index" \
+    --rpc-url "$RPC_URL" \
+    --json 2>/dev/null || true)
+
+    if [ -z "$RAW" ] || [ "$RAW" = "null" ]; then
+        echo "❌ Task $index does not exist"
+        echo ""
+        return
+    fi
+
+    echo "$RAW" | jq '.[0] | {
+        maxGasAmount: .[0],
+        gasPriceCap: ((.[1] | tonumber) / 1e9 | tostring + " Gwei"),
+        automationFeeCapForCycle: ((.[2] | tonumber) / 1e18 | tostring + " SUPRA"),
+        depositFee: ((.[3] | tonumber) / 1e18 | tostring + " SUPRA"),
+        txHash: .[4],
+        taskIndex: .[5],
+        registrationTime: .[6],
+        expiryTime: .[7],
+        priority: .[8],
+        owner: .[9],
+        taskType: (if .[10]==0 then "UST" elif .[10]==1 then "GST" else "UNKNOWN" end),
+        taskState: (if .[11]==0 then "PENDING" elif .[11]==1 then "ACTIVE" elif .[11]==2 then "CANCELLED" else "UNKNOWN" end),
+        payloadTx: .[12],
+        auxData: .[13]
+    }'
+
     echo ""
 }
 
 is_authorized_submitter() {
     echo -n "Enter address: "
     read -r address
-    RAW=$(cast call "$REGISTRY" "isAuthorizedSubmitter(address)(bool)" $address --rpc-url "$RPC_URL")
+    RAW=$(cast call "$DIAMOND" "isAuthorizedSubmitter(address)(bool)" $address --rpc-url "$RPC_URL")
     echo "Is submitter?: $RAW"
 }
 
 view_registry_locked_balance() {
-    RAW=$(cast call "$REGISTRY" "getTotalLockedBalance()(uint256)" --rpc-url "$RPC_URL")
+    RAW=$(cast call "$DIAMOND" "getTotalLockedBalance()(uint256)" --rpc-url "$RPC_URL")
     DEC=$(echo "$RAW" | awk '{print $1}')
     SUPRA=$(cast --from-wei "$DEC")
     echo "Registry Locked SUPRA: $SUPRA SUPRA"
 }
 
 view_registry_erc20Supra_balance() {
-    RAW=$(cast erc20-token balance "$ERC20_SUPRA" "$AUTOMATION_CORE" --rpc-url "$RPC_URL")
+    RAW=$(cast erc20-token balance "$ERC20_SUPRA" "$DIAMOND" --rpc-url "$RPC_URL")
 
     DEC=$(echo "$RAW" | awk '{print $1}')
     SUPRA=$(cast --from-wei "$DEC")
@@ -122,7 +147,7 @@ view_registry_erc20Supra_balance() {
 }
 
 view_task_list() {
-    RAW=$(cast call "$REGISTRY" "getTaskIdList()(uint256[])" --rpc-url "$RPC_URL")
+    RAW=$(cast call "$DIAMOND" "getTaskIds()(uint256[])" --rpc-url "$RPC_URL")
     echo ""
     echo "=== Task IDs ==="
     echo "$RAW"
@@ -130,8 +155,43 @@ view_task_list() {
 }
 
 view_total_tasks() {
-    RAW=$(cast call "$REGISTRY" "totalTasks()(uint256)" --rpc-url "$RPC_URL")
+    RAW=$(cast call "$DIAMOND" "totalTasks()(uint256)" --rpc-url "$RPC_URL")
     echo "Total Task Count: $RAW"
+}
+
+view_user_tasks() {
+    echo -n "Enter user address: "
+    read -r user
+
+    RAW=$(cast call "$DIAMOND" \
+        "getUserTasks(address)(uint256[])" \
+        "$user" \
+        --rpc-url "$RPC_URL")
+
+    echo ""
+    echo "=== User Task IDs ==="
+    echo "$RAW"
+    echo ""
+}
+
+check_task_exists() {
+    echo -n "Enter task index: "
+    read -r index
+
+    RAW=$(cast call "$DIAMOND" \
+        "ifTaskExists(uint64)(bool)" \
+        "$index" \
+        --rpc-url "$RPC_URL")
+
+    echo ""
+
+    if [ "$RAW" = "true" ]; then
+        echo "✅ Task $index EXISTS"
+    else
+        echo "❌ Task $index does NOT exist"
+    fi
+
+    echo ""
 }
 
 # -------------------------------
@@ -162,6 +222,8 @@ while true; do
     echo "  registry-balance                    View ERC20Supra balance of registry contract"
     echo "  task-list                           View all task IDs"
     echo "  total-tasks                         View number of tasks"
+    echo "  user-tasks                          View tasks of a user"
+    echo "  task-exists                         Check if a task exists"
     echo "  exit                                Quit"
     echo -n "Command> "
     read -r CMD
@@ -181,22 +243,22 @@ while true; do
         ;;
 
         nativeToErc20SupraWithAllowance)
-            echo "Enter: <depositEth> <spenderAddress> <allowanceEth>"
-            read -r depositEth spender allowanceEth
+            echo "Enter: <depositAmount> <allowance>"
+            read -r depositAmount allowance
 
-            if [ -z "$depositEth" ] || [ -z "$spender" ] || [ -z "$allowanceEth" ]; then
-                echo "Invalid input. Expected: <depositEth> <spenderAddress> <allowanceEth>"
+            if [ -z "$depositAmount" ] || [ -z "$allowance" ]; then
+                echo "Invalid input. Expected: <depositAmount>  <allowance>"
                 exit 1
             fi
 
-            depositWei=$(cast --to-wei "$depositEth")
-            allowanceWei=$(cast --to-wei "$allowanceEth")
+            depositWei=$(cast --to-wei "$depositAmount")
+            allowanceWei=$(cast --to-wei "$allowance")
 
-            echo "Depositing $depositEth ETH, and approving $spender for $allowanceEth ERC20Supra..."
+            echo "Depositing $depositAmount SUPRA, and approving $DIAMOND for $allowance ERC20Supra..."
 
             send_tx "$ERC20_SUPRA" \
                 "nativeToErc20SupraWithAllowance(address,uint256)" \
-                "$spender" "$allowanceWei" \
+                "$DIAMOND" "$allowanceWei" \
                 --value "$depositWei"
         ;;
 
@@ -205,7 +267,7 @@ while true; do
             read -r ethAmount
             weiAmount=$(cast --to-wei "$ethAmount")
             echo "Approving $ethAmount SUPRA..."
-            cast erc20-token approve "$ERC20_SUPRA" "$AUTOMATION_CORE" "$weiAmount" --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY"
+            cast erc20-token approve "$ERC20_SUPRA" "$DIAMOND" "$weiAmount" --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY"
         ;;
 
         register)
@@ -219,16 +281,12 @@ while true; do
             expiryTime=$(("$now" + "$duration"))
             echo "Computed expiryTime = $expiryTime"
 
-            echo -n "txHash (0x...): "
-            read -r txHash
-
             echo -n "maxGasAmount: "
             read -r maxGas
             
             echo -n "Gas price cap (GWEI): "
             read -r gasPriceCap
             gasPriceCapWei=$(cast --to-wei "$gasPriceCap" gwei)   # convert GWEI to wei
-
 
             echo -n "Automation fee cap for cycle (ETH): "
             read -r feeCap
@@ -237,14 +295,11 @@ while true; do
             echo -n "Priority (uint64): "
             read -r priority
 
-            echo -n "Type (uint8): "
-            read -r taskType
-
             aux_json="[]"
 
-            send_tx "$REGISTRY" \
-                "register(bytes,uint64,bytes32,uint128,uint128,uint128,uint64,uint8,bytes[])" \
-                "$payloadTx" "$expiryTime" "$txHash" "$maxGas" "$gasPriceCapWei" "$feeCapWei" "$priority" "$taskType" "$aux_json"
+            send_tx "$DIAMOND" \
+                "register(bytes,uint64,uint128,uint128,uint128,uint64,bytes[])" \
+                "$payloadTx" "$expiryTime" "$maxGas" "$gasPriceCapWei" "$feeCapWei" "$priority" "$aux_json"
         ;;
 
         register-system)
@@ -258,53 +313,47 @@ while true; do
             expiryTime=$(("$now" + "$duration"))
             echo "Computed expiryTime = $expiryTime"
 
-            echo -n "txHash (0x...): "
-            read -r txHash
-
             echo -n "maxGasAmount: "
             read -r maxGas
 
             echo -n "Priority (uint64): "
             read -r priority
 
-            echo -n "Type (uint8): "
-            read -r taskType
-
             aux_json="[]"
 
-            send_tx "$REGISTRY" \
-                "registerSystemTask(bytes,uint64,bytes32,uint128,uint64,uint8,bytes[])" \
-                "$payloadTx" "$expiryTime" "$txHash" "$maxGas" "$priority" "$taskType" "$aux_json"
+            send_tx "$DIAMOND" \
+                "registerSystemTask(bytes,uint64,uint128,uint64,bytes[])" \
+                "$payloadTx" "$expiryTime" "$maxGas" "$priority" "$aux_json"
         ;;
 
         cancel)
             echo -n "Task index: "
             read -r index
-            send_tx "$REGISTRY" "cancelTask(uint64)" "$index"
+            send_tx "$DIAMOND" "cancelTask(uint64)" "$index"
         ;;
 
         cancel-system)
             echo -n "System task index: "
             read -r index
-            send_tx "$REGISTRY" "cancelSystemTask(uint64)" "$index"
+            send_tx "$DIAMOND" "cancelSystemTask(uint64)" "$index"
         ;;
 
         stop)
             echo -n "Enter task indexes array (e.g. [0,1,2,3]): "
             read -r indexes
-            send_tx "$REGISTRY" "stopTasks(uint64[])" "$indexes"
+            send_tx "$DIAMOND" "stopTasks(uint64[])" "$indexes"
         ;;
 
         stop-system)
             echo -n "System task indexes array (e.g. [0,1,2,3]): "
             read -r indexes
-            send_tx "$REGISTRY" "stopSystemTasks(uint64[])" "$indexes"
+            send_tx "$DIAMOND" "stopSystemTasks(uint64[])" "$indexes"
         ;;
 
         grant-authorization)
             echo -n "Address to grant authorization to: "
             read -r -a address
-            cast send "$REGISTRY" "grantAuthorization(address)" "$address" \
+            cast send "$DIAMOND" "grantAuthorization(address)" "$address" \
                 --rpc-url "$RPC_URL" \
                 --private-key "$ADMIN_PRIVATE_KEY" \
                 --gas-limit 3000000
@@ -313,7 +362,7 @@ while true; do
         revoke-authorization)
             echo -n "Address to revoke authorization on: "
             read -r -a address
-            cast send "$REGISTRY" "revokeAuthorization(address)" "$address" \
+            cast send "$DIAMOND" "revokeAuthorization(address)" "$address" \
                 --rpc-url "$RPC_URL" \
                 --private-key "$ADMIN_PRIVATE_KEY" \
                 --gas-limit 3000000
@@ -325,6 +374,8 @@ while true; do
         registry-balance) view_registry_erc20Supra_balance ;;
         task-list) view_task_list ;;
         total-tasks) view_total_tasks ;;
+        user-tasks) view_user_tasks ;;
+        task-exists) check_task_exists ;;
 
         exit)
             echo "Exiting."
