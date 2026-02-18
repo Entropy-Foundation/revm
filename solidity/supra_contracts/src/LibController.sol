@@ -158,6 +158,10 @@ library LibController {
         return uint64(cycle.transitionState.refundDuration_newCycleDuration_nextTaskIndexPosition >> 64);
     }
 
+    function getExpectedTasksToBeProcessed(AutomationCycleInfo storage cycle) internal view returns (uint64[] memory) {
+        return uintSetToUint64Array(cycle.transitionState.expectedTasksToBeProcessed);
+    }
+
     function setRefundDuration(AutomationCycleInfo storage cycle, uint64 refund) internal {
         TransitionState storage ts = cycle.transitionState;
 
@@ -198,9 +202,20 @@ library LibController {
         bool isRemoved;
     }
 
+    /// @notice Converts an EnumerableSet.UintSet to a uint64 array.
+    /// @param set The UintSet to convert.
+    /// @return result The values as a uint64 array.
+    function uintSetToUint64Array(EnumerableSet.UintSet storage set) internal view returns (uint64[] memory result) {
+        uint256 length = EnumerableSet.length(set);
+        result = new uint64[](length);
+        for (uint256 i = 0; i < length; i++) {
+            result[i] = uint64(EnumerableSet.at(set, i));
+        }
+    }
+
     /// @notice Helper function to sort an array.
     /// @param arr Input array to sort.
-    /// @return Returns the sorted array. 
+    /// @return Returns the sorted array.
     function sortUint64(uint64[] memory arr) internal pure returns (uint64[] memory) {
         uint256 length = arr.length;
         for (uint256 i = 0; i < length; i++) {

@@ -732,7 +732,17 @@ contract AutomationController is IAutomationController, Ownable2StepUpgradeable,
         return (cycleInfo.index(), cycleInfo.startTime(), cycleInfo.durationSecs(), cycleInfo.state());
     }
 
-    /// @notice Returns the duration of the current cycle. 
+    /// @notice Returns the index, start time, duration, state, transition details if any of the current cycle.
+    function getCycleStateDetails() external view returns (CommonUtils.CycleDetails memory details)  {
+        details.index = cycleInfo.index();
+        details.startTime = cycleInfo.startTime();
+        details.durationSecs = cycleInfo.durationSecs();
+        details.state = cycleInfo.state();
+        details.nextTaskIndexPosition = cycleInfo.nextTaskIndexPosition();
+        details.expectedTasksToBeProcessed = cycleInfo.getExpectedTasksToBeProcessed();
+    }
+
+    /// @notice Returns the duration of the current cycle.
     function getCycleDuration() external view returns (uint64) {
         return cycleInfo.durationSecs();
     }
