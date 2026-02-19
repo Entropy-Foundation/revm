@@ -5,14 +5,13 @@ use thiserror::Error;
 /// Supra-extension error.
 #[derive(Error, Debug)]
 pub enum SupraExtensionError {
-
     /// Reported when transaction builder misses mandatory value to build final transaction.
     #[error("Missing mandatory value: {0}::{1}")]
     MissingBuilderValue(String, String),
 
     /// Reported on failure of automation task inner payload decode.
     #[error("Failed to decode payload: {0}")]
-    PayloadDecode(#[from]alloy_sol_types::Error),
+    PayloadDecode(#[from] alloy_sol_types::Error),
 
     /// Reported on failure of task state conversion to counterpart in native layer.
     #[error("Invalid automation task state value: {0}, expected [0, 1, 2]")]
@@ -20,7 +19,7 @@ pub enum SupraExtensionError {
 
     /// Reported when automated transaction builder is attempted to be built for inactive task.
     #[error("Attempt to create automated transaction builder for non-active task")]
-    InvalidAutomationTaskStateForBuilder
+    InvalidAutomationTaskStateForBuilder,
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].
@@ -30,7 +29,10 @@ macro_rules! value_or_error {
         match $value {
             Some(v) => v,
             None => {
-                return Err($crate::errors::SupraExtensionError::MissingBuilderValue(std::any::type_name::<$tpy>().to_string(), $name.to_string()));
+                return Err($crate::errors::SupraExtensionError::MissingBuilderValue(
+                    std::any::type_name::<$tpy>().to_string(),
+                    $name.to_string(),
+                ));
             }
         }
     };

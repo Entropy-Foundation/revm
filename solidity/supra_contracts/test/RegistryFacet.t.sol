@@ -198,7 +198,12 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra));  
 
-        vm.expectRevert(LibRegistry.InsufficientFeeCapForCycle.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LibRegistry.InsufficientFeeCapForCycle.selector,
+                200000000000000000
+            )
+        );
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(

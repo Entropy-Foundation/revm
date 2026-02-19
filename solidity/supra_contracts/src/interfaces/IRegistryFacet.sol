@@ -113,7 +113,7 @@ interface IRegistryFacet {
     function getSystemTaskIds() external view returns (uint256[] memory);
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
-    function getTaskIds() external view returns (uint256[] memory);
+    function getTaskIdList() external view returns (uint256[] memory);
     function getTaskOwner(uint64 _taskIndex) external view returns (address);
     function getTotalActiveTasks() external view returns (uint256);
     function getTotalDepositedAutomationFees() external view returns (uint256);

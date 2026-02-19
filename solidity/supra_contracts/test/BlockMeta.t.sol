@@ -25,7 +25,7 @@ contract BlockMetaTest is Test {
 
         // Deploy BlockMeta proxy
         BlockMeta blockMetaImpl = new BlockMeta();
-        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, ());
+        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, admin);
         ERC1967Proxy blockMetaProxy = new ERC1967Proxy(address(blockMetaImpl), blockMetaInitData);
         blockMeta = BlockMeta(address(blockMetaProxy));
 

@@ -237,7 +237,7 @@ library LibDiamondUtils {
             selectors[4] = RegistryFacet.stopTasks.selector;
             selectors[5] = RegistryFacet.stopSystemTasks.selector;
 
-            selectors[6] = RegistryFacet.getTaskIds.selector;
+            selectors[6] = RegistryFacet.getTaskIdList.selector;
             selectors[7] = RegistryFacet.getSystemTaskIds.selector;
             selectors[8] = RegistryFacet.getTaskOwner.selector;
             selectors[9] = RegistryFacet.getNextTaskIndex.selector;

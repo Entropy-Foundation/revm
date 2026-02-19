@@ -9,7 +9,7 @@ interface SupraContractsBindings {
     // View functions of RegistryFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function getActiveTaskIds() external view returns (uint256[] memory);
-    function getTaskIds() external view returns (uint256[] memory);
+    function getTaskIdList() external view returns (uint256[] memory);
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
 

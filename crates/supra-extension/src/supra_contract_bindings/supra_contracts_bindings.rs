@@ -18,8 +18,7 @@ library CommonUtils {
 pub mod CommonUtils {
     use super::*;
     use alloy::sol_types as alloy_sol_types;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct CycleState(u8);
@@ -30,34 +29,27 @@ pub mod CommonUtils {
             #[inline]
             fn stv_to_tokens(
                 &self,
-            ) -> <alloy::sol_types::sol_data::Uint<
-                8,
-            > as alloy_sol_types::SolType>::Token<'_> {
+            ) -> <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::Token<'_>
+            {
                 alloy_sol_types::private::SolTypeValue::<
                     alloy::sol_types::sol_data::Uint<8>,
                 >::stv_to_tokens(self)
             }
             #[inline]
             fn stv_eip712_data_word(&self) -> alloy_sol_types::Word {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::tokenize(self)
-                    .0
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::tokenize(self).0
             }
             #[inline]
-            fn stv_abi_encode_packed_to(
-                &self,
-                out: &mut alloy_sol_types::private::Vec<u8>,
-            ) {
+            fn stv_abi_encode_packed_to(&self, out: &mut alloy_sol_types::private::Vec<u8>) {
                 <alloy::sol_types::sol_data::Uint<
                     8,
                 > as alloy_sol_types::SolType>::abi_encode_packed_to(self, out)
             }
             #[inline]
             fn stv_abi_packed_encoded_size(&self) -> usize {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::abi_encoded_size(self)
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::abi_encoded_size(
+                    self,
+                )
             }
         }
         impl CycleState {
@@ -101,13 +93,11 @@ pub mod CommonUtils {
         #[automatically_derived]
         impl alloy_sol_types::SolType for CycleState {
             type RustType = u8;
-            type Token<'a> = <alloy::sol_types::sol_data::Uint<
-                8,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> =
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::Token<'a>;
             const SOL_NAME: &'static str = Self::NAME;
-            const ENCODED_SIZE: Option<usize> = <alloy::sol_types::sol_data::Uint<
-                8,
-            > as alloy_sol_types::SolType>::ENCODED_SIZE;
+            const ENCODED_SIZE: Option<usize> =
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::ENCODED_SIZE;
             const PACKED_ENCODED_SIZE: Option<usize> = <alloy::sol_types::sol_data::Uint<
                 8,
             > as alloy_sol_types::SolType>::PACKED_ENCODED_SIZE;
@@ -117,15 +107,11 @@ pub mod CommonUtils {
             }
             #[inline]
             fn type_check(token: &Self::Token<'_>) -> alloy_sol_types::Result<()> {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::type_check(token)
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::type_check(token)
             }
             #[inline]
             fn detokenize(token: Self::Token<'_>) -> Self::RustType {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::detokenize(token)
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::detokenize(token)
             }
         }
         #[automatically_derived]
@@ -146,17 +132,14 @@ pub mod CommonUtils {
                 > as alloy_sol_types::EventTopic>::encode_topic_preimage(rust, out)
             }
             #[inline]
-            fn encode_topic(
-                rust: &Self::RustType,
-            ) -> alloy_sol_types::abi::token::WordToken {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::EventTopic>::encode_topic(rust)
+            fn encode_topic(rust: &Self::RustType) -> alloy_sol_types::abi::token::WordToken {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::EventTopic>::encode_topic(
+                    rust,
+                )
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct TaskState(u8);
@@ -167,34 +150,27 @@ pub mod CommonUtils {
             #[inline]
             fn stv_to_tokens(
                 &self,
-            ) -> <alloy::sol_types::sol_data::Uint<
-                8,
-            > as alloy_sol_types::SolType>::Token<'_> {
+            ) -> <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::Token<'_>
+            {
                 alloy_sol_types::private::SolTypeValue::<
                     alloy::sol_types::sol_data::Uint<8>,
                 >::stv_to_tokens(self)
             }
             #[inline]
             fn stv_eip712_data_word(&self) -> alloy_sol_types::Word {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::tokenize(self)
-                    .0
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::tokenize(self).0
             }
             #[inline]
-            fn stv_abi_encode_packed_to(
-                &self,
-                out: &mut alloy_sol_types::private::Vec<u8>,
-            ) {
+            fn stv_abi_encode_packed_to(&self, out: &mut alloy_sol_types::private::Vec<u8>) {
                 <alloy::sol_types::sol_data::Uint<
                     8,
                 > as alloy_sol_types::SolType>::abi_encode_packed_to(self, out)
             }
             #[inline]
             fn stv_abi_packed_encoded_size(&self) -> usize {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::abi_encoded_size(self)
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::abi_encoded_size(
+                    self,
+                )
             }
         }
         impl TaskState {
@@ -238,13 +214,11 @@ pub mod CommonUtils {
         #[automatically_derived]
         impl alloy_sol_types::SolType for TaskState {
             type RustType = u8;
-            type Token<'a> = <alloy::sol_types::sol_data::Uint<
-                8,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> =
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::Token<'a>;
             const SOL_NAME: &'static str = Self::NAME;
-            const ENCODED_SIZE: Option<usize> = <alloy::sol_types::sol_data::Uint<
-                8,
-            > as alloy_sol_types::SolType>::ENCODED_SIZE;
+            const ENCODED_SIZE: Option<usize> =
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::ENCODED_SIZE;
             const PACKED_ENCODED_SIZE: Option<usize> = <alloy::sol_types::sol_data::Uint<
                 8,
             > as alloy_sol_types::SolType>::PACKED_ENCODED_SIZE;
@@ -254,15 +228,11 @@ pub mod CommonUtils {
             }
             #[inline]
             fn type_check(token: &Self::Token<'_>) -> alloy_sol_types::Result<()> {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::type_check(token)
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::type_check(token)
             }
             #[inline]
             fn detokenize(token: Self::Token<'_>) -> Self::RustType {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::SolType>::detokenize(token)
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::detokenize(token)
             }
         }
         #[automatically_derived]
@@ -283,20 +253,17 @@ pub mod CommonUtils {
                 > as alloy_sol_types::EventTopic>::encode_topic_preimage(rust, out)
             }
             #[inline]
-            fn encode_topic(
-                rust: &Self::RustType,
-            ) -> alloy_sol_types::abi::token::WordToken {
-                <alloy::sol_types::sol_data::Uint<
-                    8,
-                > as alloy_sol_types::EventTopic>::encode_topic(rust)
+            fn encode_topic(rust: &Self::RustType) -> alloy_sol_types::abi::token::WordToken {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::EventTopic>::encode_topic(
+                    rust,
+                )
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**```solidity
-struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 lockedFeeForNextCycle; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; address owner; TaskState state; bytes payloadTx; bytes[] auxData; }
-```*/
+    struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 lockedFeeForNextCycle; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; address owner; TaskState state; bytes payloadTx; bytes[] auxData; }
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct TaskDetails {
@@ -366,9 +333,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
         );
         #[cfg(test)]
         #[allow(dead_code, unreachable_patterns)]
-        fn _type_assertion(
-            _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-        ) {
+        fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
             match _t {
                 alloy_sol_types::private::AssertTypeEq::<
                     <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -469,64 +434,50 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                 if let Some(size) = <Self as alloy_sol_types::SolType>::ENCODED_SIZE {
                     return size;
                 }
-                let tuple = <UnderlyingRustTuple<
-                    '_,
-                > as ::core::convert::From<Self>>::from(self.clone());
-                <UnderlyingSolTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_encoded_size(&tuple)
+                let tuple =
+                    <UnderlyingRustTuple<'_> as ::core::convert::From<Self>>::from(self.clone());
+                <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::abi_encoded_size(&tuple)
             }
             #[inline]
             fn stv_eip712_data_word(&self) -> alloy_sol_types::Word {
                 <Self as alloy_sol_types::SolStruct>::eip712_hash_struct(self)
             }
             #[inline]
-            fn stv_abi_encode_packed_to(
-                &self,
-                out: &mut alloy_sol_types::private::Vec<u8>,
-            ) {
-                let tuple = <UnderlyingRustTuple<
-                    '_,
-                > as ::core::convert::From<Self>>::from(self.clone());
-                <UnderlyingSolTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_encode_packed_to(&tuple, out)
+            fn stv_abi_encode_packed_to(&self, out: &mut alloy_sol_types::private::Vec<u8>) {
+                let tuple =
+                    <UnderlyingRustTuple<'_> as ::core::convert::From<Self>>::from(self.clone());
+                <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::abi_encode_packed_to(
+                    &tuple, out,
+                )
             }
             #[inline]
             fn stv_abi_packed_encoded_size(&self) -> usize {
                 if let Some(size) = <Self as alloy_sol_types::SolType>::PACKED_ENCODED_SIZE {
                     return size;
                 }
-                let tuple = <UnderlyingRustTuple<
-                    '_,
-                > as ::core::convert::From<Self>>::from(self.clone());
-                <UnderlyingSolTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_packed_encoded_size(&tuple)
+                let tuple =
+                    <UnderlyingRustTuple<'_> as ::core::convert::From<Self>>::from(self.clone());
+                <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::abi_packed_encoded_size(
+                    &tuple,
+                )
             }
         }
         #[automatically_derived]
         impl alloy_sol_types::SolType for TaskDetails {
             type RustType = Self;
-            type Token<'a> = <UnderlyingSolTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <UnderlyingSolTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SOL_NAME: &'static str = <Self as alloy_sol_types::SolStruct>::NAME;
-            const ENCODED_SIZE: Option<usize> = <UnderlyingSolTuple<
-                '_,
-            > as alloy_sol_types::SolType>::ENCODED_SIZE;
-            const PACKED_ENCODED_SIZE: Option<usize> = <UnderlyingSolTuple<
-                '_,
-            > as alloy_sol_types::SolType>::PACKED_ENCODED_SIZE;
+            const ENCODED_SIZE: Option<usize> =
+                <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::ENCODED_SIZE;
+            const PACKED_ENCODED_SIZE: Option<usize> =
+                <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::PACKED_ENCODED_SIZE;
             #[inline]
             fn valid_token(token: &Self::Token<'_>) -> bool {
                 <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::valid_token(token)
             }
             #[inline]
             fn detokenize(token: Self::Token<'_>) -> Self::RustType {
-                let tuple = <UnderlyingSolTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::detokenize(token);
+                let tuple = <UnderlyingSolTuple<'_> as alloy_sol_types::SolType>::detokenize(token);
                 <Self as ::core::convert::From<UnderlyingRustTuple<'_>>>::from(tuple)
             }
         }
@@ -540,9 +491,9 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                 )
             }
             #[inline]
-            fn eip712_components() -> alloy_sol_types::private::Vec<
-                alloy_sol_types::private::Cow<'static, str>,
-            > {
+            fn eip712_components(
+            ) -> alloy_sol_types::private::Vec<alloy_sol_types::private::Cow<'static, str>>
+            {
                 alloy_sol_types::private::Vec::new()
             }
             #[inline]
@@ -675,9 +626,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                 rust: &Self::RustType,
                 out: &mut alloy_sol_types::private::Vec<u8>,
             ) {
-                out.reserve(
-                    <Self as alloy_sol_types::EventTopic>::topic_preimage_length(rust),
-                );
+                out.reserve(<Self as alloy_sol_types::EventTopic>::topic_preimage_length(rust));
                 <alloy::sol_types::sol_data::Uint<
                     128,
                 > as alloy_sol_types::EventTopic>::encode_topic_preimage(
@@ -730,10 +679,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                     &rust.owner,
                     out,
                 );
-                <TaskState as alloy_sol_types::EventTopic>::encode_topic_preimage(
-                    &rust.state,
-                    out,
-                );
+                <TaskState as alloy_sol_types::EventTopic>::encode_topic_preimage(&rust.state, out);
                 <alloy::sol_types::sol_data::Bytes as alloy_sol_types::EventTopic>::encode_topic_preimage(
                     &rust.payloadTx,
                     out,
@@ -746,24 +692,17 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                 );
             }
             #[inline]
-            fn encode_topic(
-                rust: &Self::RustType,
-            ) -> alloy_sol_types::abi::token::WordToken {
+            fn encode_topic(rust: &Self::RustType) -> alloy_sol_types::abi::token::WordToken {
                 let mut out = alloy_sol_types::private::Vec::new();
-                <Self as alloy_sol_types::EventTopic>::encode_topic_preimage(
-                    rust,
-                    &mut out,
-                );
-                alloy_sol_types::abi::token::WordToken(
-                    alloy_sol_types::private::keccak256(out),
-                )
+                <Self as alloy_sol_types::EventTopic>::encode_topic_preimage(rust, &mut out);
+                alloy_sol_types::abi::token::WordToken(alloy_sol_types::private::keccak256(out))
             }
         }
     };
     use alloy::contract as alloy_contract;
     /**Creates a new wrapper around an on-chain [`CommonUtils`](self) contract instance.
 
-See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
+    See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
     #[inline]
     pub const fn new<
         P: alloy_contract::private::Provider<N>,
@@ -776,15 +715,15 @@ See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
     }
     /**A [`CommonUtils`](self) instance.
 
-Contains type-safe methods for interacting with an on-chain instance of the
-[`CommonUtils`](self) contract located at a given `address`, using a given
-provider `P`.
+    Contains type-safe methods for interacting with an on-chain instance of the
+    [`CommonUtils`](self) contract located at a given `address`, using a given
+    provider `P`.
 
-If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
-documentation on how to provide it), the `deploy` and `deploy_builder` methods can
-be used to deploy a new instance of the contract.
+    If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
+    documentation on how to provide it), the `deploy` and `deploy_builder` methods can
+    be used to deploy a new instance of the contract.
 
-See the [module-level documentation](self) for all the available methods.*/
+    See the [module-level documentation](self) for all the available methods.*/
     #[derive(Clone)]
     pub struct CommonUtilsInstance<P, N = alloy_contract::private::Ethereum> {
         address: alloy_sol_types::private::Address,
@@ -795,22 +734,20 @@ See the [module-level documentation](self) for all the available methods.*/
     impl<P, N> ::core::fmt::Debug for CommonUtilsInstance<P, N> {
         #[inline]
         fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-            f.debug_tuple("CommonUtilsInstance").field(&self.address).finish()
+            f.debug_tuple("CommonUtilsInstance")
+                .field(&self.address)
+                .finish()
         }
     }
     /// Instantiation and getters/setters.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > CommonUtilsInstance<P, N> {
+    impl<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>
+        CommonUtilsInstance<P, N>
+    {
         /**Creates a new wrapper around an on-chain [`CommonUtils`](self) contract instance.
 
-See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
+        See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
         #[inline]
-        pub const fn new(
-            address: alloy_sol_types::private::Address,
-            __provider: P,
-        ) -> Self {
+        pub const fn new(address: alloy_sol_types::private::Address, __provider: P) -> Self {
             Self {
                 address,
                 provider: __provider,
@@ -850,10 +787,9 @@ See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
         }
     }
     /// Function calls.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > CommonUtilsInstance<P, N> {
+    impl<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>
+        CommonUtilsInstance<P, N>
+    {
         /// Creates a new call builder using this contract instance's provider and address.
         ///
         /// Note that the call can be any function call, not just those defined in this
@@ -866,10 +802,9 @@ See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
         }
     }
     /// Event filters.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > CommonUtilsInstance<P, N> {
+    impl<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>
+        CommonUtilsInstance<P, N>
+    {
         /// Creates a new event filter using this contract instance's provider and address.
         ///
         /// Note that the type can be any event, not just those defined in this contract.
@@ -1244,12 +1179,11 @@ pub mod SupraContractsBindings {
     pub static DEPLOYED_BYTECODE: alloy_sol_types::private::Bytes = alloy_sol_types::private::Bytes::from_static(
         b"",
     );
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `blockPrologue()` and selector `0x7ded091b`.
-```solidity
-function blockPrologue() external;
-```*/
+    ```solidity
+    function blockPrologue() external;
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct blockPrologueCall;
@@ -1273,9 +1207,7 @@ function blockPrologue() external;
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1305,9 +1237,7 @@ function blockPrologue() external;
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1339,14 +1269,10 @@ function blockPrologue() external;
         #[automatically_derived]
         impl alloy_sol_types::SolCall for blockPrologueCall {
             type Parameters<'a> = ();
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = blockPrologueReturn;
             type ReturnTuple<'a> = ();
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "blockPrologue()";
             const SELECTOR: [u8; 4] = [125u8, 237u8, 9u8, 27u8];
             #[inline]
@@ -1365,41 +1291,34 @@ function blockPrologue() external;
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(Into::into)
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(Into::into)
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(Into::into)
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getAllActiveTaskIds()` and selector `0xc5dcf6ac`.
-```solidity
-function getAllActiveTaskIds() external view returns (uint256[] memory);
-```*/
+    ```solidity
+    function getAllActiveTaskIds() external view returns (uint256[] memory);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getAllActiveTaskIdsCall;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`getAllActiveTaskIds()`](getAllActiveTaskIdsCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getAllActiveTaskIdsReturn {
         #[allow(missing_docs)]
-        pub _0: alloy::sol_types::private::Vec<
-            alloy::sol_types::private::primitives::aliases::U256,
-        >,
+        pub _0:
+            alloy::sol_types::private::Vec<alloy::sol_types::private::primitives::aliases::U256>,
     }
     #[allow(
         non_camel_case_types,
@@ -1417,9 +1336,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1428,16 +1345,14 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getAllActiveTaskIdsCall>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getAllActiveTaskIdsCall> for UnderlyingRustTuple<'_> {
                 fn from(value: getAllActiveTaskIdsCall) -> Self {
                     ()
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getAllActiveTaskIdsCall {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getAllActiveTaskIdsCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self
                 }
@@ -1446,9 +1361,8 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
         {
             #[doc(hidden)]
             #[allow(dead_code)]
-            type UnderlyingSolTuple<'a> = (
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,
-            );
+            type UnderlyingSolTuple<'a> =
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,);
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (
                 alloy::sol_types::private::Vec<
@@ -1457,9 +1371,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1468,16 +1380,14 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getAllActiveTaskIdsReturn>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getAllActiveTaskIdsReturn> for UnderlyingRustTuple<'_> {
                 fn from(value: getAllActiveTaskIdsReturn) -> Self {
                     (value._0,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getAllActiveTaskIdsReturn {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getAllActiveTaskIdsReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self { _0: tuple.0 }
                 }
@@ -1486,18 +1396,13 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
         #[automatically_derived]
         impl alloy_sol_types::SolCall for getAllActiveTaskIdsCall {
             type Parameters<'a> = ();
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = alloy::sol_types::private::Vec<
                 alloy::sol_types::private::primitives::aliases::U256,
             >;
-            type ReturnTuple<'a> = (
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,
-            );
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnTuple<'a> =
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,);
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getAllActiveTaskIds()";
             const SELECTOR: [u8; 4] = [197u8, 220u8, 246u8, 172u8];
             #[inline]
@@ -1512,47 +1417,40 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             }
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
-                (
-                    <alloy::sol_types::sol_data::Array<
-                        alloy::sol_types::sol_data::Uint<256>,
-                    > as alloy_sol_types::SolType>::tokenize(ret),
-                )
+                (<alloy::sol_types::sol_data::Array<
+                    alloy::sol_types::sol_data::Uint<256>,
+                > as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
-                    .map(|r| {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
                         let r: getAllActiveTaskIdsReturn = r.into();
                         r._0
-                    })
+                    },
+                )
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(|r| {
-                        let r: getAllActiveTaskIdsReturn = r.into();
-                        r._0
-                    })
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: getAllActiveTaskIdsReturn = r.into();
+                    r._0
+                })
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getCycleInfo()` and selector `0x873dc71d`.
-```solidity
-function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState);
-```*/
+    ```solidity
+    function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUtils.CycleState);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getCycleInfoCall;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`getCycleInfo()`](getCycleInfoCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -1582,9 +1480,7 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1624,9 +1520,7 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
             );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1654,31 +1548,25 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
             }
         }
         impl getCycleInfoReturn {
-            fn _tokenize(
-                &self,
-            ) -> <getCycleInfoCall as alloy_sol_types::SolCall>::ReturnToken<'_> {
+            fn _tokenize(&self) -> <getCycleInfoCall as alloy_sol_types::SolCall>::ReturnToken<'_> {
                 (
-                    <alloy::sol_types::sol_data::Uint<
-                        64,
-                    > as alloy_sol_types::SolType>::tokenize(&self._0),
-                    <alloy::sol_types::sol_data::Uint<
-                        64,
-                    > as alloy_sol_types::SolType>::tokenize(&self._1),
-                    <alloy::sol_types::sol_data::Uint<
-                        64,
-                    > as alloy_sol_types::SolType>::tokenize(&self._2),
-                    <CommonUtils::CycleState as alloy_sol_types::SolType>::tokenize(
-                        &self._3,
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._0,
                     ),
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._1,
+                    ),
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._2,
+                    ),
+                    <CommonUtils::CycleState as alloy_sol_types::SolType>::tokenize(&self._3),
                 )
             }
         }
         #[automatically_derived]
         impl alloy_sol_types::SolCall for getCycleInfoCall {
             type Parameters<'a> = ();
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = getCycleInfoReturn;
             type ReturnTuple<'a> = (
                 alloy::sol_types::sol_data::Uint<64>,
@@ -1686,9 +1574,7 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
                 alloy::sol_types::sol_data::Uint<64>,
                 CommonUtils::CycleState,
             );
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getCycleInfo()";
             const SELECTOR: [u8; 4] = [135u8, 61u8, 199u8, 29u8];
             #[inline]
@@ -1707,28 +1593,23 @@ function getCycleInfo() external view returns (uint64, uint64, uint64, CommonUti
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(Into::into)
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(Into::into)
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(Into::into)
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetails(uint64)` and selector `0xb2ef6896`.
-```solidity
-function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory);
-```*/
+    ```solidity
+    function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskDetailsCall {
@@ -1736,7 +1617,6 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
         pub _taskIndex: u64,
     }
     #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive()]
     ///Container type for the return parameters of the [`getTaskDetails(uint64)`](getTaskDetailsCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -1760,9 +1640,7 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             type UnderlyingRustTuple<'a> = (u64,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1780,7 +1658,9 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             #[doc(hidden)]
             impl ::core::convert::From<UnderlyingRustTuple<'_>> for getTaskDetailsCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
-                    Self { _taskIndex: tuple.0 }
+                    Self {
+                        _taskIndex: tuple.0,
+                    }
                 }
             }
         }
@@ -1789,14 +1669,11 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             #[allow(dead_code)]
             type UnderlyingSolTuple<'a> = (CommonUtils::TaskDetails,);
             #[doc(hidden)]
-            type UnderlyingRustTuple<'a> = (
-                <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
-            );
+            type UnderlyingRustTuple<'a> =
+                (<CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1805,16 +1682,14 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getTaskDetailsReturn>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getTaskDetailsReturn> for UnderlyingRustTuple<'_> {
                 fn from(value: getTaskDetailsReturn) -> Self {
                     (value._0,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getTaskDetailsReturn {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getTaskDetailsReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self { _0: tuple.0 }
                 }
@@ -1823,14 +1698,10 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
         #[automatically_derived]
         impl alloy_sol_types::SolCall for getTaskDetailsCall {
             type Parameters<'a> = (alloy::sol_types::sol_data::Uint<64>,);
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType;
             type ReturnTuple<'a> = (CommonUtils::TaskDetails,);
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getTaskDetails(uint64)";
             const SELECTOR: [u8; 4] = [178u8, 239u8, 104u8, 150u8];
             #[inline]
@@ -1842,9 +1713,9 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             #[inline]
             fn tokenize(&self) -> Self::Token<'_> {
                 (
-                    <alloy::sol_types::sol_data::Uint<
-                        64,
-                    > as alloy_sol_types::SolType>::tokenize(&self._taskIndex),
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._taskIndex,
+                    ),
                 )
             }
             #[inline]
@@ -1853,34 +1724,30 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
-                    .map(|r| {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
                         let r: getTaskDetailsReturn = r.into();
                         r._0
-                    })
+                    },
+                )
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(|r| {
-                        let r: getTaskDetailsReturn = r.into();
-                        r._0
-                    })
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: getTaskDetailsReturn = r.into();
+                    r._0
+                })
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetailsBulk(uint64[])` and selector `0x12f72cf4`.
-```solidity
-function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (CommonUtils.TaskDetails[] memory);
-```*/
+    ```solidity
+    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (CommonUtils.TaskDetails[] memory);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskDetailsBulkCall {
@@ -1888,7 +1755,6 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
         pub _taskIndexes: alloy::sol_types::private::Vec<u64>,
     }
     #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive()]
     ///Container type for the return parameters of the [`getTaskDetailsBulk(uint64[])`](getTaskDetailsBulkCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -1909,16 +1775,13 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
         {
             #[doc(hidden)]
             #[allow(dead_code)]
-            type UnderlyingSolTuple<'a> = (
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
-            );
+            type UnderlyingSolTuple<'a> =
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,);
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (alloy::sol_types::private::Vec<u64>,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1927,27 +1790,26 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getTaskDetailsBulkCall>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getTaskDetailsBulkCall> for UnderlyingRustTuple<'_> {
                 fn from(value: getTaskDetailsBulkCall) -> Self {
                     (value._taskIndexes,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getTaskDetailsBulkCall {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getTaskDetailsBulkCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
-                    Self { _taskIndexes: tuple.0 }
+                    Self {
+                        _taskIndexes: tuple.0,
+                    }
                 }
             }
         }
         {
             #[doc(hidden)]
             #[allow(dead_code)]
-            type UnderlyingSolTuple<'a> = (
-                alloy::sol_types::sol_data::Array<CommonUtils::TaskDetails>,
-            );
+            type UnderlyingSolTuple<'a> =
+                (alloy::sol_types::sol_data::Array<CommonUtils::TaskDetails>,);
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (
                 alloy::sol_types::private::Vec<
@@ -1956,9 +1818,7 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -1967,16 +1827,14 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getTaskDetailsBulkReturn>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getTaskDetailsBulkReturn> for UnderlyingRustTuple<'_> {
                 fn from(value: getTaskDetailsBulkReturn) -> Self {
                     (value._0,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getTaskDetailsBulkReturn {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getTaskDetailsBulkReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self { _0: tuple.0 }
                 }
@@ -1984,21 +1842,14 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
         }
         #[automatically_derived]
         impl alloy_sol_types::SolCall for getTaskDetailsBulkCall {
-            type Parameters<'a> = (
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
-            );
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Parameters<'a> =
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,);
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = alloy::sol_types::private::Vec<
                 <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
             >;
-            type ReturnTuple<'a> = (
-                alloy::sol_types::sol_data::Array<CommonUtils::TaskDetails>,
-            );
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnTuple<'a> = (alloy::sol_types::sol_data::Array<CommonUtils::TaskDetails>,);
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getTaskDetailsBulk(uint64[])";
             const SELECTOR: [u8; 4] = [18u8, 247u8, 44u8, 244u8];
             #[inline]
@@ -2009,11 +1860,11 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             }
             #[inline]
             fn tokenize(&self) -> Self::Token<'_> {
-                (
-                    <alloy::sol_types::sol_data::Array<
-                        alloy::sol_types::sol_data::Uint<64>,
-                    > as alloy_sol_types::SolType>::tokenize(&self._taskIndexes),
-                )
+                (<alloy::sol_types::sol_data::Array<
+                    alloy::sol_types::sol_data::Uint<64>,
+                > as alloy_sol_types::SolType>::tokenize(
+                    &self._taskIndexes
+                ),)
             }
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
@@ -2025,47 +1876,41 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
-                    .map(|r| {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
                         let r: getTaskDetailsBulkReturn = r.into();
                         r._0
-                    })
+                    },
+                )
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(|r| {
-                        let r: getTaskDetailsBulkReturn = r.into();
-                        r._0
-                    })
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: getTaskDetailsBulkReturn = r.into();
+                    r._0
+                })
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskIdList()` and selector `0xec82b429`.
-```solidity
-function getTaskIdList() external view returns (uint256[] memory);
-```*/
+    ```solidity
+    function getTaskIdList() external view returns (uint256[] memory);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskIdListCall;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`getTaskIdList()`](getTaskIdListCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskIdListReturn {
         #[allow(missing_docs)]
-        pub _0: alloy::sol_types::private::Vec<
-            alloy::sol_types::private::primitives::aliases::U256,
-        >,
+        pub _0:
+            alloy::sol_types::private::Vec<alloy::sol_types::private::primitives::aliases::U256>,
     }
     #[allow(
         non_camel_case_types,
@@ -2083,9 +1928,7 @@ function getTaskIdList() external view returns (uint256[] memory);
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2110,9 +1953,8 @@ function getTaskIdList() external view returns (uint256[] memory);
         {
             #[doc(hidden)]
             #[allow(dead_code)]
-            type UnderlyingSolTuple<'a> = (
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,
-            );
+            type UnderlyingSolTuple<'a> =
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,);
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (
                 alloy::sol_types::private::Vec<
@@ -2121,9 +1963,7 @@ function getTaskIdList() external view returns (uint256[] memory);
             );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2148,18 +1988,13 @@ function getTaskIdList() external view returns (uint256[] memory);
         #[automatically_derived]
         impl alloy_sol_types::SolCall for getTaskIdListCall {
             type Parameters<'a> = ();
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = alloy::sol_types::private::Vec<
                 alloy::sol_types::private::primitives::aliases::U256,
             >;
-            type ReturnTuple<'a> = (
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,
-            );
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnTuple<'a> =
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,);
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getTaskIdList()";
             const SELECTOR: [u8; 4] = [236u8, 130u8, 180u8, 41u8];
             #[inline]
@@ -2174,47 +2009,40 @@ function getTaskIdList() external view returns (uint256[] memory);
             }
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
-                (
-                    <alloy::sol_types::sol_data::Array<
-                        alloy::sol_types::sol_data::Uint<256>,
-                    > as alloy_sol_types::SolType>::tokenize(ret),
-                )
+                (<alloy::sol_types::sol_data::Array<
+                    alloy::sol_types::sol_data::Uint<256>,
+                > as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
-                    .map(|r| {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
                         let r: getTaskIdListReturn = r.into();
                         r._0
-                    })
+                    },
+                )
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(|r| {
-                        let r: getTaskIdListReturn = r.into();
-                        r._0
-                    })
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: getTaskIdListReturn = r.into();
+                    r._0
+                })
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTransitionInfo()` and selector `0xf5c1249f`.
-```solidity
-function getTransitionInfo() external view returns (uint64, uint128);
-```*/
+    ```solidity
+    function getTransitionInfo() external view returns (uint64, uint128);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTransitionInfoCall;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`getTransitionInfo()`](getTransitionInfoCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2240,9 +2068,7 @@ function getTransitionInfo() external view returns (uint64, uint128);
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2251,16 +2077,14 @@ function getTransitionInfo() external view returns (uint64, uint128);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getTransitionInfoCall>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getTransitionInfoCall> for UnderlyingRustTuple<'_> {
                 fn from(value: getTransitionInfoCall) -> Self {
                     ()
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getTransitionInfoCall {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getTransitionInfoCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self
                 }
@@ -2277,9 +2101,7 @@ function getTransitionInfo() external view returns (uint64, uint128);
             type UnderlyingRustTuple<'a> = (u64, u128);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2288,18 +2110,19 @@ function getTransitionInfo() external view returns (uint64, uint128);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getTransitionInfoReturn>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<getTransitionInfoReturn> for UnderlyingRustTuple<'_> {
                 fn from(value: getTransitionInfoReturn) -> Self {
                     (value._0, value._1)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getTransitionInfoReturn {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getTransitionInfoReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
-                    Self { _0: tuple.0, _1: tuple.1 }
+                    Self {
+                        _0: tuple.0,
+                        _1: tuple.1,
+                    }
                 }
             }
         }
@@ -2308,29 +2131,25 @@ function getTransitionInfo() external view returns (uint64, uint128);
                 &self,
             ) -> <getTransitionInfoCall as alloy_sol_types::SolCall>::ReturnToken<'_> {
                 (
-                    <alloy::sol_types::sol_data::Uint<
-                        64,
-                    > as alloy_sol_types::SolType>::tokenize(&self._0),
-                    <alloy::sol_types::sol_data::Uint<
-                        128,
-                    > as alloy_sol_types::SolType>::tokenize(&self._1),
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._0,
+                    ),
+                    <alloy::sol_types::sol_data::Uint<128> as alloy_sol_types::SolType>::tokenize(
+                        &self._1,
+                    ),
                 )
             }
         }
         #[automatically_derived]
         impl alloy_sol_types::SolCall for getTransitionInfoCall {
             type Parameters<'a> = ();
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = getTransitionInfoReturn;
             type ReturnTuple<'a> = (
                 alloy::sol_types::sol_data::Uint<64>,
                 alloy::sol_types::sol_data::Uint<128>,
             );
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getTransitionInfo()";
             const SELECTOR: [u8; 4] = [245u8, 193u8, 36u8, 159u8];
             #[inline]
@@ -2349,36 +2168,30 @@ function getTransitionInfo() external view returns (uint64, uint128);
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(Into::into)
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(Into::into)
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(Into::into)
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `ifTaskExists(uint64)` and selector `0x8aaa404e`.
-```solidity
-function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-```*/
+    ```solidity
+    function ifTaskExists(uint64 _taskIndex) external view returns (bool);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct ifTaskExistsCall {
         #[allow(missing_docs)]
         pub _taskIndex: u64,
     }
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`ifTaskExists(uint64)`](ifTaskExistsCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2402,9 +2215,7 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
             type UnderlyingRustTuple<'a> = (u64,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2422,7 +2233,9 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
             #[doc(hidden)]
             impl ::core::convert::From<UnderlyingRustTuple<'_>> for ifTaskExistsCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
-                    Self { _taskIndex: tuple.0 }
+                    Self {
+                        _taskIndex: tuple.0,
+                    }
                 }
             }
         }
@@ -2434,9 +2247,7 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
             type UnderlyingRustTuple<'a> = (bool,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2461,14 +2272,10 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
         #[automatically_derived]
         impl alloy_sol_types::SolCall for ifTaskExistsCall {
             type Parameters<'a> = (alloy::sol_types::sol_data::Uint<64>,);
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = bool;
             type ReturnTuple<'a> = (alloy::sol_types::sol_data::Bool,);
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "ifTaskExists(uint64)";
             const SELECTOR: [u8; 4] = [138u8, 170u8, 64u8, 78u8];
             #[inline]
@@ -2480,54 +2287,45 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
             #[inline]
             fn tokenize(&self) -> Self::Token<'_> {
                 (
-                    <alloy::sol_types::sol_data::Uint<
-                        64,
-                    > as alloy_sol_types::SolType>::tokenize(&self._taskIndex),
-                )
-            }
-            #[inline]
-            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
-                (
-                    <alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(
-                        ret,
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._taskIndex,
                     ),
                 )
             }
             #[inline]
-            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
-                    .map(|r| {
-                        let r: ifTaskExistsReturn = r.into();
-                        r._0
-                    })
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                (<alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(|r| {
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
                         let r: ifTaskExistsReturn = r.into();
                         r._0
-                    })
+                    },
+                )
+            }
+            #[inline]
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: ifTaskExistsReturn = r.into();
+                    r._0
+                })
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `isAutomationEnabled()` and selector `0xe48e0e98`.
-```solidity
-function isAutomationEnabled() external view returns (bool);
-```*/
+    ```solidity
+    function isAutomationEnabled() external view returns (bool);
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct isAutomationEnabledCall;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`isAutomationEnabled()`](isAutomationEnabledCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2551,9 +2349,7 @@ function isAutomationEnabled() external view returns (bool);
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2562,16 +2358,14 @@ function isAutomationEnabled() external view returns (bool);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<isAutomationEnabledCall>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<isAutomationEnabledCall> for UnderlyingRustTuple<'_> {
                 fn from(value: isAutomationEnabledCall) -> Self {
                     ()
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for isAutomationEnabledCall {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for isAutomationEnabledCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self
                 }
@@ -2585,9 +2379,7 @@ function isAutomationEnabled() external view returns (bool);
             type UnderlyingRustTuple<'a> = (bool,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2596,16 +2388,14 @@ function isAutomationEnabled() external view returns (bool);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<isAutomationEnabledReturn>
-            for UnderlyingRustTuple<'_> {
+            impl ::core::convert::From<isAutomationEnabledReturn> for UnderlyingRustTuple<'_> {
                 fn from(value: isAutomationEnabledReturn) -> Self {
                     (value._0,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for isAutomationEnabledReturn {
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for isAutomationEnabledReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self { _0: tuple.0 }
                 }
@@ -2614,14 +2404,10 @@ function isAutomationEnabled() external view returns (bool);
         #[automatically_derived]
         impl alloy_sol_types::SolCall for isAutomationEnabledCall {
             type Parameters<'a> = ();
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = bool;
             type ReturnTuple<'a> = (alloy::sol_types::sol_data::Bool,);
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "isAutomationEnabled()";
             const SELECTOR: [u8; 4] = [228u8, 142u8, 14u8, 152u8];
             #[inline]
@@ -2636,42 +2422,34 @@ function isAutomationEnabled() external view returns (bool);
             }
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
-                (
-                    <alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(
-                        ret,
-                    ),
-                )
+                (<alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
-                    .map(|r| {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
                         let r: isAutomationEnabledReturn = r.into();
                         r._0
-                    })
+                    },
+                )
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(|r| {
-                        let r: isAutomationEnabledReturn = r.into();
-                        r._0
-                    })
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: isAutomationEnabledReturn = r.into();
+                    r._0
+                })
             }
         }
     };
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `processTasks(uint64,uint64[])` and selector `0x7f69c35c`.
-```solidity
-function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
-```*/
+    ```solidity
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
+    ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct processTasksCall {
@@ -2703,9 +2481,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             type UnderlyingRustTuple<'a> = (u64, alloy::sol_types::private::Vec<u64>);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2738,9 +2514,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             type UnderlyingRustTuple<'a> = ();
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
-            fn _type_assertion(
-                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
-            ) {
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
                 match _t {
                     alloy_sol_types::private::AssertTypeEq::<
                         <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
@@ -2763,9 +2537,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             }
         }
         impl processTasksReturn {
-            fn _tokenize(
-                &self,
-            ) -> <processTasksCall as alloy_sol_types::SolCall>::ReturnToken<'_> {
+            fn _tokenize(&self) -> <processTasksCall as alloy_sol_types::SolCall>::ReturnToken<'_> {
                 ()
             }
         }
@@ -2775,14 +2547,10 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                 alloy::sol_types::sol_data::Uint<64>,
                 alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
             );
-            type Token<'a> = <Self::Parameters<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = processTasksReturn;
             type ReturnTuple<'a> = ();
-            type ReturnToken<'a> = <Self::ReturnTuple<
-                'a,
-            > as alloy_sol_types::SolType>::Token<'a>;
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "processTasks(uint64,uint64[])";
             const SELECTOR: [u8; 4] = [127u8, 105u8, 195u8, 92u8];
             #[inline]
@@ -2808,26 +2576,20 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(Into::into)
             }
             #[inline]
-            fn abi_decode_returns_validate(
-                data: &[u8],
-            ) -> alloy_sol_types::Result<Self::Return> {
-                <Self::ReturnTuple<
-                    '_,
-                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
-                    .map(Into::into)
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(Into::into)
             }
         }
     };
     ///Container for all the [`SupraContractsBindings`](self) function calls.
-    #[derive(Clone)]
-    #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive()]
+    #[derive(Clone, serde::Serialize, serde::Deserialize)]
     pub enum SupraContractsBindingsCalls {
         #[allow(missing_docs)]
         blockPrologue(blockPrologueCall),
@@ -2909,9 +2671,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         }
         /// Returns the enum variant name for the given selector, if known.
         #[inline]
-        pub fn name_by_selector(
-            selector: [u8; 4usize],
-        ) -> ::core::option::Option<&'static str> {
+        pub fn name_by_selector(selector: [u8; 4usize]) -> ::core::option::Option<&'static str> {
             let sig = Self::signature_by_selector(selector)?;
             sig.split_once('(').map(|(name, _)| name)
         }
@@ -2924,36 +2684,26 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         #[inline]
         fn selector(&self) -> [u8; 4] {
             match self {
-                Self::blockPrologue(_) => {
-                    <blockPrologueCall as alloy_sol_types::SolCall>::SELECTOR
-                }
+                Self::blockPrologue(_) => <blockPrologueCall as alloy_sol_types::SolCall>::SELECTOR,
                 Self::getAllActiveTaskIds(_) => {
                     <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::SELECTOR
                 }
-                Self::getCycleInfo(_) => {
-                    <getCycleInfoCall as alloy_sol_types::SolCall>::SELECTOR
-                }
+                Self::getCycleInfo(_) => <getCycleInfoCall as alloy_sol_types::SolCall>::SELECTOR,
                 Self::getTaskDetails(_) => {
                     <getTaskDetailsCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::getTaskDetailsBulk(_) => {
                     <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::SELECTOR
                 }
-                Self::getTaskIdList(_) => {
-                    <getTaskIdListCall as alloy_sol_types::SolCall>::SELECTOR
-                }
+                Self::getTaskIdList(_) => <getTaskIdListCall as alloy_sol_types::SolCall>::SELECTOR,
                 Self::getTransitionInfo(_) => {
                     <getTransitionInfoCall as alloy_sol_types::SolCall>::SELECTOR
                 }
-                Self::ifTaskExists(_) => {
-                    <ifTaskExistsCall as alloy_sol_types::SolCall>::SELECTOR
-                }
+                Self::ifTaskExists(_) => <ifTaskExistsCall as alloy_sol_types::SolCall>::SELECTOR,
                 Self::isAutomationEnabled(_) => {
                     <isAutomationEnabledCall as alloy_sol_types::SolCall>::SELECTOR
                 }
-                Self::processTasks(_) => {
-                    <processTasksCall as alloy_sol_types::SolCall>::SELECTOR
-                }
+                Self::processTasks(_) => <processTasksCall as alloy_sol_types::SolCall>::SELECTOR,
             }
         }
         #[inline]
@@ -2966,20 +2716,16 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         }
         #[inline]
         #[allow(non_snake_case)]
-        fn abi_decode_raw(
-            selector: [u8; 4],
-            data: &[u8],
-        ) -> alloy_sol_types::Result<Self> {
+        fn abi_decode_raw(selector: [u8; 4], data: &[u8]) -> alloy_sol_types::Result<Self> {
             static DECODE_SHIMS: &[fn(
                 &[u8],
-            ) -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
+            )
+                -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
                 {
                     fn getTaskDetailsBulk(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::getTaskDetailsBulk)
                     }
                     getTaskDetailsBulk
@@ -2988,9 +2734,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn blockPrologue(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <blockPrologueCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <blockPrologueCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::blockPrologue)
                     }
                     blockPrologue
@@ -2999,9 +2743,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn processTasks(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::processTasks)
                     }
                     processTasks
@@ -3010,9 +2752,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn getCycleInfo(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getCycleInfoCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <getCycleInfoCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::getCycleInfo)
                     }
                     getCycleInfo
@@ -3021,9 +2761,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn ifTaskExists(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::ifTaskExists)
                     }
                     ifTaskExists
@@ -3032,9 +2770,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn getTaskDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::getTaskDetails)
                     }
                     getTaskDetails
@@ -3043,9 +2779,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn getAllActiveTaskIds(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::getAllActiveTaskIds)
                     }
                     getAllActiveTaskIds
@@ -3054,9 +2788,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn isAutomationEnabled(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::isAutomationEnabled)
                     }
                     isAutomationEnabled
@@ -3065,9 +2797,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn getTaskIdList(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getTaskIdListCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <getTaskIdListCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::getTaskIdList)
                     }
                     getTaskIdList
@@ -3076,21 +2806,17 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     fn getTransitionInfo(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getTransitionInfoCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
+                        <getTransitionInfoCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
                             .map(SupraContractsBindingsCalls::getTransitionInfo)
                     }
                     getTransitionInfo
                 },
             ];
             let Ok(idx) = Self::SELECTORS.binary_search(&selector) else {
-                return Err(
-                    alloy_sol_types::Error::unknown_selector(
-                        <Self as alloy_sol_types::SolInterface>::NAME,
-                        selector,
-                    ),
-                );
+                return Err(alloy_sol_types::Error::unknown_selector(
+                    <Self as alloy_sol_types::SolInterface>::NAME,
+                    selector,
+                ));
             };
             DECODE_SHIMS[idx](data)
         }
@@ -3102,7 +2828,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         ) -> alloy_sol_types::Result<Self> {
             static DECODE_VALIDATE_SHIMS: &[fn(
                 &[u8],
-            ) -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
+            ) -> alloy_sol_types::Result<
+                SupraContractsBindingsCalls,
+            >] = &[
                 {
                     fn getTaskDetailsBulk(
                         data: &[u8],
@@ -3119,9 +2847,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
                         <blockPrologueCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::blockPrologue)
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::blockPrologue)
                     }
                     blockPrologue
                 },
@@ -3130,9 +2858,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
                         <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::processTasks)
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::processTasks)
                     }
                     processTasks
                 },
@@ -3141,9 +2869,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
                         <getCycleInfoCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::getCycleInfo)
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::getCycleInfo)
                     }
                     getCycleInfo
                 },
@@ -3152,9 +2880,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
                         <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::ifTaskExists)
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::ifTaskExists)
                     }
                     ifTaskExists
                 },
@@ -3163,9 +2891,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
                         <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::getTaskDetails)
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::getTaskDetails)
                     }
                     getTaskDetails
                 },
@@ -3196,9 +2924,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
                         <getTaskIdListCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::getTaskIdList)
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::getTaskIdList)
                     }
                     getTaskIdList
                 },
@@ -3215,12 +2943,10 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                 },
             ];
             let Ok(idx) = Self::SELECTORS.binary_search(&selector) else {
-                return Err(
-                    alloy_sol_types::Error::unknown_selector(
-                        <Self as alloy_sol_types::SolInterface>::NAME,
-                        selector,
-                    ),
-                );
+                return Err(alloy_sol_types::Error::unknown_selector(
+                    <Self as alloy_sol_types::SolInterface>::NAME,
+                    selector,
+                ));
             };
             DECODE_VALIDATE_SHIMS[idx](data)
         }
@@ -3228,54 +2954,34 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         fn abi_encoded_size(&self) -> usize {
             match self {
                 Self::blockPrologue(inner) => {
-                    <blockPrologueCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <blockPrologueCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::getAllActiveTaskIds(inner) => {
-                    <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::getCycleInfo(inner) => {
-                    <getCycleInfoCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <getCycleInfoCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::getTaskDetails(inner) => {
-                    <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::getTaskDetailsBulk(inner) => {
-                    <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::getTaskIdList(inner) => {
-                    <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::getTransitionInfo(inner) => {
-                    <getTransitionInfoCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <getTransitionInfoCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::ifTaskExists(inner) => {
-                    <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::isAutomationEnabled(inner) => {
-                    <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
                 Self::processTasks(inner) => {
-                    <processTasksCall as alloy_sol_types::SolCall>::abi_encoded_size(
-                        inner,
-                    )
+                    <processTasksCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
             }
         }
@@ -3283,64 +2989,38 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         fn abi_encode_raw(&self, out: &mut alloy_sol_types::private::Vec<u8>) {
             match self {
                 Self::blockPrologue(inner) => {
-                    <blockPrologueCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <blockPrologueCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::getAllActiveTaskIds(inner) => {
                     <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
+                        inner, out,
                     )
                 }
                 Self::getCycleInfo(inner) => {
-                    <getCycleInfoCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <getCycleInfoCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::getTaskDetails(inner) => {
-                    <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::getTaskDetailsBulk(inner) => {
-                    <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::getTaskIdList(inner) => {
-                    <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::getTransitionInfo(inner) => {
-                    <getTransitionInfoCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <getTransitionInfoCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::ifTaskExists(inner) => {
-                    <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
                 Self::isAutomationEnabled(inner) => {
                     <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
+                        inner, out,
                     )
                 }
                 Self::processTasks(inner) => {
-                    <processTasksCall as alloy_sol_types::SolCall>::abi_encode_raw(
-                        inner,
-                        out,
-                    )
+                    <processTasksCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
                 }
             }
         }
@@ -3348,7 +3028,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
     use alloy::contract as alloy_contract;
     /**Creates a new wrapper around an on-chain [`SupraContractsBindings`](self) contract instance.
 
-See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
+    See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
     #[inline]
     pub const fn new<
         P: alloy_contract::private::Provider<N>,
@@ -3361,43 +3041,41 @@ See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more det
     }
     /**Deploys this contract using the given `provider` and constructor arguments, if any.
 
-Returns a new instance of the contract, if the deployment was successful.
+    Returns a new instance of the contract, if the deployment was successful.
 
-For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
+    For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
     #[inline]
-    pub fn deploy<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    >(
+    pub fn deploy<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>(
         __provider: P,
-    ) -> impl ::core::future::Future<
-        Output = alloy_contract::Result<SupraContractsBindingsInstance<P, N>>,
-    > {
+    ) -> impl ::core::future::Future<Output = alloy_contract::Result<SupraContractsBindingsInstance<P, N>>>
+    {
         SupraContractsBindingsInstance::<P, N>::deploy(__provider)
     }
     /**Creates a `RawCallBuilder` for deploying this contract using the given `provider`
-and constructor arguments, if any.
+    and constructor arguments, if any.
 
-This is a simple wrapper around creating a `RawCallBuilder` with the data set to
-the bytecode concatenated with the constructor's ABI-encoded arguments.*/
+    This is a simple wrapper around creating a `RawCallBuilder` with the data set to
+    the bytecode concatenated with the constructor's ABI-encoded arguments.*/
     #[inline]
     pub fn deploy_builder<
         P: alloy_contract::private::Provider<N>,
         N: alloy_contract::private::Network,
-    >(__provider: P) -> alloy_contract::RawCallBuilder<P, N> {
+    >(
+        __provider: P,
+    ) -> alloy_contract::RawCallBuilder<P, N> {
         SupraContractsBindingsInstance::<P, N>::deploy_builder(__provider)
     }
     /**A [`SupraContractsBindings`](self) instance.
 
-Contains type-safe methods for interacting with an on-chain instance of the
-[`SupraContractsBindings`](self) contract located at a given `address`, using a given
-provider `P`.
+    Contains type-safe methods for interacting with an on-chain instance of the
+    [`SupraContractsBindings`](self) contract located at a given `address`, using a given
+    provider `P`.
 
-If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
-documentation on how to provide it), the `deploy` and `deploy_builder` methods can
-be used to deploy a new instance of the contract.
+    If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
+    documentation on how to provide it), the `deploy` and `deploy_builder` methods can
+    be used to deploy a new instance of the contract.
 
-See the [module-level documentation](self) for all the available methods.*/
+    See the [module-level documentation](self) for all the available methods.*/
     #[derive(Clone)]
     pub struct SupraContractsBindingsInstance<P, N = alloy_contract::private::Ethereum> {
         address: alloy_sol_types::private::Address,
@@ -3408,22 +3086,20 @@ See the [module-level documentation](self) for all the available methods.*/
     impl<P, N> ::core::fmt::Debug for SupraContractsBindingsInstance<P, N> {
         #[inline]
         fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-            f.debug_tuple("SupraContractsBindingsInstance").field(&self.address).finish()
+            f.debug_tuple("SupraContractsBindingsInstance")
+                .field(&self.address)
+                .finish()
         }
     }
     /// Instantiation and getters/setters.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > SupraContractsBindingsInstance<P, N> {
+    impl<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>
+        SupraContractsBindingsInstance<P, N>
+    {
         /**Creates a new wrapper around an on-chain [`SupraContractsBindings`](self) contract instance.
 
-See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
+        See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
         #[inline]
-        pub const fn new(
-            address: alloy_sol_types::private::Address,
-            __provider: P,
-        ) -> Self {
+        pub const fn new(address: alloy_sol_types::private::Address, __provider: P) -> Self {
             Self {
                 address,
                 provider: __provider,
@@ -3432,9 +3108,9 @@ See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more det
         }
         /**Deploys this contract using the given `provider` and constructor arguments, if any.
 
-Returns a new instance of the contract, if the deployment was successful.
+        Returns a new instance of the contract, if the deployment was successful.
 
-For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
+        For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
         #[inline]
         pub async fn deploy(
             __provider: P,
@@ -3444,10 +3120,10 @@ For more fine-grained control over the deployment process, use [`deploy_builder`
             Ok(Self::new(contract_address, call_builder.provider))
         }
         /**Creates a `RawCallBuilder` for deploying this contract using the given `provider`
-and constructor arguments, if any.
+        and constructor arguments, if any.
 
-This is a simple wrapper around creating a `RawCallBuilder` with the data set to
-the bytecode concatenated with the constructor's ABI-encoded arguments.*/
+        This is a simple wrapper around creating a `RawCallBuilder` with the data set to
+        the bytecode concatenated with the constructor's ABI-encoded arguments.*/
         #[inline]
         pub fn deploy_builder(__provider: P) -> alloy_contract::RawCallBuilder<P, N> {
             alloy_contract::RawCallBuilder::new_raw_deploy(
@@ -3488,10 +3164,9 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
         }
     }
     /// Function calls.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > SupraContractsBindingsInstance<P, N> {
+    impl<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>
+        SupraContractsBindingsInstance<P, N>
+    {
         /// Creates a new call builder using this contract instance's provider and address.
         ///
         /// Note that the call can be any function call, not just those defined in this
@@ -3503,9 +3178,7 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             alloy_contract::SolCallBuilder::new_sol(&self.provider, &self.address, call)
         }
         ///Creates a new call builder for the [`blockPrologue`] function.
-        pub fn blockPrologue(
-            &self,
-        ) -> alloy_contract::SolCallBuilder<&P, blockPrologueCall, N> {
+        pub fn blockPrologue(&self) -> alloy_contract::SolCallBuilder<&P, blockPrologueCall, N> {
             self.call_builder(&blockPrologueCall)
         }
         ///Creates a new call builder for the [`getAllActiveTaskIds`] function.
@@ -3515,9 +3188,7 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             self.call_builder(&getAllActiveTaskIdsCall)
         }
         ///Creates a new call builder for the [`getCycleInfo`] function.
-        pub fn getCycleInfo(
-            &self,
-        ) -> alloy_contract::SolCallBuilder<&P, getCycleInfoCall, N> {
+        pub fn getCycleInfo(&self) -> alloy_contract::SolCallBuilder<&P, getCycleInfoCall, N> {
             self.call_builder(&getCycleInfoCall)
         }
         ///Creates a new call builder for the [`getTaskDetails`] function.
@@ -3532,16 +3203,10 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             &self,
             _taskIndexes: alloy::sol_types::private::Vec<u64>,
         ) -> alloy_contract::SolCallBuilder<&P, getTaskDetailsBulkCall, N> {
-            self.call_builder(
-                &getTaskDetailsBulkCall {
-                    _taskIndexes,
-                },
-            )
+            self.call_builder(&getTaskDetailsBulkCall { _taskIndexes })
         }
         ///Creates a new call builder for the [`getTaskIdList`] function.
-        pub fn getTaskIdList(
-            &self,
-        ) -> alloy_contract::SolCallBuilder<&P, getTaskIdListCall, N> {
+        pub fn getTaskIdList(&self) -> alloy_contract::SolCallBuilder<&P, getTaskIdListCall, N> {
             self.call_builder(&getTaskIdListCall)
         }
         ///Creates a new call builder for the [`getTransitionInfo`] function.
@@ -3569,19 +3234,16 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             _cycleIndex: u64,
             _taskIndexes: alloy::sol_types::private::Vec<u64>,
         ) -> alloy_contract::SolCallBuilder<&P, processTasksCall, N> {
-            self.call_builder(
-                &processTasksCall {
-                    _cycleIndex,
-                    _taskIndexes,
-                },
-            )
+            self.call_builder(&processTasksCall {
+                _cycleIndex,
+                _taskIndexes,
+            })
         }
     }
     /// Event filters.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > SupraContractsBindingsInstance<P, N> {
+    impl<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>
+        SupraContractsBindingsInstance<P, N>
+    {
         /// Creates a new event filter using this contract instance's provider and address.
         ///
         /// Note that the type can be any event, not just those defined in this contract.

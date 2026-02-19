@@ -75,8 +75,8 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Initializes the owner of the contract.
-    function initialize() public initializer {
-        __Ownable_init(msg.sender);
+    function initialize(address initial_owner) public initializer {
+        __Ownable_init(initial_owner);
     }
 
     /**

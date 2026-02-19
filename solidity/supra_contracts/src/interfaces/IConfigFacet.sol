@@ -36,7 +36,6 @@ interface IConfigFacet {
     //                      Custom errors
     // =============================================================
     error AddressAlreadyExists();
-    error AddressCannotBeZero();
     error AddressDoesNotExist();
     error AlreadyDisabled();
     error AlreadyEnabled();

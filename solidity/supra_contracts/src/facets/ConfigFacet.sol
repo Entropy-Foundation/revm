@@ -60,7 +60,7 @@ contract ConfigFacet is IConfigFacet {
     function setVmSigner(address _vmSigner) external {
         LibDiamond.enforceIsContractOwner();
 
-        if (_vmSigner == address(0)) { revert AddressCannotBeZero(); }
+        LibUtils.validateAddress(_vmSigner);
 
         address oldVmSigner = s.vmSigner;
         s.vmSigner = _vmSigner;
@@ -88,7 +88,7 @@ contract ConfigFacet is IConfigFacet {
         LibDiamond.enforceIsContractOwner();
 
         if (_amount == 0) { revert InvalidAmount(); }
-        if (_recipient == address(0)) { revert AddressCannotBeZero(); }
+        LibUtils.validateAddress(_recipient);
         uint256 balance = IERC20(s.erc20Supra).balanceOf(address(this));
 
         if (balance < _amount) { revert InsufficientBalance(); }

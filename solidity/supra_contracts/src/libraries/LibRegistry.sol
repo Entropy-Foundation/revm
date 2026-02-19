@@ -22,7 +22,7 @@ library LibRegistry {
     error InvalidMaxGasAmount();
     error GasCommittedExceedsMaxGasCap();
     error GasCommittedValueUnderflow();
-    error InsufficientFeeCapForCycle();
+    error InsufficientFeeCapForCycle(uint128 estimatedAutomationFeeForCycle);
     error InvalidExpiryTime();
     error InvalidGasPriceCap();
     error InvalidTaskDuration();
@@ -130,8 +130,7 @@ library LibRegistry {
 
             gasCommittedForNextCycle = s.registryState.gasCommittedForNextCycle;
             uint128 estimatedAutomationFeeForCycle = LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
-            if (_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(); }
-
+            if (_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(estimatedAutomationFeeForCycle); }
             taskDurationCap = s.activeConfig.taskDurationCapSecs;
             nextCycleRegistryMaxGasCap = s.registryState.nextCycleRegistryMaxGasCap;
         } else {

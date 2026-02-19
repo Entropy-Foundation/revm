@@ -197,7 +197,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'setVmSigner' reverts if zero address is passed.
     function testSetVmSignerRevertsIfZeroAddress() public {
-        vm.expectRevert(IConfigFacet.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).setVmSigner(address(0));
@@ -237,7 +237,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'setErc20Supra' reverts if zero address is passed. 
     function testSetErc20SupraRevertsIfZeroAddress() public {
-        vm.expectRevert(IConfigFacet.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).setErc20Supra(address(0));
@@ -275,7 +275,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     function testWithdrawFeesRevertsIfRecipientAddressZero() public {
         vm.prank(admin);
 
-        vm.expectRevert(IConfigFacet.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
         IConfigFacet(diamondAddr).withdrawFees(1 ether, address(0));
     }
 

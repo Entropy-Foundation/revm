@@ -372,7 +372,7 @@ contract RegistryFacet is IRegistryFacet {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
 
     /// @notice Returns all the automation tasks available in the registry.
-    function getTaskIds() external view returns (uint256[] memory) {
+    function getTaskIdList() external view returns (uint256[] memory) {
         return s.registryState.taskIdList.values();
     }
 

@@ -147,7 +147,7 @@ view_registry_erc20Supra_balance() {
 }
 
 view_task_list() {
-    RAW=$(cast call "$DIAMOND" "getTaskIds()(uint256[])" --rpc-url "$RPC_URL")
+    RAW=$(cast call "$DIAMOND" "getTaskIdList()(uint256[])" --rpc-url "$RPC_URL")
     echo ""
     echo "=== Task IDs ==="
     echo "$RAW"
