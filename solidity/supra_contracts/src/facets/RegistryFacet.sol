@@ -7,6 +7,7 @@ import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
+import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 contract RegistryFacet is IRegistryFacet {
     using EnumerableSet for *;
@@ -73,7 +74,9 @@ contract RegistryFacet is IRegistryFacet {
 
         uint128 flatRegistrationFee = s.activeConfig.flatRegistrationFeeWei;
         uint128 fee = flatRegistrationFee + _automationFeeCapForCycle;
-        LibAccounting.chargeFees(msg.sender, fee);
+
+        bool sent = IERC20(s.erc20Supra).transferFrom(msg.sender, address(this), fee);
+        if (!sent) { revert TransferFailed(); }
 
         emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFee, _automationFeeCapForCycle, s.registryState.tasks[taskIndex]);
     }

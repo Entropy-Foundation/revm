@@ -86,6 +86,7 @@ interface IRegistryFacet {
     error TaskIndexesCannotBeEmpty();
     error TaskIndexNotFound();
     error TaskIndexNotUnique();
+    error TransferFailed();
     error UnauthorizedAccount();
     error UnsupportedTaskOperation();
 

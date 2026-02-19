@@ -21,6 +21,7 @@ library LibCore {
     error InvalidRegistryState();
     error OutOfOrderTaskProcessingRequest();
     error TaskIndexNotFound();
+    error TransferFailed();
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -378,26 +379,33 @@ library LibCore {
                 _regHash
             );
         } else {
-            uint256 userBalance = IERC20(s.erc20Supra).balanceOf(_owner);
-            if (userBalance < _fee) {
-                // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
+            address erc20Supra = s.erc20Supra;
+            uint256 userBalance = IERC20(erc20Supra).balanceOf(_owner);
+            uint256 allowance = IERC20(erc20Supra).allowance(_owner, address(this));
+            
+            if (userBalance < _fee || allowance < _fee) {
+                // If the user hasn't granted enough allowance or if they don't have enough balance, remove the task.
+                // DON'T refund the locked deposit, but simply unlock it and emit an event.
 
                 LibAccounting.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
                 LibCommon.removeTask(_taskIndex, _owner, false);
 
                 isRemoved = true;
 
-                emit ICoreFacet.TaskCancelledInsufficentBalance(
+                emit ICoreFacet.TaskCancelledInsufficentBalanceAllowance(
                     _taskIndex,
                     _owner,
                     _fee,
                     userBalance,
+                    allowance,
                     _regHash
                 );
             } else {
                 if (_fee != 0)  {
                     // Charge the fee    
-                    LibAccounting.chargeFees(_owner, _fee);
+                    bool sent = IERC20(erc20Supra).transferFrom(_owner, address(this), _fee);
+                    if (!sent) { revert TransferFailed(); }
+
                     fees = _fee;
                 }
               

@@ -32,24 +32,25 @@ interface ICoreFacet {
     event TaskCycleFeeWithdraw(
         uint64 indexed taskIndex,
         address indexed owner,
-        uint128 fee
+        uint128 indexed fee
     );
 
     /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
     event TaskCancelledCapacitySurpassed(
         uint64 indexed taskIndex,
-        address indexed owner,
-        uint128 fee,
-        uint128 automationFeeCapForCycle,
+        address owner,
+        uint128 indexed fee,
+        uint128 indexed automationFeeCapForCycle,
         bytes32 registrationHash
     );
 
-    /// @notice Emitted when a task is removed due to insufficient balance.
-    event TaskCancelledInsufficentBalance(
+    /// @notice Emitted when a task is removed due to insufficient balance or allowance.
+    event TaskCancelledInsufficentBalanceAllowance(
         uint64 indexed taskIndex,
-        address indexed owner,
-        uint128 fee,
-        uint256 balance,
+        address owner,
+        uint128 indexed fee,
+        uint256 indexed balance,
+        uint256 allowance,
         bytes32 registrationHash
     );
 

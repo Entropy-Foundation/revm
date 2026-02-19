@@ -451,12 +451,4 @@ library LibAccounting {
             s.activeConfig.registryMaxGasCap
         );
     }
-
-    /// @notice Helper function to charge fees from the user.
-    function chargeFees(address _from, uint256 _amount) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
-        
-        bool sent = IERC20(s.erc20Supra).transferFrom(_from, address(this), _amount);
-        if (!sent) { revert TransferFailed(); }
-    }
 }
