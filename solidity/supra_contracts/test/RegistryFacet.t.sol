@@ -5,6 +5,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibRegistry} from "../src/libraries/LibRegistry.sol";
 import {TaskMetadata} from "../src/libraries/LibAppStorage.sol";
@@ -300,8 +301,8 @@ contract RegistryFacetTest is BaseDiamondTest {
             expiryTime: uint64(block.timestamp + 2250), 
             priority: 0, 
             owner: alice, 
-            taskType: LibUtils.TaskType.UST, 
-            taskState: LibUtils.TaskState.PENDING, 
+            taskType: LibCommon.TaskType.UST, 
+            taskState: LibCommon.TaskState.PENDING, 
             payloadTx: payload, 
             auxData: auxData
         });
@@ -473,8 +474,8 @@ contract RegistryFacetTest is BaseDiamondTest {
             expiryTime: uint64(block.timestamp + 2250), 
             priority: 2, 
             owner: bob, 
-            taskType: LibUtils.TaskType.GST, 
-            taskState: LibUtils.TaskState.PENDING, 
+            taskType: LibCommon.TaskType.GST, 
+            taskState: LibCommon.TaskState.PENDING, 
             payloadTx: payload, 
             auxData: auxData
         });
@@ -727,8 +728,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
 
-        LibUtils.TaskStopped[] memory stoppedTasks = new LibUtils.TaskStopped[](1);
-        stoppedTasks[0] = LibUtils.TaskStopped(0, 0.5 ether, 0.01245 ether, keccak256("txHash"));
+        LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
+        stoppedTasks[0] = LibCommon.TaskStopped(0, 0.5 ether, 0.01245 ether, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
         emit IRegistryFacet.TasksStopped(stoppedTasks, alice);
@@ -839,8 +840,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
-        LibUtils.TaskStopped[] memory stoppedTasks = new LibUtils.TaskStopped[](1);
-        stoppedTasks[0] = LibUtils.TaskStopped(0, 0, 0, keccak256("txHash"));
+        LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
+        stoppedTasks[0] = LibCommon.TaskStopped(0, 0, 0, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
         emit IRegistryFacet.TasksStopped(stoppedTasks, bob);

@@ -3,9 +3,9 @@ pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {AppStorage, TaskMetadata} from "../libraries/LibAppStorage.sol";
-import {LibUtils} from "../libraries/LibUtils.sol";
+import {LibAccounting} from "../libraries/LibAccounting.sol";
+import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";
-import {LibCore} from "../libraries/LibCore.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 
 contract RegistryFacet is IRegistryFacet {
@@ -39,7 +39,7 @@ contract RegistryFacet is IRegistryFacet {
             totalTasks(),
             regTime,
             _expiryTime,
-            LibUtils.TaskType.UST,
+            LibCommon.TaskType.UST,
             _payloadTx, 
             _maxGasAmount, 
             _gasPriceCap,
@@ -59,8 +59,8 @@ contract RegistryFacet is IRegistryFacet {
             expiryTime: _expiryTime, 
             priority: taskIndex,    // priority set to taskIndex by default 
             owner: msg.sender, 
-            taskType: LibUtils.TaskType.UST, 
-            taskState: LibUtils.TaskState.PENDING, 
+            taskType: LibCommon.TaskType.UST, 
+            taskState: LibCommon.TaskState.PENDING, 
             payloadTx: _payloadTx, 
             auxData: _auxData
         }); 
@@ -73,7 +73,7 @@ contract RegistryFacet is IRegistryFacet {
 
         uint128 flatRegistrationFee = s.activeConfig.flatRegistrationFeeWei;
         uint128 fee = flatRegistrationFee + _automationFeeCapForCycle;
-        LibRegistry.chargeFees(msg.sender, fee);
+        LibAccounting.chargeFees(msg.sender, fee);
 
         emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFee, _automationFeeCapForCycle, s.registryState.tasks[taskIndex]);
     }
@@ -98,7 +98,7 @@ contract RegistryFacet is IRegistryFacet {
             totalSystemTasks(),
             regTime,
             _expiryTime,
-            LibUtils.TaskType.GST,
+            LibCommon.TaskType.GST,
             _payloadTx, 
             _maxGasAmount, 
             0,
@@ -118,8 +118,8 @@ contract RegistryFacet is IRegistryFacet {
             expiryTime: _expiryTime, 
             priority: taskPriority, 
             owner: msg.sender, 
-            taskType: LibUtils.TaskType.GST, 
-            taskState: LibUtils.TaskState.PENDING, 
+            taskType: LibCommon.TaskType.GST, 
+            taskState: LibCommon.TaskState.PENDING, 
             payloadTx: _payloadTx, 
             auxData: _auxData 
         });
@@ -147,34 +147,34 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
-        if (!LibRegistry.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
+        if (!LibCommon.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibCommon.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
 
         TaskMetadata memory task = s.registryState.tasks[_taskIndex];
 
-        if (task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
+        if (task.taskType == LibCommon.TaskType.GST) { revert UnsupportedTaskOperation(); }
         if (task.owner != msg.sender) { revert UnauthorizedAccount(); }
-        if (task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if (task.taskState == LibCommon.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         
-        if (task.taskState == LibUtils.TaskState.PENDING) {
+        if (task.taskState == LibCommon.TaskState.PENDING) {
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
-            LibRegistry.removeTask(_taskIndex, task.owner, false); 
-            bool result = LibRegistry.safeDepositRefund(
+            LibCommon.removeTask(_taskIndex, task.owner, false); 
+            bool result = LibAccounting.safeDepositRefund(
                 _taskIndex,
                 task.owner,
-                task.depositFee / LibRegistry.REFUND_FACTOR,
+                task.depositFee / LibAccounting.REFUND_FACTOR,
                 task.depositFee
             );
             if (!result) { revert ErrorDepositRefund(); }            
         } else { 
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
             // Active tasks will be refunded the deposited amount fully at the end of the cycle.
-            s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.CANCELLED;
+            s.registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.CANCELLED;
         }
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-        if (task.expiryTime > LibCore.getCycleEndTime()) {
+        if (task.expiryTime > LibCommon.getCycleEndTime()) {
             LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
@@ -195,27 +195,27 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
-        if (!LibRegistry.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
-        if (!LibRegistry.ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
+        if (!LibCommon.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibCommon.ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
+        if (!ifSysTaskExists(_taskIndex)) { revert SystemTaskDoesNotExist(); }
 
         TaskMetadata memory task = s.registryState.tasks[_taskIndex];
 
         // Check if GST
-        if (task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
+        if (task.taskType == LibCommon.TaskType.UST) { revert UnsupportedTaskOperation(); }
 
         if (task.owner != msg.sender) { revert UnauthorizedAccount(); }
-        if (task.taskState == LibUtils.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if (task.taskState == LibCommon.TaskState.CANCELLED) { revert AlreadyCancelled(); }
 
-        if (task.taskState == LibUtils.TaskState.PENDING) {
-            LibRegistry.removeTask(_taskIndex, task.owner, true);
+        if (task.taskState == LibCommon.TaskState.PENDING) {
+            LibCommon.removeTask(_taskIndex, task.owner, true);
         } else {
-            s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.CANCELLED;
+            s.registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.CANCELLED;
         }
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-        if (task.expiryTime > LibCore.getCycleEndTime()) {
+        if (task.expiryTime > LibCommon.getCycleEndTime()) {
             LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
         }
 
@@ -234,44 +234,44 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibCommon.isCycleStarted()) { revert CycleTransitionInProgress(); }
         if (_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
-        LibUtils.TaskStopped[] memory stoppedTaskDetails = new LibUtils.TaskStopped[](_taskIndexes.length);
+        LibCommon.TaskStopped[] memory stoppedTaskDetails = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint256 counter = 0;
         
         uint128 totalRefundFee = 0;
 
         // Calculate refundable fee for this remaining time task in current cycle
         uint64 currentTime = uint64(block.timestamp);
-        uint64 cycleEndTime = LibCore.getCycleEndTime();
+        uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
-            if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
+            if (LibCommon.ifTaskExists(_taskIndexes[i])) {
                 TaskMetadata memory task = s.registryState.tasks[_taskIndexes[i]];
 
                 // Check if authorised
                 if (msg.sender != task.owner) { revert UnauthorizedAccount(); }
                 
                 // Check if UST
-                if (task.taskType == LibUtils.TaskType.GST) { revert UnsupportedTaskOperation(); }
+                if (task.taskType == LibCommon.TaskType.GST) { revert UnsupportedTaskOperation(); }
 
                 // Remove task from the registry
-                LibRegistry.removeTask(_taskIndexes[i], task.owner, false);
+                LibCommon.removeTask(_taskIndexes[i], task.owner, false);
                 // Remove from active tasks
                 require(s.registryState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
                 // This check means the task was expected to be executed in the next cycle, but it has been stopped.
                 // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
                 // Also it checks that task should not be cancelled.
-                if (task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
+                if (task.taskState != LibCommon.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     // Reduce committed gas by the stopped task's max gas
                     LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
-                (uint128 cycleFeeRefund, uint128 depositRefund) = LibRegistry.unlockDepositAndCycleFee(
+                (uint128 cycleFeeRefund, uint128 depositRefund) = LibAccounting.unlockDepositAndCycleFee(
                     _taskIndexes[i],
                     task.taskState,
                     task.expiryTime,
@@ -284,7 +284,7 @@ contract RegistryFacet is IRegistryFacet {
 
 
                 // Add to stopped tasks
-                LibUtils.TaskStopped memory taskStopped = LibUtils.TaskStopped(
+                LibCommon.TaskStopped memory taskStopped = LibCommon.TaskStopped(
                     _taskIndexes[i],
                     depositRefund,
                     cycleFeeRefund,
@@ -297,7 +297,7 @@ contract RegistryFacet is IRegistryFacet {
 
         // Refund and emit event if any tasks were stopped
         if (counter > 0) {  
-            LibRegistry.refund(msg.sender, totalRefundFee);
+            LibAccounting.refund(msg.sender, totalRefundFee);
 
             // Emit task stopped event
             emit TasksStopped(
@@ -319,34 +319,34 @@ contract RegistryFacet is IRegistryFacet {
         // Check if automation is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
 
-        if (!LibRegistry.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibCommon.isCycleStarted()) { revert CycleTransitionInProgress(); }
 
         // Ensure that task indexes are provided
         if (_taskIndexes.length == 0) { revert TaskIndexesCannotBeEmpty(); }
 
-        LibUtils.TaskStopped[] memory stoppedTaskDetails = new LibUtils.TaskStopped[](_taskIndexes.length);
+        LibCommon.TaskStopped[] memory stoppedTaskDetails = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint256 counter = 0;
-        uint64 cycleEndTime = LibCore.getCycleEndTime();
+        uint64 cycleEndTime = LibCommon.getCycleEndTime();
         
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
-            if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
+            if (LibCommon.ifTaskExists(_taskIndexes[i])) {
                 TaskMetadata memory task = s.registryState.tasks[_taskIndexes[i]];
 
                 if (task.owner != msg.sender) { revert UnauthorizedAccount(); }
 
                 // Check if GST
-                if (task.taskType == LibUtils.TaskType.UST) { revert UnsupportedTaskOperation(); }
-                LibRegistry.removeTask(_taskIndexes[i], task.owner, true);
+                if (task.taskType == LibCommon.TaskType.UST) { revert UnsupportedTaskOperation(); }
+                LibCommon.removeTask(_taskIndexes[i], task.owner, true);
                 // Remove from active tasks
                 require(s.registryState.activeTaskIds.remove(_taskIndexes[i]), TaskIndexNotFound());
 
-                if (task.taskState != LibUtils.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
+                if (task.taskState != LibCommon.TaskState.CANCELLED && task.expiryTime > cycleEndTime) {
                     LibRegistry.updateGasCommittedForNextCycle(task.taskType, task.maxGasAmount);
                 }
 
                 // Add to stopped tasks
-                LibUtils.TaskStopped memory taskStopped = LibUtils.TaskStopped(
+                LibCommon.TaskStopped memory taskStopped = LibCommon.TaskStopped(
                     _taskIndexes[i],
                     0,
                     0,
@@ -408,18 +408,18 @@ contract RegistryFacet is IRegistryFacet {
     /// @notice Returns if a task exists in the registry.
     /// @param _taskIndex Task index to check existence for.
     function ifTaskExists(uint64 _taskIndex) external view  returns (bool) {
-        return LibRegistry.ifTaskExists(_taskIndex);
+        return LibCommon.ifTaskExists(_taskIndex);
     }
 
     /// @notice Returns if a system task exists in the registry.
     /// @param _taskIndex Task index of the system task to check existence for.
-    function ifSysTaskExists(uint64 _taskIndex) external view returns (bool) {
-        return LibRegistry.ifSysTaskExists(_taskIndex);
+    function ifSysTaskExists(uint64 _taskIndex) public view returns (bool) {
+        return s.registryState.sysTaskIds.contains(_taskIndex);
     }
 
     /// @notice Returns the details of a task. Reverts if task doesn't exist.
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory) {
-        return LibRegistry.getTask(_taskIndex);
+        return LibCommon.getTask(_taskIndex);
     }
     
     /// @notice Retrieves the details of automation tasks by their task index. Skips a task if it doesn't exist.
@@ -431,7 +431,7 @@ contract RegistryFacet is IRegistryFacet {
         uint256 exists;
 
         for (uint256 i = 0; i < count; i++) {
-            if (LibRegistry.ifTaskExists(_taskIndexes[i])) {
+            if (LibCommon.ifTaskExists(_taskIndexes[i])) {
                 temp[exists] = s.registryState.tasks[_taskIndexes[i]];
                 exists += 1; 
             }
@@ -462,19 +462,19 @@ contract RegistryFacet is IRegistryFacet {
 
     /// @notice Checks whether there is an active task in registry with specified input task index.
     function hasActiveUserTask(address _account, uint64 _taskIndex) external view returns (bool) {
-        return hasActiveTaskOfType(_account, _taskIndex, LibUtils.TaskType.UST);
+        return hasActiveTaskOfType(_account, _taskIndex, LibCommon.TaskType.UST);
     }
 
     /// @notice Checks whether there is an active system task in registry with specified input task index.
     function hasActiveSystemTask(address _account, uint64 _taskIndex) external view returns (bool) {
-        return hasActiveTaskOfType(_account, _taskIndex, LibUtils.TaskType.GST);
+        return hasActiveTaskOfType(_account, _taskIndex, LibCommon.TaskType.GST);
     }
 
     /// @notice Checks whether there is an active task in registry with specified input task index of the input type.
     /// The type can be either 0 for user submitted tasks, and 1 for governance authorized tasks.
-    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibUtils.TaskType _type) public view returns (bool) {
+    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) public view returns (bool) {
         TaskMetadata storage task = s.registryState.tasks[_taskIndex]; 
-        return task.owner == _account && task.taskState != LibUtils.TaskState.PENDING && task.taskType == _type;
+        return task.owner == _account && task.taskState != LibCommon.TaskState.PENDING && task.taskType == _type;
     }
 
     /// @notice Returns the gas committed for the next cycle.
@@ -526,19 +526,19 @@ contract RegistryFacet is IRegistryFacet {
     /// referencing the current automation registry fee parameters, specified total/committed occupancy and current registry
     /// maximum allowed occupancy.
     function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external view returns (uint128) {
-        return LibRegistry.calculateAutomationFeeMultiplierForCommittedOccupancy(_totalCommittedMaxGas);
+        return LibAccounting.calculateAutomationFeeMultiplierForCommittedOccupancy(_totalCommittedMaxGas);
     }
     
     /// @notice Calculates the automation fee multiplier for current cycle. 
     function calculateAutomationFeeMultiplierForCurrentCycle() external view returns (uint128) {
-        return LibRegistry.calculateAutomationFeeMultiplierForCurrentCycle();
+        return LibAccounting.calculateAutomationFeeMultiplierForCurrentCycle();
     }
 
     /// @notice Estimates automation fee for the next cycle for specified task occupancy for the configured cycle-interval
     /// referencing the current automation registry fee parameters, current total occupancy and registry maximum allowed
     /// occupancy for the next cycle.
     function estimateAutomationFee(uint128 _taskOccupancy) external view returns (uint128) {
-        return LibRegistry.estimateAutomationFeeWithCommittedOccupancyInternal(_taskOccupancy, s.registryState.gasCommittedForNextCycle);
+        return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_taskOccupancy, s.registryState.gasCommittedForNextCycle);
     }
 
     /// @notice Estimates automation fee the next cycle for specified task occupancy for the configured cycle-interval
@@ -548,7 +548,7 @@ contract RegistryFacet is IRegistryFacet {
         uint128 _taskOccupancy,
         uint128 _committedOccupancy
     ) external view returns (uint128) {
-        return LibRegistry.estimateAutomationFeeWithCommittedOccupancyInternal(
+        return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(
             _taskOccupancy,
             _committedOccupancy
         );

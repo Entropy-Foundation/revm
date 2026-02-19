@@ -15,6 +15,7 @@ import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
 
 import { AppStorage, Config } from "../libraries/LibAppStorage.sol";
+import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
 
 /// @title DiamondInit
@@ -81,7 +82,7 @@ contract DiamondInit {
         ds.supportedInterfaces[type(IERC173).interfaceId] = true;
 
 
-        LibUtils.validateConfigParameters(
+        LibCommon.validateConfigParameters(
             _taskDurationCapSecs,
             _registryMaxGasCap,
             _congestionThresholdPercentage,
@@ -124,11 +125,11 @@ contract DiamondInit {
         //                          Cycle initialization
         // ---------------------------------------------------------------------
         (
-            LibUtils.CycleState cycleState,
+            LibCommon.CycleState cycleState,
             uint64 cycleIndex
         ) = _automationEnabled
-            ? (LibUtils.CycleState.STARTED, 1)
-            : (LibUtils.CycleState.READY, 0);
+            ? (LibCommon.CycleState.STARTED, 1)
+            : (LibCommon.CycleState.READY, 0);
 
         s.index  = cycleIndex;
         s.startTime  = uint64(block.timestamp);

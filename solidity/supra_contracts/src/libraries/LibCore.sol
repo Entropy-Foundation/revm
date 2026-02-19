@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {LibAccounting} from "./LibAccounting.sol";
+import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
-import {LibRegistry} from "./LibRegistry.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCore {
+    using LibCommon for *;
     using LibUtils for *;
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -20,20 +22,18 @@ library LibCore {
     error OutOfOrderTaskProcessingRequest();
     error TaskIndexNotFound();
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: HELPER FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Function to remove a task from the registry.
-    /// @param _taskIndex Index of the task to remove. 
-    /// @param _removeFromSysReg Wheather to remove from system task registry.
-    function removeTask(uint64 _taskIndex, bool _removeFromSysReg) private {
+    /// @notice Returns the number of total tasks.
+    function totalTasks() private view returns (uint256) {
         AppStorage storage s = LibAppStorage.appStorage();
-
-        if (_removeFromSysReg) {
-            require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
-        }
-
-        delete s.registryState.tasks[_taskIndex];
-        require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
+        return s.registryState.taskIdList.length();
+    }
+    
+    /// @notice Returns all the automation tasks available in the registry.
+    function getTaskIdList() private view returns (uint256[] memory) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        return s.registryState.taskIdList.values();
     }
 
     /// @notice Function to update the cycle locked fees, gas committed and tasks lists.
@@ -47,7 +47,7 @@ library LibCore {
         uint128 _sysGasCommittedForNextCycle,
         uint128 _gasCommittedForNextCycle,
         uint128 _gasCommittedForNewCycle,
-        LibUtils.CycleState _state
+        LibCommon.CycleState _state
     ) private {
         AppStorage storage s = LibAppStorage.appStorage();
 
@@ -58,7 +58,7 @@ library LibCore {
         s.registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
 
         s.registryState.activeTaskIds.clear();
-        if (_state == LibUtils.CycleState.FINISHED) {
+        if (_state == LibCommon.CycleState.FINISHED) {
             uint256[] memory taskIds = s.registryState.taskIdList.values();
             for (uint256 i = 0; i < taskIds.length; i++) {
                 s.registryState.activeTaskIds.add(taskIds[i]);
@@ -85,10 +85,10 @@ library LibCore {
 
     /// @notice Updates the state of the cycle.
     /// @param _state Input state to update cycle state with.
-    function updateCycleStateTo(LibUtils.CycleState _state) private {
+    function updateCycleStateTo(LibCommon.CycleState _state) private {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        LibUtils.CycleState oldState = s.cycleState;
+        LibCommon.CycleState oldState = s.cycleState;
         s.cycleState = _state;
 
         emit ICoreFacet.AutomationCycleEvent (
@@ -142,7 +142,7 @@ library LibCore {
                 s.transitionState.expectedTasksToBeProcessed.clear();
             }
         }
-        updateCycleStateTo(LibUtils.CycleState.READY);
+        updateCycleStateTo(LibCommon.CycleState.READY);
     }
 
     /// @notice Updates the cycle state if the transition is identified to be finalized.
@@ -164,7 +164,7 @@ library LibCore {
             return; 
         }
         
-        updateRegistryState(0, 0, 0, 0, LibUtils.CycleState.SUSPENDED);
+        updateRegistryState(0, 0, 0, 0, LibCommon.CycleState.SUSPENDED);
 
         // Check if automation is enabled
         if (s.automationEnabled) {
@@ -202,7 +202,7 @@ library LibCore {
         if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
 
         if (isTransitionFinalized()) {
-            if (!s.automationEnabled && s.cycleState == LibUtils.CycleState.FINISHED) {
+            if (!s.automationEnabled && s.cycleState == LibCommon.CycleState.FINISHED) {
                 tryMoveToSuspendedState();
             } else {
                 updateRegistryState(
@@ -210,14 +210,14 @@ library LibCore {
                     s.transitionState.sysGasCommittedForNextCycle,
                     s.transitionState.gasCommittedForNextCycle,
                     s.transitionState.gasCommittedForNewCycle,
-                    LibUtils.CycleState.FINISHED
+                    LibCommon.CycleState.FINISHED
                 );
 
                 // Set current timestamp as cycle start time
                 // Increment the cycle and update the state to STARTED
                 moveToStartedState();
-                if (LibRegistry.getTotalActiveTasks() > 0 ) {
-                    uint256[] memory activeTasks = LibRegistry.getAllActiveTaskIds();
+                if (s.registryState.activeTaskIds.length() > 0 ) {
+                    uint256[] memory activeTasks = s.registryState.activeTaskIds.values();
                     emit ICoreFacet.ActiveTasks(activeTasks);
                 }
             }
@@ -229,7 +229,7 @@ library LibCore {
     /// @return intermediateState Returns the intermediate state.
     function dropOrChargeTasks(
         uint64[] memory _taskIndexes
-    ) private returns (LibUtils.IntermediateStateOfCycleChange memory intermediateState) {
+    ) private returns (LibCommon.IntermediateStateOfCycleChange memory intermediateState) {
         AppStorage storage s = LibAppStorage.appStorage();
 
         uint64 currentTime = uint64(block.timestamp);
@@ -243,7 +243,7 @@ library LibCore {
 
         // Process each active task and calculate fee for the cycle for the tasks
         for (uint256 i = 0; i < taskIndexes.length; i++) {
-            LibUtils.TransitionResult memory result = dropOrChargeTask(
+            LibCommon.TransitionResult memory result = dropOrChargeTask(
                 taskIndexes[i],
                 currentTime,
                 currentCycleEndTime
@@ -275,22 +275,22 @@ library LibCore {
         uint64 _taskIndex,
         uint64 _currentTime,
         uint64 _currentCycleEndTime
-    ) private returns (LibUtils.TransitionResult memory result) {
+    ) private returns (LibCommon.TransitionResult memory result) {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        if (LibRegistry.ifTaskExists(_taskIndex)) {
+        if (LibCommon.ifTaskExists(_taskIndex)) {
             markTaskProcessed(_taskIndex);
 
-            TaskMetadata memory task = LibRegistry.getTask(_taskIndex);
-            bool isUst = task.taskType == LibUtils.TaskType.UST;
+            TaskMetadata memory task = LibCommon.getTask(_taskIndex);
+            bool isUst = task.taskType == LibCommon.TaskType.UST;
             
             // Task is cancelled or expired
-            if (task.taskState == LibUtils.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
+            if (task.taskState == LibCommon.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
                 if (isUst) {
-                    LibRegistry.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
+                    LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
                 } else {
                     // Remove the task from registry and system registry
-                    removeTask(_taskIndex, true);
+                    LibCommon.removeTask(_taskIndex, task.owner, true);
                 }
                 result.isRemoved = true;
             } else if (!isUst) {
@@ -298,10 +298,10 @@ library LibCore {
                 // Governance submitted tasks are not charged
 
                 result.sysGas = task.maxGasAmount;                
-                s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.ACTIVE;
+                s.registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
             } else {
                 // Active UST
-                uint128 fee = LibRegistry.calculateTaskFee(
+                uint128 fee = LibAccounting.calculateTaskFee(
                     task.taskState,
                     task.expiryTime,
                     task.maxGasAmount,
@@ -316,7 +316,7 @@ library LibCore {
                 // as the fee calculation for them will be different based on their active duration in the cycle.
                 // For more details see calculateTaskFee function.
                 
-                s.registryState.tasks[_taskIndex].taskState = LibUtils.TaskState.ACTIVE;
+                s.registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
                 (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
                     _taskIndex,
                     task.owner,
@@ -366,7 +366,7 @@ library LibCore {
         uint128 gas;
         uint128 fees;
         if (_fee > _automationFeeCapForCycle) {
-            LibRegistry.refundDepositAndDrop(_taskIndex, _owner, _lockedFeeForNextCycle,  _lockedFeeForNextCycle);
+            LibAccounting.refundDepositAndDrop(_taskIndex, _owner, _lockedFeeForNextCycle,  _lockedFeeForNextCycle);
 
             isRemoved = true;
 
@@ -382,8 +382,8 @@ library LibCore {
             if (userBalance < _fee) {
                 // If the user does not have enough balance, remove the task, DON'T refund the locked deposit, but simply unlock it and emit an event.
 
-                LibRegistry.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
-                removeTask(_taskIndex, false);
+                LibAccounting.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
+                LibCommon.removeTask(_taskIndex, _owner, false);
 
                 isRemoved = true;
 
@@ -397,7 +397,7 @@ library LibCore {
             } else {
                 if (_fee != 0)  {
                     // Charge the fee    
-                    LibRegistry.chargeFees(_owner, _fee);
+                    LibAccounting.chargeFees(_owner, _fee);
                     fees = _fee;
                 }
               
@@ -417,19 +417,7 @@ library LibCore {
         return (isRemoved, gas, fees);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Returns the cycle end time.
-    function getCycleEndTime() internal view returns (uint64 cycleEndTime) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        cycleEndTime = s.startTime + s.durationSecs;
-    }
-
-    /// @notice Checks whether cycle is in STARTED state.
-    function isCycleStarted() internal view returns (bool) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        return s.cycleState == LibUtils.CycleState.STARTED;
-    }
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Checks if the cycle transition is finalized.
     /// @return Bool representing if the cycle transition is finalized.
@@ -457,13 +445,13 @@ library LibCore {
 
         if (_taskIndexes.length == 0) { return; }
 
-        if (s.cycleState != LibUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+        if (s.cycleState != LibCommon.CycleState.FINISHED) { revert InvalidRegistryState(); }
         
         // Check if transition state exists
         if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
         if (s.index + 1 != _cycleIndex) { revert InvalidInputCycleIndex(); }
 
-        LibUtils.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
+        LibCommon.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
         
         s.transitionState.lockedFees += intermediateState.cycleLockedFees;
         s.transitionState.gasCommittedForNextCycle += intermediateState.gasCommittedForNextCycle;        
@@ -486,7 +474,7 @@ library LibCore {
 
         if (_taskIndexes.length == 0) { return; }
 
-        if (s.cycleState != LibUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+        if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
         if (s.index != _cycleIndex) { revert InvalidInputCycleIndex(); }
         // Check if transition state exists
         if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
@@ -499,17 +487,17 @@ library LibCore {
         
         uint64 removedCounter;
         for (uint i = 0; i < taskIndexes.length; i++) {
-            if (LibRegistry.ifTaskExists(taskIndexes[i])) {
-                TaskMetadata memory task = LibRegistry.getTask(taskIndexes[i]);
+            if (LibCommon.ifTaskExists(taskIndexes[i])) {
+                TaskMetadata memory task = LibCommon.getTask(taskIndexes[i]);
 
-                removeTask(taskIndexes[i], false);
+                LibCommon.removeTask(taskIndexes[i], task.owner, false);
 
                 removedTasks[removedCounter++] = taskIndexes[i];
                 markTaskProcessed(taskIndexes[i]);
 
                 // Nothing to refund for GST tasks
-                if (task.taskType == LibUtils.TaskType.UST) {
-                    LibRegistry.refundTaskFees(currentTime, s.transitionState.refundDuration, s.transitionState.automationFeePerSec, task);
+                if (task.taskType == LibCommon.TaskType.UST) {
+                    LibAccounting.refundTaskFees(currentTime, s.transitionState.refundDuration, s.transitionState.automationFeePerSec, task);
                 }
             }
         }
@@ -525,12 +513,12 @@ library LibCore {
         if (!s.automationEnabled) {
             tryMoveToSuspendedState();
         } else {
-            if (LibRegistry.totalTasks() == 0) {
+            if (totalTasks() == 0) {
                 // Registry is empty update config buffer and move to STARTED state directly
                 updateConfigFromBuffer();
                 moveToStartedState();
             } else {
-                uint256[] memory expectedTasksToBeProcessed = LibRegistry.getTaskIdList().sortUint256();
+                uint256[] memory expectedTasksToBeProcessed = getTaskIdList().sortUint256();
 
                 // Updates transition state
                 s.transitionState.refundDuration = 0;
@@ -550,8 +538,8 @@ library LibCore {
                 // Calculate automation fee per second for the new cycle only after configuration is updated.
                 // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
                 // and will be used to charge tasks during transition process.
-                s.transitionState.automationFeePerSec = LibRegistry.calculateAutomationFeeMultiplierForCommittedOccupancy(s.transitionState.gasCommittedForNewCycle);
-                updateCycleStateTo(LibUtils.CycleState.FINISHED);
+                s.transitionState.automationFeePerSec = LibAccounting.calculateAutomationFeeMultiplierForCommittedOccupancy(s.transitionState.gasCommittedForNewCycle);
+                updateCycleStateTo(LibCommon.CycleState.FINISHED);
             }
         }
     }
@@ -573,9 +561,9 @@ library LibCore {
     function tryMoveToSuspendedState() internal {
         AppStorage storage s = LibAppStorage.appStorage();
         
-        if (LibRegistry.totalTasks() == 0) {
+        if (totalTasks() == 0) {
             // Registry is empty move to ready state directly
-            updateCycleStateTo(LibUtils.CycleState.READY);
+            updateCycleStateTo(LibCommon.CycleState.READY);
         } else if (!s.ifTransitionStateExists) {
             // Indicates that cycle was in STARTED state when suspention has been identified.
             // It is safe to assert that cycleEndTime will always be greater than current chain time as
@@ -587,18 +575,18 @@ library LibCore {
             // As in this case we will first transition to the STARTED state and only then to SUSPENDED.
             // And when transition to STARTED state we update the cycle start-time to be the current-chain-time.
             uint64 currentTime = uint64(block.timestamp); 
-            uint64 cycleEndTime = getCycleEndTime();
+            uint64 cycleEndTime = LibCommon.getCycleEndTime();
 
             if (currentTime < s.startTime) { revert InvalidRegistryState(); }
             if (currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
-            if (!isCycleStarted()) { revert InvalidRegistryState(); }
+            if (!LibCommon.isCycleStarted()) { revert InvalidRegistryState(); }
 
-            uint256[] memory tasksIdList = LibRegistry.getTaskIdList();
+            uint256[] memory tasksIdList = getTaskIdList();
             uint256[] memory expectedTasksToBeProcessed = tasksIdList.sortUint256();
 
             s.transitionState.refundDuration = cycleEndTime - currentTime;
             s.transitionState.newCycleDuration = s.durationSecs;
-            s.transitionState.automationFeePerSec = LibRegistry.calculateAutomationFeeMultiplierForCurrentCycle();
+            s.transitionState.automationFeePerSec = LibAccounting.calculateAutomationFeeMultiplierForCurrentCycle();
             s.transitionState.gasCommittedForNewCycle = 0;
             s.transitionState.gasCommittedForNextCycle = 0;
             s.transitionState.sysGasCommittedForNextCycle = 0;
@@ -608,9 +596,9 @@ library LibCore {
             updateExpectedTasks(expectedTasksToBeProcessed);
             s.ifTransitionStateExists = true;
             
-            updateCycleStateTo(LibUtils.CycleState.SUSPENDED);
+            updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
         } else {
-            if (s.cycleState != LibUtils.CycleState.FINISHED) { revert InvalidRegistryState(); }
+            if (s.cycleState != LibCommon.CycleState.FINISHED) { revert InvalidRegistryState(); }
             if (isTransitionInProgress()) { revert InvalidRegistryState(); }
 
             // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
@@ -619,7 +607,7 @@ library LibCore {
             s.transitionState.automationFeePerSec = 0;
             s.transitionState.gasCommittedForNewCycle = 0;
             
-            updateCycleStateTo(LibUtils.CycleState.SUSPENDED);
+            updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
         }
     }
 
@@ -635,7 +623,7 @@ library LibCore {
             s.durationSecs = s.transitionState.newCycleDuration;
         }
 
-        updateCycleStateTo(LibUtils.CycleState.STARTED);
+        updateCycleStateTo(LibCommon.CycleState.STARTED);
     }
 
     /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.

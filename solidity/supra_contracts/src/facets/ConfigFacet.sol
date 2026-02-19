@@ -3,6 +3,7 @@ pragma solidity 0.8.27;
 
 import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {AppStorage, Config} from "../libraries/LibAppStorage.sol";
+import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {IConfigFacet} from "../interfaces/IConfigFacet.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
@@ -116,7 +117,7 @@ contract ConfigFacet is IConfigFacet {
     ) external {
         LibDiamond.enforceIsContractOwner();
 
-        LibUtils.validateConfigParameters(
+        LibCommon.validateConfigParameters(
             _taskDurationCapSecs,
             _registryMaxGasCap,
             _congestionThresholdPercentage,

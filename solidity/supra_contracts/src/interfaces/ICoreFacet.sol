@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {LibUtils} from "../libraries/LibUtils.sol";
+import {LibCommon} from "../libraries/LibCommon.sol";
 
 interface ICoreFacet {
     // =============================================================
@@ -22,10 +22,10 @@ interface ICoreFacet {
     /// @notice Emitted when the cycle state transitions.
     event AutomationCycleEvent(
         uint64 indexed index,
-        LibUtils.CycleState indexed state,
+        LibCommon.CycleState indexed state,
         uint64 startTime,
         uint64 durationSecs,
-        LibUtils.CycleState indexed oldState
+        LibCommon.CycleState indexed oldState
     );
 
     /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
@@ -65,7 +65,7 @@ interface ICoreFacet {
     // =============================================================
     //                      View functions
     // =============================================================
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibUtils.CycleState);
+    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommon.CycleState);
     function getCycleDuration() external view returns (uint64);
     function getTransitionInfo() external view returns (uint64, uint128);
     function isAutomationEnabled() external view returns (bool);

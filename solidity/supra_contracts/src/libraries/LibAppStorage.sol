@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {LibUtils} from "../libraries/LibUtils.sol";
+import {LibCommon} from "../libraries/LibCommon.sol";
 import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 
 /// @notice Struct representing Automation Registry configuration.
@@ -45,8 +45,8 @@ struct TaskMetadata {
     uint64 expiryTime;
     uint64 priority;
     address owner;
-    LibUtils.TaskType taskType;
-    LibUtils.TaskState taskState;
+    LibCommon.TaskType taskType;
+    LibCommon.TaskState taskState;
     bytes payloadTx;      
     bytes[] auxData;
 }
@@ -98,7 +98,7 @@ struct AppStorage {
     uint64 index;
     uint64 startTime;
     uint64 durationSecs;
-    LibUtils.CycleState cycleState;
+    LibCommon.CycleState cycleState;
     bool ifTransitionStateExists;
     TransitionState transitionState;
 

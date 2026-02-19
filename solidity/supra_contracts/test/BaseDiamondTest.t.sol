@@ -3,15 +3,14 @@ pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
-import {Diamond} from "../src/Diamond.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
+import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 abstract contract BaseDiamondTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
-    Diamond diamond;                            // Diamond instance
     address diamondAddr;                        // Diamond address
 
     InitParams defaultParams;                   // Default initialization parameters
@@ -36,8 +35,6 @@ abstract contract BaseDiamondTest is Test {
         defaultParams = LibDiamondUtils.defaultInitParams();
         deployment = LibDiamondUtils.deploy(admin);
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), defaultParams, deployment);
-
-        diamond  = Diamond(payable(deployment.diamond));
         diamondAddr = deployment.diamond;
 
         IConfigFacet(diamondAddr).grantAuthorization(bob);
@@ -76,18 +73,18 @@ abstract contract BaseDiamondTest is Test {
     /// @param _value Value to be sent along with the transaction.
     /// @param _target Address of the destination smart contract.
     function createPayload(uint128 _value, address _target) internal pure returns (bytes memory) {
-        LibUtils.AccessListEntry[] memory accessList = new LibUtils.AccessListEntry[](2);
+        LibCommon.AccessListEntry[] memory accessList = new LibCommon.AccessListEntry[](2);
         
         bytes32[] memory keys = new bytes32[](2); 
         keys[0] = bytes32(uint256(0));
         keys[1] = bytes32(uint256(1));
 
-        accessList[0] = LibUtils.AccessListEntry({
+        accessList[0] = LibCommon.AccessListEntry({
             addr: address(0x1111),
             storageKeys: keys
         });
 
-        accessList[1] = LibUtils.AccessListEntry({
+        accessList[1] = LibCommon.AccessListEntry({
             addr: address(0x2222),
             storageKeys: keys
         });

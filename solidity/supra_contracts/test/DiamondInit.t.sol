@@ -3,12 +3,13 @@ pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {OwnershipFacet} from "../src/facets/OwnershipFacet.sol";
-import {ConfigFacet} from "../src/facets/ConfigFacet.sol";
-import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
-import {CoreFacet} from "../src/facets/CoreFacet.sol";
+import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IDiamondCut} from "../src/interfaces/IDiamondCut.sol";
 import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
@@ -21,20 +22,20 @@ contract DiamondInitTest is BaseDiamondTest {
     function testInitialize() public view {
         assertEq(OwnershipFacet(diamondAddr).owner(), admin);
 
-        (uint64 index, uint64 startTime, uint64 durationSecs, LibUtils.CycleState state) = CoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, uint64 startTime, uint64 durationSecs, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
         assertEq(durationSecs, 2000);
-        assertEq(uint8(state), uint8(LibUtils.CycleState.STARTED));
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
-        assertEq(RegistryFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 10_000_000);
-        assertEq(RegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 5_000_000);
-        assertTrue(ConfigFacet(diamondAddr).isRegistrationEnabled());
-        assertTrue(CoreFacet(diamondAddr).isAutomationEnabled());
-        assertEq(ConfigFacet(diamondAddr).getVmSigner(), LibUtils.VM_SIGNER);
-        assertEq(ConfigFacet(diamondAddr).erc20Supra(), address(erc20Supra));
+        assertEq(IRegistryFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 10_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 5_000_000);
+        assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
+        assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
+        assertEq(IConfigFacet(diamondAddr).getVmSigner(), LibUtils.VM_SIGNER);
+        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(erc20Supra));
 
-        Config memory config = ConfigFacet(diamondAddr).getConfig();
+        Config memory config = IConfigFacet(diamondAddr).getConfig();
 
         assertEq(config.registryMaxGasCap, 10_000_000);
         assertEq(config.sysRegistryMaxGasCap, 5_000_000);
@@ -125,12 +126,12 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure 'facetAddress' points to correct facet for a selector.
     function testSelectorRouting() public view {
         assertEq(
-            IDiamondLoupe(diamondAddr).facetAddress(RegistryFacet.register.selector),
+            IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.register.selector),
             deployment.registryFacet
         );
 
         assertEq(
-            IDiamondLoupe(diamondAddr).facetAddress(CoreFacet.enableAutomation.selector),
+            IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.enableAutomation.selector),
             deployment.coreFacet
         );
 
@@ -159,8 +160,8 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure 'diamondCut' reverts if caller is not owner.
     function testDiamondCutRevertsIfNotOwner() public {
         bytes4[] memory selectors = new bytes4[](2);
-        selectors[0] = RegistryFacet.register.selector;
-        selectors[1] = RegistryFacet.registerSystemTask.selector;
+        selectors[0] = IRegistryFacet.register.selector;
+        selectors[1] = IRegistryFacet.registerSystemTask.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -266,7 +267,7 @@ contract DiamondInitTest is BaseDiamondTest {
         uint256 numSelectorsBefore =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.registryFacet).length;
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = RegistryFacet.cancelTask.selector;
+        selectors[0] = IRegistryFacet.cancelTask.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -279,7 +280,7 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
 
         // Verify selector mapping cleared
-        address facet = IDiamondLoupe(diamondAddr).facetAddress(RegistryFacet.cancelTask.selector);
+        address facet = IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.cancelTask.selector);
         assertEq(facet, address(0));
 
         uint256 numSelectorsAfter =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.registryFacet).length;
@@ -287,7 +288,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         // Verify call now reverts
         vm.expectRevert(bytes("Diamond: Function does not exist"));
-        RegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTask(0);
     }
 
     /// @dev Test to ensure 'diamondCut' reverts if tried to remove a selector that doesn't exist.
@@ -314,7 +315,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = ConfigFacet.getVmSigner.selector;
+        selectors[0] = IConfigFacet.getVmSigner.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -327,17 +328,17 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
 
         // Verify selector now points to mockRegistryFacet
-        address facet = IDiamondLoupe(diamondAddr).facetAddress(ConfigFacet.getVmSigner.selector);
+        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.getVmSigner.selector);
         assertEq(facet, address(mockRegistryFacet));
 
         // Verify logic changed
-        assertEq(ConfigFacet(diamondAddr).getVmSigner(), address(0x999));
+        assertEq(IConfigFacet(diamondAddr).getVmSigner(), address(0x999));
     }
 
     /// @dev Test to ensure replacing a selector with same facet address reverts.
     function testReplaceWithSameFacetReverts() public {
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = ConfigFacet.getVmSigner.selector;
+        selectors[0] = IConfigFacet.getVmSigner.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -410,7 +411,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
         
-        vm.expectRevert(LibUtils.InvalidTaskDuration.selector);
+        vm.expectRevert(LibCommon.InvalidTaskDuration.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();
@@ -438,7 +439,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         }); 
 
-        vm.expectRevert(LibUtils.InvalidRegistryMaxGasCap.selector);
+        vm.expectRevert(LibCommon.InvalidRegistryMaxGasCap.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();
@@ -466,7 +467,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         }); 
 
-        vm.expectRevert(LibUtils.InvalidCongestionThreshold.selector);
+        vm.expectRevert(LibCommon.InvalidCongestionThreshold.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();
@@ -494,7 +495,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
 
-        vm.expectRevert(LibUtils.InvalidCongestionExponent.selector);
+        vm.expectRevert(LibCommon.InvalidCongestionExponent.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();      
@@ -522,7 +523,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
 
-        vm.expectRevert(LibUtils.InvalidTaskCapacity.selector);
+        vm.expectRevert(LibCommon.InvalidTaskCapacity.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();     
@@ -550,7 +551,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
         
-        vm.expectRevert(LibUtils.InvalidCycleDuration.selector);
+        vm.expectRevert(LibCommon.InvalidCycleDuration.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();
@@ -578,7 +579,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
 
-        vm.expectRevert(LibUtils.InvalidSysTaskDuration.selector);
+        vm.expectRevert(LibCommon.InvalidSysTaskDuration.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();
@@ -606,7 +607,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
 
-        vm.expectRevert(LibUtils.InvalidSysRegistryMaxGasCap.selector);
+        vm.expectRevert(LibCommon.InvalidSysRegistryMaxGasCap.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();
@@ -634,7 +635,7 @@ contract DiamondInitTest is BaseDiamondTest {
             automationEnabled: true
         });
 
-        vm.expectRevert(LibUtils.InvalidSysTaskCapacity.selector);
+        vm.expectRevert(LibCommon.InvalidSysTaskCapacity.selector);
 
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
         vm.stopPrank();

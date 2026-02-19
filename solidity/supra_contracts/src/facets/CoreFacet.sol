@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {AppStorage} from "../libraries/LibAppStorage.sol";
-import {LibUtils} from "../libraries/LibUtils.sol";
+import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibCore} from "../libraries/LibCore.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
@@ -20,11 +20,11 @@ contract CoreFacet is ICoreFacet {
         // Check caller is VM Signer
         if (msg.sender != s.vmSigner) { revert CallerNotVmSigner(); }
         
-        LibUtils.CycleState state = s.cycleState; 
-        if (state == LibUtils.CycleState.FINISHED) {
+        LibCommon.CycleState state = s.cycleState; 
+        if (state == LibCommon.CycleState.FINISHED) {
             LibCore.onCycleTransition(_cycleIndex, _taskIndexes);
         } else {
-            if (state != LibUtils.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
+            if (state != LibCommon.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
             LibCore.onCycleSuspend(_cycleIndex, _taskIndexes);
         }
     }
@@ -33,7 +33,7 @@ contract CoreFacet is ICoreFacet {
     function monitorCycleEnd() external {
         if (tx.origin != s.vmSigner) { revert CallerNotVmSigner(); }
 
-        if (!LibCore.isCycleStarted() || LibCore.getCycleEndTime() > block.timestamp) {
+        if (!LibCommon.isCycleStarted() || LibCommon.getCycleEndTime() > block.timestamp) {
             return;
         }
         
@@ -49,7 +49,7 @@ contract CoreFacet is ICoreFacet {
         if (s.automationEnabled) { revert AlreadyEnabled(); }
 
         s.automationEnabled = true;
-        if (s.cycleState == LibUtils.CycleState.READY) {
+        if (s.cycleState == LibCommon.CycleState.READY) {
             LibCore.moveToStartedState();           
             LibCore.updateConfigFromBuffer();
         }
@@ -64,7 +64,7 @@ contract CoreFacet is ICoreFacet {
         if (!s.automationEnabled) { revert AlreadyDisabled(); }
         
         s.automationEnabled = false;
-        if (s.cycleState == LibUtils.CycleState.FINISHED && !LibCore.isTransitionInProgress()) {
+        if (s.cycleState == LibCommon.CycleState.FINISHED && !LibCore.isTransitionInProgress()) {
             LibCore.tryMoveToSuspendedState();
         }
 
@@ -74,7 +74,7 @@ contract CoreFacet is ICoreFacet {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Returns the index, start time, duration and state of the current cycle. 
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibUtils.CycleState) {
+    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommon.CycleState) {
         return (s.index, s.startTime, s.durationSecs, s.cycleState);
     }
 
