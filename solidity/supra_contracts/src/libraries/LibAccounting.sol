@@ -27,6 +27,7 @@ library LibAccounting {
     error ErrorCycleFeeRefund();
     error ErrorDepositRefund();
     error InsufficientBalanceForRefund();
+    error InvalidCycleRefundFee();
     error RegisteredTaskInvalidType();
     error TransferFailed();
 
@@ -345,6 +346,7 @@ library LibAccounting {
     )  internal returns (uint128, uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
 
+        uint128 cycleLockedFeeForTask;
         uint128 cycleFeeRefund;
         uint128 depositRefund;
 
@@ -356,7 +358,8 @@ library LibAccounting {
                 s.activeConfig.automationBaseFeeWeiPerSec
             );
 
-            uint128 taskFee = calculateTaskFee(
+            uint128 taskFeeForFullCycle = calculateAutomationFeeForInterval(s.durationSecs, _maxGasAmount, automationFeePerSec, s.activeConfig.registryMaxGasCap);
+            uint128 taskFeeForResidualTime = calculateTaskFee(
                 _taskState,
                 _expiryTime,
                 _maxGasAmount,
@@ -366,9 +369,11 @@ library LibAccounting {
             );
 
             // Refund full deposit and the half of the remaining run-time fee when task is active or cancelled stage
-            cycleFeeRefund = taskFee / REFUND_FRACTION; 
+            cycleLockedFeeForTask = taskFeeForFullCycle;
+            cycleFeeRefund = taskFeeForResidualTime / REFUND_FRACTION; 
             depositRefund = _depositFee;
         } else {
+            cycleLockedFeeForTask = 0;
             cycleFeeRefund = 0;
             depositRefund = _depositFee / REFUND_FRACTION;
         }
@@ -376,7 +381,9 @@ library LibAccounting {
         bool result = safeUnlockLockedDeposit(_taskIndex, _depositFee);
         if (!result) { revert ErrorDepositRefund(); }
 
-        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(s.registryState.cycleLockedFees, uint64(cycleFeeRefund), _taskIndex);
+        if (cycleLockedFeeForTask < cycleFeeRefund) { revert InvalidCycleRefundFee(); }
+
+        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(s.registryState.cycleLockedFees, uint64(cycleLockedFeeForTask), _taskIndex);
         if (!hasLockedFee) { revert ErrorCycleFeeRefund(); }
 
         s.registryState.cycleLockedFees = remainingCycleLockedFees;
