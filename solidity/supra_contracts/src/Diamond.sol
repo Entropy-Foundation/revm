@@ -13,7 +13,7 @@ import { IDiamondCut } from "./interfaces/IDiamondCut.sol";
 
 contract Diamond {    
 
-    constructor(address _contractOwner, address _diamondCutFacet) payable {        
+    constructor(address _contractOwner, address _diamondCutFacet) {        
         LibDiamond.setContractOwner(_contractOwner);
 
         // Add the diamondCut external function from the diamondCutFacet
@@ -30,7 +30,7 @@ contract Diamond {
 
     // Find facet for function that is called and execute the
     // function if a facet is found and return any value.
-    fallback() external payable {
+    fallback() external {
         LibDiamond.DiamondStorage storage ds;
         bytes32 position = LibDiamond.DIAMOND_STORAGE_POSITION;
         // get diamond storage
@@ -58,6 +58,4 @@ contract Diamond {
                 }
         }
     }
-
-    receive() external payable {}
 }

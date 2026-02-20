@@ -89,6 +89,13 @@ contract DiamondInitTest is BaseDiamondTest {
             true
         );
     }
+    
+    /// @dev Test to ensure Diamond reverts if native token is sent to it.
+    function testDiamondTxFailsIfNativeTokenIsSent() public {
+        vm.prank(alice);
+        (bool success, ) = diamondAddr.call{value: 1 ether}("");
+        assertFalse(success);
+    }
 
     /// @dev Test to ensure Diamond reverts if an unknown selector is called.
     function testUnknownSelectorReverts() public {
