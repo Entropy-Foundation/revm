@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {AppStorage, Config} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {IConfigFacet} from "../interfaces/IConfigFacet.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
-import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract ConfigFacet is IConfigFacet {
     using EnumerableSet for *;

@@ -4,7 +4,7 @@ pragma solidity 0.8.27;
 import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
-import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 library LibAccounting {
 
@@ -112,38 +112,54 @@ library LibAccounting {
         uint128 _registryMaxGasCap
     ) private view returns (uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
-        if (s.activeConfig.congestionThresholdPercentage == 100 || s.activeConfig.congestionBaseFeeWeiPerSec == 0) { return 0; }
+        
+        uint8 congestionThresholdPercentage = s.activeConfig.congestionThresholdPercentage;
+        uint8 congestionExponent = s.activeConfig.congestionExponent;
+        uint128 congestionBaseFeeWeiPerSec = s.activeConfig.congestionBaseFeeWeiPerSec;
+
+        if (congestionThresholdPercentage == 100 || congestionBaseFeeWeiPerSec == 0) { return 0; }
     
         // thresholdUsage = (totalCommittedGas / maxGasCap) * 100
         uint256 thresholdUsageScaled = (uint256(_totalCommittedGas) * DECIMAL * 100) / uint256(_registryMaxGasCap);
 
-        uint256 thresholdPercentageScaled = uint256(s.activeConfig.congestionThresholdPercentage) * DECIMAL;
+        uint256 thresholdPercentageScaled = uint256(congestionThresholdPercentage) * DECIMAL;
 
         // If usage is below threshold → no congestion fee
         if (thresholdUsageScaled <= thresholdPercentageScaled) {
             return 0;
-        } else {
-            // Calculate how much usage exceeds threshold
-            uint256 surplusScaled = (thresholdUsageScaled - thresholdPercentageScaled) / 100;
-
-
-            // Ensure threshold + threshold surplus does not exceed 1 (1 in scaled terms)
-            uint256 thresholdScaledAsFraction = thresholdPercentageScaled / 100;    // DECIMAL-scaled fraction
-            uint256 surplusClipped = thresholdScaledAsFraction + surplusScaled > DECIMAL ? DECIMAL - thresholdScaledAsFraction : surplusScaled;
-
-            uint256 baseScaled = DECIMAL + surplusClipped;  // (1 + base)
-            uint256 resultScaled = DECIMAL;
-            for (uint8 i = 0; i < s.activeConfig.congestionExponent; i++) {
-                resultScaled = (resultScaled * baseScaled) / DECIMAL;
-            }
-            uint256 exponentResult = resultScaled - DECIMAL;    // subtract 1
-
-
-            // Multiply base fee (wei/sec) with exponentResult and downscale by DECIMAL
-            uint256 acf = (uint256(s.activeConfig.congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
-
-            return uint128(acf);
         }
+
+        // Calculate how much usage exceeds threshold
+        uint256 surplusScaled = (thresholdUsageScaled - thresholdPercentageScaled) / 100;
+
+        // Ensure threshold + threshold surplus does not exceed 1 (1 in scaled terms)
+        uint256 thresholdScaledAsFraction = thresholdPercentageScaled / 100;    // DECIMAL-scaled fraction
+        uint256 surplusClipped = thresholdScaledAsFraction + surplusScaled > DECIMAL ? DECIMAL - thresholdScaledAsFraction : surplusScaled;
+        
+        uint256 exponentResult = calculateExponentiation(
+            surplusClipped,
+            congestionExponent
+        );
+
+        // Multiply base fee (wei/sec) with exponentResult and downscale by DECIMAL
+        uint256 acf = (uint256(congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
+
+        return uint128(acf);
+    }
+
+    /// @notice Computes exponentiation using fixed-point arithmetic.
+    function calculateExponentiation(
+        uint256 _base,
+        uint8 _exponent
+    ) private pure returns (uint256) {
+        uint256 baseScaled = DECIMAL + _base;   // (1 + base)
+        uint256 resultScaled = DECIMAL;
+
+        for (uint8 i = 0; i < _exponent; i++) {
+            resultScaled = (resultScaled * baseScaled) / DECIMAL;
+        }
+    
+        return resultScaled - DECIMAL;      // subtract 1
     }
 
     /// @notice Unlocks the locked fee paid by the task for cycle.

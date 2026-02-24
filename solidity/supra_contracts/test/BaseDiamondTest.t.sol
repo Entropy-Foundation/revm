@@ -49,7 +49,7 @@ abstract contract BaseDiamondTest is Test {
     }
 
     /// @dev Helper function to register a UST.
-    function registerUST() internal {
+    function registerUst() internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         

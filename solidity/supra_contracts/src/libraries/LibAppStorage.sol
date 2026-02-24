@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {LibCommon} from "../libraries/LibCommon.sol";
-import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 /// @notice Struct representing Automation Registry configuration.
 struct Config {

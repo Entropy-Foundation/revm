@@ -232,8 +232,8 @@ library LibDiamondUtils {
             bytes4[] memory selectors = new bytes4[](36);
             selectors[0] = RegistryFacet.register.selector;
             selectors[1] = RegistryFacet.registerSystemTask.selector;
-            selectors[2] = RegistryFacet.cancelTask.selector;
-            selectors[3] = RegistryFacet.cancelSystemTask.selector;
+            selectors[2] = RegistryFacet.cancelTasks.selector;
+            selectors[3] = RegistryFacet.cancelSystemTasks.selector;
             selectors[4] = RegistryFacet.stopTasks.selector;
             selectors[5] = RegistryFacet.stopSystemTasks.selector;
 

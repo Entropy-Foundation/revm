@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
-import {UUPSUpgradeable} from "../lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {LibUtils} from "./libraries/LibUtils.sol";
 
 contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
@@ -75,8 +75,8 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Initializes the owner of the contract.
-    function initialize(address initial_owner) public initializer {
-        __Ownable_init(initial_owner);
+    function initialize(address _initialOwner) public initializer {
+        __Ownable_init(_initialOwner);
     }
 
     /**

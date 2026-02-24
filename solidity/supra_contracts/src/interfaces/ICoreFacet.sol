@@ -60,7 +60,6 @@ interface ICoreFacet {
     // =============================================================
     error AlreadyDisabled();
     error AlreadyEnabled();
-    error CallerNotVmSigner();
     error InvalidRegistryState();
 
     // =============================================================
@@ -75,7 +74,7 @@ interface ICoreFacet {
     //                  State update functions
     // =============================================================
     function monitorCycleEnd() external;
-    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
 }

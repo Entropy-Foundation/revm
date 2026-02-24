@@ -289,7 +289,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' reverts if request amount exceeds the locked balance.
     function testWithdrawFeesRevertsIfRequestExceedsLockedBalance() public {
-        registerUST();
+        registerUst();
 
         vm.expectRevert(IConfigFacet.RequestExceedsLockedBalance.selector);
 
@@ -307,7 +307,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' withdraws the requested amount and updates the balance.
     function testWithdrawFees() public {
-        registerUST();
+        registerUst();
 
         assertEq(erc20Supra.balanceOf(admin), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 0.502 ether);
@@ -321,7 +321,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     
     /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.
     function testWithdrawFeesEmitsEvent() public {
-        registerUST();
+        registerUst();
 
         vm.expectEmit(true, true, false, false);
         emit IConfigFacet.RegistryFeeWithdrawn(admin, 0.002 ether);

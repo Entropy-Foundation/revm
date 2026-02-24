@@ -6,12 +6,13 @@ import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
-import {IERC20} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCore {
-    using LibCommon for *;
-    using LibUtils for *;
+    using Arrays for uint256[];
+    using LibUtils for address;
     using EnumerableSet for EnumerableSet.UintSet;
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CUSTOM ERRORS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -229,7 +230,7 @@ library LibCore {
     /// @param _taskIndexes Input task indexes.
     /// @return intermediateState Returns the intermediate state.
     function dropOrChargeTasks(
-        uint64[] memory _taskIndexes
+        uint256[] memory _taskIndexes
     ) private returns (LibCommon.IntermediateStateOfCycleChange memory intermediateState) {
         AppStorage storage s = LibAppStorage.appStorage();
 
@@ -237,21 +238,22 @@ library LibCore {
         uint64 currentCycleEndTime = currentTime + s.transitionState.newCycleDuration;
 
         // Sort task indexes to charge automation fees in their chronological order
-        uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+        uint256[] memory taskIndexes = _taskIndexes.sort();
 
         uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
         uint256 removedCount;
 
         // Process each active task and calculate fee for the cycle for the tasks
         for (uint256 i = 0; i < taskIndexes.length; i++) {
+            uint64 taskId = uint64(taskIndexes[i]); 
             LibCommon.TransitionResult memory result = dropOrChargeTask(
-                taskIndexes[i],
+                taskId,
                 currentTime,
                 currentCycleEndTime
             );
 
             if (result.isRemoved) {
-                removedBuffer[removedCount] = taskIndexes[i];
+                removedBuffer[removedCount] = taskId;
                 removedCount += 1; 
             }
 
@@ -448,7 +450,7 @@ library LibCore {
     /// In case if transition end is detected a start of the new cycle is given (if during trasition period suspention is not requested) and corresponding event is emitted.
     /// @param _cycleIndex Cycle index of the new cycle to which the transition is being done.
     /// @param _taskIndexes Array of task indexes to be processed.
-    function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
+    function onCycleTransition(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (_taskIndexes.length == 0) { return; }
@@ -477,7 +479,7 @@ library LibCore {
     /// In case if end is identified, the registry state is update to READY and corresponding event is emitted.
     /// @param _cycleIndex Input cycle index of the cycle being suspended.
     /// @param _taskIndexes Array of task indexes to be processed.
-    function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
+    function onCycleSuspend(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (_taskIndexes.length == 0) { return; }
@@ -490,18 +492,19 @@ library LibCore {
         uint64 currentTime = uint64(block.timestamp);
             
         // Sort task indexes as order is important
-        uint64[] memory taskIndexes = _taskIndexes.sortUint64();
+        uint256[] memory taskIndexes = _taskIndexes.sort();
         uint64[] memory removedTasks = new uint64[](taskIndexes.length);
         
         uint64 removedCounter;
         for (uint i = 0; i < taskIndexes.length; i++) {
-            if (LibCommon.ifTaskExists(taskIndexes[i])) {
-                TaskMetadata memory task = LibCommon.getTask(taskIndexes[i]);
+            uint64 taskId = uint64(taskIndexes[i]);
+            if (LibCommon.ifTaskExists(taskId)) {
+                TaskMetadata memory task = LibCommon.getTask(taskId);
 
-                LibCommon.removeTask(taskIndexes[i], task.owner, false);
+                LibCommon.removeTask(taskId, task.owner, false);
 
-                removedTasks[removedCounter++] = taskIndexes[i];
-                markTaskProcessed(taskIndexes[i]);
+                removedTasks[removedCounter++] = taskId;
+                markTaskProcessed(taskId);
 
                 // Nothing to refund for GST tasks
                 if (task.taskType == LibCommon.TaskType.UST) {
@@ -526,7 +529,7 @@ library LibCore {
                 updateConfigFromBuffer();
                 moveToStartedState();
             } else {
-                uint256[] memory expectedTasksToBeProcessed = getTaskIdList().sortUint256();
+                uint256[] memory expectedTasksToBeProcessed = getTaskIdList().sort();
 
                 // Updates transition state
                 s.transitionState.refundDuration = 0;
@@ -590,7 +593,7 @@ library LibCore {
             if (!LibCommon.isCycleStarted()) { revert InvalidRegistryState(); }
 
             uint256[] memory tasksIdList = getTaskIdList();
-            uint256[] memory expectedTasksToBeProcessed = tasksIdList.sortUint256();
+            uint256[] memory expectedTasksToBeProcessed = tasksIdList.sort();
 
             s.transitionState.refundDuration = cycleEndTime - currentTime;
             s.transitionState.newCycleDuration = s.durationSecs;

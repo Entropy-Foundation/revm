@@ -7,6 +7,7 @@ library LibUtils {
     // Custom errors
     error AddressCannotBeEOA();
     error AddressCannotBeZero();
+    error CallerNotVmSigner();
     
     // Address of the VM Signer: SUP0
     address constant VM_SIGNER = address(0x53555000);
@@ -38,6 +39,13 @@ library LibUtils {
     /// @return bool If it is VM Signer.
     function isVmSigner(address _addr) internal pure returns (bool) {
         return _addr == VM_SIGNER;
+    }
+
+    /// @notice Checks if an address is VM Signer, reverts if it is not.
+    /// @param _addr Address to check.
+    /// @param _vmSigner Address of VM signer.
+    function enforceIsVmSigner(address _addr, address _vmSigner) internal pure {
+        if (_addr != _vmSigner) revert CallerNotVmSigner();
     }
 
     /// @notice Checks if an address is a reserved address. 

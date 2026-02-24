@@ -3,8 +3,7 @@ pragma solidity 0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
-// import {CommonUtils} from "../src/CommonUtils.sol";
-import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {TxHashPrecompile} from "./TxHashPrecompile.sol";
 

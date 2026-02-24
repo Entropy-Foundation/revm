@@ -26,10 +26,9 @@ interface IRegistryFacet {
     );
     
     /// @notice Emitted when a task is cancelled.
-    event TaskCancelled(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        bytes32 indexed regHash
+    event TasksCancelled(
+        LibCommon.TaskCancelled[] indexed cancelledTasks,
+        address indexed owner
     );
 
     /// @notice Emitted when a task is stopped.
@@ -77,19 +76,11 @@ interface IRegistryFacet {
     // =============================================================
     //                      Custom errors
     // =============================================================
-    error AlreadyCancelled();
     error AutomationNotEnabled();
     error CycleTransitionInProgress();
-    error ErrorDepositRefund();
-    error SystemTaskDoesNotExist();
-    error TaskDoesNotExist();
     error TaskIndexesCannotBeEmpty();
-    error TaskIndexNotFound();
-    error TaskIndexNotUnique();
     error TransferFailed();
     error UnauthorizedAccount();
-    error UnsupportedTaskOperation();
-
 
     // =============================================================
     //                      View functions
@@ -144,8 +135,8 @@ interface IRegistryFacet {
         uint64 _priority,
         bytes[] memory _auxData
     ) external;
-    function cancelTask(uint64 _taskIndex) external;
-    function cancelSystemTask(uint64 _taskIndex) external;
+    function cancelTasks(uint64[] memory _taskIndexes) external;
+    function cancelSystemTasks(uint64[] memory _taskIndexes) external;
     function stopTasks(uint64[] memory _taskIndexes) external;
     function stopSystemTasks(uint64[] memory _taskIndexes) external;
 }

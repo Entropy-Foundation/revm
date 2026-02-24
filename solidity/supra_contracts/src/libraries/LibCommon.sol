@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
-import {EnumerableSet} from "../../lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -43,7 +43,14 @@ library LibCommon {
         uint128 sysGas;
         bool isRemoved;
     }
- 
+    
+    /// @notice Struct representing a cancelled task.
+    struct TaskCancelled{
+        uint64 taskIndex;
+        TaskType taskType;
+        bytes32 txHash;
+    }
+        
     /// @notice Struct representing a stopped task.
     struct TaskStopped {
         uint64 taskIndex;
@@ -95,40 +102,6 @@ library LibCommon {
         if (_sysTaskDurationCapSecs <= _cycleDurationSecs) { revert InvalidSysTaskDuration(); }
         if (_sysRegistryMaxGasCap == 0) { revert InvalidSysRegistryMaxGasCap(); }
         if (_sysTaskCapacity == 0) { revert InvalidSysTaskCapacity(); }
-    }
-    
-    /// @notice Helper function to sort an array.
-    /// @param arr Input array to sort.
-    /// @return Returns the sorted array. 
-    function sortUint64(uint64[] memory arr) internal pure returns (uint64[] memory) {
-        uint256 length = arr.length;
-        for (uint256 i = 0; i < length; i++) {
-            for (uint256 j = 0; j < length - 1; j++) {
-                if (arr[j] > arr[j + 1]) {
-                    uint64 temp = arr[j];
-                    arr[j] = arr[j + 1];
-                    arr[j + 1] = temp;
-                }
-            }
-        }
-        return arr;
-    }
-
-    /// @notice Helper function to sort an array.
-    /// @param arr Input array to sort.
-    /// @return Returns the sorted array. 
-    function sortUint256(uint256[] memory arr) internal pure returns (uint256[] memory) {
-        uint256 length = arr.length;
-        for (uint256 i = 0; i < length; i++) {
-            for (uint256 j = 0; j < length - 1; j++) {
-                if (arr[j] > arr[j + 1]) {
-                    uint256 temp = arr[j];
-                    arr[j] = arr[j + 1];
-                    arr[j + 1] = temp;
-                }
-            }
-        }
-        return arr;
     }
 
     /// @notice Checks whether cycle is in STARTED state.

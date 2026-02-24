@@ -498,51 +498,64 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'cancelTask' reverts if automation is not enabled.
-    function testCancelTaskRevertsIfAutomationNotEnabled() public {
+    /// @dev Test to ensure 'cancelTasks' reverts if automation is not enabled.
+    function testCancelTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
-        vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelTask(0);
-    }
-
-    /// @dev Test to ensure 'cancelTask' reverts if task does not exist.
-    function testCancelTaskRevertsIfTaskDoesNotExist() public {
-        vm.expectRevert(IRegistryFacet.TaskDoesNotExist.selector);
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelTask' reverts if task type is not UST.
-    function testCancelTaskRevertsIfTaskTypeNotUST() public {
+    /// @dev Test to ensure 'cancelTasks' does nothing if task does not exist.
+    function testCancelTasksRevertsIfTaskDoesNotExist() public {
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
+    }
+
+    /// @dev Test to ensure 'cancelTasks' reverts if task type is not UST.
+    function testCancelTasksRevertsIfTaskTypeNotUST() public {
         testRegisterSystemTask();
-        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
+        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
 
         vm.prank(bob);
-        IRegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelTask' reverts if caller is not the task owner.
-    function testCancelTaskRevertsIfUnauthorizedCaller() public {
+    /// @dev Test to ensure 'cancelTasks' reverts if caller is not the task owner.
+    function testCancelTasksRevertsIfUnauthorizedCaller() public {
         testRegister();
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
         vm.prank(bob);
-        IRegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelTask' cancels a UST.
-    function testCancelTask() public {
+    /// @dev Test to ensure 'cancelTasks' cancels a UST.
+    function testCancelTasks() public {
         testRegister();
 
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
@@ -553,62 +566,85 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(alice), 4.748 ether);
     }
 
-    /// @dev Test to ensure 'cancelTask' emits event 'TaskCancelled'.
-    function testCancelTaskEmitsEvent() public {
+    /// @dev Test to ensure 'cancelTasks' emits event 'TasksCancelled'.
+    function testCancelTasksEmitsEvent() public {
         testRegister();
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](1);
+        cancelledTasks[0] = LibCommon.TaskCancelled(0, LibCommon.TaskType.UST, keccak256("txHash"));
         
-        vm.expectEmit(true, true, true, false);
-        emit IRegistryFacet.TaskCancelled(0, alice, keccak256("txHash"));
+        vm.expectEmit(true, true, false, false);
+        emit IRegistryFacet.TasksCancelled(cancelledTasks, alice);
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelSystemTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'cancelSystemTask' reverts if automation is not enabled. 
-    function testCancelSystemTaskRevertsIfAutomationNotEnabled() public {
+    /// @dev Test to ensure 'cancelSystemTasks' reverts if automation is not enabled. 
+    function testCancelSystemTasksRevertsIfAutomationNotEnabled() public {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelSystemTask' reverts if task does not exist. 
-    function testCancelSystemTaskRevertsIfTaskDoesNotExist() public {
-        vm.expectRevert(IRegistryFacet.TaskDoesNotExist.selector);
+    /// @dev Test to ensure 'cancelSystemTasks' does nothing if task does not exist. 
+    function testCancelSystemTasksRevertsIfTaskDoesNotExist() public {
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelSystemTask' reverts if task does not exist in system tasks. 
-    function testCancelSystemTaskRevertsIfSystemTaskDoesNotExist() public {
+    /// @dev Test to ensure 'cancelSystemTasks' does nothing if system task does not exist. 
+    function testCancelSystemTasksRevertsIfSystemTaskDoesNotExist() public {
         testRegister();
-        vm.expectRevert(IRegistryFacet.SystemTaskDoesNotExist.selector);
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
+
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
     }
 
-    /// @dev Test to ensure 'cancelSystemTask' reverts if caller is not the task owner. 
-    function testCancelSystemTaskRevertsIfUnauthorizedCaller() public {
+    /// @dev Test to ensure 'cancelSystemTasks' reverts if caller is not the task owner. 
+    function testCancelSystemTasksRevertsIfUnauthorizedCaller() public {
         testRegisterSystemTask();
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelSystemTask' cancels a GST. 
-    function testCancelSystemTask() public {
+    /// @dev Test to ensure 'cancelSystemTasks' cancels a GST. 
+    function testCancelSystemTasks() public {
         testRegisterSystemTask();
 
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
         vm.prank(bob);
-        IRegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
@@ -618,15 +654,21 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
-    /// @dev Test to ensure 'cancelSystemTask' emits event 'TaskCancelled'. 
-    function testCancelSystemTaskEmitsEvent() public {
+    /// @dev Test to ensure 'cancelSystemTasks' emits event 'TasksCancelled'. 
+    function testCancelSystemTasksEmitsEvent() public {
         testRegisterSystemTask();
 
-        vm.expectEmit(true, true, true, false);
-        emit IRegistryFacet.TaskCancelled(0, bob, keccak256("txHash"));
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](1);
+        cancelledTasks[0] = LibCommon.TaskCancelled(0, LibCommon.TaskType.GST, keccak256("txHash"));
+
+        vm.expectEmit(true, true, false, false);
+        emit IRegistryFacet.TasksCancelled(cancelledTasks, bob);
 
         vm.prank(bob);
-        IRegistryFacet(diamondAddr).cancelSystemTask(0);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -672,7 +714,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
+        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
@@ -696,8 +738,11 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasks() public {
         testRegister();
 
-        uint64[] memory taskIndexes = new uint64[](1);
+        uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
 
         vm.warp(2002);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -709,7 +754,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(alice), 4.298 ether);
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
@@ -724,8 +769,11 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasksEmitsEvent() public {
         testRegister();
 
-        uint64[] memory taskIndexes = new uint64[](1);
+        uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
 
         vm.warp(2002);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -740,7 +788,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         emit IRegistryFacet.TasksStopped(stoppedTasks, alice);
 
         vm.prank(alice);
-        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -786,7 +834,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
+        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
@@ -810,8 +858,11 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopSystemTasks() public {
         testRegisterSystemTask();
 
-        uint64[] memory taskIndexes = new uint64[](1);
+        uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
 
         vm.warp(2002);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -821,7 +872,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
         vm.prank(bob);
-        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskUint64);
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
@@ -835,8 +886,11 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopSystemTasksEmitsEvent() public {
         testRegisterSystemTask();
 
-        uint64[] memory taskIndexes = new uint64[](1);
+        uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
 
         vm.warp(2002);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -852,6 +906,6 @@ contract RegistryFacetTest is BaseDiamondTest {
         emit IRegistryFacet.TasksStopped(stoppedTasks, bob);
 
         vm.prank(bob);
-        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskUint64);
     }
 }

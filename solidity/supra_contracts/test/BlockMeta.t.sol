@@ -2,8 +2,8 @@
 pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {OwnableUpgradeable} from"../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {Counter} from "./Counter.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";

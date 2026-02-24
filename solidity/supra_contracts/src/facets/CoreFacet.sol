@@ -4,10 +4,13 @@ pragma solidity 0.8.27;
 import {AppStorage} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibCore} from "../libraries/LibCore.sol";
+import {LibUtils} from "../libraries/LibUtils.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 
 contract CoreFacet is ICoreFacet {
+    using LibUtils for address;
+
     /// @dev State variables
     AppStorage internal s;
     
@@ -16,9 +19,9 @@ contract CoreFacet is ICoreFacet {
     /// @notice Called by the VM Signer on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
     /// @param _cycleIndex Index of the cycle.
     /// @param _taskIndexes Array of task index to be processed.
-    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external {
+    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external {
         // Check caller is VM Signer
-        if (msg.sender != s.vmSigner) { revert CallerNotVmSigner(); }
+        msg.sender.enforceIsVmSigner(s.vmSigner);
         
         LibCommon.CycleState state = s.cycleState; 
         if (state == LibCommon.CycleState.FINISHED) {
@@ -31,7 +34,7 @@ contract CoreFacet is ICoreFacet {
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
     function monitorCycleEnd() external {
-        if (tx.origin != s.vmSigner) { revert CallerNotVmSigner(); }
+        tx.origin.enforceIsVmSigner(s.vmSigner);
 
         if (!LibCommon.isCycleStarted() || LibCommon.getCycleEndTime() > block.timestamp) {
             return;

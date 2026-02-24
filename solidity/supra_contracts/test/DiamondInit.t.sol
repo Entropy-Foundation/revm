@@ -274,7 +274,7 @@ contract DiamondInitTest is BaseDiamondTest {
         uint256 numSelectorsBefore =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.registryFacet).length;
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IRegistryFacet.cancelTask.selector;
+        selectors[0] = IRegistryFacet.cancelTasks.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -287,15 +287,18 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
 
         // Verify selector mapping cleared
-        address facet = IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.cancelTask.selector);
+        address facet = IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.cancelTasks.selector);
         assertEq(facet, address(0));
 
         uint256 numSelectorsAfter =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.registryFacet).length;
         assertEq(numSelectorsAfter, numSelectorsBefore - 1);
 
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+        
         // Verify call now reverts
         vm.expectRevert(bytes("Diamond: Function does not exist"));
-        IRegistryFacet(diamondAddr).cancelTask(0);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'diamondCut' reverts if tried to remove a selector that doesn't exist.
