@@ -131,7 +131,7 @@ contract RegistryFacet is IRegistryFacet {
 
         for (uint256 i; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
-            if (LibCommon.ifTaskExists(taskId) && ifSysTaskExists(taskId)) {
+            if (LibCommon.ifTaskExists(taskId)) {
                 cancelledTasks[counter++] = LibRegistry.cancelTask(taskId, true);
             }
         }
@@ -193,7 +193,7 @@ contract RegistryFacet is IRegistryFacet {
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
-            if (LibCommon.ifTaskExists(taskId) && ifSysTaskExists(taskId)) {
+            if (LibCommon.ifTaskExists(taskId)) {
                 (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, true);
                 stoppedTasks[counter++] = ts;
             }
@@ -259,7 +259,7 @@ contract RegistryFacet is IRegistryFacet {
 
     /// @notice Returns if a system task exists in the registry.
     /// @param _taskIndex Task index of the system task to check existence for.
-    function ifSysTaskExists(uint64 _taskIndex) public view returns (bool) {
+    function ifSysTaskExists(uint64 _taskIndex) external view returns (bool) {
         return s.registryState.sysTaskIds.contains(_taskIndex);
     }
 

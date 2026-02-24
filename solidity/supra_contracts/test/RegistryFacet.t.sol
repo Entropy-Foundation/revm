@@ -514,13 +514,27 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelTasks' does nothing if task does not exist.
-    function testCancelTasksRevertsIfTaskDoesNotExist() public {
-        uint64[] memory taskIndexes = new uint64[](1);
-        taskIndexes[0] = 0;
+    /// @dev Test to ensure 'cancelTasks' reverts if input array is empty. 
+    function testCancelTasksRevertsIfInputArrayEmpty() public {
+        uint64[] memory taskIndexes;
+        vm.expectRevert(IRegistryFacet.TaskIndexesCannotBeEmpty.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
+    }
+
+    /// @dev Test to ensure 'cancelTasks' does nothing if task does not exist.
+    function testCancelTasksDoesNothingIfTaskDoesNotExist() public {
+        testRegister();
+        
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 5;
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
+
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
     }
 
     /// @dev Test to ensure 'cancelTasks' reverts if task type is not UST.
@@ -599,28 +613,40 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelSystemTasks' does nothing if task does not exist. 
-    function testCancelSystemTasksRevertsIfTaskDoesNotExist() public {
-        uint64[] memory taskIndexes = new uint64[](1);
-        taskIndexes[0] = 0;
+    /// @dev Test to ensure 'cancelSystemTasks' reverts if input array is empty. 
+    function testCancelSystemTasksRevertsIfInputArrayEmpty() public {
+        uint64[] memory taskIndexes;
+        vm.expectRevert(IRegistryFacet.TaskIndexesCannotBeEmpty.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
-    /// @dev Test to ensure 'cancelSystemTasks' does nothing if system task does not exist. 
-    function testCancelSystemTasksRevertsIfSystemTaskDoesNotExist() public {
-        testRegister();
+    /// @dev Test to ensure 'cancelSystemTasks' does nothing if task does not exist. 
+    function testCancelSystemTasksDoesNothingIfTaskDoesNotExist() public {
+        testRegisterSystemTask();
 
         uint64[] memory taskIndexes = new uint64[](1);
-        taskIndexes[0] = 0;
+        taskIndexes[0] = 5;
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
 
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
+    }
+
+    /// @dev Test to ensure 'cancelSystemTasks' reverts if task type is not GST. 
+    function testCancelSystemTasksRevertsIfTaskTypeNotGST() public {
+        testRegister();
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
     }
 
     /// @dev Test to ensure 'cancelSystemTasks' reverts if caller is not the task owner. 
