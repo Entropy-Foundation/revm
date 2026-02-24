@@ -327,15 +327,15 @@ while true; do
         ;;
 
         cancel)
-            echo -n "Task index: "
-            read -r index
-            send_tx "$DIAMOND" "cancelTask(uint64)" "$index"
+            echo -n "Enter task indexes array (e.g. [0,1,2,3]): "
+            read -r indexes
+            send_tx "$DIAMOND" "cancelTasks(uint64[])" "$indexes"
         ;;
 
         cancel-system)
-            echo -n "System task index: "
-            read -r index
-            send_tx "$DIAMOND" "cancelSystemTask(uint64)" "$index"
+            echo -n "Enter task indexes array (e.g. [0,1,2,3]): : "
+            read -r indexes
+            send_tx "$DIAMOND" "cancelSystemTasks(uint64[])" "$indexes"
         ;;
 
         stop)
@@ -345,7 +345,7 @@ while true; do
         ;;
 
         stop-system)
-            echo -n "System task indexes array (e.g. [0,1,2,3]): "
+            echo -n "Enter task indexes array (e.g. [0,1,2,3]): "
             read -r indexes
             send_tx "$DIAMOND" "stopSystemTasks(uint64[])" "$indexes"
         ;;
