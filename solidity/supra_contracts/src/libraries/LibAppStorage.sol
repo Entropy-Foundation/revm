@@ -82,13 +82,8 @@ struct AppStorage {
     address vmSigner;
     address erc20Supra;
     EnumerableSet.AddressSet authorizedAccounts;
-
-    /// @notice Active registry configuration
-    Config activeConfig;
-
-    /// @notice Configuration buffer (for updates)
+    mapping(uint256 => Config) configuration;
     bool ifBufferExists;
-    Config configBuffer;             
 
     // =============================================================
     //                      CYCLE MANAGEMENT
@@ -100,21 +95,47 @@ struct AppStorage {
     uint64 durationSecs;
     LibCommon.CycleState cycleState;
     bool ifTransitionStateExists;
-    TransitionState transitionState;
+    mapping(uint256 => TransitionState) transitionState;
 
     // =============================================================
     //                      REGISTRY STATE
     // =============================================================
 
     /// @notice Registry and tasks state
-    RegistryState registryState;
+    mapping(uint256 => RegistryState) registry;
 }
 
 /// @notice AppStorage accessor for Diamond facets
 library LibAppStorage {
+
+    uint256 constant ACTIVE_CONFIG = 0;
+    uint256 constant BUFFER_CONFIG = 1;
+    uint256 constant TRANSITION_STATE = 0;
+    uint256 constant REGISTRY_STATE = 0;
+
     function appStorage() internal pure returns (AppStorage storage s) {
         assembly {
             s.slot := 0
         }
+    }
+
+    function activeConfig() internal view returns (Config storage c) {
+        AppStorage storage s = appStorage();
+        c = s.configuration[ACTIVE_CONFIG];
+    }
+
+    function bufferConfig() internal view returns (Config storage c) {
+        AppStorage storage s = appStorage();
+        c = s.configuration[BUFFER_CONFIG];
+    }
+
+    function transitionState() internal view returns (TransitionState storage ts) {
+        AppStorage storage s = appStorage();
+        ts = s.transitionState[TRANSITION_STATE];
+    }
+
+    function registryState() internal view returns (RegistryState storage rs) {
+        AppStorage storage s = appStorage();
+        rs = s.registry[REGISTRY_STATE];
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {AppStorage} from "../libraries/LibAppStorage.sol";
+import {AppStorage, LibAppStorage, TransitionState} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibCore} from "../libraries/LibCore.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
@@ -90,7 +90,8 @@ contract CoreFacet is ICoreFacet {
     /// @return Refund duration
     /// @return Automation fee per sec
     function getTransitionInfo() external view returns (uint64, uint128) {
-        return (s.transitionState.refundDuration, s.transitionState.automationFeePerSec);
+        TransitionState storage transitionState = LibAppStorage.transitionState();
+        return (transitionState.refundDuration, transitionState.automationFeePerSec);
     }
 
     /// @notice Returns if automation is enabled.

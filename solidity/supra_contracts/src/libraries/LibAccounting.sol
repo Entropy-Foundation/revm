@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
+import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -111,11 +111,11 @@ library LibAccounting {
         uint128 _totalCommittedGas,
         uint128 _registryMaxGasCap
     ) private view returns (uint128) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        
-        uint8 congestionThresholdPercentage = s.activeConfig.congestionThresholdPercentage;
-        uint8 congestionExponent = s.activeConfig.congestionExponent;
-        uint128 congestionBaseFeeWeiPerSec = s.activeConfig.congestionBaseFeeWeiPerSec;
+        Config storage activeConfig = LibAppStorage.activeConfig();
+
+        uint8 congestionThresholdPercentage = activeConfig.congestionThresholdPercentage;
+        uint8 congestionExponent = activeConfig.congestionExponent;
+        uint128 congestionBaseFeeWeiPerSec = activeConfig.congestionBaseFeeWeiPerSec;
 
         if (congestionThresholdPercentage == 100 || congestionBaseFeeWeiPerSec == 0) { return 0; }
     
@@ -210,7 +210,7 @@ library LibAccounting {
         uint128 _automationFeePerSec,
         TaskMetadata memory _task
     ) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
         // Do not attempt fee refund if remaining duration is 0
         if (_task.taskState != LibCommon.TaskState.PENDING && _refundDuration != 0) {
@@ -225,10 +225,10 @@ library LibAccounting {
             ( , uint256 remainingCycleLockedFees) = safeFeeRefund(
                     _task.taskIndex,
                     _task.owner,
-                    s.registryState.cycleLockedFees,
+                    registryState.cycleLockedFees,
                     uint64(_refundFee)
                 );
-            s.registryState.cycleLockedFees = remainingCycleLockedFees;
+            registryState.cycleLockedFees = remainingCycleLockedFees;
         }
 
         safeDepositRefund(
@@ -273,10 +273,8 @@ library LibAccounting {
         uint128 _refundableDeposit,
         uint128 _lockedDeposit
     ) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
-
         // Check if task is UST
-        if (s.registryState.tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert RegisteredTaskInvalidType(); }
+        if (LibAppStorage.registryState().tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
         LibCommon.removeTask(_taskIndex, _taskOwner,false);
@@ -302,13 +300,13 @@ library LibAccounting {
 
     /// @notice Calculates the automation fee multiplier for current cycle. 
     function calculateAutomationFeeMultiplierForCurrentCycle() internal view returns (uint128) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        Config storage activeConfig = LibAppStorage.activeConfig();
 
         // Compute the automation fee multiplier for this cycle
         return calculateAutomationFeeMultiplierForCycle(
-            s.registryState.gasCommittedForThisCycle,
-            s.activeConfig.registryMaxGasCap,
-            s.activeConfig.automationBaseFeeWeiPerSec
+            LibAppStorage.registryState().gasCommittedForThisCycle,
+            activeConfig.registryMaxGasCap,
+            activeConfig.automationBaseFeeWeiPerSec
         );
     }
 
@@ -318,13 +316,13 @@ library LibAccounting {
     function calculateAutomationFeeMultiplierForCommittedOccupancy(
         uint128 _totalCommittedMaxGas
     ) internal view returns (uint128) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        Config storage activeConfig = LibAppStorage.activeConfig();
 
         // Compute the automation fee multiplier for cycle        
         return calculateAutomationFeeMultiplierForCycle(
             _totalCommittedMaxGas,
-            s.activeConfig.registryMaxGasCap,
-            s.activeConfig.automationBaseFeeWeiPerSec
+            activeConfig.registryMaxGasCap,
+            activeConfig.automationBaseFeeWeiPerSec
         );
     }
 
@@ -337,17 +335,18 @@ library LibAccounting {
         uint128 _committedOccupancy
     ) internal view returns (uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 totalCommittedGas = _taskOccupancy + _committedOccupancy;
          
         uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(
             totalCommittedGas, 
-            s.registryState.nextCycleRegistryMaxGasCap,
-            s.activeConfig.automationBaseFeeWeiPerSec
+            registryState.nextCycleRegistryMaxGasCap,
+            LibAppStorage.activeConfig().automationBaseFeeWeiPerSec
         );
 
         if (automationFeePerSec == 0) return 0;
-        return calculateAutomationFeeForInterval(s.durationSecs, _taskOccupancy, automationFeePerSec, s.registryState.nextCycleRegistryMaxGasCap);
+        return calculateAutomationFeeForInterval(s.durationSecs, _taskOccupancy, automationFeePerSec, registryState.nextCycleRegistryMaxGasCap);
     }
 
     /// @notice Helper function to unlock locked deposit and cycle fees when stopTasks is called.
@@ -361,6 +360,7 @@ library LibAccounting {
         uint128 _depositFee
     )  internal returns (uint128, uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 cycleLockedFeeForTask;
         uint128 cycleFeeRefund;
@@ -368,13 +368,14 @@ library LibAccounting {
 
         if (_taskState != LibCommon.TaskState.PENDING) {
             // Compute the automation fee multiplier for cycle
+            Config storage activeConfig = LibAppStorage.activeConfig();
             uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(
-                s.registryState.gasCommittedForThisCycle, 
-                s.activeConfig.registryMaxGasCap,
-                s.activeConfig.automationBaseFeeWeiPerSec
+                registryState.gasCommittedForThisCycle, 
+                activeConfig.registryMaxGasCap,
+                activeConfig.automationBaseFeeWeiPerSec
             );
 
-            uint128 taskFeeForFullCycle = calculateAutomationFeeForInterval(s.durationSecs, _maxGasAmount, automationFeePerSec, s.activeConfig.registryMaxGasCap);
+            uint128 taskFeeForFullCycle = calculateAutomationFeeForInterval(s.durationSecs, _maxGasAmount, automationFeePerSec, activeConfig.registryMaxGasCap);
             uint128 taskFeeForResidualTime = calculateTaskFee(
                 _taskState,
                 _expiryTime,
@@ -399,10 +400,10 @@ library LibAccounting {
 
         if (cycleLockedFeeForTask < cycleFeeRefund) { revert InvalidCycleRefundFee(); }
 
-        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(s.registryState.cycleLockedFees, uint64(cycleLockedFeeForTask), _taskIndex);
+        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(registryState.cycleLockedFees, uint64(cycleLockedFeeForTask), _taskIndex);
         if (!hasLockedFee) { revert ErrorCycleFeeRefund(); }
 
-        s.registryState.cycleLockedFees = remainingCycleLockedFees;
+        registryState.cycleLockedFees = remainingCycleLockedFees;
 
         return (cycleFeeRefund, depositRefund);
     }
@@ -416,12 +417,12 @@ library LibAccounting {
         uint64 _taskIndex,
         uint128 _lockedDeposit
     ) internal returns (bool) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        uint256 totalDeposited = s.registryState.totalDepositedAutomationFees;
+        uint256 totalDeposited = registryState.totalDepositedAutomationFees;
         
         if (totalDeposited >= _lockedDeposit) {
-            s.registryState.totalDepositedAutomationFees = totalDeposited - _lockedDeposit;
+            registryState.totalDepositedAutomationFees = totalDeposited - _lockedDeposit;
             return true;
         }
 
@@ -466,12 +467,11 @@ library LibAccounting {
             actualFeeTimeframe = taskActiveTimeframe < _potentialFeeTimeframe ? taskActiveTimeframe : _potentialFeeTimeframe;
         }
 
-        AppStorage storage s = LibAppStorage.appStorage();
         return calculateAutomationFeeForInterval(
             actualFeeTimeframe,
             _maxGasAmount,
             _automationFeePerSec,
-            s.activeConfig.registryMaxGasCap
+            LibAppStorage.activeConfig().registryMaxGasCap
         );
     }
 }

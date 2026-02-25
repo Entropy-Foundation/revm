@@ -4,7 +4,7 @@ pragma solidity 0.8.27;
 import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
-import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
+import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibRegistry {
@@ -102,6 +102,8 @@ library LibRegistry {
         bool _isUst
     ) private {
         AppStorage storage s = LibAppStorage.appStorage();
+        Config storage activeConfig = LibAppStorage.activeConfig();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
         // Check if automation and registration is enabled
         if (!s.automationEnabled) { revert AutomationNotEnabled(); }
@@ -113,20 +115,20 @@ library LibRegistry {
         uint128 gasCommittedForNextCycle;
         uint128 nextCycleRegistryMaxGasCap;
         if (_isUst) {
-            if (_totalTasks >= s.activeConfig.taskCapacity) { revert TaskCapacityReached(); }
+            if (_totalTasks >= activeConfig.taskCapacity) { revert TaskCapacityReached(); }
             if (_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
 
-            gasCommittedForNextCycle = s.registryState.gasCommittedForNextCycle;
+            gasCommittedForNextCycle = registryState.gasCommittedForNextCycle;
             uint128 estimatedAutomationFeeForCycle = LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
             if (_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(estimatedAutomationFeeForCycle); }
-            taskDurationCap = s.activeConfig.taskDurationCapSecs;
-            nextCycleRegistryMaxGasCap = s.registryState.nextCycleRegistryMaxGasCap;
+            taskDurationCap = activeConfig.taskDurationCapSecs;
+            nextCycleRegistryMaxGasCap = registryState.nextCycleRegistryMaxGasCap;
         } else {
-            if (_totalTasks >= s.activeConfig.sysTaskCapacity) { revert TaskCapacityReached(); }
+            if (_totalTasks >= activeConfig.sysTaskCapacity) { revert TaskCapacityReached(); }
 
-            gasCommittedForNextCycle = s.registryState.sysGasCommittedForNextCycle;
-            taskDurationCap = s.activeConfig.sysTaskDurationCapSecs;
-            nextCycleRegistryMaxGasCap = s.registryState.nextCycleSysRegistryMaxGasCap;
+            gasCommittedForNextCycle = registryState.sysGasCommittedForNextCycle;
+            taskDurationCap = activeConfig.sysTaskDurationCapSecs;
+            nextCycleRegistryMaxGasCap = registryState.nextCycleSysRegistryMaxGasCap;
         }
 
         validateTaskDuration(_regTime, _expiryTime, taskDurationCap, s.startTime + s.durationSecs);
@@ -136,9 +138,9 @@ library LibRegistry {
         if (gasCommitted > nextCycleRegistryMaxGasCap) { revert GasCommittedExceedsMaxGasCap(); }
 
         if (_isUst) {
-            s.registryState.gasCommittedForNextCycle = gasCommitted;
+            registryState.gasCommittedForNextCycle = gasCommitted;
         } else {
-            s.registryState.sysGasCommittedForNextCycle = gasCommitted;
+            registryState.sysGasCommittedForNextCycle = gasCommitted;
         } 
     }
 
@@ -154,9 +156,9 @@ library LibRegistry {
         bool _isUst,
         bytes[] memory _auxData
     ) private returns (uint64 taskIndex) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        taskIndex = s.registryState.currentIndex;
+        taskIndex = registryState.currentIndex;
 
         uint64 taskPriority;
         if (_isUst) {
@@ -182,27 +184,27 @@ library LibRegistry {
             auxData: _auxData
         });
     
-        s.registryState.tasks[taskIndex] = taskMetadata;
-        require(s.registryState.taskIdList.add(taskIndex), TaskIndexNotUnique());
-        require(s.registryState.userTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
+        registryState.tasks[taskIndex] = taskMetadata;
+        require(registryState.taskIdList.add(taskIndex), TaskIndexNotUnique());
+        require(registryState.userTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
     
         if (!_isUst) {
-            require(s.registryState.sysTaskIds.add(taskIndex), TaskIndexNotUnique());
+            require(registryState.sysTaskIds.add(taskIndex), TaskIndexNotUnique());
         }
-        s.registryState.currentIndex += 1;
+        registryState.currentIndex += 1;
     }
 
     function updateGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        uint128 gasCommittedForNextCycle = _isGst ? s.registryState.sysGasCommittedForNextCycle : s.registryState.gasCommittedForNextCycle;        
+        uint128 gasCommittedForNextCycle = _isGst ? registryState.sysGasCommittedForNextCycle : registryState.gasCommittedForNextCycle;        
         if (gasCommittedForNextCycle < _maxGasAmount) { revert GasCommittedValueUnderflow(); }
        
         // Adjust the gas committed for the next cycle by subtracting the gas amount of the cancelled/stopped task
         if (_isGst) {
-            s.registryState.sysGasCommittedForNextCycle = gasCommittedForNextCycle - _maxGasAmount;
+            registryState.sysGasCommittedForNextCycle = gasCommittedForNextCycle - _maxGasAmount;
         } else {
-            s.registryState.gasCommittedForNextCycle = gasCommittedForNextCycle - _maxGasAmount;
+            registryState.gasCommittedForNextCycle = gasCommittedForNextCycle - _maxGasAmount;
         
         }
     }
@@ -220,13 +222,13 @@ library LibRegistry {
         uint128 _gasCommittedForNextCycle,
         uint128 _gasCommittedForNewCycle
     ) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        s.registryState.cycleLockedFees  = _lockedFees;
-        s.registryState.sysGasCommittedForNextCycle = _sysGasCommittedForNextCycle;
-        s.registryState.sysGasCommittedForThisCycle = _sysGasCommittedForNextCycle;
-        s.registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
-        s.registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
+        registryState.cycleLockedFees  = _lockedFees;
+        registryState.sysGasCommittedForNextCycle = _sysGasCommittedForNextCycle;
+        registryState.sysGasCommittedForThisCycle = _sysGasCommittedForNextCycle;
+        registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
+        registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
     }
 
     function registerTask(
@@ -239,11 +241,11 @@ library LibRegistry {
         LibCommon.TaskType _taskType,
         bytes[] memory _auxData
     ) internal returns (uint64 taskIndex) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
         uint64 regTime = uint64(block.timestamp);
         bool isUst = _taskType == LibCommon.TaskType.UST;
-        uint256 totalTasks = isUst ? s.registryState.taskIdList.length() : s.registryState.sysTaskIds.length();
+        uint256 totalTasks = isUst ? registryState.taskIdList.length() : registryState.sysTaskIds.length();
         
         updateStateForValidRegistration(
             totalTasks,
@@ -274,9 +276,9 @@ library LibRegistry {
         uint64 _taskIndex,
         bool _isGst
     ) internal returns (LibCommon.TaskCancelled memory cancelledTask) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        TaskMetadata memory task = s.registryState.tasks[_taskIndex];
+        TaskMetadata memory task = registryState.tasks[_taskIndex];
 
         validateOwnerType(task.owner, task.taskType, _isGst);
         if (task.taskState == LibCommon.TaskState.CANCELLED) { revert AlreadyCancelled(); }
@@ -297,7 +299,7 @@ library LibRegistry {
         } else {
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
             // Active tasks will be refunded the deposited amount fully at the end of the cycle.
-            s.registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.CANCELLED;
+            registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.CANCELLED;
         }
 
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
@@ -314,16 +316,16 @@ library LibRegistry {
         uint64 _cycleEndTime,
         bool _isGst
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refundAmount) {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        TaskMetadata memory task = s.registryState.tasks[_taskId];
+        TaskMetadata memory task = registryState.tasks[_taskId];
         
         validateOwnerType(task.owner, task.taskType, _isGst);
 
         // Remove task from the registry
         LibCommon.removeTask(_taskId, task.owner, _isGst);
         // Remove from active tasks
-        require(s.registryState.activeTaskIds.remove(_taskId), TaskIndexNotFound());
+        require(registryState.activeTaskIds.remove(_taskId), TaskIndexNotFound());
 
         // This check means the task was expected to be executed in the next cycle, but it has been stopped.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.

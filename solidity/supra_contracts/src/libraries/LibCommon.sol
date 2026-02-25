@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {AppStorage, LibAppStorage, TaskMetadata} from "./LibAppStorage.sol";
+import {AppStorage, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCommon {
@@ -119,17 +119,15 @@ library LibCommon {
     /// @notice Checks if a task exist.
     /// @param _taskIndex Task index to check if a task exists against it.
     function ifTaskExists(uint64 _taskIndex) internal view returns (bool) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        return s.registryState.tasks[_taskIndex].owner != address(0) && s.registryState.taskIdList.contains(_taskIndex);
+        RegistryState storage registryState = LibAppStorage.registryState();
+        return registryState.tasks[_taskIndex].owner != address(0) && registryState.taskIdList.contains(_taskIndex);
     }
 
     /// @notice Returns the details of a task. Reverts if task doesn't exist.
     /// @param _taskIndex Task index to get details for.
     function getTask(uint64 _taskIndex) internal view returns (TaskMetadata storage task) {
-        AppStorage storage s = LibAppStorage.appStorage();
-
         if (!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
-        task = s.registryState.tasks[_taskIndex];
+        task = LibAppStorage.registryState().tasks[_taskIndex];
     }
 
     /// @notice Function to remove a task from the registry.
@@ -137,14 +135,14 @@ library LibCommon {
     /// @param _owner Address of the task owner.  
     /// @param _removeFromSysReg Wheather to remove from system task registry.
     function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
+        RegistryState storage registryState = LibAppStorage.registryState();
 
         if (_removeFromSysReg) {
-            require(s.registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
+            require(registryState.sysTaskIds.remove(_taskIndex), TaskIndexNotFound());
         }
 
-        delete s.registryState.tasks[_taskIndex];
-        require(s.registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
-        require(s.registryState.userTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
+        delete registryState.tasks[_taskIndex];
+        require(registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
+        require(registryState.userTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
     }
 }

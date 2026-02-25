@@ -14,7 +14,7 @@ import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
 
-import { AppStorage, Config } from "../libraries/LibAppStorage.sol";
+import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
 
@@ -114,7 +114,7 @@ contract DiamondInit {
             congestionExponent: _congestionExponent 
         });
         
-        s.activeConfig = activeConfig;
+        s.configuration[LibAppStorage.ACTIVE_CONFIG] = activeConfig;
 
         s.automationEnabled = _automationEnabled;
         s.registrationEnabled = _registrationEnabled;
@@ -139,7 +139,8 @@ contract DiamondInit {
         // ---------------------------------------------------------------------
         //                      Registry state initialization
         // ---------------------------------------------------------------------
-        s.registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
-        s.registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
+        RegistryState storage registryState = LibAppStorage.registryState();
+        registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
+        registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
     }
 }

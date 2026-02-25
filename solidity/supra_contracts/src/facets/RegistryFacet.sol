@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {AppStorage, TaskMetadata} from "../libraries/LibAppStorage.sol";
+import {AppStorage, LibAppStorage, RegistryState, TaskMetadata} from "../libraries/LibAppStorage.sol";
 import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";
@@ -45,15 +45,17 @@ contract RegistryFacet is IRegistryFacet {
             _auxData
         );
         
-        s.registryState.totalDepositedAutomationFees += _automationFeeCapForCycle;
+        RegistryState storage registryState = LibAppStorage.registryState();
 
-        uint128 flatRegistrationFee = s.activeConfig.flatRegistrationFeeWei;
+        registryState.totalDepositedAutomationFees += _automationFeeCapForCycle;
+
+        uint128 flatRegistrationFee = LibAppStorage.activeConfig().flatRegistrationFeeWei;
         uint128 fee = flatRegistrationFee + _automationFeeCapForCycle;
 
         bool sent = IERC20(s.erc20Supra).transferFrom(msg.sender, address(this), fee);
         if (!sent) { revert TransferFailed(); }
 
-        emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFee, _automationFeeCapForCycle, s.registryState.tasks[taskIndex]);
+        emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFee, _automationFeeCapForCycle, registryState.tasks[taskIndex]);
     }
 
     /// @notice Function to register a system task. Reverts if caller is not authorized.
@@ -82,7 +84,7 @@ contract RegistryFacet is IRegistryFacet {
             _auxData
         );
 
-        emit SystemTaskRegistered(taskIndex, msg.sender, block.timestamp, s.registryState.tasks[taskIndex]);
+        emit SystemTaskRegistered(taskIndex, msg.sender, block.timestamp, LibAppStorage.registryState().tasks[taskIndex]);
     }
 
     /// @notice Cancels the automation tasks with specified task indexes.
@@ -216,39 +218,39 @@ contract RegistryFacet is IRegistryFacet {
 
     /// @notice Returns all the automation tasks available in the registry.
     function getTaskIdList() external view returns (uint256[] memory) {
-        return s.registryState.taskIdList.values();
+        return LibAppStorage.registryState().taskIdList.values();
     }
 
     /// @notice Returns all the automation tasks registered by a user.
     /// @param _user Address of the user to fetch registered tasks for.
     function getUserTasks(address _user) external view returns (uint256[] memory) {
-        return s.registryState.userTasks[_user].values();
+        return LibAppStorage.registryState().userTasks[_user].values();
     }
 
     /// @notice Returns all the system tasks available in the registry.
     function getSystemTaskIds() external view returns (uint256[] memory) {
-        return s.registryState.sysTaskIds.values();
+        return LibAppStorage.registryState().sysTaskIds.values();
     }
 
     /// @notice Returns the owner of the task 
     /// @param _taskIndex Task index of the task to query.
     function getTaskOwner(uint64 _taskIndex) external view returns (address) {
-        return s.registryState.tasks[_taskIndex].owner;
+        return LibAppStorage.registryState().tasks[_taskIndex].owner;
     }
 
     /// @notice Returns the next task index.
     function getNextTaskIndex() external view returns (uint64) {
-        return s.registryState.currentIndex;
+        return LibAppStorage.registryState().currentIndex;
     }
 
     /// @notice Returns the number of total tasks.
     function totalTasks() external view returns (uint256) {
-        return s.registryState.taskIdList.length();
+        return LibAppStorage.registryState().taskIdList.length();
     }
 
     /// @notice Returns the number of total system tasks.
     function totalSystemTasks() external view returns (uint256) {
-        return s.registryState.sysTaskIds.length();
+        return LibAppStorage.registryState().sysTaskIds.length();
     }
 
     /// @notice Returns if a task exists in the registry.
@@ -260,7 +262,7 @@ contract RegistryFacet is IRegistryFacet {
     /// @notice Returns if a system task exists in the registry.
     /// @param _taskIndex Task index of the system task to check existence for.
     function ifSysTaskExists(uint64 _taskIndex) external view returns (bool) {
-        return s.registryState.sysTaskIds.contains(_taskIndex);
+        return LibAppStorage.registryState().sysTaskIds.contains(_taskIndex);
     }
 
     /// @notice Returns the details of a task. Reverts if task doesn't exist.
@@ -278,7 +280,7 @@ contract RegistryFacet is IRegistryFacet {
 
         for (uint256 i = 0; i < count; i++) {
             if (LibCommon.ifTaskExists(_taskIndexes[i])) {
-                temp[exists] = s.registryState.tasks[_taskIndexes[i]];
+                temp[exists] = LibAppStorage.registryState().tasks[_taskIndexes[i]];
                 exists += 1; 
             }
         }
@@ -298,12 +300,12 @@ contract RegistryFacet is IRegistryFacet {
 
     /// @notice Returns the total number of active tasks.
     function getTotalActiveTasks() external view returns (uint256) {
-        return s.registryState.activeTaskIds.length();
+        return LibAppStorage.registryState().activeTaskIds.length();
     }
 
     /// @notice Returns all the active task indexes.
     function getActiveTaskIds() external view returns (uint256[] memory) {
-        return s.registryState.activeTaskIds.values();
+        return LibAppStorage.registryState().activeTaskIds.values();
     }
 
     /// @notice Checks whether there is an active task in registry with specified input task index.
@@ -319,53 +321,54 @@ contract RegistryFacet is IRegistryFacet {
     /// @notice Checks whether there is an active task in registry with specified input task index of the input type.
     /// The type can be either 0 for user submitted tasks, and 1 for governance authorized tasks.
     function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) public view returns (bool) {
-        TaskMetadata storage task = s.registryState.tasks[_taskIndex]; 
+        TaskMetadata storage task = LibAppStorage.registryState().tasks[_taskIndex]; 
         return task.owner == _account && task.taskState != LibCommon.TaskState.PENDING && task.taskType == _type;
     }
 
     /// @notice Returns the gas committed for the next cycle.
     function getGasCommittedForNextCycle() external view returns (uint128) {
-        return s.registryState.gasCommittedForNextCycle;
+        return LibAppStorage.registryState().gasCommittedForNextCycle;
     }
 
     /// @notice Returns the gas committed for the current cycle.
     function getGasCommittedForCurrentCycle() external view returns (uint128) {
-        return s.registryState.gasCommittedForThisCycle;
+        return LibAppStorage.registryState().gasCommittedForThisCycle;
     }
 
     /// @notice Returns the system gas committed for the next cycle.
     function getSystemGasCommittedForNextCycle() external view returns (uint128) {
-        return s.registryState.sysGasCommittedForNextCycle;
+        return LibAppStorage.registryState().sysGasCommittedForNextCycle;
     }
 
     /// @notice Returns the system gas committed for the current cycle.
     function getSystemGasCommittedForCurrentCycle() external view returns (uint128) {
-        return s.registryState.sysGasCommittedForThisCycle;
+        return LibAppStorage.registryState().sysGasCommittedForThisCycle;
     }
 
     /// @notice Returns the registry max gas cap for the next cycle.    
     function getNextCycleRegistryMaxGasCap() external view returns (uint128) {
-        return s.registryState.nextCycleRegistryMaxGasCap;
+        return LibAppStorage.registryState().nextCycleRegistryMaxGasCap;
     }
 
     /// @notice Returns the system registry max gas cap for the next cycle.    
     function getNextCycleSysRegistryMaxGasCap() external view returns (uint128) {
-        return s.registryState.nextCycleSysRegistryMaxGasCap;
+        return LibAppStorage.registryState().nextCycleSysRegistryMaxGasCap;
     }
 
     /// @notice Returns the locked fees for the cycle. 
     function getCycleLockedFees() external view returns (uint256) {
-        return s.registryState.cycleLockedFees;
+        return LibAppStorage.registryState().cycleLockedFees;
     }
 
     /// @notice Returns the total amount of automation fees deposited.
     function getTotalDepositedAutomationFees() external view returns (uint256) {
-        return s.registryState.totalDepositedAutomationFees;
+        return LibAppStorage.registryState().totalDepositedAutomationFees;
     }
 
     /// @notice Returns the total amount locked which comprises of 'cycleLockedFees' and 'totalDepositedAutomationFees'. 
     function getTotalLockedBalance() external view returns (uint256) {
-        return s.registryState.cycleLockedFees + s.registryState.totalDepositedAutomationFees;
+        RegistryState storage registryState = LibAppStorage.registryState();
+        return registryState.cycleLockedFees + registryState.totalDepositedAutomationFees;
     }
 
     /// @notice Calculates automation fee per second for the specified task occupancy
@@ -384,7 +387,7 @@ contract RegistryFacet is IRegistryFacet {
     /// referencing the current automation registry fee parameters, current total occupancy and registry maximum allowed
     /// occupancy for the next cycle.
     function estimateAutomationFee(uint128 _taskOccupancy) external view returns (uint128) {
-        return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_taskOccupancy, s.registryState.gasCommittedForNextCycle);
+        return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_taskOccupancy, LibAppStorage.registryState().gasCommittedForNextCycle);
     }
 
     /// @notice Estimates automation fee the next cycle for specified task occupancy for the configured cycle-interval

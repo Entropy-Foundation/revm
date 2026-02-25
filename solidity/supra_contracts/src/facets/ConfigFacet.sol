@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {AppStorage, Config} from "../libraries/LibAppStorage.sol";
+import {AppStorage, Config, RegistryState, LibAppStorage} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {IConfigFacet} from "../interfaces/IConfigFacet.sol";
@@ -92,7 +92,9 @@ contract ConfigFacet is IConfigFacet {
         uint256 balance = IERC20(s.erc20Supra).balanceOf(address(this));
 
         if (balance < _amount) { revert InsufficientBalance(); }
-        if (balance - _amount < s.registryState.cycleLockedFees + s.registryState.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
+        
+        RegistryState storage registryState = LibAppStorage.registryState();
+        if (balance - _amount < registryState.cycleLockedFees + registryState.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
 
         bool sent = IERC20(s.erc20Supra).transfer(_recipient, _amount);
         if (!sent) { revert TransferFailed(); }
@@ -129,8 +131,9 @@ contract ConfigFacet is IConfigFacet {
             _sysTaskCapacity
         );
 
-        if (s.registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
-        if (s.registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
+        RegistryState storage registryState = LibAppStorage.registryState();
+        if (registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
+        if (registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
 
         // Add new config to the buffer
         Config memory configBuffer = Config({ 
@@ -147,11 +150,11 @@ contract ConfigFacet is IConfigFacet {
             congestionThresholdPercentage: _congestionThresholdPercentage, 
             congestionExponent: _congestionExponent
         });
-        s.configBuffer = configBuffer;
+        s.configuration[LibAppStorage.BUFFER_CONFIG] = configBuffer;
         s.ifBufferExists = true;
 
-        s.registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
-        s.registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
+        registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
+        registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
 
         emit ConfigBufferUpdated(configBuffer);
     }
@@ -175,11 +178,11 @@ contract ConfigFacet is IConfigFacet {
 
     /// @notice Returns the registry configuration.
     function getConfig() external view returns (Config memory) {
-        return s.activeConfig;
+        return LibAppStorage.activeConfig();
     }
 
     /// @notice Returns the pending configuration.
     function getConfigBuffer() external view returns (Config memory) {
-        return s.configBuffer;
+        return LibAppStorage.bufferConfig();
     }
 }
