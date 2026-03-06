@@ -444,6 +444,14 @@ contract MultiSignatureWallet is Initializable {
     }
 
     /**
+     * @dev Function to retrieve the potential index of the next transaction.
+     * @return Index of the next transaction of uint256 type.
+     */
+    function getNextTransactionIndex() public view returns (uint256) {
+        return txIndex;
+    }
+
+    /**
      * @dev Checks if a transaction is confirmed by an owner.
      * @param _txIndex Index of the transaction to check for.
      * @param _owner Address of the owner.

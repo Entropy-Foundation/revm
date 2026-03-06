@@ -20,4 +20,13 @@ interface SupraContractsBindings {
 
     // Entry function of the BlockMeta for block metadata transaction
     function blockPrologue() external;
+
+    // Emitted when the cycle state transitions.
+    event AutomationCycleEvent(
+        uint64 indexed index,
+        CommonUtils.CycleState indexed state,
+        uint64 startTime,
+        uint64 durationSecs,
+        CommonUtils.CycleState indexed oldState
+    );
 }
