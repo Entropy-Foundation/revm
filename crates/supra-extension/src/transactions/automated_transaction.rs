@@ -1,6 +1,5 @@
 //! AutomatedTransaction generated based on the registered active automation task.
 
-use std::cmp::Ordering;
 use crate::errors::SupraExtensionError;
 use crate::supra_contract_bindings::supra_contracts_bindings::CommonUtils::TaskDetails;
 use crate::value_or_error;
@@ -9,10 +8,11 @@ use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_consensus::transaction::Transaction;
 use alloy_eips::eip2718::Typed2718;
 use alloy_sol_types::SolType;
-use derive_getters::Getters;
 use context::transaction::{AccessListItem, SignedAuthorization};
 use context::TransactionType;
+use derive_getters::Getters;
 use primitives::TxKind;
+use std::cmp::Ordering;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -215,7 +215,7 @@ impl Ord for AutomatedTransactionDetails {
     fn cmp(&self, other: &Self) -> Ordering {
         let left_type = &self.txn.txn_type;
         let right_type = &other.txn.txn_type;
-        if  left_type == right_type {
+        if left_type == right_type {
             self.priority.cmp(&other.priority)
         } else {
             left_type.cmp(right_type)
@@ -289,7 +289,7 @@ pub struct AutomatedTransactionBuilder {
     chain_id: Option<ChainId>,
     gas_limit: Option<u64>,
     gas_price: Option<u128>,
-    gas_price_cap: u128,
+    gas_price_cap: Option<u128>,
     registration_hash: Option<B256>,
     task_index: Option<u64>,
     expiry_timestamp: Option<u64>,
@@ -305,13 +305,13 @@ pub struct AutomatedTransactionBuilder {
 
 #[allow(missing_docs)]
 impl AutomatedTransactionBuilder {
-    pub fn new(gas_price_cap: u128) -> Self {
+    pub fn new() -> Self {
         Self {
             block_height: None,
             chain_id: None,
             gas_limit: None,
             gas_price: None,
-            gas_price_cap,
+            gas_price_cap: None,
             registration_hash: None,
             task_index: None,
             expiry_timestamp: None,
@@ -344,7 +344,7 @@ impl AutomatedTransactionBuilder {
         self
     }
     pub fn with_gas_price_cap(mut self, gas_price_cap: u128) -> Self {
-        self.gas_price_cap = gas_price_cap;
+        self.gas_price_cap = Some(gas_price_cap);
         self
     }
     pub fn with_registration_hash(mut self, registration_hash: B256) -> Self {
@@ -409,7 +409,9 @@ impl AutomatedTransactionBuilder {
             value_or_error!(AutomatedTransactionBuilder, "block_height", block_height);
         let chain_id = value_or_error!(AutomatedTransactionBuilder, "chain_id", chain_id);
         let gas_limit = value_or_error!(AutomatedTransactionBuilder, "gas_limit", gas_limit);
-        let gas_price = value_or_error!(AutomatedTransactionBuilder, "gasPrice", gas_price);
+        let gas_price_cap =
+            value_or_error!(AutomatedTransactionBuilder, "gas_price_cap", gas_price_cap);
+        let gas_price = value_or_error!(AutomatedTransactionBuilder, "gas_price", gas_price);
         let registration_hash = value_or_error!(
             AutomatedTransactionBuilder,
             "registration_hash",
@@ -489,7 +491,8 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
                 storage_keys,
             })
             .collect();
-        let builder = Self::new(gasPriceCap)
+        let builder = Self::new()
+            .with_gas_price_cap(gasPriceCap)
             .with_gas_limit(maxGasAmount as u64)
             .with_gas_price_cap(gasPriceCap)
             .with_registration_hash(txHash)
@@ -512,7 +515,7 @@ mod test {
     use alloy::hex;
     use alloy_sol_types::SolType;
     #[test]
-    fn check_decode() {
+    fn check_payload_decode() {
         let encoded = hex!("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000006b182f1488e8efeb2eb298155ed5bd7ff8a14042000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000242e1a7d4d0000000000000000000000000000000000000000000000000000000000000064000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000001111000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000022220000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
         let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(&encoded).unwrap();
         println!("to: {:?}", to);
