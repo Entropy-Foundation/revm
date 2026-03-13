@@ -215,24 +215,24 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'setErc20Supra' updates the ERC20Supra address. 
     function testSetErc20Supra() public {
-        ERC20Supra supraErc20 = new ERC20Supra(msg.sender);
+        address supraErc20 = deployErc20Supra(bridge, erc20SupraHandlerAddr);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
+        IConfigFacet(diamondAddr).setErc20Supra(supraErc20);
 
-        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(supraErc20));
+        assertEq(IConfigFacet(diamondAddr).erc20Supra(), supraErc20);
     }
 
     /// @dev Test to ensure 'setErc20Supra' emits event 'Erc20SupraUpdated'. 
     function testSetErc20SupraEmitsEvent() public {
         address oldAddr = IConfigFacet(diamondAddr).erc20Supra();
-        ERC20Supra supraErc20 = new ERC20Supra(msg.sender);
+        address supraErc20 = deployErc20Supra(bridge, erc20SupraHandlerAddr);
 
         vm.expectEmit(true, true, false, false);
-        emit IConfigFacet.Erc20SupraUpdated(oldAddr, address(supraErc20));
+        emit IConfigFacet.Erc20SupraUpdated(oldAddr, supraErc20);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
+        IConfigFacet(diamondAddr).setErc20Supra(supraErc20);
     }
 
     /// @dev Test to ensure 'setErc20Supra' reverts if zero address is passed. 
@@ -253,12 +253,12 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'setErc20Supra' reverts if caller is not owner. 
     function testSetErc20SupraRevertsIfNotOwner() public {
-        ERC20Supra supraErc20 = new ERC20Supra(msg.sender);
+        address supraErc20 = deployErc20Supra(bridge, erc20SupraHandlerAddr);
 
         vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
 
         vm.prank(alice);
-        IConfigFacet(diamondAddr).setErc20Supra(address(supraErc20));
+        IConfigFacet(diamondAddr).setErc20Supra(supraErc20);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdrawFees' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -294,7 +294,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         vm.expectRevert(IConfigFacet.RequestExceedsLockedBalance.selector);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).withdrawFees(0.04 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(2 ether, admin);
     }
 
     /// @dev Test to ensure 'withdrawFees' reverts if caller is not owner.
@@ -310,13 +310,13 @@ contract ConfigFacetTest is BaseDiamondTest {
         registerUst();
 
         assertEq(erc20Supra.balanceOf(admin), 0);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0.502 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
+        IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
 
-        assertEq(erc20Supra.balanceOf(admin), 0.002 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0.5 ether);
+        assertEq(erc20Supra.balanceOf(admin), 1 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 60.1 ether);
     }
     
     /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.

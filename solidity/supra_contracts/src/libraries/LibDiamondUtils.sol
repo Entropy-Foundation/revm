@@ -51,18 +51,18 @@ library LibDiamondUtils {
 
     function defaultInitParams() internal pure returns (InitParams memory p) {
         p = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 1_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 1_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });

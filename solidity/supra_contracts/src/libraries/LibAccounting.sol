@@ -155,9 +155,16 @@ library LibAccounting {
         uint256 baseScaled = DECIMAL + _base;   // (1 + base)
         uint256 resultScaled = DECIMAL;
 
-        for (uint8 i = 0; i < _exponent; i++) {
-            resultScaled = (resultScaled * baseScaled) / DECIMAL;
-        }
+        while (_exponent > 0) {
+            if ((_exponent & 1) != 0) {
+               resultScaled = (resultScaled * baseScaled) / DECIMAL;
+            }
+         
+            _exponent >>= 1;
+            if (_exponent > 0) {
+                baseScaled = (baseScaled * baseScaled) / DECIMAL;
+            }
+        }      
     
         return resultScaled - DECIMAL;      // subtract 1
     }

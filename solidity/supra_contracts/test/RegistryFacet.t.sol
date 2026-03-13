@@ -28,10 +28,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
-            uint128(10 gwei),                   // gasPriceCap
-            uint128(0.5 ether),                 // automationFeeCapForCycle
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
+            uint128(4 gwei),                    // gasPriceCap
+            uint128(60.1 ether),                // automationFeeCapForCycle
             0,                                  // priority
             auxData                             // aux data
         );
@@ -51,10 +51,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
-            uint128(10 gwei),                   // gasPriceCap
-            uint128(0.5 ether),                 // automationFeeCapForCycle
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
+            uint128(4 gwei),                    // gasPriceCap
+            uint128(60.1 ether),                // automationFeeCapForCycle
             0,                                  // priority
             auxData                             // aux data
         );
@@ -71,9 +71,9 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).register(
             payload,
             uint64(block.timestamp),        // Invalid expiryTime
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -89,10 +89,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 3601),     // Invalid task duration
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + (3600 * 24 * 7) + 1),     // Invalid task duration
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -108,10 +108,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2000),     // Task expires before next cycle
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + 1200),     // Task expires before next cycle
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -127,10 +127,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -146,10 +146,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -165,10 +165,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
+            uint64(block.timestamp + 1250),
             uint128(0),                         // maxGasAmount
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -184,10 +184,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
             uint128(0),                       // gasPriceCap         
-            uint128(0.5 ether),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -201,16 +201,16 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(
             abi.encodeWithSelector(
                 LibRegistry.InsufficientFeeCapForCycle.selector,
-                200000000000000000
+                60 ether
             )
         );
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
-            uint128(10 gwei),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
             uint128(0),                       // automationFeeCapForCycle
             0,
             auxData
@@ -227,10 +227,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(10_000_001),            // Gas exceeds max gas cap
-            uint128(10 gwei),
-            uint128(7.01 ether),
+            uint64(block.timestamp + 1250),
+            uint128(1_000_001),            // Gas exceeds max gas cap
+            uint128(4 gwei),
+            uint128(6835 ether),
             0,
             auxData
         );
@@ -242,15 +242,15 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
-        erc20Supra.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             4,
             auxData
         );
@@ -265,19 +265,19 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(userTasks[0], 0);
 
         assertEq(IRegistryFacet(diamondAddr).getNextTaskIndex(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 1_000_000);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0.502 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.498 ether);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
+        assertEq(erc20Supra.balanceOf(alice), 38.9 ether);
 
-        assertEq(taskMetadata.maxGasAmount, 1_000_000);
-        assertEq(taskMetadata.gasPriceCap, 10 gwei);
-        assertEq(taskMetadata.automationFeeCapForCycle, 0.5 ether);
-        assertEq(taskMetadata.depositFee, 0.5 ether);
+        assertEq(taskMetadata.maxGasAmount, 100_000);
+        assertEq(taskMetadata.gasPriceCap, 4 gwei);
+        assertEq(taskMetadata.automationFeeCapForCycle, 60.1 ether);
+        assertEq(taskMetadata.depositFee, 60.1 ether);
         assertEq(taskMetadata.txHash, keccak256("txHash"));
         assertEq(taskMetadata.taskIndex, 0);
         assertEq(taskMetadata.registrationTime, uint64(block.timestamp));
-        assertEq(taskMetadata.expiryTime, uint64(block.timestamp + 2250));
+        assertEq(taskMetadata.expiryTime, uint64(block.timestamp + 1250));
         assertEq(taskMetadata.priority, 0);
         assertEq(uint8(taskMetadata.taskType), 0);
         assertEq(uint8(taskMetadata.taskState), 0);
@@ -292,18 +292,18 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
-        erc20Supra.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
         TaskMetadata memory taskMetadata = TaskMetadata({ 
-            maxGasAmount: 1_000_000, 
-            gasPriceCap: 10 gwei, 
-            automationFeeCapForCycle: 0.5 ether, 
-            depositFee: 0.5 ether, 
+            maxGasAmount: 100_000, 
+            gasPriceCap: 4 gwei, 
+            automationFeeCapForCycle: 60.1 ether, 
+            depositFee: 60.1 ether, 
             txHash: keccak256("txHash"), 
             taskIndex: 0, 
             registrationTime: uint64(block.timestamp), 
-            expiryTime: uint64(block.timestamp + 2250), 
+            expiryTime: uint64(block.timestamp + 1250), 
             priority: 0, 
             owner: alice, 
             taskType: LibCommon.TaskType.UST, 
@@ -313,14 +313,14 @@ contract RegistryFacetTest is BaseDiamondTest {
         });
 
         vm.expectEmit(true, true, false, true);
-        emit IRegistryFacet.TaskRegistered(0, alice, 0.002 ether, 0.5 ether, taskMetadata);
+        emit IRegistryFacet.TaskRegistered(0, alice, 1 ether, 60.1 ether, taskMetadata);
 
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             0,
             auxData
         );
@@ -339,8 +339,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
             2,                                  // priority
             auxData                             // aux data
         );
@@ -359,8 +359,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
             2,                                  // priority
             auxData                             // aux data
         );
@@ -379,8 +379,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
             2,                                  // priority
             auxData                             // aux data
         );
@@ -396,8 +396,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,
-            uint64(block.timestamp + 3601),     // Invalid task duration
-            uint128(1_000_000), 
+            uint64(block.timestamp + (3600 * 24 * 180) + 1),     // Invalid task duration
+            uint128(100_000), 
             2, 
             auxData
         );   
@@ -413,8 +413,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(5_000_001),                 // Gas exceeds max gas cap
+            uint64(block.timestamp + 1250),
+            uint128(1_000_001),                 // Gas exceeds max gas cap
             2,
             auxData
         );
@@ -428,8 +428,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
             2,                                  // priority
             auxData                             // aux data
         );
@@ -445,16 +445,16 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(userTasks[0], 0);
 
         assertEq(IRegistryFacet(diamondAddr).getNextTaskIndex(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
 
-        assertEq(taskMetadata.maxGasAmount, 1_000_000);
+        assertEq(taskMetadata.maxGasAmount, 100_000);
         assertEq(taskMetadata.gasPriceCap, 0);
         assertEq(taskMetadata.automationFeeCapForCycle, 0);
         assertEq(taskMetadata.depositFee, 0);
         assertEq(taskMetadata.txHash, keccak256("txHash"));
         assertEq(taskMetadata.taskIndex, 0);
         assertEq(taskMetadata.registrationTime, uint64(block.timestamp));
-        assertEq(taskMetadata.expiryTime, uint64(block.timestamp + 2250));
+        assertEq(taskMetadata.expiryTime, uint64(block.timestamp + 1250));
         assertEq(taskMetadata.priority, 2);
         assertEq(uint8(taskMetadata.taskType), 1);
         assertEq(uint8(taskMetadata.taskState), 0);
@@ -469,14 +469,14 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20Supra));
 
         TaskMetadata memory taskMetadata = TaskMetadata({ 
-            maxGasAmount: 1_000_000, 
+            maxGasAmount: 100_000, 
             gasPriceCap: 0, 
             automationFeeCapForCycle: 0, 
             depositFee: 0, 
             txHash: keccak256("txHash"), 
             taskIndex: 0, 
             registrationTime: uint64(block.timestamp), 
-            expiryTime: uint64(block.timestamp + 2250), 
+            expiryTime: uint64(block.timestamp + 1250), 
             priority: 2, 
             owner: bob, 
             taskType: LibCommon.TaskType.GST, 
@@ -491,8 +491,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
             payload,                            // payload
-            uint64(block.timestamp + 2250),     // expiryTime
-            uint128(1_000_000),                 // maxGasAmount
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
             2,                                  // priority
             auxData                             // aux data
         );
@@ -534,7 +534,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
 
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
     }
 
     /// @dev Test to ensure 'cancelTasks' reverts if task type is not UST.
@@ -576,8 +576,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0.252 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.748 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 31.05 ether);
+        assertEq(erc20Supra.balanceOf(alice), 68.95 ether);
     }
 
     /// @dev Test to ensure 'cancelTasks' emits event 'TasksCancelled'.
@@ -757,7 +757,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
 
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0.5 ether);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' stops the input UST tasks. 
@@ -770,14 +770,18 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        vm.warp(2002);
+        vm.deal(alice, 200 ether);
+        vm.prank(alice);
+        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+
+        vm.warp(1201);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();        
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
 
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0.702 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.298 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 121.1 ether);
+        assertEq(erc20Supra.balanceOf(alice), 78.9 ether);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
@@ -787,8 +791,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0.18955 ether);
-        assertEq(erc20Supra.balanceOf(alice), 4.81045 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 59.75 ether);
+        assertEq(erc20Supra.balanceOf(alice), 140.25 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' emits event 'TasksStopped'.  
@@ -801,14 +805,18 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        vm.warp(2002);
+        vm.deal(alice, 200 ether);
+        vm.prank(alice);
+        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+
+        vm.warp(1201);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();        
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
 
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
-        stoppedTasks[0] = LibCommon.TaskStopped(0, 0.5 ether, 0.01245 ether, keccak256("txHash"));
+        stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 1.25 ether, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
         emit IRegistryFacet.TasksStopped(stoppedTasks, alice);
@@ -890,7 +898,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        vm.warp(2002);
+        vm.warp(1201);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
 
@@ -905,7 +913,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
         assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 1000000);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100000);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
@@ -918,7 +926,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        vm.warp(2002);
+        vm.warp(1201);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
 

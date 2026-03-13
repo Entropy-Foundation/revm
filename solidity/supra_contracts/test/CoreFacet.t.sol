@@ -161,7 +161,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         (uint64 refundDuration, uint128 automationFeePerSec) = ICoreFacet(diamondAddr).getTransitionInfo();
         assertEq(refundDuration, 0);
-        assertEq(automationFeePerSec, 1000000000000000);
+        assertEq(automationFeePerSec, 0.5 ether);
     }
 
     /// @dev Test to ensure 'processTasks' reverts if caller is not VM Signer.
@@ -205,6 +205,10 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory activeTasks = new uint256[](1);
         tasks[0] = 0;
 
+        vm.deal(alice, 200 ether);
+        vm.prank(alice);
+        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+
         vm.expectEmit(true, false, false, false);
         emit ICoreFacet.ActiveTasks(activeTasks);
 
@@ -214,15 +218,15 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 newIndex, uint64 newStart, uint64 newDuration, LibCommon.CycleState newState) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(newIndex, index + 1);
         assertEq(newStart, uint64(block.timestamp));
-        assertEq(newDuration, 2000);
+        assertEq(newDuration, 1200);
         assertEq(uint8(newState), uint8(LibCommon.CycleState.STARTED));
 
         assertEq(IRegistryFacet(diamondAddr).getActiveTaskIds(), activeTasks);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForCurrentCycle(), 1000000);
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 200000000000000000);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForCurrentCycle(), 100000);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 60 ether);
     }
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is FINISHED.
@@ -325,7 +329,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 newIndex, uint64 newStart, uint64 newDuration, LibCommon.CycleState newState) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(newIndex, indexAfter + 1);
         assertEq(newStart, uint64(block.timestamp));
-        assertEq(newDuration, 2000);
+        assertEq(newDuration, 1200);
         assertEq(uint8(newState), uint8(LibCommon.CycleState.STARTED));
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(tasksUint64[0]));
     }

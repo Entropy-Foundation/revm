@@ -25,11 +25,11 @@ contract DiamondInitTest is BaseDiamondTest {
         (uint64 index, uint64 startTime, uint64 durationSecs, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
-        assertEq(durationSecs, 2000);
+        assertEq(durationSecs, 1200);
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
-        assertEq(IRegistryFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 10_000_000);
-        assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 5_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 1_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 1_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
         assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
         assertEq(IConfigFacet(diamondAddr).getVmSigner(), LibUtils.VM_SIGNER);
@@ -37,18 +37,18 @@ contract DiamondInitTest is BaseDiamondTest {
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
 
-        assertEq(config.registryMaxGasCap, 10_000_000);
-        assertEq(config.sysRegistryMaxGasCap, 5_000_000);
-        assertEq(config.automationBaseFeeWeiPerSec, 0.001 ether);
-        assertEq(config.flatRegistrationFeeWei, 0.002 ether);
-        assertEq(config.congestionBaseFeeWeiPerSec, 0.002 ether);
-        assertEq(config.taskDurationCapSecs, 3600);
-        assertEq(config.sysTaskDurationCapSecs, 3600);
-        assertEq(config.cycleDurationSecs, 2000);
-        assertEq(config.taskCapacity, 500);
-        assertEq(config.sysTaskCapacity, 500);
+        assertEq(config.registryMaxGasCap, 1_000_000);
+        assertEq(config.sysRegistryMaxGasCap, 1_000_000);
+        assertEq(config.automationBaseFeeWeiPerSec, 0.5 ether);
+        assertEq(config.flatRegistrationFeeWei, 1 ether);
+        assertEq(config.congestionBaseFeeWeiPerSec, 0.5 ether);
+        assertEq(config.taskDurationCapSecs, 3600 * 24 * 7);
+        assertEq(config.sysTaskDurationCapSecs, 3600 * 24 * 180);
+        assertEq(config.cycleDurationSecs, 1200);
+        assertEq(config.taskCapacity, 400);
+        assertEq(config.sysTaskCapacity, 100);
         assertEq(config.congestionThresholdPercentage, 50);
-        assertEq(config.congestionExponent, 2);
+        assertEq(config.congestionExponent, 6);
     }
 
     /// @dev Test to ensure all interfaces are registered.

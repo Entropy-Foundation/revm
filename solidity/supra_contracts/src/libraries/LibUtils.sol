@@ -29,9 +29,9 @@ library LibUtils {
         if (!isContract(_contractAddr)) { revert AddressCannotBeEOA(); }
     }
 
-    /// @notice Validates a contract address.
-    function validateAddress(address _contractAddr) internal pure {
-        if (_contractAddr == address(0)) { revert AddressCannotBeZero(); }
+    /// @notice Validates an address.
+    function validateAddress(address _addr) internal pure {
+        if (_addr == address(0)) { revert AddressCannotBeZero(); }
     }
 
     /// @notice Checks if an address is VM Signer.

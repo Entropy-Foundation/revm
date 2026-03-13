@@ -2,7 +2,9 @@
 pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
+import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
@@ -11,6 +13,7 @@ import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 abstract contract BaseDiamondTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
+    ERC20SupraHandler erc20SupraHandler;        // ERC20SupraHandler contract
     address diamondAddr;                        // Diamond address
 
     InitParams defaultParams;                   // Default initialization parameters
@@ -22,6 +25,8 @@ abstract contract BaseDiamondTest is Test {
     address admin = address(0xA11CE);
     address alice = address(0x123);
     address bob = address(0x456);
+    address bridge = address(0x789);
+    address erc20SupraHandlerAddr;
 
     /// @dev Sets up initial state for testing.
     /// @dev Sets balance of 'alice' to 100 ether.
@@ -29,9 +34,15 @@ abstract contract BaseDiamondTest is Test {
     function setUp() public {
         vm.deal(alice, 100 ether);
 
-        vm.startPrank(admin);
-        erc20Supra = new ERC20Supra(admin);
+        erc20SupraHandlerAddr = vm.computeCreateAddress(admin, 3);
+        erc20Supra = ERC20Supra(deployErc20Supra(bridge, erc20SupraHandlerAddr));
 
+        vm.startPrank(admin);
+        ERC20SupraHandler impl = new ERC20SupraHandler();
+        bytes memory initData = abi.encodeCall(ERC20SupraHandler.initialize, (admin, address(erc20Supra)));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        erc20SupraHandler = ERC20SupraHandler(payable(address(proxy)));
+        
         defaultParams = LibDiamondUtils.defaultInitParams();
         deployment = LibDiamondUtils.deploy(admin);
         LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), defaultParams, deployment);
@@ -48,21 +59,32 @@ abstract contract BaseDiamondTest is Test {
         );
     }
 
+    /// @dev Helper function to deploy ERC20Supra contract.
+    function deployErc20Supra(address _bridge, address _erc20SupraHandlerAddr) internal returns (address) {
+        vm.startPrank(admin);
+        ERC20Supra impl = new ERC20Supra();
+        bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (admin, _bridge, _erc20SupraHandlerAddr));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        vm.stopPrank();
+
+        return address(proxy);
+    }
+
     /// @dev Helper function to register a UST.
     function registerUst() internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20Supra)); 
         
         vm.startPrank(alice);
-        erc20Supra.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
         IRegistryFacet(diamondAddr).register(
             payload,
-            uint64(block.timestamp + 2250),
-            uint128(1_000_000),
-            uint128(10 gwei),
-            uint128(0.5 ether),
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
             2,
             auxData
         );
@@ -89,7 +111,7 @@ abstract contract BaseDiamondTest is Test {
             storageKeys: keys
         });
 
-        bytes memory callData = abi.encodeCall(ERC20Supra.erc20SupraToNative, 100);
+        bytes memory callData = abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100);
         bytes memory payload = abi.encode(_value, _target, callData, accessList);
 
         return payload;   
