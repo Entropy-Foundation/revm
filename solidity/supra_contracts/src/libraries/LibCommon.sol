@@ -143,6 +143,6 @@ library LibCommon {
 
         delete registryState.tasks[_taskIndex];
         require(registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
-        require(registryState.userTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
+        require(registryState.addressToTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
     }
 }

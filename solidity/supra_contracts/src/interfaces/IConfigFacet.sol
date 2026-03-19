@@ -19,12 +19,6 @@ interface IConfigFacet {
     /// @notice Emitted when task registration is disabled.
     event TaskRegistrationDisabled(bool indexed status);
 
-    /// @notice Emitted when the VM Signer address is updated.
-    event VmSignerUpdated(address indexed oldVmSigner, address indexed newVmSigner);
-
-    /// @notice Emitted when the ERC20Supra address is updated.
-    event Erc20SupraUpdated(address indexed oldErc20Supra, address indexed newErc20Supra);
-
     /// @notice Emitted when the registry fees is withdrawn by the admin.
     event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
 
@@ -62,8 +56,6 @@ interface IConfigFacet {
     function revokeAuthorization(address _account) external;
     function enableRegistration() external;
     function disableRegistration() external;
-    function setVmSigner(address _vmSigner) external;
-    function setErc20Supra(address _erc20Supra) external;
     function withdrawFees(uint256 _amount, address _recipient) external;
     function updateConfigBuffer(
         uint64 _taskDurationCapSecs,

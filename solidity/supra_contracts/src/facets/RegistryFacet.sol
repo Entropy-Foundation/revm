@@ -221,10 +221,10 @@ contract RegistryFacet is IRegistryFacet {
         return LibAppStorage.registryState().taskIdList.values();
     }
 
-    /// @notice Returns all the automation tasks registered by a user.
-    /// @param _user Address of the user to fetch registered tasks for.
-    function getUserTasks(address _user) external view returns (uint256[] memory) {
-        return LibAppStorage.registryState().userTasks[_user].values();
+    /// @notice Returns all the automation tasks registered by an address.
+    /// @param _addr Address to fetch registered tasks for.
+    function getTasksByAddress(address _addr) external view returns (uint256[] memory) {
+        return LibAppStorage.registryState().addressToTasks[_addr].values();
     }
 
     /// @notice Returns all the system tasks available in the registry.

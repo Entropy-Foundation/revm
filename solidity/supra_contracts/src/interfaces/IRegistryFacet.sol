@@ -109,7 +109,7 @@ interface IRegistryFacet {
     function getTotalActiveTasks() external view returns (uint256);
     function getTotalDepositedAutomationFees() external view returns (uint256);
     function getTotalLockedBalance() external view returns (uint256);
-    function getUserTasks(address _user) external view returns (uint256[] memory);
+    function getTasksByAddress(address _addr) external view returns (uint256[] memory);
     function hasActiveSystemTask(address _account, uint64 _taskIndex) external view returns (bool);
     function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) external view returns (bool);
     function hasActiveUserTask(address _account, uint64 _taskIndex) external view returns (bool);

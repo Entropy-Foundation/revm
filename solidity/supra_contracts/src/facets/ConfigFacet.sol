@@ -55,32 +55,6 @@ contract ConfigFacet is IConfigFacet {
         emit TaskRegistrationDisabled(s.registrationEnabled);   
     }
 
-    /// @notice Function to update the VM Signer address.
-    /// @param _vmSigner New address for VM Signer.
-    function setVmSigner(address _vmSigner) external {
-        LibDiamond.enforceIsContractOwner();
-
-        LibUtils.validateAddress(_vmSigner);
-
-        address oldVmSigner = s.vmSigner;
-        s.vmSigner = _vmSigner;
-
-        emit VmSignerUpdated(oldVmSigner, _vmSigner);
-    }
-
-    /// @notice Function to update the ERC20Supra address.
-    /// @param _erc20Supra New address for ERC20Supra.
-    function setErc20Supra(address _erc20Supra) external {
-        LibDiamond.enforceIsContractOwner();
-
-        LibUtils.validateContractAddress(_erc20Supra);
-
-        address oldErc20Supra = s.erc20Supra;
-        s.erc20Supra = _erc20Supra;
-
-        emit Erc20SupraUpdated(oldErc20Supra, _erc20Supra);
-    }
-
     /// @notice Function to withdraw the accumulated fees.
     /// @param _amount Amount to withdraw.
     /// @param _recipient Address to withdraw fees to.

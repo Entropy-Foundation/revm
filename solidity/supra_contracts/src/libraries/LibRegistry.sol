@@ -186,7 +186,7 @@ library LibRegistry {
     
         registryState.tasks[taskIndex] = taskMetadata;
         require(registryState.taskIdList.add(taskIndex), TaskIndexNotUnique());
-        require(registryState.userTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
+        require(registryState.addressToTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
     
         if (!_isUst) {
             require(registryState.sysTaskIds.add(taskIndex), TaskIndexNotUnique());

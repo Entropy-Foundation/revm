@@ -164,7 +164,7 @@ view_user_tasks() {
     read -r user
 
     RAW=$(cast call "$DIAMOND" \
-        "getUserTasks(address)(uint256[])" \
+        "getTasksByAddress(address)(uint256[])" \
         "$user" \
         --rpc-url "$RPC_URL")
 

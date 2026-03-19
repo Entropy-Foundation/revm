@@ -260,7 +260,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
 
-        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getUserTasks(alice);
+        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getTasksByAddress(alice);
         assertEq(userTasks.length, 1);
         assertEq(userTasks[0], 0);
 
@@ -440,7 +440,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
         assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
 
-        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getUserTasks(bob);
+        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getTasksByAddress(bob);
         assertEq(userTasks.length, 1);
         assertEq(userTasks[0], 0);
 
@@ -573,7 +573,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(alice).length, 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 31.05 ether);
@@ -674,7 +674,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(bob).length, 0);
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
         assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
@@ -788,7 +788,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getUserTasks(alice).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(alice).length, 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 59.75 ether);
@@ -910,7 +910,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).getUserTasks(bob).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(bob).length, 0);
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
         assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100000);

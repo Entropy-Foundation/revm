@@ -202,21 +202,19 @@ library LibDiamondUtils {
         //                      ConfigFacet
         // ------------------------------------------------------------
         {
-            bytes4[] memory selectors = new bytes4[](13);
+            bytes4[] memory selectors = new bytes4[](11);
             selectors[0] = ConfigFacet.grantAuthorization.selector;
             selectors[1] = ConfigFacet.revokeAuthorization.selector;
             selectors[2] = ConfigFacet.enableRegistration.selector;
             selectors[3] = ConfigFacet.disableRegistration.selector;
-            selectors[4] = ConfigFacet.setVmSigner.selector;
-            selectors[5] = ConfigFacet.setErc20Supra.selector;
-            selectors[6] = ConfigFacet.withdrawFees.selector;
-            selectors[7] = ConfigFacet.updateConfigBuffer.selector;
+            selectors[4] = ConfigFacet.withdrawFees.selector;
+            selectors[5] = ConfigFacet.updateConfigBuffer.selector;
             
-            selectors[8] = ConfigFacet.getVmSigner.selector;
-            selectors[9] = ConfigFacet.erc20Supra.selector;
-            selectors[10] = ConfigFacet.isRegistrationEnabled.selector;
-            selectors[11] = ConfigFacet.getConfig.selector;
-            selectors[12] = ConfigFacet.getConfigBuffer.selector;
+            selectors[6] = ConfigFacet.getVmSigner.selector;
+            selectors[7] = ConfigFacet.erc20Supra.selector;
+            selectors[8] = ConfigFacet.isRegistrationEnabled.selector;
+            selectors[9] = ConfigFacet.getConfig.selector;
+            selectors[10] = ConfigFacet.getConfigBuffer.selector;
 
             cut[2] = IDiamondCut.FacetCut({
                 facetAddress: configFacet,
@@ -266,7 +264,7 @@ library LibDiamondUtils {
             selectors[32] = RegistryFacet.estimateAutomationFeeWithCommittedOccupancy.selector;
             selectors[33] = RegistryFacet.ifTaskExists.selector;
             selectors[34] = RegistryFacet.ifSysTaskExists.selector;
-            selectors[35] = RegistryFacet.getUserTasks.selector;
+            selectors[35] = RegistryFacet.getTasksByAddress.selector;
 
             cut[3] = IDiamondCut.FacetCut({
                 facetAddress: registryFacet,
