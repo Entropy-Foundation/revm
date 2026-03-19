@@ -10,8 +10,9 @@ use alloy_eips::eip2718::Typed2718;
 use alloy_sol_types::SolType;
 use context::transaction::{AccessListItem, SignedAuthorization};
 use context::TransactionType;
-use derive_getters::Getters;
+use derive_getters::{Dissolve, Getters};
 use primitives::TxKind;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -239,6 +240,36 @@ type ExpandedPayloadTy = (
     alloy_sol_types::sol_data::Bytes,
     AccessListTy,
 );
+
+/// Evm automation task execution payload.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Getters, Dissolve)]
+pub struct TaskPayload {
+    to: Address,
+    value: U256,
+    input: Bytes,
+    access_list: AccessList,
+}
+
+impl TryFrom<&[u8]> for TaskPayload {
+    type Error = SupraExtensionError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(value)?;
+        let access_items = access_list
+            .into_iter()
+            .map(|(address, storage_keys)| AccessListItem {
+                address,
+                storage_keys,
+            })
+            .collect();
+        Ok(Self {
+            to,
+            value,
+            access_list: AccessList(access_items),
+            input,
+        })
+    }
+}
 
 /// Automation task state in native layer
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -483,14 +514,7 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
         }
         let typ = AutomatedTransactionType::try_from(taskType)?;
 
-        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(payloadTx.as_ref())?;
-        let access_items = access_list
-            .into_iter()
-            .map(|(address, storage_keys)| AccessListItem {
-                address,
-                storage_keys,
-            })
-            .collect();
+        let (to, value, input, access_list) = TaskPayload::try_from(payloadTx.as_ref())?.dissolve();
         let builder = Self::new()
             .with_gas_price_cap(gasPriceCap)
             .with_gas_limit(maxGasAmount as u64)
@@ -502,7 +526,7 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
             .with_to(to)
             .with_value(value)
             .with_input(input)
-            .with_access_list(AccessList(access_items))
+            .with_access_list(access_list)
             .with_tpy(typ)
             .with_priority(priority);
         Ok(builder)
