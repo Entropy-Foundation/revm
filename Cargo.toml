@@ -144,6 +144,7 @@ serde_derive = "1.0"
 thiserror = "2.0"
 triehash = "0.8"
 walkdir = "2.5"
+gmp-mpfr-sys = "1.6.8"
 
 [workspace.package]
 license = "MIT"
@@ -163,6 +164,10 @@ rust.rust_2018_idioms = { level = "deny", priority = -1 }
 rust.unreachable_pub = "warn"
 rust.unused_must_use = "deny"
 rustdoc.all = "warn"
+
+[patch.crates-io]
+gmp-mpfr-sys = { git = "ssh://git@github.com/Entropy-Foundation/gmp-mpfr-sys", branch="master" }
+
 
 [workspace.metadata.docs.rs]
 all-features = true
