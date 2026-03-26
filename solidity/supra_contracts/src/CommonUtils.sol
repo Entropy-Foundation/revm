@@ -52,6 +52,16 @@ library CommonUtils {
         bytes[] auxData;
     }
 
+    /// @notice Cycle details
+    struct CycleDetails {
+        uint64 index;
+        uint64 startTime;
+        uint64 durationSecs;
+        CycleState state;
+        uint64 nextTaskIndexPosition;
+        uint64[] expectedTasksToBeProcessed;
+    }
+
     function getTaskDetails(LibRegistry.TaskMetadata storage t) internal view returns (TaskDetails memory details) {
         // --- Decode maxGasAmount (upper 128 bits) ---
         details.maxGasAmount = uint128(t.maxGasAmount_gasPriceCap >> 128);
