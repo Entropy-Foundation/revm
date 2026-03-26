@@ -166,30 +166,31 @@ impl AutomationRecordBuilder {
             cycle_index: None,
         }
     }
-    pub fn block_height(mut self, block_height: u64) -> Self {
+    pub fn with_block_height(mut self, block_height: u64) -> Self {
         self.block_height = Some(block_height);
         self
     }
-    pub fn nonce(mut self, nonce: u64) -> Self {
+
+    pub fn with_nonce(mut self, nonce: u64) -> Self {
         self.nonce = Some(nonce);
         self
     }
 
-    pub fn gas_limit(mut self, gas_limit: u64) -> Self {
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
     }
-    pub fn task_indexes(mut self, task_indexes: Vec<u64>) -> Self {
+    pub fn with_task_indexes(mut self, task_indexes: Vec<u64>) -> Self {
         self.task_indexes = Some(task_indexes);
         self
     }
 
-    pub fn cycle_index(mut self, cycle_index: u64) -> Self {
+    pub fn with_cycle_index(mut self, cycle_index: u64) -> Self {
         self.cycle_index = Some(cycle_index);
         self
     }
 
-    pub fn chain_id(mut self, chain_id: ChainId) -> Self {
+    pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
         self.chain_id = Some(chain_id);
         self
     }
@@ -222,11 +223,21 @@ impl AutomationRecordBuilder {
         })
     }
 
-    fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
+    /// Generates [`AutomationRegistryRecord`] input data to process tasks.
+    pub fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
         let process_task_call = processTasksCall {
             _cycleIndex: _cycle_index,
             _taskIndexes: _task_indexes,
         };
         Bytes::from(process_task_call.abi_encode())
+    }
+
+    pub  fn task_count(&self) -> usize {
+        self.task_indexes.as_ref().map(|idx| idx.len()).unwrap_or(0)
+    }
+
+    pub fn into_task_indexes(self) -> Vec<u64> {
+        self.task_indexes.unwrap_or_default()
+
     }
 }

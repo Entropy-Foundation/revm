@@ -10,9 +10,13 @@ use alloy_eips::eip2718::Typed2718;
 use alloy_sol_types::SolType;
 use context::transaction::{AccessListItem, SignedAuthorization};
 use context::TransactionType;
+use derive_getters::{Dissolve, Getters};
+use derive_more::Constructor;
 use primitives::TxKind;
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[repr(u8)]
@@ -20,9 +24,21 @@ use primitives::TxKind;
 pub enum AutomatedTransactionType {
     /// User submitted automation task based
     #[default]
-    UST,
+    UST = 0,
     /// Governance submitted/authorized automation task based. Will be gasless transaction
     GST,
+}
+
+impl TryFrom<u8> for AutomatedTransactionType {
+    type Error = SupraExtensionError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::UST),
+            1 => Ok(Self::GST),
+            _ => Err(Self::Error::InvalidAutomationTaskTypeValue(value)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -82,11 +98,8 @@ pub struct AutomatedTransaction {
         serde(deserialize_with = "alloy_serde::null_as_default")
     )]
     pub access_list: AccessList,
-    /// Input has two uses depending if `to` field is Create or Call.
-    /// pub init: An unlimited size byte array specifying the
-    /// EVM-code for the account initialisation procedure CREATE,
-    /// data: An unlimited size byte array specifying the
-    /// input data of the message call, formally Td.
+    /// Input: An unlimited size byte array specifying the
+    /// input data of the message call.
     pub input: Bytes,
 }
 
@@ -200,6 +213,23 @@ pub struct AutomatedTransactionDetails {
     pub priority: u64,
 }
 
+impl Ord for AutomatedTransactionDetails {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let left_type = &self.txn.txn_type;
+        let right_type = &other.txn.txn_type;
+        if left_type == right_type {
+            self.priority.cmp(&other.priority)
+        } else {
+            left_type.cmp(right_type)
+        }
+    }
+}
+impl PartialOrd for AutomatedTransactionDetails {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 type AccessListItemTy = (
     alloy_sol_types::sol_data::Address,
     alloy_sol_types::sol_data::Array<alloy_sol_types::sol_data::FixedBytes<32>>,
@@ -211,6 +241,50 @@ type ExpandedPayloadTy = (
     alloy_sol_types::sol_data::Bytes,
     AccessListTy,
 );
+
+/// Evm automation task execution payload.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Getters, Dissolve, Constructor)]
+pub struct TaskPayload {
+    to: Address,
+    value: U256,
+    input: Bytes,
+    access_list: AccessList,
+}
+
+impl TaskPayload {
+
+    /// Generates random [`TaskPayload`] for testing propose only.
+    pub fn random() -> Self {
+        TaskPayload {
+            to: Address::random(),
+            value: U256::random(),
+            input: Bytes::from(b"test"),
+            access_list: AccessList::default(),
+        }
+    }
+
+}
+
+impl TryFrom<&[u8]> for TaskPayload {
+    type Error = SupraExtensionError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(value)?;
+        let access_items = access_list
+            .into_iter()
+            .map(|(address, storage_keys)| AccessListItem {
+                address,
+                storage_keys,
+            })
+            .collect();
+        Ok(Self {
+            to,
+            value,
+            access_list: AccessList(access_items),
+            input,
+        })
+    }
+}
 
 /// Automation task state in native layer
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -240,10 +314,12 @@ pub enum BuildResult {
     Success(AutomatedTransactionDetails),
     /// Build failure due to gas-price limit surpass.
     GasPriceLimitExceeded {
-        /// Gas price specified for the transaction
-        gas_price: u128,
+        /// Task index for which error is observed.
+        task_index: u64,
+        /// Gas price specified for the transaction.
+        value: u128,
         /// Gas price threshold specified for the automation task during registration.
-        gas_price_cap: u128,
+        threshold: u128,
     },
 }
 
@@ -253,13 +329,13 @@ pub enum BuildResult {
 ///   - priority - defaults to task-index
 ///   - access_list - default to empty access-list
 ///   - value - defaults to 0
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters)]
 pub struct AutomatedTransactionBuilder {
     block_height: Option<u64>,
     chain_id: Option<ChainId>,
     gas_limit: Option<u64>,
     gas_price: Option<u128>,
-    gas_price_cap: u128,
+    gas_price_cap: Option<u128>,
     registration_hash: Option<B256>,
     task_index: Option<u64>,
     expiry_timestamp: Option<u64>,
@@ -275,13 +351,13 @@ pub struct AutomatedTransactionBuilder {
 
 #[allow(missing_docs)]
 impl AutomatedTransactionBuilder {
-    pub fn new(gas_price_cap: u128) -> Self {
+    pub fn new() -> Self {
         Self {
             block_height: None,
             chain_id: None,
             gas_limit: None,
             gas_price: None,
-            gas_price_cap,
+            gas_price_cap: None,
             registration_hash: None,
             task_index: None,
             expiry_timestamp: None,
@@ -295,65 +371,65 @@ impl AutomatedTransactionBuilder {
         }
     }
 
-    pub fn block_height(mut self, block_height: u64) -> Self {
+    pub fn with_block_height(mut self, block_height: u64) -> Self {
         self.block_height = Some(block_height);
         self
     }
 
-    pub fn chain_id(mut self, chain_id: ChainId) -> Self {
+    pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
         self.chain_id = Some(chain_id);
         self
     }
 
-    pub fn gas_limit(mut self, gas_limit: u64) -> Self {
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
     }
-    pub fn gas_price(mut self, gas_price: u128) -> Self {
+    pub fn with_gas_price(mut self, gas_price: u128) -> Self {
         self.gas_price = Some(gas_price);
         self
     }
-    pub fn gas_price_cap(mut self, gas_price_cap: u128) -> Self {
-        self.gas_price_cap = gas_price_cap;
+    pub fn with_gas_price_cap(mut self, gas_price_cap: u128) -> Self {
+        self.gas_price_cap = Some(gas_price_cap);
         self
     }
-    pub fn registration_hash(mut self, registration_hash: B256) -> Self {
+    pub fn with_registration_hash(mut self, registration_hash: B256) -> Self {
         self.registration_hash = Some(registration_hash);
         self
     }
-    pub fn task_index(mut self, task_index: u64) -> Self {
+    pub fn with_task_index(mut self, task_index: u64) -> Self {
         self.task_index = Some(task_index);
         self
     }
-    pub fn expiry_timestamp(mut self, expiry_timestamp: u64) -> Self {
+    pub fn with_expiry_timestamp(mut self, expiry_timestamp: u64) -> Self {
         self.expiry_timestamp = Some(expiry_timestamp);
         self
     }
-    pub fn owner(mut self, owner: Address) -> Self {
+    pub fn with_owner(mut self, owner: Address) -> Self {
         self.owner = Some(owner);
         self
     }
-    pub fn tpy(mut self, tpy: AutomatedTransactionType) -> Self {
+    pub fn with_tpy(mut self, tpy: AutomatedTransactionType) -> Self {
         self.tpy = Some(tpy);
         self
     }
-    pub fn priority(mut self, priority: u64) -> Self {
+    pub fn with_priority(mut self, priority: u64) -> Self {
         self.priority = Some(priority);
         self
     }
-    pub fn to(mut self, to: Address) -> Self {
+    pub fn with_to(mut self, to: Address) -> Self {
         self.to = Some(to);
         self
     }
-    pub fn value(mut self, value: U256) -> Self {
+    pub fn with_value(mut self, value: U256) -> Self {
         self.value = Some(value);
         self
     }
-    pub fn access_list(mut self, access_list: AccessList) -> Self {
+    pub fn with_access_list(mut self, access_list: AccessList) -> Self {
         self.access_list = Some(access_list);
         self
     }
-    pub fn input(mut self, input: Bytes) -> Self {
+    pub fn with_input(mut self, input: Bytes) -> Self {
         self.input = Some(input);
         self
     }
@@ -379,7 +455,9 @@ impl AutomatedTransactionBuilder {
             value_or_error!(AutomatedTransactionBuilder, "block_height", block_height);
         let chain_id = value_or_error!(AutomatedTransactionBuilder, "chain_id", chain_id);
         let gas_limit = value_or_error!(AutomatedTransactionBuilder, "gas_limit", gas_limit);
-        let gas_price = value_or_error!(AutomatedTransactionBuilder, "gasPrice", gas_price);
+        let gas_price_cap =
+            value_or_error!(AutomatedTransactionBuilder, "gas_price_cap", gas_price_cap);
+        let gas_price = value_or_error!(AutomatedTransactionBuilder, "gas_price", gas_price);
         let registration_hash = value_or_error!(
             AutomatedTransactionBuilder,
             "registration_hash",
@@ -395,8 +473,9 @@ impl AutomatedTransactionBuilder {
         let input = value_or_error!(AutomatedTransactionBuilder, "input", input);
         if gas_price_cap < gas_price {
             return Ok(BuildResult::GasPriceLimitExceeded {
-                gas_price,
-                gas_price_cap,
+                task_index,
+                value: gas_price,
+                threshold: gas_price_cap,
             });
         }
         let txn = AutomatedTransaction {
@@ -417,15 +496,6 @@ impl AutomatedTransactionBuilder {
             txn,
             priority,
         }))
-    }
-
-    /// Checks whether the task/transaction can be considered as expired compared to the input
-    /// timestamp threshold value
-    /// If no expiry timestamp is specified, the potential underlying task is not considered as expired.
-    pub fn is_expired(&self, threshold: u64) -> bool {
-        self.expiry_timestamp
-            .map(|t| t < threshold)
-            .unwrap_or(false)
     }
 }
 
@@ -457,26 +527,23 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
         if AutomationTaskState::try_from(state)? == AutomationTaskState::Pending {
             return Err(SupraExtensionError::InvalidAutomationTaskStateForBuilder);
         }
+        let typ = AutomatedTransactionType::try_from(taskType)?;
 
-        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(payloadTx.as_ref())?;
-        let access_items = access_list
-            .into_iter()
-            .map(|(address, storage_keys)| AccessListItem {
-                address,
-                storage_keys,
-            })
-            .collect();
-        let builder = Self::new(gasPriceCap)
-            .gas_limit(maxGasAmount as u64)
-            .gas_price_cap(gasPriceCap)
-            .registration_hash(txHash)
-            .task_index(taskIndex)
-            .expiry_timestamp(expiryTime)
-            .owner(owner)
-            .to(to)
-            .value(value)
-            .input(input)
-            .access_list(AccessList(access_items));
+        let (to, value, input, access_list) = TaskPayload::try_from(payloadTx.as_ref())?.dissolve();
+        let builder = Self::new()
+            .with_gas_price_cap(gasPriceCap)
+            .with_gas_limit(maxGasAmount as u64)
+            .with_gas_price_cap(gasPriceCap)
+            .with_registration_hash(txHash)
+            .with_task_index(taskIndex)
+            .with_expiry_timestamp(expiryTime)
+            .with_owner(owner)
+            .with_to(to)
+            .with_value(value)
+            .with_input(input)
+            .with_access_list(access_list)
+            .with_tpy(typ)
+            .with_priority(priority);
         Ok(builder)
     }
 }
@@ -487,7 +554,7 @@ mod test {
     use alloy::hex;
     use alloy_sol_types::SolType;
     #[test]
-    fn check_decode() {
+    fn check_payload_decode() {
         let encoded = hex!("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000006b182f1488e8efeb2eb298155ed5bd7ff8a14042000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000242e1a7d4d0000000000000000000000000000000000000000000000000000000000000064000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000001111000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000022220000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
         let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(&encoded).unwrap();
         println!("to: {:?}", to);

@@ -2522,12 +2522,12 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 
 [[package]]
 name = "gmp-mpfr-sys"
-version = "1.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c66d61197a68f6323b9afa616cf83d55d69191e1bf364d4eb7d35ae18defe776"
+version = "1.6.8"
+source = "git+ssh://git@github.com/Entropy-Foundation/bicycl-rs?rev=05f9c22eef4c30f55e9633640269e7c9296510f0#05f9c22eef4c30f55e9633640269e7c9296510f0"
 dependencies = [
+ "cc",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IAutomationRegistry} from "../src/IAutomationRegistry.sol";
+import {AutomationRegistry} from "../src/AutomationRegistry.sol";
 import {CommonUtils} from "../src/CommonUtils.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {LibConfig} from "../src/LibConfig.sol";
@@ -62,6 +63,31 @@ contract RegisterAutomationTask is Script {
         bytes memory payload = abi.encode(_value, cAddress, callData, accessList);
 
         return payload;
+    }
+
+}
+
+contract CancelAutomationTask is Script {
+    address registry;
+    uint64 taskIndex;
+
+    address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
+    // Config values loaded from .env file
+    function setUp() public {
+        registry = vm.envAddress("REGISTRY");
+        taskIndex = uint64(vm.envUint("TASK_INDEX"));
+
+        TxHashPrecompile deployed = new TxHashPrecompile();
+        vm.etch(TX_HASH_PRECOMPILE, address(deployed).code);
+    }
+
+    function run() public {
+        vm.startBroadcast();
+        AutomationRegistry registryImpl = AutomationRegistry(registry);
+
+        registryImpl.cancelTask( taskIndex);
+
+        vm.stopBroadcast();
     }
 
 }

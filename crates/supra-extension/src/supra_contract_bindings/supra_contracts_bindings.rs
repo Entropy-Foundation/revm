@@ -1421,6 +1421,8 @@ library CommonUtils {
 }
 
 interface SupraContractsBindings {
+    event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed state, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState indexed oldState);
+
     function blockPrologue() external;
     function getAllActiveTaskIds() external view returns (uint256[] memory);
     function getCycleStateDetails() external view returns (CommonUtils.CycleDetails memory details);
@@ -1725,6 +1727,43 @@ interface SupraContractsBindings {
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AutomationCycleEvent",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint64",
+        "indexed": true,
+        "internalType": "uint64"
+      },
+      {
+        "name": "state",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum CommonUtils.CycleState"
+      },
+      {
+        "name": "startTime",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "durationSecs",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "oldState",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum CommonUtils.CycleState"
+      }
+    ],
+    "anonymous": false
   }
 ]
 ```*/
@@ -1758,6 +1797,150 @@ pub mod SupraContractsBindings {
     pub static DEPLOYED_BYTECODE: alloy_sol_types::private::Bytes = alloy_sol_types::private::Bytes::from_static(
         b"",
     );
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    /**Event with signature `AutomationCycleEvent(uint64,uint8,uint64,uint64,uint8)` and selector `0xe3a609ff9d35dde784f4ecc5c5988b3a4ad5ebeabb27e7ad22a76570128e51df`.
+```solidity
+event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed state, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState indexed oldState);
+```*/
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    #[derive(Clone)]
+    pub struct AutomationCycleEvent {
+        #[allow(missing_docs)]
+        pub index: u64,
+        #[allow(missing_docs)]
+        pub state: <CommonUtils::CycleState as alloy::sol_types::SolType>::RustType,
+        #[allow(missing_docs)]
+        pub startTime: u64,
+        #[allow(missing_docs)]
+        pub durationSecs: u64,
+        #[allow(missing_docs)]
+        pub oldState: <CommonUtils::CycleState as alloy::sol_types::SolType>::RustType,
+    }
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        #[automatically_derived]
+        impl alloy_sol_types::SolEvent for AutomationCycleEvent {
+            type DataTuple<'a> = (
+                alloy::sol_types::sol_data::Uint<64>,
+                alloy::sol_types::sol_data::Uint<64>,
+            );
+            type DataToken<'a> = <Self::DataTuple<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            type TopicList = (
+                alloy_sol_types::sol_data::FixedBytes<32>,
+                alloy::sol_types::sol_data::Uint<64>,
+                CommonUtils::CycleState,
+                CommonUtils::CycleState,
+            );
+            const SIGNATURE: &'static str = "AutomationCycleEvent(uint64,uint8,uint64,uint64,uint8)";
+            const SIGNATURE_HASH: alloy_sol_types::private::B256 = alloy_sol_types::private::B256::new([
+                227u8, 166u8, 9u8, 255u8, 157u8, 53u8, 221u8, 231u8, 132u8, 244u8, 236u8,
+                197u8, 197u8, 152u8, 139u8, 58u8, 74u8, 213u8, 235u8, 234u8, 187u8, 39u8,
+                231u8, 173u8, 34u8, 167u8, 101u8, 112u8, 18u8, 142u8, 81u8, 223u8,
+            ]);
+            const ANONYMOUS: bool = false;
+            #[allow(unused_variables)]
+            #[inline]
+            fn new(
+                topics: <Self::TopicList as alloy_sol_types::SolType>::RustType,
+                data: <Self::DataTuple<'_> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                Self {
+                    index: topics.1,
+                    state: topics.2,
+                    startTime: data.0,
+                    durationSecs: data.1,
+                    oldState: topics.3,
+                }
+            }
+            #[inline]
+            fn check_signature(
+                topics: &<Self::TopicList as alloy_sol_types::SolType>::RustType,
+            ) -> alloy_sol_types::Result<()> {
+                if topics.0 != Self::SIGNATURE_HASH {
+                    return Err(
+                        alloy_sol_types::Error::invalid_event_signature_hash(
+                            Self::SIGNATURE,
+                            topics.0,
+                            Self::SIGNATURE_HASH,
+                        ),
+                    );
+                }
+                Ok(())
+            }
+            #[inline]
+            fn tokenize_body(&self) -> Self::DataToken<'_> {
+                (
+                    <alloy::sol_types::sol_data::Uint<
+                        64,
+                    > as alloy_sol_types::SolType>::tokenize(&self.startTime),
+                    <alloy::sol_types::sol_data::Uint<
+                        64,
+                    > as alloy_sol_types::SolType>::tokenize(&self.durationSecs),
+                )
+            }
+            #[inline]
+            fn topics(&self) -> <Self::TopicList as alloy_sol_types::SolType>::RustType {
+                (
+                    Self::SIGNATURE_HASH.into(),
+                    self.index.clone(),
+                    self.state.clone(),
+                    self.oldState.clone(),
+                )
+            }
+            #[inline]
+            fn encode_topics_raw(
+                &self,
+                out: &mut [alloy_sol_types::abi::token::WordToken],
+            ) -> alloy_sol_types::Result<()> {
+                if out.len() < <Self::TopicList as alloy_sol_types::TopicList>::COUNT {
+                    return Err(alloy_sol_types::Error::Overrun);
+                }
+                out[0usize] = alloy_sol_types::abi::token::WordToken(
+                    Self::SIGNATURE_HASH,
+                );
+                out[1usize] = <alloy::sol_types::sol_data::Uint<
+                    64,
+                > as alloy_sol_types::EventTopic>::encode_topic(&self.index);
+                out[2usize] = <CommonUtils::CycleState as alloy_sol_types::EventTopic>::encode_topic(
+                    &self.state,
+                );
+                out[3usize] = <CommonUtils::CycleState as alloy_sol_types::EventTopic>::encode_topic(
+                    &self.oldState,
+                );
+                Ok(())
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::private::IntoLogData for AutomationCycleEvent {
+            fn to_log_data(&self) -> alloy_sol_types::private::LogData {
+                From::from(self)
+            }
+            fn into_log_data(self) -> alloy_sol_types::private::LogData {
+                From::from(&self)
+            }
+        }
+        #[automatically_derived]
+        impl From<&AutomationCycleEvent> for alloy_sol_types::private::LogData {
+            #[inline]
+            fn from(this: &AutomationCycleEvent) -> alloy_sol_types::private::LogData {
+                alloy_sol_types::SolEvent::encode_log_data(this)
+            }
+        }
+    };
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `blockPrologue()` and selector `0x7ded091b`.
@@ -3430,6 +3613,106 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
             }
         }
     }
+    ///Container for all the [`SupraContractsBindings`](self) events.
+    #[derive(Clone)]
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub enum SupraContractsBindingsEvents {
+        #[allow(missing_docs)]
+        AutomationCycleEvent(AutomationCycleEvent),
+    }
+    impl SupraContractsBindingsEvents {
+        /// All the selectors of this enum.
+        ///
+        /// Note that the selectors might not be in the same order as the variants.
+        /// No guarantees are made about the order of the selectors.
+        ///
+        /// Prefer using `SolInterface` methods instead.
+        pub const SELECTORS: &'static [[u8; 32usize]] = &[
+            [
+                227u8, 166u8, 9u8, 255u8, 157u8, 53u8, 221u8, 231u8, 132u8, 244u8, 236u8,
+                197u8, 197u8, 152u8, 139u8, 58u8, 74u8, 213u8, 235u8, 234u8, 187u8, 39u8,
+                231u8, 173u8, 34u8, 167u8, 101u8, 112u8, 18u8, 142u8, 81u8, 223u8,
+            ],
+        ];
+        /// The names of the variants in the same order as `SELECTORS`.
+        pub const VARIANT_NAMES: &'static [&'static str] = &[
+            ::core::stringify!(AutomationCycleEvent),
+        ];
+        /// The signatures in the same order as `SELECTORS`.
+        pub const SIGNATURES: &'static [&'static str] = &[
+            <AutomationCycleEvent as alloy_sol_types::SolEvent>::SIGNATURE,
+        ];
+        /// Returns the signature for the given selector, if known.
+        #[inline]
+        pub fn signature_by_selector(
+            selector: [u8; 32usize],
+        ) -> ::core::option::Option<&'static str> {
+            match Self::SELECTORS.binary_search(&selector) {
+                ::core::result::Result::Ok(idx) => {
+                    ::core::option::Option::Some(Self::SIGNATURES[idx])
+                }
+                ::core::result::Result::Err(_) => ::core::option::Option::None,
+            }
+        }
+        /// Returns the enum variant name for the given selector, if known.
+        #[inline]
+        pub fn name_by_selector(
+            selector: [u8; 32usize],
+        ) -> ::core::option::Option<&'static str> {
+            let sig = Self::signature_by_selector(selector)?;
+            sig.split_once('(').map(|(name, _)| name)
+        }
+    }
+    #[automatically_derived]
+    impl alloy_sol_types::SolEventInterface for SupraContractsBindingsEvents {
+        const NAME: &'static str = "SupraContractsBindingsEvents";
+        const COUNT: usize = 1usize;
+        fn decode_raw_log(
+            topics: &[alloy_sol_types::Word],
+            data: &[u8],
+        ) -> alloy_sol_types::Result<Self> {
+            match topics.first().copied() {
+                Some(
+                    <AutomationCycleEvent as alloy_sol_types::SolEvent>::SIGNATURE_HASH,
+                ) => {
+                    <AutomationCycleEvent as alloy_sol_types::SolEvent>::decode_raw_log(
+                            topics,
+                            data,
+                        )
+                        .map(Self::AutomationCycleEvent)
+                }
+                _ => {
+                    alloy_sol_types::private::Err(alloy_sol_types::Error::InvalidLog {
+                        name: <Self as alloy_sol_types::SolEventInterface>::NAME,
+                        log: alloy_sol_types::private::Box::new(
+                            alloy_sol_types::private::LogData::new_unchecked(
+                                topics.to_vec(),
+                                data.to_vec().into(),
+                            ),
+                        ),
+                    })
+                }
+            }
+        }
+    }
+    #[automatically_derived]
+    impl alloy_sol_types::private::IntoLogData for SupraContractsBindingsEvents {
+        fn to_log_data(&self) -> alloy_sol_types::private::LogData {
+            match self {
+                Self::AutomationCycleEvent(inner) => {
+                    alloy_sol_types::private::IntoLogData::to_log_data(inner)
+                }
+            }
+        }
+        fn into_log_data(self) -> alloy_sol_types::private::LogData {
+            match self {
+                Self::AutomationCycleEvent(inner) => {
+                    alloy_sol_types::private::IntoLogData::into_log_data(inner)
+                }
+            }
+        }
+    }
     use alloy::contract as alloy_contract;
     /**Creates a new wrapper around an on-chain [`SupraContractsBindings`](self) contract instance.
 
@@ -3662,6 +3945,12 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             &self,
         ) -> alloy_contract::Event<&P, E, N> {
             alloy_contract::Event::new_sol(&self.provider, &self.address)
+        }
+        ///Creates a new event filter for the [`AutomationCycleEvent`] event.
+        pub fn AutomationCycleEvent_filter(
+            &self,
+        ) -> alloy_contract::Event<&P, AutomationCycleEvent, N> {
+            self.event_filter::<AutomationCycleEvent>()
         }
     }
 }
