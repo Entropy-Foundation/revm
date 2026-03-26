@@ -223,7 +223,8 @@ impl AutomationRecordBuilder {
         })
     }
 
-    fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
+    /// Generates [`AutomationRegistryRecord`] input data to process tasks.
+    pub fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
         let process_task_call = processTasksCall {
             _cycleIndex: _cycle_index,
             _taskIndexes: _task_indexes,

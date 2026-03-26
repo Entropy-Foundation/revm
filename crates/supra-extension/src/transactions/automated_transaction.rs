@@ -11,6 +11,7 @@ use alloy_sol_types::SolType;
 use context::transaction::{AccessListItem, SignedAuthorization};
 use context::TransactionType;
 use derive_getters::{Dissolve, Getters};
+use derive_more::Constructor;
 use primitives::TxKind;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -242,12 +243,26 @@ type ExpandedPayloadTy = (
 );
 
 /// Evm automation task execution payload.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Getters, Dissolve)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Getters, Dissolve, Constructor)]
 pub struct TaskPayload {
     to: Address,
     value: U256,
     input: Bytes,
     access_list: AccessList,
+}
+
+impl TaskPayload {
+
+    /// Generates random [`TaskPayload`] for testing propose only.
+    pub fn random() -> Self {
+        TaskPayload {
+            to: Address::random(),
+            value: U256::random(),
+            input: Bytes::from(b"test"),
+            access_list: AccessList::default(),
+        }
+    }
+
 }
 
 impl TryFrom<&[u8]> for TaskPayload {
