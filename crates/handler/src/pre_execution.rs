@@ -115,6 +115,7 @@ pub fn validate_against_state_and_deduct_caller<
     context: &mut CTX,
 ) -> Result<(), ERROR> {
     let should_update_nonce = context.cfg().execution_mode().updates_nonce();
+    let charges_gas = context.cfg().execution_mode().charges_gas();
     let basefee = context.block().basefee() as u128;
     let blob_price = context.block().blob_gasprice().unwrap_or_default();
     let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
@@ -134,7 +135,11 @@ pub fn validate_against_state_and_deduct_caller<
         is_nonce_check_disabled,
     )?;
 
-    let max_balance_spending = tx.max_balance_spending()?;
+    let max_balance_spending = if charges_gas {
+        tx.max_balance_spending()?
+    } else {
+        tx.value()
+    };
 
     // Check if account has enough balance for `gas_limit * max_fee`` and value transfer.
     // Transfer will be done inside `*_inner` functions.
@@ -146,9 +151,12 @@ pub fn validate_against_state_and_deduct_caller<
         .into());
     }
 
-    let effective_balance_spending = tx
-        .effective_balance_spending(basefee, blob_price)
-        .expect("effective balance is always smaller than max balance so it can't overflow");
+    let effective_balance_spending = if charges_gas {
+        tx.effective_balance_spending(basefee, blob_price)
+            .expect("effective balance is always smaller than max balance so it can't overflow")
+    } else {
+        tx.value()
+    };
 
     // subtracting max balance spending with value that is going to be deducted later in the call.
     let gas_balance_spending = effective_balance_spending - tx.value();

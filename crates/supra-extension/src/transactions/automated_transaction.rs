@@ -243,7 +243,19 @@ type ExpandedPayloadTy = (
 );
 
 /// Evm automation task execution payload.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Getters, Dissolve, Constructor)]
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Getters,
+    Dissolve,
+    Constructor,
+)]
 pub struct TaskPayload {
     to: Address,
     value: U256,
@@ -252,7 +264,6 @@ pub struct TaskPayload {
 }
 
 impl TaskPayload {
-
     /// Generates random [`TaskPayload`] for testing propose only.
     pub fn random() -> Self {
         TaskPayload {
@@ -262,7 +273,6 @@ impl TaskPayload {
             access_list: AccessList::default(),
         }
     }
-
 }
 
 impl TryFrom<&[u8]> for TaskPayload {
@@ -451,13 +461,20 @@ impl AutomatedTransactionBuilder {
             access_list,
             input,
         } = self;
+        let tpy = value_or_error!(AutomatedTransactionBuilder, "type", tpy);
         let block_height =
             value_or_error!(AutomatedTransactionBuilder, "block_height", block_height);
         let chain_id = value_or_error!(AutomatedTransactionBuilder, "chain_id", chain_id);
         let gas_limit = value_or_error!(AutomatedTransactionBuilder, "gas_limit", gas_limit);
         let gas_price_cap =
             value_or_error!(AutomatedTransactionBuilder, "gas_price_cap", gas_price_cap);
-        let gas_price = value_or_error!(AutomatedTransactionBuilder, "gas_price", gas_price);
+        // GST based automated transaction are not charged, so the gas price is not mandatory and default to 0.
+        let gas_price = match tpy {
+            AutomatedTransactionType::UST => {
+                value_or_error!(AutomatedTransactionBuilder, "gas_price", gas_price)
+            }
+            AutomatedTransactionType::GST => 0,
+        };
         let registration_hash = value_or_error!(
             AutomatedTransactionBuilder,
             "registration_hash",
@@ -465,13 +482,12 @@ impl AutomatedTransactionBuilder {
         );
         let task_index = value_or_error!(AutomatedTransactionBuilder, "task_index", task_index);
         let owner = value_or_error!(AutomatedTransactionBuilder, "owner", owner);
-        let tpy = value_or_error!(AutomatedTransactionBuilder, "type", tpy);
         let priority = priority.unwrap_or(task_index);
         let to = value_or_error!(AutomatedTransactionBuilder, "to", to);
         let value = value_or_error!(AutomatedTransactionBuilder, "value", value);
         let access_list = value_or_error!(AutomatedTransactionBuilder, "access_list", access_list);
         let input = value_or_error!(AutomatedTransactionBuilder, "input", input);
-        if gas_price_cap < gas_price {
+        if tpy == AutomatedTransactionType::UST && gas_price_cap < gas_price{
             return Ok(BuildResult::GasPriceLimitExceeded {
                 task_index,
                 value: gas_price,
