@@ -5,16 +5,23 @@ use crate::contracts::transaction::{GenesisTransaction, GenesisTransactionTags};
 use alloy::primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolConstructor};
 use anyhow::{anyhow, Result};
-use foundry_compilers::artifacts::ContractBytecode;
+use bincode::config;
+use once_cell::sync::Lazy;
 use primitives::supra_constants::VM_SIGNER;
 use primitives::{Bytes, U256};
 use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
 
-/// Output path of the compiled smart contracts, exported by build script.
-const OUTPUT_PATH: &str = env!("COMPILED_CONTRACTS_DIR");
+/// Load precompiled combined bytecode of contracts.
+const CONTRACT_BYTECODES_RAW: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/contract_bytecodes.bin"));
+
+const CONTRACT_BYTECODES: Lazy<BTreeMap<String, Vec<u8>>> = Lazy::new(|| {
+    // Deserialize the bytecodes from the raw bytes
+    let (bytecodes, _) =
+        bincode::serde::decode_from_slice(CONTRACT_BYTECODES_RAW, config::standard())
+            .expect("Failed to deserialize contract bytecodes");
+    bytecodes
+});
 
 /////////////// Multi-Signature-Wallet related contracts and init APIs /////////////////////////////
 const MULTISIG_WALLET: &str = "MultiSignatureWallet";
@@ -25,15 +32,11 @@ sol! {
     contract MultiSignatureWallet {
         function initialize(address[] memory _owners, uint256 _numConfirmationsRequired);
     }
-}
 
-sol! {
     contract MultisigBeacon {
          constructor(address _implementation, address _owner);
     }
-}
 
-sol! {
     contract BeaconProxy {
          constructor(address _beacon, bytes _data);
     }
@@ -546,18 +549,11 @@ impl GenesisTransactionGenerator {
     }
 
     fn load_contract_bytecode(name: &str) -> Result<Vec<u8>> {
-        let path = Path::new(OUTPUT_PATH)
-            .join(format!("{name}.sol"))
-            .join(format!("{name}.json"));
-        let file = File::open(&path)?;
-        let buf_reader = BufReader::new(file);
-        let contract: ContractBytecode = serde_json::from_reader(buf_reader)?;
-        contract
-            .bytecode
-            .and_then(|b| b.bytes().cloned())
-            .map(|b| b.to_vec())
-            .filter(|b| !b.is_empty())
-            .ok_or_else(|| anyhow!("Failed to load bytecode for contract: {name}"))
+        // Bytecodes are embedded at compile time via include_bytes! macros
+        CONTRACT_BYTECODES
+            .get(name)
+            .map(|v| v.clone())
+            .ok_or_else(|| anyhow!("Failed to get bytecode for contract: {name}"))
     }
 }
 

@@ -145,6 +145,7 @@ thiserror = "2.0"
 triehash = "0.8"
 walkdir = "2.5"
 gmp-mpfr-sys = "1.6.8"
+once_cell = "1.21.4"
 
 [workspace.package]
 license = "MIT"
