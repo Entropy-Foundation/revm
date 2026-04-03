@@ -63,7 +63,12 @@ abstract contract BaseDiamondTest is Test {
     function deployErc20Supra(address _bridge, address _erc20SupraHandlerAddr) internal returns (address) {
         vm.startPrank(admin);
         ERC20Supra impl = new ERC20Supra();
-        bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (admin, _bridge, _erc20SupraHandlerAddr));
+        
+        address[] memory authorizedAddresses = new address[](2);
+        authorizedAddresses[0] = _bridge;
+        authorizedAddresses[1] = _erc20SupraHandlerAddr;
+        
+        bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (admin, authorizedAddresses));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         vm.stopPrank();
 

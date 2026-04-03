@@ -7,13 +7,17 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 contract DeployERC20Supra is Script {
     address owner;
-    address bridge;
-    address erc20SupraHandler;
+    address[] authorizedAddresses;
 
     function setUp() public {
         owner = vm.envAddress("OWNER");
-        bridge = vm.envAddress("BRIDGE");
-        erc20SupraHandler = vm.envAddress("ERC20SUPRA_HANDLER");
+        address bridge = vm.envAddress("BRIDGE");
+        address erc20SupraHandler = vm.envAddress("ERC20SUPRA_HANDLER");
+
+        // Create array with authorized addresses
+        authorizedAddresses  = new address[](2);
+        authorizedAddresses[0] = bridge;
+        authorizedAddresses[1] = erc20SupraHandler;
     }
 
     function run() public {
@@ -24,7 +28,7 @@ contract DeployERC20Supra is Script {
         console.log("ERC20Supra implementation deployed at: ", address(impl));
 
         // Deploy ERC20Supra proxy
-        bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (owner, bridge, erc20SupraHandler));
+        bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (owner, authorizedAddresses));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         console.log("ERC20Supra proxy deployed at: ", address(proxy));
 

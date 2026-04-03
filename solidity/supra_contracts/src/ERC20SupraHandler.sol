@@ -13,10 +13,10 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Address of the ERC20Supra contract.
     address public erc20Supra;
 
-    /// @notice Error thrown if allowance amount is zero. 
-    error InvalidAllowance();
     /// @notice Error thrown if user has insufficient balance.
     error InsufficientBalance();
+    /// @notice Error thrown if contract has insufficient native balance.
+    error InsufficientContractBalance();
     /// @notice Error thrown if 0 is passed as amount.
     error InvalidAmount();
     /// @notice Error thrown if low level call fails.
@@ -26,18 +26,6 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
     /// @param account Address of the depositer.
     /// @param amount Amount deposited.
     event NativeToERC20Supra(address indexed account, uint256 indexed amount);
-
-    /// @notice Emitted when native tokens are deposited, ERC20Supra tokens are minted, and the spender's allowance is set..
-    /// @param account The address that deposited native tokens and received ERC20Supra.
-    /// @param amount The amount of native tokens deposited and ERC20Supra minted.
-    /// @param spender The address whose allowance was set.
-    /// @param allowance The new allowance set for the 'spender'.
-    event NativeToERC20SupraWithAllowance(
-        address indexed account, 
-        uint256 indexed amount, 
-        address indexed spender, 
-        uint256 allowance
-    );
 
     /// @notice Emitted when native tokens are withdrawn by burning ERC20Supra tokens. 
     /// @param account Address withdrawing.
@@ -63,25 +51,11 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Deposit native token → Mint ERC20Supra 1:1
-    function nativeToErc20Supra() external payable {
+    function nativeToErc20Supra() public payable {
         if (msg.value == 0) revert InvalidAmount();
         IERC20Supra(erc20Supra).mint(msg.sender, msg.value);
 
         emit NativeToERC20Supra(msg.sender, msg.value);
-    }
-
-    /// @notice Deposits native tokens, mints ERC20Supra tokens 1:1, and sets an allowance for a spender.
-    /// @param _spender The address whose allowance will be set.    
-    /// @param _allowanceAmount The new allowance to set for the spender.
-    function nativeToErc20SupraWithAllowance(address _spender, uint256 _allowanceAmount) external payable {
-        if (msg.value == 0) revert InvalidAmount();
-        _spender.validateAddress();
-        if (_allowanceAmount == 0) revert InvalidAllowance();
-
-        IERC20Supra(erc20Supra).mint(msg.sender, msg.value);
-        IERC20Supra(erc20Supra).approveFor(msg.sender, _spender, _allowanceAmount);
-
-        emit NativeToERC20SupraWithAllowance(msg.sender, msg.value, _spender, _allowanceAmount);
     }
 
     /// @notice Withdraw native token → Burn ERC20Supra 1:1
@@ -89,6 +63,7 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
     function erc20SupraToNative(uint256 _amount) external {
         if (_amount == 0) revert InvalidAmount();
         if (IERC20(erc20Supra).balanceOf(msg.sender) < _amount) revert InsufficientBalance();
+        if (address(this).balance < _amount) revert InsufficientContractBalance();
         
         IERC20Supra(erc20Supra).burn(msg.sender, _amount);
         emit ERC20SupraToNative(msg.sender, _amount);
@@ -99,10 +74,7 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Allows a user to send native tokens directly and get ERC20Supra.
     receive() external payable {
-        if (msg.value == 0) revert InvalidAmount();
-        
-        IERC20Supra(erc20Supra).mint(msg.sender, msg.value);
-        emit NativeToERC20Supra(msg.sender, msg.value);
+        nativeToErc20Supra();
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

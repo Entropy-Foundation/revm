@@ -161,9 +161,7 @@ library LibAccounting {
             }
          
             _exponent >>= 1;
-            if (_exponent > 0) {
-                baseScaled = (baseScaled * baseScaled) / DECIMAL;
-            }
+            baseScaled = (baseScaled * baseScaled) / DECIMAL;
         }      
     
         return resultScaled - DECIMAL;      // subtract 1

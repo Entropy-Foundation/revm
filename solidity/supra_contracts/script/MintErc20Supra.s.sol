@@ -27,12 +27,17 @@ contract MintErc20Supra is Script {
         ERC20Supra erc20Supra = ERC20Supra(erc20SupraAddr);
         ERC20SupraHandler erc20SupraHandler = ERC20SupraHandler(erc20SupraHandlerAddr);
         console.log("Sender: ", msg.sender);
-        console.log("Token balance: ", erc20Supra.balanceOf(msg.sender));
+        console.log("Token balance before: ", erc20Supra.balanceOf(msg.sender));
 
-        erc20SupraHandler.nativeToErc20SupraWithAllowance{value: value}(authority, uint256(allowance));
+        // First approve the authority to spend tokens
+        erc20Supra.approve(authority, uint256(allowance));
+        console.log("Approved authority for allowance: ", allowance);
+
+        // Then do the conversion
+        erc20SupraHandler.nativeToErc20Supra{value: value}();
 
         console.log("Sender: ", msg.sender);
-        console.log("Token balance: ", erc20Supra.balanceOf(msg.sender));
+        console.log("Token balance after: ", erc20Supra.balanceOf(msg.sender));
 
         vm.stopBroadcast();
     }
