@@ -53,4 +53,17 @@ interface IAutomationRegistry {
         uint64 _priority,
         bytes[] memory _auxData
     ) external;
+
+    function registerSystemTask(
+        bytes memory _payloadTx,
+        uint64 _expiryTime,
+        uint128 _maxGasAmount,
+        uint64 _priority,
+        bytes[] memory _auxData
+    ) external;
+
+
+    function grantAuthorization(address _account) external;
+
+    function revokeAuthorization(address _account) external;
 }
