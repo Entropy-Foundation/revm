@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity ^0.8.27;
 
 import {LibCommon} from "./libraries/LibCommon.sol";
 import {TaskMetadata} from "./libraries/LibAppStorage.sol";
@@ -23,4 +23,13 @@ interface SupraContractsBindings {
 
     // Entry function of the BlockMeta for block metadata transaction
     function blockPrologue() external;
+
+    // Emitted when the cycle state transitions.
+    event AutomationCycleEvent(
+        uint64 indexed index,
+        LibCommon.CycleState indexed state,
+        uint64 startTime,
+        uint64 durationSecs,
+        LibCommon.CycleState indexed oldState
+    );
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity ^0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
@@ -61,6 +61,33 @@ contract RegisterAutomationTask is Script {
         bytes memory payload = abi.encode(_value, cAddress, callData, accessList);
 
         return payload;
+    }
+
+}
+
+contract CancelAutomationTask is Script {
+    address diamond;
+    uint64 taskIndex;
+
+    address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
+    // Config values loaded from .env file
+    function setUp() public {
+        diamond = vm.envAddress("DIAMOND");
+        taskIndex = uint64(vm.envUint("TASK_INDEX"));
+
+        TxHashPrecompile deployed = new TxHashPrecompile();
+        vm.etch(TX_HASH_PRECOMPILE, address(deployed).code);
+    }
+
+    function run() public {
+        vm.startBroadcast();
+        IRegistryFacet registryFacet = IRegistryFacet(diamond);
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = taskIndex;
+        registryFacet.cancelTasks(taskIndexes);
+
+        vm.stopBroadcast();
     }
 
 }

@@ -134,7 +134,7 @@ impl Typed2718 for BlockMetadata {
 
 /// Builder for [`BlockMetadata`] transaction.
 /// All properties are mandatory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BlockMetadataBuilder {
     to: Address,
     height: Option<u64>,

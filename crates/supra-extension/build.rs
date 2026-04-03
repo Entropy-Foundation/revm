@@ -1,6 +1,7 @@
 //! Prepares supra-extension by compiling smart-contracts and building rust bindings
 
 use anyhow::Result;
+use bincode;
 use foundry_compilers::artifacts::Remapping;
 use foundry_compilers::multi::MultiCompilerSettings;
 use foundry_compilers::solc::SolcSettings;
@@ -29,30 +30,30 @@ fn rebuild_rust_bindings() {
     // - uncomment forge library reference in top level Cargo.toml file
     // - build the project
 
-    //// Determine the output directory for the generated bindings
-    //use clap::Parser;
-    //use forge::cmd::bind::BindArgs;
-    //let contracts_relative_path = PathBuf::from("../../solidity/supra_contracts");
-    //let contracts_build_config =
+    // // Determine the output directory for the generated bindings
+    // use clap::Parser;
+    // use forge::cmd::bind::BindArgs;
+    // let contracts_relative_path = PathBuf::from("../../solidity/supra_contracts");
+    // let contracts_build_config =
     //    cargo_dir.join(contracts_relative_path.join(PathBuf::from("foundry.toml")));
-    //let contract_names = "SupraContracts";
-
-    //let bindings_path = cargo_dir
+    // let contract_names = "SupraContracts";
+    //
+    // let bindings_path = cargo_dir
     //    .join(PathBuf::from("src"))
     //    .join(PathBuf::from("supra_contract_bindings"));
-
-    //// Ensure the output directory exists
-    //std::fs::create_dir_all(bindings_path.as_path()).expect("Failed to create bindings directory");
-    //let command_inputs = format!(
+    //
+    // // Ensure the output directory exists
+    // std::fs::create_dir_all(bindings_path.as_path()).expect("Failed to create bindings directory");
+    // let command_inputs = format!(
     //    "bind --bindings-path {} --overwrite --module --select {} --alloy --config-path {}",
     //    bindings_path.display(),
     //    contract_names,
     //    contracts_build_config.display()
-    //);
-    //let parsed_inputs = shlex::split(&command_inputs).expect("Failed to parse command string");
-    //let bind_cmd: BindArgs =
+    // );
+    // let parsed_inputs = shlex::split(&command_inputs).expect("Failed to parse command string");
+    // let bind_cmd: BindArgs =
     //    BindArgs::try_parse_from(parsed_inputs).expect("Failed to parse command arguments");
-    //bind_cmd.run().expect("Failed to execute bind command");
+    // bind_cmd.run().expect("Failed to execute bind command");
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -98,7 +99,7 @@ impl CompileConfig {
     }
 }
 
-fn compile_contracts() -> Result<()> {
+fn compile_contracts() -> Result<PathBuf> {
     let config = CompileConfig::load()?;
 
     let mut paths = ProjectPathsConfig::dapptools(&config.dapp_path())?;
@@ -115,17 +116,84 @@ fn compile_contracts() -> Result<()> {
     // Tell Cargo that if a source file changes, to rerun this build script.
     project.rerun_if_sources_changed();
     println!("cargo:rerun-if-changed={}/compile_config.toml", CURRENT_DIR);
+
+    let artifacts_dir = project.paths.artifacts.clone();
     println!(
         "cargo:rustc-env=COMPILED_CONTRACTS_DIR={}",
-        project.paths.artifacts.display()
+        artifacts_dir.display()
     );
 
+    Ok(artifacts_dir)
+}
+
+fn combine_and_dump_contracts_bytecode(artifacts_path: &Path) -> Result<()> {
+    // Contract names to load
+    let contract_names = vec![
+        "MultiSignatureWallet",
+        "MultisigBeacon",
+        "BeaconProxy",
+        "ERC20Supra",
+        "BlockMeta",
+        "ERC1967Proxy",
+        "AutomationCore",
+        "AutomationRegistry",
+        "AutomationController",
+    ];
+
+    let mut bytecodes = std::collections::BTreeMap::new();
+
+    // Load each contract's bytecode
+    for contract_name in &contract_names {
+        let path = artifacts_path
+            .join(format!("{contract_name}.sol"))
+            .join(format!("{contract_name}.json"));
+
+        if !path.exists() {
+            return Err(anyhow::anyhow!(
+                "Failed to find contract artifact at: {}",
+                path.display()
+            ));
+        }
+
+        let file = std::fs::File::open(&path)?;
+        let buf_reader = std::io::BufReader::new(file);
+        let contract: foundry_compilers::artifacts::ContractBytecode =
+            serde_json::from_reader(buf_reader)?;
+
+        let bytecode: Vec<u8> = contract
+            .bytecode
+            .and_then(|b| b.bytes().cloned())
+            .map(|b| b.to_vec())
+            .filter(|b| !b.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!("Failed to load bytecode for contract: {contract_name}")
+            })?;
+
+        bytecodes.insert(contract_name.to_string(), bytecode);
+    }
+
+    // Dump the combined contract bytecodes to be loaded at compile to by generator.
+    let out_dir = env::var("OUT_DIR")?;
+    let out_path = Path::new(&out_dir).join("contract_bytecodes.bin");
+
+    std::fs::write(
+        &out_path,
+        bincode::serde::encode_to_vec(&bytecodes, bincode::config::standard())
+            .expect("Successful serializationA"),
+    )
+    .expect("Failed to write bytecodes to file");
+
+    println!("cargo:rustc-env=CONTRACTS_LOADED=1");
     Ok(())
 }
 
 fn main() {
     rebuild_rust_bindings();
-    compile_contracts()
+    let artifacts_dir = compile_contracts()
         .inspect_err(|e| panic!("{e:?}"))
+        .unwrap();
+
+    combine_and_dump_contracts_bytecode(&artifacts_dir)
+        .inspect_err(|e| panic!("Failed to combine and dump contract bytecodes: {e:?}"))
         .unwrap()
 }

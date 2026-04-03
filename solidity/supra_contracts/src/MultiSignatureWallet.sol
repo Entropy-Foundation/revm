@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity ^0.8.27;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
@@ -441,6 +441,14 @@ contract MultiSignatureWallet is Initializable {
      */
     function getOwners() public view returns (address[] memory) {
         return owners.values();
+    }
+
+    /**
+     * @dev Function to retrieve the potential index of the next transaction.
+     * @return Index of the next transaction of uint256 type.
+     */
+    function getNextTransactionIndex() public view returns (uint256) {
+        return txIndex;
     }
 
     /**
