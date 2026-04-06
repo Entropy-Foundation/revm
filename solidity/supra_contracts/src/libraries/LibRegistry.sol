@@ -36,7 +36,11 @@ library LibRegistry {
     error TaskIndexNotUnique();
     error UnauthorizedAccount();
     error UnsupportedTaskOperation();
-
+    error InvalidPredicate();
+    error InvalidPayload();
+    error InvalidReturnLengthOfPredicate();
+    error InvalidReturnTypeOfPredicate();
+    
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Helper function to validate the task duration.
@@ -56,8 +60,9 @@ library LibRegistry {
 
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
-        ( , address payloadTarget, , ) = abi.decode(_payloadTx, (uint128, address, bytes, LibCommon.AccessListEntry[]));
+        ( , address payloadTarget, bytes memory payload, ) = abi.decode(_payloadTx, (uint128, address, bytes, LibCommon.AccessListEntry[]));
         payloadTarget.validateContractAddress();
+        if (payload.length < 4) revert InvalidPayload();
         
         if (_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
     }
@@ -90,12 +95,28 @@ library LibRegistry {
         }
     }
 
+    /// @notice Validates a predicate by calling it and checking the return value.
+    /// @param _predicate Predicate to validate
+    function validatePredicate(bytes memory _predicate) private view {
+        (address payloadTarget, bytes memory payload) = abi.decode(_predicate, (address, bytes));
+        payloadTarget.validateContractAddress();
+        if (payload.length < 4) revert InvalidPayload();
+
+        (bool success, bytes memory data) = payloadTarget.staticcall(payload);
+        if (!success) revert InvalidPredicate();
+        if (data.length != 32) revert InvalidReturnLengthOfPredicate();
+
+        uint256 val = abi.decode(data, (uint256));
+        if (val > 1) revert InvalidReturnTypeOfPredicate();
+    }
+
     /// @notice Helper function that performs validation and updates state for a valid task.
     function updateStateForValidRegistration(
         uint256 _totalTasks, 
         uint64 _regTime,
         uint64 _expiryTime,
-        bytes memory _payloadTx, 
+        bytes memory _payloadTx,
+        bytes memory _predicate, 
         uint128 _maxGasAmount, 
         uint128 _gasPriceCap,
         uint128 _automationFeeCapForCycle,
@@ -110,6 +131,8 @@ library LibRegistry {
         if (!s.registrationEnabled) { revert RegistrationDisabled(); }
 
         if (!LibCommon.isCycleStarted()) { revert CycleTransitionInProgress(); }
+
+        validatePredicate(_predicate);
    
         uint64 taskDurationCap;
         uint128 gasCommittedForNextCycle;
@@ -146,6 +169,7 @@ library LibRegistry {
 
     function createAndStoreTask(
         bytes memory _payloadTx,
+        bytes memory _predicate,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
@@ -181,6 +205,7 @@ library LibRegistry {
             taskType: _taskType,
             taskState: LibCommon.TaskState.PENDING,
             payloadTx: _payloadTx,
+            predicate: _predicate,
             auxData: _auxData
         });
     
@@ -194,7 +219,7 @@ library LibRegistry {
         registryState.currentIndex += 1;
     }
 
-    function updateGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
+    function updateGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) internal {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 gasCommittedForNextCycle = _isGst ? registryState.sysGasCommittedForNextCycle : registryState.gasCommittedForNextCycle;        
@@ -233,6 +258,7 @@ library LibRegistry {
 
     function registerTask(
         bytes memory _payloadTx,
+        bytes memory _predicate,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
@@ -252,6 +278,7 @@ library LibRegistry {
             regTime,
             _expiryTime,
             _payloadTx,
+            _predicate,
             _maxGasAmount,
             _gasPriceCap,
             _automationFeeCapForCycle,
@@ -260,6 +287,7 @@ library LibRegistry {
 
         taskIndex = createAndStoreTask(
             _payloadTx,
+            _predicate,
             _expiryTime,
             _maxGasAmount,
             _gasPriceCap,

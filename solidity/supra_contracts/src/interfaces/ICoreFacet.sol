@@ -54,6 +54,14 @@ interface ICoreFacet {
         bytes32 registrationHash
     );
 
+    /// @notice Emitted when a task is removed due to predicate validation failure.
+    event TaskRemovedAsPredicateFailed(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        LibCommon.TaskType taskType,
+        bytes32 indexed registrationHash
+    );
+
 
     // =============================================================
     //                      Custom errors
@@ -77,4 +85,5 @@ interface ICoreFacet {
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
+    function removeRegisteredTask(uint64 _taskIndex) external;
 }

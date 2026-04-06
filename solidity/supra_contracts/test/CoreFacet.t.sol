@@ -8,6 +8,7 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibCore} from "../src/libraries/LibCore.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
+import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 
 contract CoreFacetTest is BaseDiamondTest {
 
@@ -443,5 +444,104 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.prank(alice);
         ICoreFacet(diamondAddr).enableAutomation();
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'removeRegisteredTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'removeRegisteredTask' removes a UST when predicate validation fails.
+    function testRemoveRegisteredTaskForUST() public {
+        // Register a UST
+        registerUst();
+        
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+
+        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getTasksByAddress(alice);
+        assertEq(userTasks.length, 1);
+        assertEq(userTasks[0], 0);
+
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
+        assertEq(erc20Supra.balanceOf(alice), 38.9 ether);
+        
+        // Remove task due to predicate failure
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+        
+        // Verify task is removed
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(alice).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 31.05 ether);
+        assertEq(erc20Supra.balanceOf(alice), 68.95 ether);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTask' removes a GST when predicate validation fails.
+    function testRemoveRegisteredTaskForGST() public {
+        // Register a GST
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20Supra), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.prank(bob);
+        IRegistryFacet(diamondAddr).registerSystemTask(
+            payload,                            // payload
+            predicate,                          // predicate
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
+            2,                                  // priority
+            auxData                             // aux data
+        );
+        
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
+
+        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getTasksByAddress(bob);
+        assertEq(userTasks.length, 1);
+        assertEq(userTasks[0], 0);
+
+        // Remove task due to predicate failure
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+
+        // Verify task is removed
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(bob).length, 0);
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTask' emits 'TaskRemovedAsPredicateFailed' event.
+    function testRemoveRegisteredTaskEmitsEvent() public {
+        registerUst();
+        
+        vm.expectEmit(true, true, true, true);
+        emit ICoreFacet.TaskRemovedAsPredicateFailed(
+            0,
+            alice,
+            LibCommon.TaskType.UST,
+            keccak256("txHash")
+        );
+        
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
+    function testRemoveRegisteredTaskRevertsIfNotVmSigner() public {
+        registerUst();
+        
+        vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
+        
+        vm.prank(alice);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0);
     }
 }

@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {TxHashPrecompile} from "./TxHashPrecompile.sol";
@@ -41,9 +42,11 @@ contract RegisterAutomationTask is Script {
         console.log("Next task index ", taskIdx);
 
         bytes memory payload = createPayload(0, target, erc20supra);
+        bytes memory predicate = createPredicate(diamond);
 
         registryFacet.register(
             payload,
+            predicate,
             uint64(block.timestamp + taskDurationSecs),     // Task expires before next cycle
             taskMaxGas,
             taskGasPriceCap,
@@ -63,6 +66,11 @@ contract RegisterAutomationTask is Script {
         return payload;
     }
 
+    function createPredicate(address _target) private pure returns (bytes memory) {
+        // Create a predicate that checks if registration is enabled
+        bytes memory callData = abi.encodeCall(IConfigFacet.isRegistrationEnabled, ());
+        return abi.encode(_target, callData);
+    }
 }
 
 contract CancelAutomationTask is Script {

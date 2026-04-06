@@ -4,6 +4,7 @@ pragma solidity 0.8.27;
 import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
+import {LibRegistry} from "./LibRegistry.sol";
 import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TransitionState} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
@@ -522,6 +523,43 @@ library LibCore {
         
         updateCycleTransitionStateFromSuspended();
         emit ICoreFacet.RemovedTasks(removedTasks);
+    }
+
+    /// @notice Removes a registered task when predicate validation fails during runtime.
+    /// @param _taskIndex Task index that failed predicate validation.
+    function handleTaskRemoval(uint64 _taskIndex) internal {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        if (s.automationEnabled && LibCommon.ifTaskExists(_taskIndex)) { 
+            TaskMetadata memory task = LibAppStorage.registryState().tasks[_taskIndex];
+            bool isGst = task.taskType == LibCommon.TaskType.GST;
+
+            // Remove task and update gas commitments
+            LibCommon.removeTask(_taskIndex, task.owner, isGst);
+
+            // Refund only for UST
+            if (!isGst) {
+                bool result = LibAccounting.safeDepositRefund(
+                    _taskIndex,
+                    task.owner,
+                    task.depositFee / LibAccounting.REFUND_FACTOR,
+                    task.depositFee
+                );
+                require(result, TransferFailed());
+            }
+
+            // Remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
+            if (task.expiryTime > LibCommon.getCycleEndTime()) {
+                LibRegistry.updateGasCommittedForNextCycle(isGst, task.maxGasAmount);
+            }
+        
+            emit ICoreFacet.TaskRemovedAsPredicateFailed(
+                _taskIndex,
+                task.owner,
+                task.taskType,
+                task.txHash
+            );
+        }
     }
 
     /// @notice Helper function called when cycle end is identified.

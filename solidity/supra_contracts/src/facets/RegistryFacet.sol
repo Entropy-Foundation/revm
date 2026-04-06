@@ -19,6 +19,7 @@ contract RegistryFacet is IRegistryFacet {
 
     /// @notice Function used to register a user task for automation.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
+    /// @param _predicate Payload for predicate of the task.
     /// @param _expiryTime Time after which the task gets expired.
     /// @param _maxGasAmount Maximum amount of gas for the automation task.
     /// @param _gasPriceCap Maximum gas willing to pay for the task.
@@ -27,6 +28,7 @@ contract RegistryFacet is IRegistryFacet {
     /// @param _auxData Auxiliary data to be passed.
     function register(
         bytes memory _payloadTx,
+        bytes memory _predicate,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
@@ -36,6 +38,7 @@ contract RegistryFacet is IRegistryFacet {
     ) external {        
         uint64 taskIndex = LibRegistry.registerTask(
             _payloadTx,
+            _predicate,
             _expiryTime,
             _maxGasAmount,
             _gasPriceCap,
@@ -60,12 +63,14 @@ contract RegistryFacet is IRegistryFacet {
 
     /// @notice Function to register a system task. Reverts if caller is not authorized.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
+    /// @param _predicate Payload for predicate of the task.
     /// @param _expiryTime Time after which the task gets expired.
     /// @param _maxGasAmount Maximum amount of gas for the automation task.
     /// @param _priority Priority for the task. 0 for default priority.
     /// @param _auxData Auxiliary data to be passed.
     function registerSystemTask(
         bytes memory _payloadTx,
+        bytes memory _predicate,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint64 _priority,
@@ -75,6 +80,7 @@ contract RegistryFacet is IRegistryFacet {
         
         uint64 taskIndex = LibRegistry.registerTask(
             _payloadTx,
+            _predicate,
             _expiryTime,
             _maxGasAmount,
             0,

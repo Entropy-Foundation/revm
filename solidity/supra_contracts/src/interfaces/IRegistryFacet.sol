@@ -121,6 +121,7 @@ interface IRegistryFacet {
     // =============================================================
     function register(
         bytes memory _payloadTx,
+        bytes memory _predicate,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint128 _gasPriceCap,
@@ -130,6 +131,7 @@ interface IRegistryFacet {
     ) external;
     function registerSystemTask(
         bytes memory _payloadTx,
+        bytes memory _predicate,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint64 _priority,

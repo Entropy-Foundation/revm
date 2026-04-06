@@ -277,15 +277,16 @@ library LibDiamondUtils {
         //                          CoreFacet
         // ------------------------------------------------------------
         {
-            bytes4[] memory selectors = new bytes4[](8);
+            bytes4[] memory selectors = new bytes4[](9);
             selectors[0] = CoreFacet.processTasks.selector;
             selectors[1] = CoreFacet.monitorCycleEnd.selector;
             selectors[2] = CoreFacet.enableAutomation.selector;
             selectors[3] = CoreFacet.disableAutomation.selector;
-            selectors[4] = CoreFacet.getCycleInfo.selector;
-            selectors[5] = CoreFacet.getCycleDuration.selector;
-            selectors[6] = CoreFacet.getTransitionInfo.selector;
-            selectors[7] = CoreFacet.isAutomationEnabled.selector;
+            selectors[4] = CoreFacet.removeRegisteredTask.selector;
+            selectors[5] = CoreFacet.getCycleInfo.selector;
+            selectors[6] = CoreFacet.getCycleDuration.selector;
+            selectors[7] = CoreFacet.getTransitionInfo.selector;
+            selectors[8] = CoreFacet.isAutomationEnabled.selector;
                 
             cut[4] = IDiamondCut.FacetCut({
                 facetAddress: coreFacet,

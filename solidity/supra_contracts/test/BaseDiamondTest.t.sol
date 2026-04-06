@@ -78,7 +78,8 @@ abstract contract BaseDiamondTest is Test {
     /// @dev Helper function to register a UST.
     function registerUst() internal {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20Supra)); 
+        bytes memory payload = createPayload(0, address(erc20Supra), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory predicate = createPredicate(diamondAddr);
         
         vm.startPrank(alice);
         erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
@@ -86,6 +87,7 @@ abstract contract BaseDiamondTest is Test {
 
         IRegistryFacet(diamondAddr).register(
             payload,
+            predicate,
             uint64(block.timestamp + 1250),
             uint128(100_000),
             uint128(4 gwei),
@@ -99,7 +101,8 @@ abstract contract BaseDiamondTest is Test {
     /// @dev Helper function to return payload.
     /// @param _value Value to be sent along with the transaction.
     /// @param _target Address of the destination smart contract.
-    function createPayload(uint128 _value, address _target) internal pure returns (bytes memory) {
+    /// @param _callData Calldata to be sent along with the transaction.
+    function createPayload(uint128 _value, address _target, bytes memory _callData) internal pure returns (bytes memory) {
         LibCommon.AccessListEntry[] memory accessList = new LibCommon.AccessListEntry[](2);
         
         bytes32[] memory keys = new bytes32[](2); 
@@ -116,9 +119,16 @@ abstract contract BaseDiamondTest is Test {
             storageKeys: keys
         });
 
-        bytes memory callData = abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100);
-        bytes memory payload = abi.encode(_value, _target, callData, accessList);
+        bytes memory payload = abi.encode(_value, _target, _callData, accessList);
 
         return payload;   
+    }
+
+    /// @notice Helper function to create a predicate
+    /// @param _target Address of the contract to call
+    function createPredicate(address _target) internal pure returns (bytes memory) {
+        // Creates a predicate that checks if registration is enabled
+        bytes memory callData = abi.encodeCall(IConfigFacet.isRegistrationEnabled, ());
+        return abi.encode(_target, callData);
     }
 }

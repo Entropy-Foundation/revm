@@ -98,4 +98,13 @@ contract CoreFacet is ICoreFacet {
     function isAutomationEnabled() external view returns (bool) {
         return s.automationEnabled;
     }
+
+    /// @notice Removes a registered task when predicate validation fails during runtime.
+    /// @param _taskIndex Task index that failed predicate validation.
+    function removeRegisteredTask(uint64 _taskIndex) external {
+        // Check caller is VM Signer
+        msg.sender.enforceIsVmSigner(s.vmSigner);
+        
+        LibCore.handleTaskRemoval(_taskIndex);
+    }
 }

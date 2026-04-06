@@ -48,6 +48,7 @@ struct TaskMetadata {
     LibCommon.TaskType taskType;
     LibCommon.TaskState taskState;
     bytes payloadTx;      
+    bytes predicate;
     bytes[] auxData;
 }
 
