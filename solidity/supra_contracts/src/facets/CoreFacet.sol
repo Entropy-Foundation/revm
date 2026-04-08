@@ -101,10 +101,11 @@ contract CoreFacet is ICoreFacet {
 
     /// @notice Removes a registered task when predicate validation fails during runtime.
     /// @param _taskIndex Task index that failed predicate validation.
-    function removeRegisteredTask(uint64 _taskIndex) external {
+    /// @param _reason Reason for task removal.
+    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external {
         // Check caller is VM Signer
         msg.sender.enforceIsVmSigner(s.vmSigner);
         
-        LibCore.handleTaskRemoval(_taskIndex);
+        LibCore.handleTaskRemoval(_taskIndex, _reason);
     }
 }

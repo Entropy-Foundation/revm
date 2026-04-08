@@ -59,7 +59,8 @@ interface ICoreFacet {
         uint64 indexed taskIndex,
         address indexed owner,
         LibCommon.TaskType taskType,
-        bytes32 indexed registrationHash
+        bytes32 indexed registrationHash,
+        string reason
     );
 
 
@@ -85,5 +86,5 @@ interface ICoreFacet {
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
-    function removeRegisteredTask(uint64 _taskIndex) external;
+    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external;
 }

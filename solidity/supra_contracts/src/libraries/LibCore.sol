@@ -527,7 +527,8 @@ library LibCore {
 
     /// @notice Removes a registered task when predicate validation fails during runtime.
     /// @param _taskIndex Task index that failed predicate validation.
-    function handleTaskRemoval(uint64 _taskIndex) internal {
+    /// @param _reason Reason for task removal.
+    function handleTaskRemoval(uint64 _taskIndex, string memory _reason) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (s.automationEnabled && LibCommon.ifTaskExists(_taskIndex)) { 
@@ -557,7 +558,8 @@ library LibCore {
                 _taskIndex,
                 task.owner,
                 task.taskType,
-                task.txHash
+                task.txHash,
+                _reason
             );
         }
     }

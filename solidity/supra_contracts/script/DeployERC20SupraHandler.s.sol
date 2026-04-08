@@ -11,7 +11,7 @@ contract DeployERC20SupraHandler is Script {
 
     function setUp() public {
         owner = vm.envAddress("OWNER");
-        erc20Supra = vm.envAddress("ERC20SUPRA");
+        erc20Supra = vm.envAddress("ERC20_SUPRA");
     }
 
     function run() public {

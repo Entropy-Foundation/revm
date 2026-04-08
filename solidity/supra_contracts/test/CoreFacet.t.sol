@@ -467,7 +467,7 @@ contract CoreFacetTest is BaseDiamondTest {
         
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
         
         // Verify task is removed
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
@@ -483,7 +483,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTaskForGST() public {
         // Register a GST
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20Supra), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.prank(bob);
@@ -508,7 +508,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
 
         // Verify task is removed
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
@@ -528,11 +528,12 @@ contract CoreFacetTest is BaseDiamondTest {
             0,
             alice,
             LibCommon.TaskType.UST,
-            keccak256("txHash")
+            keccak256("txHash"),
+            "Predicate failed"
         );
         
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
@@ -542,6 +543,6 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
         
         vm.prank(alice);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
     }
 }

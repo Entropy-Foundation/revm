@@ -8,7 +8,11 @@ interface IERC20Supra {
     error AddressAlreadyAuthorized();
     /// @notice Thrown when trying to remove an address that is not authorized.
     error AddressNotAuthorized();
-    
+
+    /// @notice Emitted when the contract is initialized with authorized addresses.
+    /// @param authorizedAddresses The list of authorized addresses.
+    event InitializedAuthorizedAddresses(address[] indexed authorizedAddresses);
+
     /// @notice Emitted when an address is added to the authorization whitelist.
     /// @param authorizedAddress The address that was added.
     /// @param addedBy The address that added the authorized address.

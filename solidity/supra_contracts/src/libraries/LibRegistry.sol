@@ -36,8 +36,8 @@ library LibRegistry {
     error TaskIndexNotUnique();
     error UnauthorizedAccount();
     error UnsupportedTaskOperation();
-    error InvalidPredicate();
-    error InvalidPayload();
+    error StaticCallToPredicateFailed();
+    error InvalidPayloadLength();
     error InvalidReturnLengthOfPredicate();
     error InvalidReturnTypeOfPredicate();
     
@@ -62,7 +62,7 @@ library LibRegistry {
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
         ( , address payloadTarget, bytes memory payload, ) = abi.decode(_payloadTx, (uint128, address, bytes, LibCommon.AccessListEntry[]));
         payloadTarget.validateContractAddress();
-        if (payload.length < 4) revert InvalidPayload();
+        if (payload.length < 4) revert InvalidPayloadLength();
         
         if (_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
     }
@@ -100,10 +100,10 @@ library LibRegistry {
     function validatePredicate(bytes memory _predicate) private view {
         (address payloadTarget, bytes memory payload) = abi.decode(_predicate, (address, bytes));
         payloadTarget.validateContractAddress();
-        if (payload.length < 4) revert InvalidPayload();
+        if (payload.length < 4) revert InvalidPayloadLength();
 
         (bool success, bytes memory data) = payloadTarget.staticcall(payload);
-        if (!success) revert InvalidPredicate();
+        if (!success) revert StaticCallToPredicateFailed();
         if (data.length != 32) revert InvalidReturnLengthOfPredicate();
 
         uint256 val = abi.decode(data, (uint256));

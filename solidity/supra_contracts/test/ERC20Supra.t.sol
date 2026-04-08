@@ -76,9 +76,10 @@ contract ERC20SupraTest is Test {
         new ERC1967Proxy(address(impl), initData);
         vm.stopPrank();
     }
-    
-    /// @dev Test to ensure initialization reverts with duplicate addresses in array.
-    function testInitializeRevertsWithDuplicateAddress() public {
+
+
+    /// @dev Test to ensure initialization ignores duplicate addresses and succeeds.
+    function testInitializeIgnoresDuplicateAddress() public {
         address[] memory authorizedAddresses = new address[](3);
         authorizedAddresses[0] = bridge;
         authorizedAddresses[1] = erc20SupraHandlerAddr;
@@ -88,9 +89,16 @@ contract ERC20SupraTest is Test {
         ERC20Supra impl = new ERC20Supra();
         bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (owner, authorizedAddresses));
         
-        vm.expectRevert(IERC20Supra.AddressAlreadyAuthorized.selector);
-        new ERC1967Proxy(address(impl), initData);
+        vm.expectEmit(true, false, false, false);
+        emit IERC20Supra.InitializedAuthorizedAddresses(authorizedAddresses);
+
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        ERC20Supra erc20Supra = ERC20Supra(address(proxy));
+
         vm.stopPrank();
+
+        assertTrue(erc20Supra.authorizedAddresses(bridge));
+        assertTrue(erc20Supra.authorizedAddresses(erc20SupraHandlerAddr));
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'mint' :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

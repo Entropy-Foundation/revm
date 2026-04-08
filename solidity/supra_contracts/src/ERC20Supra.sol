@@ -39,9 +39,10 @@ contract ERC20Supra is ERC20Upgradeable, ERC20PermitUpgradeable, IERC20Supra, Ow
             address addr = _authorizedAddresses[i];
 
             addr.validateAddress();
-            if (authorizedAddresses[addr]) revert AddressAlreadyAuthorized();
-            authorizedAddresses[addr] = true;
+            if (!authorizedAddresses[addr]) { authorizedAddresses[addr] = true; }
         }
+
+        emit InitializedAuthorizedAddresses(_authorizedAddresses);
     }
 
     /// @notice Mints ERC20Supra tokens to a specified address.
