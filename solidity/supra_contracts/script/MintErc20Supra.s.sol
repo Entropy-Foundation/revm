@@ -34,7 +34,7 @@ contract MintErc20Supra is Script {
         console.log("Approved authority for allowance: ", allowance);
 
         // Then do the conversion
-        erc20SupraHandler.nativeToErc20Supra{value: value}();
+        erc20SupraHandler.deposit{value: value}();
 
         console.log("Sender: ", msg.sender);
         console.log("Token balance after: ", erc20Supra.balanceOf(msg.sender));

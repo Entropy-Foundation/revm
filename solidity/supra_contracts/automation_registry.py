@@ -451,7 +451,7 @@ def cmd_native_to_erc20() -> None:
         validate_decimal_amount, "Amount", unit="ether",
     )
     account = get_keystore_account()
-    send_tx(account, cfg("ERC20_SUPRA_HANDLER"), "nativeToErc20Supra()", value_wei=wei)
+    send_tx(account, cfg("ERC20_SUPRA_HANDLER"), "deposit()", value_wei=wei)
 
 
 def cmd_approve() -> None:
@@ -547,7 +547,7 @@ COMMANDS: dict[str, tuple[str, Optional[Callable]]] = {
     "native-balance":          ("Show native SUPRA balance",                    cmd_native_balance),
     "erc20Supra-balance":      ("Show ERC20Supra balance",                      cmd_erc20_supra_balance),
     "allowance":               ("Check ERC20 approval to registry",             cmd_allowance),
-    "nativeToErc20Supra":      ("Deposit native → mint ERC20Supra",             cmd_native_to_erc20),
+    "deposit":                 ("Deposit native → mint ERC20Supra",             cmd_native_to_erc20),
     "approve":                 ("Approve ERC20Supra for fees",                  cmd_approve),
     "register":                ("Register a user task",                         cmd_register),
     "register-system":         ("Register a system task",                       cmd_register_system),

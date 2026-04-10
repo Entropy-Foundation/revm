@@ -44,12 +44,12 @@ contract ERC20SupraHandlerTest is Test {
         assertEq(erc20SupraHandler.erc20Supra(), address(token));
     }
     
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'nativeToErc20Supra' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'deposit' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'nativeToErc20Supra' deposits native tokens and mints ERC20Supra tokens 1:1.
-    function testNativeToErc20Supra() public {
+    /// @dev Test to ensure 'deposit' deposits native tokens and mints ERC20Supra tokens 1:1.
+    function testDeposit() public {
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.deposit{value: 5 ether}();
 
         assertEq(token.balanceOf(alice), 5 ether);
         assertEq(address(erc20SupraHandler).balance, 5 ether);
@@ -57,21 +57,21 @@ contract ERC20SupraHandlerTest is Test {
         assertEq(alice.balance, 95 ether);
     }
 
-    /// @dev Test to ensure 'nativeToErc20Supra' emits event.
-    function testNativeToErc20SupraEmitsEvent() public {
+    /// @dev Test to ensure 'deposit' emits event.
+    function testDepositEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ERC20SupraHandler.NativeToERC20Supra(alice, 5 ether);
+        emit ERC20SupraHandler.Deposit(alice, 5 ether);
 
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.deposit{value: 5 ether}();
     }
 
-    /// @dev Test to ensure 'nativeToErc20Supra' reverts if amount sent is zero.
-    function testNativeToErc20SupraRevertsIfAmountZero() public {
+    /// @dev Test to ensure 'deposit' reverts if amount sent is zero.
+    function testDepositRevertsIfAmountZero() public {
         vm.expectRevert(ERC20SupraHandler.InvalidAmount.selector);
 
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 0}();
+        erc20SupraHandler.deposit{value: 0}();
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'receive' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -90,7 +90,7 @@ contract ERC20SupraHandlerTest is Test {
     /// @dev Test to ensure 'receive' emits event.
     function testReceiveEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ERC20SupraHandler.NativeToERC20Supra(alice, 3 ether);
+        emit ERC20SupraHandler.Deposit(alice, 3 ether);
 
         vm.prank(alice);
         (bool success, ) = address(erc20SupraHandler).call{value: 3 ether}("");
@@ -106,16 +106,16 @@ contract ERC20SupraHandlerTest is Test {
         assertEq(bytes4(data), ERC20SupraHandler.InvalidAmount.selector);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'erc20SupraToNative' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdraw' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'erc20SupraToNative' withdraws native tokens and burns ERC20Supra 1:1.
-    function testErc20SupraToNative() public {
+    /// @dev Test to ensure 'withdraw' withdraws native tokens and burns ERC20Supra 1:1.
+    function testWithdraw() public {
         // Alice deposits 5 SUPRA → gets 5 * 10 ** 18 ERC20Supra tokens
-        testNativeToErc20Supra();
+        testDeposit();
 
         // Alice withdraws 3 SUPRA → burns 3 * 10 ** 18 ERC20Supra tokens
         vm.prank(alice);
-        erc20SupraHandler.erc20SupraToNative(3 ether);
+        erc20SupraHandler.withdraw(3 ether);
 
         assertEq(token.balanceOf(alice), 2 ether);
         assertEq(address(alice).balance, 98 ether);
@@ -123,40 +123,40 @@ contract ERC20SupraHandlerTest is Test {
         assertEq(address(erc20SupraHandler).balance, token.totalSupply());
     }
 
-    /// @dev Test to ensure 'erc20SupraToNative' emits event.
-    function testErc20SupraToNativeEmitsEvent() public {
+    /// @dev Test to ensure 'withdraw' emits event.
+    function testWithdrawEmitsEvent() public {
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.deposit{value: 5 ether}();
 
         vm.expectEmit(true, true, false, false);
-        emit ERC20SupraHandler.ERC20SupraToNative(alice, 2 ether);
+        emit ERC20SupraHandler.Withdrawal(alice, 2 ether);
 
         vm.prank(alice);
-        erc20SupraHandler.erc20SupraToNative(2 ether);
+        erc20SupraHandler.withdraw(2 ether);
     }
 
-    /// @dev Test to ensure 'erc20SupraToNative' reverts if balance is less than requested amount.
-    function testErc20SupraToNativeRevertsIfInsufficientBalance() public {
+    /// @dev Test to ensure 'withdraw' reverts if balance is less than requested amount.
+    function testWithdrawRevertsIfInsufficientBalance() public {
         vm.expectRevert(ERC20SupraHandler.InsufficientBalance.selector);
 
         vm.prank(alice);
-        erc20SupraHandler.erc20SupraToNative(1 ether);
+        erc20SupraHandler.withdraw(1 ether);
     }
 
-    /// @dev Test to ensure 'erc20SupraToNative' reverts if requested amount is zero.
-    function testErc20SupraToNativeRevertsIfAmountZero() public {
+    /// @dev Test to ensure 'withdraw' reverts if requested amount is zero.
+    function testWithdrawRevertsIfAmountZero() public {
         vm.expectRevert(ERC20SupraHandler.InvalidAmount.selector);
 
         vm.prank(alice);
-        erc20SupraHandler.erc20SupraToNative(0);
+        erc20SupraHandler.withdraw(0);
     }
 
-    /// @notice Test to ensure that `erc20SupraToNative` reverts if the native token transfer fails.
+    /// @notice Test to ensure that `withdraw` reverts if the native token transfer fails.
     /// @dev This test uses a contract that always reverts on receiving native token to simulate a failing low-level call. 
-    function testErc20SupraToNativeRevertsIfNativeTransferFails() public {
+    function testWithdrawRevertsIfNativeTransferFails() public {
         // Mint tokens
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 1 ether}();
+        erc20SupraHandler.deposit{value: 1 ether}();
 
         RejectReceive rejector = new RejectReceive();
 
@@ -168,7 +168,7 @@ contract ERC20SupraHandlerTest is Test {
         vm.expectRevert(ERC20SupraHandler.TransferFailed.selector);
 
         vm.prank(address(rejector));
-        erc20SupraHandler.erc20SupraToNative(1 ether);
+        erc20SupraHandler.withdraw(1 ether);
 
         assertEq(token.balanceOf(address(rejector)), 1 ether);
     }
@@ -178,7 +178,7 @@ contract ERC20SupraHandlerTest is Test {
     /// @dev Test to ensure transfer of tokens between users works correctly.
     function testTransferBetweenUsers() public {
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.deposit{value: 5 ether}();
         
         assertEq(token.balanceOf(alice) , 5 ether);
 
@@ -192,7 +192,7 @@ contract ERC20SupraHandlerTest is Test {
     /// @dev Test to ensure 'transferFrom' works correctly after allowance is granted.
     function testTransferFromAllowance() public {
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 5 ether}();
+        erc20SupraHandler.deposit{value: 5 ether}();
 
         vm.prank(alice);
         token.approve(bob, 3 ether);
@@ -208,14 +208,14 @@ contract ERC20SupraHandlerTest is Test {
     /// @dev Test to ensure 'totalSupply' is equal to the balance of ERC20Supra contract. 
     function testTotalSupplyEqualsContractBalance() public {
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 3 ether}();
+        erc20SupraHandler.deposit{value: 3 ether}();
         vm.prank(bob);
-        erc20SupraHandler.nativeToErc20Supra{value: 2 ether}();
+        erc20SupraHandler.deposit{value: 2 ether}();
 
         vm.prank(alice);
-        erc20SupraHandler.erc20SupraToNative(1 ether);
+        erc20SupraHandler.withdraw(1 ether);
         vm.prank(bob);
-        erc20SupraHandler.erc20SupraToNative(2 ether);
+        erc20SupraHandler.withdraw(2 ether);
 
         assertEq(address(erc20SupraHandler).balance, token.totalSupply());
         assertEq(token.totalSupply(), 2 ether);

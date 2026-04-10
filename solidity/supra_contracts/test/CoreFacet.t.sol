@@ -208,7 +208,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.deal(alice, 200 ether);
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+        erc20SupraHandler.deposit{value: 100 ether}();
 
         vm.expectEmit(true, false, false, false);
         emit ICoreFacet.ActiveTasks(activeTasks);
@@ -483,7 +483,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTaskForGST() public {
         // Register a GST
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.prank(bob);

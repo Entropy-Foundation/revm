@@ -22,7 +22,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).disableAutomation();
 
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
@@ -47,7 +47,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).disableRegistration();
 
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.RegistrationDisabled.selector);
@@ -68,7 +68,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate target address is zero.
     function testRegisterRevertsIfPredicateTargetZero() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         
         // Create predicate with address(0) as target 
         bytes memory predicate = createPredicate(address(0));
@@ -91,7 +91,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate target address is EOA.
     function testRegisterRevertsIfPredicateTargetEoa() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         
         // Create predicate with EOA as target address
         bytes memory predicate = createPredicate(alice);
@@ -114,7 +114,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate payload is empty.
     function testRegisterRevertsIfPredicatePayloadEmpty() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
 
         bytes memory predicate = abi.encode(diamondAddr, bytes(""));
 
@@ -136,7 +136,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate payload is too short.
     function testRegisterRevertsIfPredicatePayloadTooShort() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
 
         bytes memory invalidPayload = hex"1234";    // 2 bytes
 
@@ -160,7 +160,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate updates state.
     function testRegisterRevertsIfPredicateUpdatesState() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
     
         // Create predicate that updates state
@@ -195,7 +195,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate returns invalid data length.
     function testRegisterRevertsIfPredicateReturnsInvalidLength() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         
         // Create predicate that does not return 32 bytes
         bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreFacet.getCycleInfo, ())); 
@@ -218,7 +218,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if predicate returns invalid return type.
     function testRegisterRevertsIfPredicateReturnsInvalidType() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         
         // Create predicate that doesn't return boolean
         bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreFacet.getCycleDuration, ()));
@@ -241,7 +241,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if expiry time is equal to or less than registration time.
     function testRegisterRevertsIfInvalidExpiryTime() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
         
         vm.expectRevert(LibRegistry.InvalidExpiryTime.selector);
@@ -262,7 +262,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if task duration is greater than the task duration cap.
     function testRegisterRevertsIfInvalidTaskDuration() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.InvalidTaskDuration.selector);
@@ -283,7 +283,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if task expires before the next cycle.
     function testRegisterRevertsIfTaskExpiresBeforeNextCycle() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.TaskExpiresBeforeNextCycle.selector);
@@ -305,7 +305,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testRegisterRevertsIfPayloadTargetZero() public {
         bytes[] memory auxData;
         // Invalid address: address(0)
-        bytes memory payload = createPayload(0, address(0), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(0), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
@@ -375,7 +375,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testRegisterRevertsIfPayloadTargetEoa() public {
         bytes[] memory auxData;
         // Invalid address: EOA address being passed
-        bytes memory payload = createPayload(0, alice, abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, alice, abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
@@ -396,7 +396,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if 0 is passed as max gas amount.
     function testRegisterRevertsIfMaxGasAmountZero() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.InvalidMaxGasAmount.selector);
@@ -417,7 +417,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if 0 is passed as gas price cap.
     function testRegisterRevertsIfGasPriceCapZero() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.InvalidGasPriceCap.selector);
@@ -438,7 +438,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if automation fee cap is less than the estimated automation fee.
     function testRegisterRevertsIfAutomationFeeCapLessThanEstimated() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(
@@ -464,7 +464,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' reverts if gas committed exceeds the registry max gas cap.
     function testRegisterRevertsIfGasCommittedExceedsMaxGasCap() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.GasCommittedExceedsMaxGasCap.selector);
@@ -485,11 +485,11 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' registers a UST.
     function testRegister() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
         
         vm.startPrank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+        erc20SupraHandler.deposit{value: 100 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
         IRegistryFacet(diamondAddr).register(
@@ -538,11 +538,11 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'register' emits event 'TaskRegistered'.
     function testRegisterEmitsEvent() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
         
         vm.startPrank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+        erc20SupraHandler.deposit{value: 100 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
         TaskMetadata memory taskMetadata = TaskMetadata({ 
@@ -584,7 +584,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' reverts if caller is not authorized.
     function testRegisterSystemTaskRevertsIfUnauthorizedCaller() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
@@ -606,7 +606,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).disableAutomation();
 
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
@@ -628,7 +628,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).disableRegistration();
 
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.RegistrationDisabled.selector);
@@ -647,7 +647,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' reverts if task duration is greater than system task duration cap.
     function testRegisterSystemTaskRevertsIfInvalidTaskDuration() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.InvalidTaskDuration.selector);
@@ -666,7 +666,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' reverts if gas committed exceeds the system registry max gas cap.
     function testRegisterSystemTaskRevertsIfGasCommittedExceedsMaxGasCap() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.expectRevert(LibRegistry.GasCommittedExceedsMaxGasCap.selector);
@@ -685,7 +685,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' registers a GST.
     function testRegisterSystemTask() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         vm.prank(bob);
@@ -731,7 +731,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'registerSystemTask' emits event 'SystemTaskRegistered'.
     function testRegisterSystemTaskEmitsEvent() public {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
         TaskMetadata memory taskMetadata = TaskMetadata({ 
@@ -1040,7 +1040,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.deal(alice, 200 ether);
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+        erc20SupraHandler.deposit{value: 100 ether}();
 
         vm.warp(1201);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -1075,7 +1075,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.deal(alice, 200 ether);
         vm.prank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+        erc20SupraHandler.deposit{value: 100 ether}();
 
         vm.warp(1201);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);

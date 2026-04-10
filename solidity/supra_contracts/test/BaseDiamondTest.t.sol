@@ -78,11 +78,11 @@ abstract contract BaseDiamondTest is Test {
     /// @dev Helper function to register a UST.
     function registerUst() internal {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.erc20SupraToNative, 100)); 
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
         
         vm.startPrank(alice);
-        erc20SupraHandler.nativeToErc20Supra{value: 100 ether}();
+        erc20SupraHandler.deposit{value: 100 ether}();
         erc20Supra.approve(diamondAddr, type(uint256).max);
 
         IRegistryFacet(diamondAddr).register(

@@ -25,12 +25,12 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Emitted when native tokens are deposited to mint and receive ERC20Supra tokens.
     /// @param account Address of the depositer.
     /// @param amount Amount deposited.
-    event NativeToERC20Supra(address indexed account, uint256 indexed amount);
+    event Deposit(address indexed account, uint256 indexed amount);
 
     /// @notice Emitted when native tokens are withdrawn by burning ERC20Supra tokens. 
     /// @param account Address withdrawing.
     /// @param amount Amount withdrawn.
-    event ERC20SupraToNative(address indexed account, uint256 indexed amount);
+    event Withdrawal(address indexed account, uint256 indexed amount);
 
     /**
     * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -51,22 +51,22 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Deposit native token → Mint ERC20Supra 1:1
-    function nativeToErc20Supra() public payable {
+    function deposit() public payable {
         if (msg.value == 0) revert InvalidAmount();
         IERC20Supra(erc20Supra).mint(msg.sender, msg.value);
 
-        emit NativeToERC20Supra(msg.sender, msg.value);
+        emit Deposit(msg.sender, msg.value);
     }
 
     /// @notice Withdraw native token → Burn ERC20Supra 1:1
     /// @param _amount Amount of native tokens to withdraw.
-    function erc20SupraToNative(uint256 _amount) external {
+    function withdraw(uint256 _amount) external {
         if (_amount == 0) revert InvalidAmount();
         if (IERC20(erc20Supra).balanceOf(msg.sender) < _amount) revert InsufficientBalance();
         if (address(this).balance < _amount) revert InsufficientContractBalance();
         
         IERC20Supra(erc20Supra).burn(msg.sender, _amount);
-        emit ERC20SupraToNative(msg.sender, _amount);
+        emit Withdrawal(msg.sender, _amount);
 
         (bool sent, ) = payable(msg.sender).call{value: _amount}("");
         if (!sent) revert TransferFailed();
@@ -74,7 +74,7 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Allows a user to send native tokens directly and get ERC20Supra.
     receive() external payable {
-        nativeToErc20Supra();
+        deposit();
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
