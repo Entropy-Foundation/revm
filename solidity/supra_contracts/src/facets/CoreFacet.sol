@@ -7,9 +7,11 @@ import {LibCore} from "../libraries/LibCore.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract CoreFacet is ICoreFacet {
     using LibUtils for address;
+    using EnumerableSet for EnumerableSet.UintSet;
 
     /// @dev State variables
     AppStorage internal s;
@@ -79,6 +81,18 @@ contract CoreFacet is ICoreFacet {
     /// @notice Returns the index, start time, duration and state of the current cycle. 
     function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommon.CycleState) {
         return (s.index, s.startTime, s.durationSecs, s.cycleState);
+    }
+
+    /// @notice Returns the index, start time, duration, state, transition details if any of the current cycle.
+    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory details) {
+        TransitionState storage transitionState = LibAppStorage.transitionState();
+        
+        details.index = s.index;
+        details.startTime = s.startTime;
+        details.durationSecs = s.durationSecs;
+        details.state = s.cycleState;
+        details.nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
+        details.expectedTasksToBeProcessed = transitionState.expectedTasksToBeProcessed.values();
     }
 
     /// @notice Returns the duration of the current cycle. 

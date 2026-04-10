@@ -52,7 +52,7 @@ library LibDiamondUtils {
     function defaultInitParams() internal pure returns (InitParams memory p) {
         p = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
-            registryMaxGasCap: 1_000_000,
+            registryMaxGasCap: 20_000_000,
             automationBaseFeeWeiPerSec: 0.5 ether,
             flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
@@ -61,7 +61,7 @@ library LibDiamondUtils {
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
-            sysRegistryMaxGasCap: 1_000_000,
+            sysRegistryMaxGasCap: 20_000_000,
             sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
@@ -124,22 +124,9 @@ library LibDiamondUtils {
         bytes memory initCalldata = abi.encodeCall(
             DiamondInit.init,
             (
-                _params.taskDurationCapSecs,
-                _params.registryMaxGasCap,
-                _params.automationBaseFeeWeiPerSec,
-                _params.flatRegistrationFeeWei,
-                _params.congestionThresholdPercentage,
-                _params.congestionBaseFeeWeiPerSec,
-                _params.congestionExponent,
-                _params.taskCapacity,
-                _params.cycleDurationSecs,
-                _params.sysTaskDurationCapSecs,
-                _params.sysRegistryMaxGasCap,
-                _params.sysTaskCapacity,
+                _params,
                 _vmSigner,
-                _erc20Supra,
-                _params.registrationEnabled,
-                _params.automationEnabled
+                _erc20Supra
             )
         );
 

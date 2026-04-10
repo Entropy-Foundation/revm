@@ -17,6 +17,7 @@ import { IERC165 } from "../interfaces/IERC165.sol";
 import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
+import { InitParams } from "../libraries/LibDiamondUtils.sol";
 
 /// @title DiamondInit
 /// @notice Initialization contract for the Automation Registry
@@ -39,40 +40,13 @@ contract DiamondInit {
     AppStorage internal s;
 
     /// @notice Initializes Automation Registry state in Diamond storage
-    /// @param _taskDurationCapSecs Maximum allowable duration (in seconds) from the registration time that a user automation task can run.
-    /// @param _registryMaxGasCap Maximum gas allocation for automation tasks per cycle.
-    /// @param _automationBaseFeeWeiPerSec Base fee per second for the full capacity of the automation registry, measured in wei/sec.
-    /// @param _flatRegistrationFeeWei Flat registration fee charged by default for each task.
-    /// @param _congestionThresholdPercentage Percentage representing the acceptable upper limit of committed gas amount relative to registry_max_gas_cap.
-    /// Beyond this threshold, congestion fees apply.
-    /// @param _congestionBaseFeeWeiPerSec Base fee per second for the full capacity of the automation registry when the congestion threshold is exceeded.
-    /// @param _congestionExponent The congestion fee increases exponentially based on this value, ensuring higher fees as the registry approaches full capacity.
-    /// @param _taskCapacity Maximum number of tasks that the registry can hold.
-    /// @param _cycleDurationSecs Automation cycle duration in seconds.
-    /// @param _sysTaskDurationCapSecs Maximum allowable duration (in seconds) from the registration time that a system automation task can run.
-    /// @param _sysRegistryMaxGasCap Maximum gas allocation for system automation tasks per cycle.
-    /// @param _sysTaskCapacity Maximum number of system tasks that the registry can hold.
+    /// @param _params Initialization parameters for the Automation Registry.
     /// @param _vmSigner Address for the VM Signer.
     /// @param _erc20Supra Address of the ERC20Supra contract.
-    /// @param _automationEnabled Whether automation should start immediately
-    /// @param _registrationEnabled Whether registration should start immediately
     function init(
-        uint64 _taskDurationCapSecs,
-        uint128 _registryMaxGasCap,
-        uint128 _automationBaseFeeWeiPerSec,
-        uint128 _flatRegistrationFeeWei,
-        uint8 _congestionThresholdPercentage,
-        uint128 _congestionBaseFeeWeiPerSec,
-        uint8 _congestionExponent,
-        uint16 _taskCapacity,
-        uint64 _cycleDurationSecs,
-        uint64 _sysTaskDurationCapSecs,
-        uint128 _sysRegistryMaxGasCap,
-        uint16 _sysTaskCapacity,
+        InitParams memory _params,
         address _vmSigner,
-        address _erc20Supra,
-        bool _automationEnabled,
-        bool _registrationEnabled
+        address _erc20Supra
     ) external {
         // Adding ERC165 data
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
@@ -83,15 +57,15 @@ contract DiamondInit {
 
 
         LibCommon.validateConfigParameters(
-            _taskDurationCapSecs,
-            _registryMaxGasCap,
-            _congestionThresholdPercentage,
-            _congestionExponent,
-            _taskCapacity,
-            _cycleDurationSecs,
-            _sysTaskDurationCapSecs,
-            _sysRegistryMaxGasCap,
-            _sysTaskCapacity
+            _params.taskDurationCapSecs,
+            _params.registryMaxGasCap,
+            _params.congestionThresholdPercentage,
+            _params.congestionExponent,
+            _params.taskCapacity,
+            _params.cycleDurationSecs,
+            _params.sysTaskDurationCapSecs,
+            _params.sysRegistryMaxGasCap,
+            _params.sysTaskCapacity
         );
         require(_vmSigner != address(0), LibUtils.AddressCannotBeZero());
         LibUtils.validateContractAddress(_erc20Supra);
@@ -100,24 +74,24 @@ contract DiamondInit {
         //                          Config initialization
         // ---------------------------------------------------------------------
         Config memory activeConfig = Config({ 
-            registryMaxGasCap: _registryMaxGasCap, 
-            sysRegistryMaxGasCap: _sysRegistryMaxGasCap, 
-            automationBaseFeeWeiPerSec: _automationBaseFeeWeiPerSec, 
-            flatRegistrationFeeWei: _flatRegistrationFeeWei, 
-            congestionBaseFeeWeiPerSec: _congestionBaseFeeWeiPerSec, 
-            taskDurationCapSecs: _taskDurationCapSecs, 
-            sysTaskDurationCapSecs: _sysTaskDurationCapSecs, 
-            cycleDurationSecs: _cycleDurationSecs, 
-            taskCapacity: _taskCapacity, 
-            sysTaskCapacity: _sysTaskCapacity, 
-            congestionThresholdPercentage: _congestionThresholdPercentage, 
-            congestionExponent: _congestionExponent 
+            registryMaxGasCap: _params.registryMaxGasCap, 
+            sysRegistryMaxGasCap: _params.sysRegistryMaxGasCap, 
+            automationBaseFeeWeiPerSec: _params.automationBaseFeeWeiPerSec, 
+            flatRegistrationFeeWei: _params.flatRegistrationFeeWei, 
+            congestionBaseFeeWeiPerSec: _params.congestionBaseFeeWeiPerSec, 
+            taskDurationCapSecs: _params.taskDurationCapSecs, 
+            sysTaskDurationCapSecs: _params.sysTaskDurationCapSecs, 
+            cycleDurationSecs: _params.cycleDurationSecs, 
+            taskCapacity: _params.taskCapacity, 
+            sysTaskCapacity: _params.sysTaskCapacity, 
+            congestionThresholdPercentage: _params.congestionThresholdPercentage, 
+            congestionExponent: _params.congestionExponent 
         });
         
         s.configuration[LibAppStorage.ACTIVE_CONFIG] = activeConfig;
 
-        s.automationEnabled = _automationEnabled;
-        s.registrationEnabled = _registrationEnabled;
+        s.automationEnabled = _params.automationEnabled;
+        s.registrationEnabled = _params.registrationEnabled;
         s.vmSigner = _vmSigner;
         s.erc20Supra = _erc20Supra;
 
@@ -127,20 +101,20 @@ contract DiamondInit {
         (
             LibCommon.CycleState cycleState,
             uint64 cycleIndex
-        ) = _automationEnabled
+        ) = _params.automationEnabled
             ? (LibCommon.CycleState.STARTED, 1)
             : (LibCommon.CycleState.READY, 0);
 
         s.index  = cycleIndex;
         s.startTime  = uint64(block.timestamp);
-        s.durationSecs  = _cycleDurationSecs;
+        s.durationSecs  = _params.cycleDurationSecs;
         s.cycleState  = cycleState;
 
         // ---------------------------------------------------------------------
         //                      Registry state initialization
         // ---------------------------------------------------------------------
         RegistryState storage registryState = LibAppStorage.registryState();
-        registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
-        registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
+        registryState.nextCycleRegistryMaxGasCap = _params.registryMaxGasCap;
+        registryState.nextCycleSysRegistryMaxGasCap = _params.sysRegistryMaxGasCap;
     }
 }

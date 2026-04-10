@@ -28,6 +28,16 @@ library LibCommon {
         GST
     }
 
+    /// @notice Struct to hold cycle details.
+    struct CycleDetails {
+        uint64 index;
+        uint64 startTime;
+        uint64 durationSecs;
+        CycleState state;
+        uint64 nextTaskIndexPosition;
+        uint256[] expectedTasksToBeProcessed;
+    }
+
     /// @notice Represents intermediate state of the registry on cycle change.
     struct IntermediateStateOfCycleChange {
         uint256 cycleLockedFees;

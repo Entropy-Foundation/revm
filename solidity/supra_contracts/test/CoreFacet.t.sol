@@ -227,7 +227,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForCurrentCycle(), 100000);
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 60 ether);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
     }
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is FINISHED.

@@ -444,7 +444,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.expectRevert(
             abi.encodeWithSelector(
                 LibRegistry.InsufficientFeeCapForCycle.selector,
-                60 ether
+                3 ether
             )
         );
 
@@ -474,7 +474,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             payload,
             predicate,
             uint64(block.timestamp + 1250),
-            uint128(1_000_001),            // Gas exceeds max gas cap
+            uint128(20_000_001),            // Gas exceeds max gas cap
             uint128(4 gwei),
             uint128(6835 ether),
             0,
@@ -676,7 +676,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             payload,
             predicate,
             uint64(block.timestamp + 1250),
-            uint128(1_000_001),                 // Gas exceeds max gas cap
+            uint128(20_000_001),                 // Gas exceeds max gas cap
             2,
             auxData
         );
@@ -1048,8 +1048,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         vm.stopPrank();
 
-        assertEq(erc20Supra.balanceOf(diamondAddr), 121.1 ether);
-        assertEq(erc20Supra.balanceOf(alice), 78.9 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 64.1 ether);
+        assertEq(erc20Supra.balanceOf(alice), 135.9 ether);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
@@ -1059,8 +1059,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(alice).length, 0);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 59.75 ether);
-        assertEq(erc20Supra.balanceOf(alice), 140.25 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 3.9375 ether);
+        assertEq(erc20Supra.balanceOf(alice), 196.0625 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' emits event 'TasksStopped'.  
@@ -1084,7 +1084,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.stopPrank();
 
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
-        stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 1.25 ether, keccak256("txHash"));
+        stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 0.0625 ether, keccak256("txHash"));
 
         vm.expectEmit(true, true, false, false);
         emit IRegistryFacet.TasksStopped(stoppedTasks, alice);

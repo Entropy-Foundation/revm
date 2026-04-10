@@ -28,8 +28,8 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(durationSecs, 1200);
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
-        assertEq(IRegistryFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 1_000_000);
-        assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 1_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 20_000_000);
+        assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 20_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
         assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
         assertEq(IConfigFacet(diamondAddr).getVmSigner(), LibUtils.VM_SIGNER);
@@ -37,8 +37,8 @@ contract DiamondInitTest is BaseDiamondTest {
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
 
-        assertEq(config.registryMaxGasCap, 1_000_000);
-        assertEq(config.sysRegistryMaxGasCap, 1_000_000);
+        assertEq(config.registryMaxGasCap, 20_000_000);
+        assertEq(config.sysRegistryMaxGasCap, 20_000_000);
         assertEq(config.automationBaseFeeWeiPerSec, 0.5 ether);
         assertEq(config.flatRegistrationFeeWei, 1 ether);
         assertEq(config.congestionBaseFeeWeiPerSec, 0.5 ether);
@@ -67,26 +67,15 @@ contract DiamondInitTest is BaseDiamondTest {
 
     /// @dev Test to ensure Diamond reverts if 'init' is called.
     function testInitReverts() public {
+        InitParams memory params = LibDiamondUtils.defaultInitParams();
+
         vm.expectRevert(bytes("Diamond: Function does not exist"));
 
         vm.prank(admin);
         DiamondInit(diamondAddr).init(
-            3600,
-            10_000_000,
-            0.001 ether,
-            0.002 ether,
-            50,
-            0.002 ether,
-            2,
-            500,
-            2000,
-            3600,
-            5_000_000,
-            500,
+            params,
             LibUtils.VM_SIGNER, 
-            address(erc20Supra),
-            true,
-            true
+            address(erc20Supra)
         );
     }
     
@@ -405,18 +394,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
 
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 2000,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 1200,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });
@@ -433,18 +422,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
+            taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 0,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         }); 
@@ -461,18 +450,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 101,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         }); 
@@ -489,18 +478,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
 
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 0,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });
@@ -517,18 +506,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
             taskCapacity: 0,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });
@@ -545,18 +534,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
             cycleDurationSecs: 0,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });
@@ -573,18 +562,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 2000,
-            sysRegistryMaxGasCap: 5_000_000,
-            sysTaskCapacity: 500,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 1200,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });
@@ -601,18 +590,18 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
             sysRegistryMaxGasCap: 0,
-            sysTaskCapacity: 500,
+            sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
         });
@@ -629,17 +618,17 @@ contract DiamondInitTest is BaseDiamondTest {
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
         
         InitParams memory initParams = InitParams({
-            taskDurationCapSecs: 3600,
-            registryMaxGasCap: 10_000_000,
-            automationBaseFeeWeiPerSec: 0.001 ether,
-            flatRegistrationFeeWei: 0.002 ether,
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.002 ether,
-            congestionExponent: 2,
-            taskCapacity: 500,
-            cycleDurationSecs: 2000,
-            sysTaskDurationCapSecs: 3600,
-            sysRegistryMaxGasCap: 5_000_000,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 400,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
             sysTaskCapacity: 0,
             registrationEnabled: true,
             automationEnabled: true
