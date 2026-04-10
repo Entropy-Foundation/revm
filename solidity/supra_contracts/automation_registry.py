@@ -188,14 +188,24 @@ def validate_int(raw: str, label: str, *, min_value: int) -> int:
         raise ValueError(f"{label} must be >= {min_value}, got {value}.")
     return value
 
-
-def validate_bytes_hex(raw: str, label: str = "Bytes") -> str:
-    """Validate a 0x-prefixed hex string (ABI-encoded bytes payload)."""
+def validate_bytes_hex(raw: str, label: str = "Bytes", *, allow_empty: bool = False) -> str:
+    """Validate a 0x-prefixed hex string (ABI-encoded bytes payload).
+    
+    - Rejects bare '0x' unless allow_empty=True
+    - Rejects odd-length hex body (not valid ABI bytes encoding)
+    """
     s = raw.strip()
     if not _HEX_RE.match(s):
         raise ValueError(f"{label} must be a 0x-prefixed hex string, got '{s}'.")
+    hex_body = s[2:]
+    if not allow_empty and len(hex_body) == 0:
+        raise ValueError(f"{label} must not be empty (bare '0x' is not valid).")
+    if len(hex_body) % 2 != 0:
+        raise ValueError(
+            f"{label} has an odd number of hex characters ({len(hex_body)}). "
+            "Each byte requires exactly 2 hex characters."
+        )
     return s
-
 
 def validate_index_array(raw: str) -> list[int]:
     """
@@ -242,6 +252,8 @@ def prompt_validated(label: str, validator, *args, **kwargs):
             print(f"  ⚠  {e}")
 
 
+_ACCOUNT_NAME_RE = _re.compile(r"^[a-zA-Z0-9_\-]+$")
+
 def get_keystore_account() -> str:
     """Prompt for a Foundry keystore account name and verify the file exists on disk."""
     keystore_dir = Path.home() / ".foundry" / "keystores"
@@ -249,6 +261,9 @@ def get_keystore_account() -> str:
         account = prompt("Keystore account name")
         if not account:
             print("  ⚠  Account name cannot be empty.")
+            continue
+        if not _ACCOUNT_NAME_RE.match(account):
+            print("  ⚠  Account name may only contain letters, digits, hyphens, and underscores.")
             continue
         if not (keystore_dir / account).exists():
             print(f"  ❌ Account '{account}' not found in {keystore_dir}")
