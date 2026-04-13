@@ -119,26 +119,26 @@ contract ERC20SupraTest is Test {
         token.mint(alice, 100);
     }
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'burn' :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'burnFrom' :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'burn' works correctly when called by authorized address.
-    function testBurnByAuthorizedAddress() public {
+    /// @dev Test to ensure 'burnFrom' works correctly when called by authorized address.
+    function testBurnFromByAuthorizedAddress() public {
         vm.prank(bridge);
         token.mint(alice, 100);
         assertEq(token.balanceOf(alice), 100);
 
         vm.prank(bridge);
-        token.burn(alice, 50);
+        token.burnFrom(alice, 50);
 
         assertEq(token.balanceOf(alice), 50);
     }
 
-    /// @dev Test to ensure 'burn' reverts if called by an unauthorized caller.
-    function testBurnRevertsIfUnauthorizedCaller() public {
+    /// @dev Test to ensure 'burnFrom' reverts if called by an unauthorized caller.
+    function testBurnFromRevertsIfUnauthorizedCaller() public {
         vm.expectRevert(IERC20Supra.UnauthorizedCaller.selector);
 
         vm.prank(alice);
-        token.burn(alice, 10);
+        token.burnFrom(alice, 10);
     }
 
     /// @dev Test to ensure adding authorized address works.

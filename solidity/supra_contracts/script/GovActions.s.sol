@@ -39,37 +39,37 @@ contract InitializeCycleMonitoring is Script {
 
 contract VoteForTxn is Script {
     address payable multisigWalletAddr;
-    uint256 txn_index;
+    uint256 txIndex;
 
 
     function setUp() public {
         multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        txn_index = uint256(vm.envUint("GOV_TXN_INDEX"));
+        txIndex = uint256(vm.envUint("GOV_TXN_INDEX"));
     }
 
     function run() public {
         vm.startBroadcast();
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
         console.log("Txn count", wallet.txCount());
-        wallet.confirmTransaction(txn_index);
+        wallet.confirmTransaction(txIndex);
         vm.stopBroadcast();
     }
 }
 
 contract ExecuteTxn is Script {
     address payable multisigWalletAddr;
-    uint256 txn_index;
+    uint256 txIndex;
 
 
     function setUp() public {
         multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        txn_index = uint256(vm.envUint("GOV_TXN_INDEX"));
+        txIndex = uint256(vm.envUint("GOV_TXN_INDEX"));
     }
 
     function run() public {
         vm.startBroadcast();
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
-        wallet.executeTransaction(txn_index);
+        wallet.executeTransaction(txIndex);
         vm.stopBroadcast();
     }
 }

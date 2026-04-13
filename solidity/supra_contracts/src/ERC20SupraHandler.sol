@@ -65,7 +65,7 @@ contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
         if (IERC20(erc20Supra).balanceOf(msg.sender) < _amount) revert InsufficientBalance();
         if (address(this).balance < _amount) revert InsufficientContractBalance();
         
-        IERC20Supra(erc20Supra).burn(msg.sender, _amount);
+        IERC20Supra(erc20Supra).burnFrom(msg.sender, _amount);
         emit Withdrawal(msg.sender, _amount);
 
         (bool sent, ) = payable(msg.sender).call{value: _amount}("");

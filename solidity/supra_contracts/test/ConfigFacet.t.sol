@@ -2,7 +2,6 @@
 pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
-import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
