@@ -1,6 +1,6 @@
 //! Automation registry transaction record definition to assist automation bookkeeping.
 use crate::errors::SupraExtensionError;
-use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBindings::processTasksCall;
+use crate::processTasksCall;
 use crate::value_or_error;
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};

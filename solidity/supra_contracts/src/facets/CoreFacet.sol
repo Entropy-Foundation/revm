@@ -108,6 +108,17 @@ contract CoreFacet is ICoreFacet {
         return (transitionState.refundDuration, transitionState.automationFeePerSec);
     }
 
+    /// @notice Returns the index, start time, duration, state, transition details if any of the current cycle.
+    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory details)  {
+        details.index = s.index;
+        details.startTime = s.startTime;
+        details.durationSecs = s.durationSecs;
+        details.state = s.cycleState;
+        TransitionState storage transitionState = LibAppStorage.transitionState();
+        details.nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
+        details.expectedTasksToBeProcessed = LibUtils.uintSetToUint64Array(transitionState.expectedTasksToBeProcessed);
+    }
+
     /// @notice Returns if automation is enabled.
     function isAutomationEnabled() external view returns (bool) {
         return s.automationEnabled;

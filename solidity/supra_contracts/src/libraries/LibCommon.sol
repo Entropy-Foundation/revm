@@ -6,7 +6,16 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
-    
+
+    struct CycleDetails {
+        uint64 index;
+        uint64 startTime;
+        uint64 durationSecs;
+        LibCommon.CycleState state;
+        uint64 nextTaskIndexPosition;
+        uint64[] expectedTasksToBeProcessed;
+    }
+
     /// @notice Enum describing state of the cycle.
     enum CycleState {
         READY,

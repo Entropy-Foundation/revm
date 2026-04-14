@@ -2,12 +2,11 @@
 /**
 
 ```solidity
-library CommonUtils {
+library LibCommon {
     type CycleState is uint8;
     type TaskState is uint8;
     type TaskType is uint8;
     struct CycleDetails { uint64 index; uint64 startTime; uint64 durationSecs; CycleState state; uint64 nextTaskIndexPosition; uint64[] expectedTasksToBeProcessed; }
-    struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 depositFee; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; uint64 priority; TaskType taskType; TaskState state; address owner; bytes payloadTx; bytes[] auxData; }
 }
 ```*/
 #[allow(
@@ -17,7 +16,7 @@ library CommonUtils {
     clippy::style,
     clippy::empty_structs_with_brackets
 )]
-pub mod CommonUtils {
+pub mod LibCommon {
     use super::*;
     use alloy::sol_types as alloy_sol_types;
     #[derive(serde::Serialize, serde::Deserialize)]
@@ -759,14 +758,578 @@ struct CycleDetails { uint64 index; uint64 startTime; uint64 durationSecs; Cycle
             }
         }
     };
+    use alloy::contract as alloy_contract;
+    /**Creates a new wrapper around an on-chain [`LibCommon`](self) contract instance.
+
+See the [wrapper's documentation](`LibCommonInstance`) for more details.*/
+    #[inline]
+    pub const fn new<
+        P: alloy_contract::private::Provider<N>,
+        N: alloy_contract::private::Network,
+    >(
+        address: alloy_sol_types::private::Address,
+        __provider: P,
+    ) -> LibCommonInstance<P, N> {
+        LibCommonInstance::<P, N>::new(address, __provider)
+    }
+    /**A [`LibCommon`](self) instance.
+
+Contains type-safe methods for interacting with an on-chain instance of the
+[`LibCommon`](self) contract located at a given `address`, using a given
+provider `P`.
+
+If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
+documentation on how to provide it), the `deploy` and `deploy_builder` methods can
+be used to deploy a new instance of the contract.
+
+See the [module-level documentation](self) for all the available methods.*/
+    #[derive(Clone)]
+    pub struct LibCommonInstance<P, N = alloy_contract::private::Ethereum> {
+        address: alloy_sol_types::private::Address,
+        provider: P,
+        _network: ::core::marker::PhantomData<N>,
+    }
+    #[automatically_derived]
+    impl<P, N> ::core::fmt::Debug for LibCommonInstance<P, N> {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+            f.debug_tuple("LibCommonInstance").field(&self.address).finish()
+        }
+    }
+    /// Instantiation and getters/setters.
+    impl<
+        P: alloy_contract::private::Provider<N>,
+        N: alloy_contract::private::Network,
+    > LibCommonInstance<P, N> {
+        /**Creates a new wrapper around an on-chain [`LibCommon`](self) contract instance.
+
+See the [wrapper's documentation](`LibCommonInstance`) for more details.*/
+        #[inline]
+        pub const fn new(
+            address: alloy_sol_types::private::Address,
+            __provider: P,
+        ) -> Self {
+            Self {
+                address,
+                provider: __provider,
+                _network: ::core::marker::PhantomData,
+            }
+        }
+        /// Returns a reference to the address.
+        #[inline]
+        pub const fn address(&self) -> &alloy_sol_types::private::Address {
+            &self.address
+        }
+        /// Sets the address.
+        #[inline]
+        pub fn set_address(&mut self, address: alloy_sol_types::private::Address) {
+            self.address = address;
+        }
+        /// Sets the address and returns `self`.
+        pub fn at(mut self, address: alloy_sol_types::private::Address) -> Self {
+            self.set_address(address);
+            self
+        }
+        /// Returns a reference to the provider.
+        #[inline]
+        pub const fn provider(&self) -> &P {
+            &self.provider
+        }
+    }
+    impl<P: ::core::clone::Clone, N> LibCommonInstance<&P, N> {
+        /// Clones the provider and returns a new instance with the cloned provider.
+        #[inline]
+        pub fn with_cloned_provider(self) -> LibCommonInstance<P, N> {
+            LibCommonInstance {
+                address: self.address,
+                provider: ::core::clone::Clone::clone(&self.provider),
+                _network: ::core::marker::PhantomData,
+            }
+        }
+    }
+    /// Function calls.
+    impl<
+        P: alloy_contract::private::Provider<N>,
+        N: alloy_contract::private::Network,
+    > LibCommonInstance<P, N> {
+        /// Creates a new call builder using this contract instance's provider and address.
+        ///
+        /// Note that the call can be any function call, not just those defined in this
+        /// contract. Prefer using the other methods for building type-safe contract calls.
+        pub fn call_builder<C: alloy_sol_types::SolCall>(
+            &self,
+            call: &C,
+        ) -> alloy_contract::SolCallBuilder<&P, C, N> {
+            alloy_contract::SolCallBuilder::new_sol(&self.provider, &self.address, call)
+        }
+    }
+    /// Event filters.
+    impl<
+        P: alloy_contract::private::Provider<N>,
+        N: alloy_contract::private::Network,
+    > LibCommonInstance<P, N> {
+        /// Creates a new event filter using this contract instance's provider and address.
+        ///
+        /// Note that the type can be any event, not just those defined in this contract.
+        /// Prefer using the other methods for building type-safe event filters.
+        pub fn event_filter<E: alloy_sol_types::SolEvent>(
+            &self,
+        ) -> alloy_contract::Event<&P, E, N> {
+            alloy_contract::Event::new_sol(&self.provider, &self.address)
+        }
+    }
+}
+/**
+
+Generated by the following Solidity interface...
+```solidity
+library LibCommon {
+    type CycleState is uint8;
+    type TaskState is uint8;
+    type TaskType is uint8;
+    struct CycleDetails {
+        uint64 index;
+        uint64 startTime;
+        uint64 durationSecs;
+        CycleState state;
+        uint64 nextTaskIndexPosition;
+        uint64[] expectedTasksToBeProcessed;
+    }
+}
+
+interface SupraContractsBindings {
+    struct TaskMetadata {
+        uint128 maxGasAmount;
+        uint128 gasPriceCap;
+        uint128 automationFeeCapForCycle;
+        uint128 depositFee;
+        bytes32 txHash;
+        uint64 taskIndex;
+        uint64 registrationTime;
+        uint64 expiryTime;
+        uint64 priority;
+        address owner;
+        LibCommon.TaskType taskType;
+        LibCommon.TaskState taskState;
+        bytes payloadTx;
+        bytes predicate;
+        bytes[] auxData;
+    }
+
+    event AutomationCycleEvent(uint64 indexed index, LibCommon.CycleState indexed state, uint64 startTime, uint64 durationSecs, LibCommon.CycleState indexed oldState);
+
+    function blockPrologue() external;
+    function getActiveTaskIds() external view returns (uint256[] memory);
+    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
+    function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
+    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
+    function getTaskIdList() external view returns (uint256[] memory);
+    function ifTaskExists(uint64 _taskIndex) external view returns (bool);
+    function isAutomationEnabled() external view returns (bool);
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
+}
+```
+
+...which was generated by the following JSON ABI:
+```json
+[
+  {
+    "type": "function",
+    "name": "blockPrologue",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getActiveTaskIds",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getCycleStateDetails",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct LibCommon.CycleDetails",
+        "components": [
+          {
+            "name": "index",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "startTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "durationSecs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "state",
+            "type": "uint8",
+            "internalType": "enum LibCommon.CycleState"
+          },
+          {
+            "name": "nextTaskIndexPosition",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "expectedTasksToBeProcessed",
+            "type": "uint64[]",
+            "internalType": "uint64[]"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTaskDetails",
+    "inputs": [
+      {
+        "name": "_taskIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct TaskMetadata",
+        "components": [
+          {
+            "name": "maxGasAmount",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "gasPriceCap",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "automationFeeCapForCycle",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "depositFee",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "txHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "taskIndex",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "registrationTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "expiryTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "priority",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "taskType",
+            "type": "uint8",
+            "internalType": "enum LibCommon.TaskType"
+          },
+          {
+            "name": "taskState",
+            "type": "uint8",
+            "internalType": "enum LibCommon.TaskState"
+          },
+          {
+            "name": "payloadTx",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "predicate",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "auxData",
+            "type": "bytes[]",
+            "internalType": "bytes[]"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTaskDetailsBulk",
+    "inputs": [
+      {
+        "name": "_taskIndexes",
+        "type": "uint64[]",
+        "internalType": "uint64[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct TaskMetadata[]",
+        "components": [
+          {
+            "name": "maxGasAmount",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "gasPriceCap",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "automationFeeCapForCycle",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "depositFee",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "txHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "taskIndex",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "registrationTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "expiryTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "priority",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "taskType",
+            "type": "uint8",
+            "internalType": "enum LibCommon.TaskType"
+          },
+          {
+            "name": "taskState",
+            "type": "uint8",
+            "internalType": "enum LibCommon.TaskState"
+          },
+          {
+            "name": "payloadTx",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "predicate",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "auxData",
+            "type": "bytes[]",
+            "internalType": "bytes[]"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTaskIdList",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ifTaskExists",
+    "inputs": [
+      {
+        "name": "_taskIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isAutomationEnabled",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "processTasks",
+    "inputs": [
+      {
+        "name": "_cycleIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "_taskIndexes",
+        "type": "uint64[]",
+        "internalType": "uint64[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AutomationCycleEvent",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint64",
+        "indexed": true,
+        "internalType": "uint64"
+      },
+      {
+        "name": "state",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum LibCommon.CycleState"
+      },
+      {
+        "name": "startTime",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "durationSecs",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "oldState",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "enum LibCommon.CycleState"
+      }
+    ],
+    "anonymous": false
+  }
+]
+```*/
+#[allow(
+    non_camel_case_types,
+    non_snake_case,
+    clippy::pub_underscore_fields,
+    clippy::style,
+    clippy::empty_structs_with_brackets
+)]
+pub mod SupraContractsBindings {
+    use super::*;
+    use alloy::sol_types as alloy_sol_types;
+    /// The creation / init bytecode of the contract.
+    ///
+    /// ```text
+    ///0x
+    /// ```
+    #[rustfmt::skip]
+    #[allow(clippy::all)]
+    pub static BYTECODE: alloy_sol_types::private::Bytes = alloy_sol_types::private::Bytes::from_static(
+        b"",
+    );
+    /// The runtime bytecode of the contract, as deployed on the network.
+    ///
+    /// ```text
+    ///0x
+    /// ```
+    #[rustfmt::skip]
+    #[allow(clippy::all)]
+    pub static DEPLOYED_BYTECODE: alloy_sol_types::private::Bytes = alloy_sol_types::private::Bytes::from_static(
+        b"",
+    );
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**```solidity
-struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 depositFee; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; uint64 priority; TaskType taskType; TaskState state; address owner; bytes payloadTx; bytes[] auxData; }
+struct TaskMetadata { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 depositFee; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; uint64 priority; address owner; LibCommon.TaskType taskType; LibCommon.TaskState taskState; bytes payloadTx; bytes predicate; bytes[] auxData; }
 ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
-    pub struct TaskDetails {
+    pub struct TaskMetadata {
         #[allow(missing_docs)]
         pub maxGasAmount: u128,
         #[allow(missing_docs)]
@@ -786,13 +1349,15 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
         #[allow(missing_docs)]
         pub priority: u64,
         #[allow(missing_docs)]
-        pub taskType: <TaskType as alloy::sol_types::SolType>::RustType,
-        #[allow(missing_docs)]
-        pub state: <TaskState as alloy::sol_types::SolType>::RustType,
-        #[allow(missing_docs)]
         pub owner: alloy::sol_types::private::Address,
         #[allow(missing_docs)]
+        pub taskType: <LibCommon::TaskType as alloy::sol_types::SolType>::RustType,
+        #[allow(missing_docs)]
+        pub taskState: <LibCommon::TaskState as alloy::sol_types::SolType>::RustType,
+        #[allow(missing_docs)]
         pub payloadTx: alloy::sol_types::private::Bytes,
+        #[allow(missing_docs)]
+        pub predicate: alloy::sol_types::private::Bytes,
         #[allow(missing_docs)]
         pub auxData: alloy::sol_types::private::Vec<alloy::sol_types::private::Bytes>,
     }
@@ -816,9 +1381,10 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
             alloy::sol_types::sol_data::Uint<64>,
             alloy::sol_types::sol_data::Uint<64>,
             alloy::sol_types::sol_data::Uint<64>,
-            TaskType,
-            TaskState,
             alloy::sol_types::sol_data::Address,
+            LibCommon::TaskType,
+            LibCommon::TaskState,
+            alloy::sol_types::sol_data::Bytes,
             alloy::sol_types::sol_data::Bytes,
             alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Bytes>,
         );
@@ -833,9 +1399,10 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
             u64,
             u64,
             u64,
-            <TaskType as alloy::sol_types::SolType>::RustType,
-            <TaskState as alloy::sol_types::SolType>::RustType,
             alloy::sol_types::private::Address,
+            <LibCommon::TaskType as alloy::sol_types::SolType>::RustType,
+            <LibCommon::TaskState as alloy::sol_types::SolType>::RustType,
+            alloy::sol_types::private::Bytes,
             alloy::sol_types::private::Bytes,
             alloy::sol_types::private::Vec<alloy::sol_types::private::Bytes>,
         );
@@ -852,8 +1419,8 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
         }
         #[automatically_derived]
         #[doc(hidden)]
-        impl ::core::convert::From<TaskDetails> for UnderlyingRustTuple<'_> {
-            fn from(value: TaskDetails) -> Self {
+        impl ::core::convert::From<TaskMetadata> for UnderlyingRustTuple<'_> {
+            fn from(value: TaskMetadata) -> Self {
                 (
                     value.maxGasAmount,
                     value.gasPriceCap,
@@ -864,17 +1431,18 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                     value.registrationTime,
                     value.expiryTime,
                     value.priority,
-                    value.taskType,
-                    value.state,
                     value.owner,
+                    value.taskType,
+                    value.taskState,
                     value.payloadTx,
+                    value.predicate,
                     value.auxData,
                 )
             }
         }
         #[automatically_derived]
         #[doc(hidden)]
-        impl ::core::convert::From<UnderlyingRustTuple<'_>> for TaskDetails {
+        impl ::core::convert::From<UnderlyingRustTuple<'_>> for TaskMetadata {
             fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                 Self {
                     maxGasAmount: tuple.0,
@@ -886,20 +1454,21 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                     registrationTime: tuple.6,
                     expiryTime: tuple.7,
                     priority: tuple.8,
-                    taskType: tuple.9,
-                    state: tuple.10,
-                    owner: tuple.11,
+                    owner: tuple.9,
+                    taskType: tuple.10,
+                    taskState: tuple.11,
                     payloadTx: tuple.12,
-                    auxData: tuple.13,
+                    predicate: tuple.13,
+                    auxData: tuple.14,
                 }
             }
         }
         #[automatically_derived]
-        impl alloy_sol_types::SolValue for TaskDetails {
+        impl alloy_sol_types::SolValue for TaskMetadata {
             type SolType = Self;
         }
         #[automatically_derived]
-        impl alloy_sol_types::private::SolTypeValue<Self> for TaskDetails {
+        impl alloy_sol_types::private::SolTypeValue<Self> for TaskMetadata {
             #[inline]
             fn stv_to_tokens(&self) -> <Self as alloy_sol_types::SolType>::Token<'_> {
                 (
@@ -932,13 +1501,20 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                     <alloy::sol_types::sol_data::Uint<
                         64,
                     > as alloy_sol_types::SolType>::tokenize(&self.priority),
-                    <TaskType as alloy_sol_types::SolType>::tokenize(&self.taskType),
-                    <TaskState as alloy_sol_types::SolType>::tokenize(&self.state),
                     <alloy::sol_types::sol_data::Address as alloy_sol_types::SolType>::tokenize(
                         &self.owner,
                     ),
+                    <LibCommon::TaskType as alloy_sol_types::SolType>::tokenize(
+                        &self.taskType,
+                    ),
+                    <LibCommon::TaskState as alloy_sol_types::SolType>::tokenize(
+                        &self.taskState,
+                    ),
                     <alloy::sol_types::sol_data::Bytes as alloy_sol_types::SolType>::tokenize(
                         &self.payloadTx,
+                    ),
+                    <alloy::sol_types::sol_data::Bytes as alloy_sol_types::SolType>::tokenize(
+                        &self.predicate,
                     ),
                     <alloy::sol_types::sol_data::Array<
                         alloy::sol_types::sol_data::Bytes,
@@ -987,7 +1563,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
             }
         }
         #[automatically_derived]
-        impl alloy_sol_types::SolType for TaskDetails {
+        impl alloy_sol_types::SolType for TaskMetadata {
             type RustType = Self;
             type Token<'a> = <UnderlyingSolTuple<
                 'a,
@@ -1012,12 +1588,12 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
             }
         }
         #[automatically_derived]
-        impl alloy_sol_types::SolStruct for TaskDetails {
-            const NAME: &'static str = "TaskDetails";
+        impl alloy_sol_types::SolStruct for TaskMetadata {
+            const NAME: &'static str = "TaskMetadata";
             #[inline]
             fn eip712_root_type() -> alloy_sol_types::private::Cow<'static, str> {
                 alloy_sol_types::private::Cow::Borrowed(
-                    "TaskDetails(uint128 maxGasAmount,uint128 gasPriceCap,uint128 automationFeeCapForCycle,uint128 depositFee,bytes32 txHash,uint64 taskIndex,uint64 registrationTime,uint64 expiryTime,uint64 priority,uint8 taskType,uint8 state,address owner,bytes payloadTx,bytes[] auxData)",
+                    "TaskMetadata(uint128 maxGasAmount,uint128 gasPriceCap,uint128 automationFeeCapForCycle,uint128 depositFee,bytes32 txHash,uint64 taskIndex,uint64 registrationTime,uint64 expiryTime,uint64 priority,address owner,uint8 taskType,uint8 taskState,bytes payloadTx,bytes predicate,bytes[] auxData)",
                 )
             }
             #[inline]
@@ -1073,20 +1649,24 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                         64,
                     > as alloy_sol_types::SolType>::eip712_data_word(&self.priority)
                         .0,
-                    <TaskType as alloy_sol_types::SolType>::eip712_data_word(
-                            &self.taskType,
-                        )
-                        .0,
-                    <TaskState as alloy_sol_types::SolType>::eip712_data_word(
-                            &self.state,
-                        )
-                        .0,
                     <alloy::sol_types::sol_data::Address as alloy_sol_types::SolType>::eip712_data_word(
                             &self.owner,
                         )
                         .0,
+                    <LibCommon::TaskType as alloy_sol_types::SolType>::eip712_data_word(
+                            &self.taskType,
+                        )
+                        .0,
+                    <LibCommon::TaskState as alloy_sol_types::SolType>::eip712_data_word(
+                            &self.taskState,
+                        )
+                        .0,
                     <alloy::sol_types::sol_data::Bytes as alloy_sol_types::SolType>::eip712_data_word(
                             &self.payloadTx,
+                        )
+                        .0,
+                    <alloy::sol_types::sol_data::Bytes as alloy_sol_types::SolType>::eip712_data_word(
+                            &self.predicate,
                         )
                         .0,
                     <alloy::sol_types::sol_data::Array<
@@ -1098,7 +1678,7 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
             }
         }
         #[automatically_derived]
-        impl alloy_sol_types::EventTopic for TaskDetails {
+        impl alloy_sol_types::EventTopic for TaskMetadata {
             #[inline]
             fn topic_preimage_length(rust: &Self::RustType) -> usize {
                 0usize
@@ -1147,17 +1727,20 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                     > as alloy_sol_types::EventTopic>::topic_preimage_length(
                         &rust.priority,
                     )
-                    + <TaskType as alloy_sol_types::EventTopic>::topic_preimage_length(
-                        &rust.taskType,
-                    )
-                    + <TaskState as alloy_sol_types::EventTopic>::topic_preimage_length(
-                        &rust.state,
-                    )
                     + <alloy::sol_types::sol_data::Address as alloy_sol_types::EventTopic>::topic_preimage_length(
                         &rust.owner,
                     )
+                    + <LibCommon::TaskType as alloy_sol_types::EventTopic>::topic_preimage_length(
+                        &rust.taskType,
+                    )
+                    + <LibCommon::TaskState as alloy_sol_types::EventTopic>::topic_preimage_length(
+                        &rust.taskState,
+                    )
                     + <alloy::sol_types::sol_data::Bytes as alloy_sol_types::EventTopic>::topic_preimage_length(
                         &rust.payloadTx,
+                    )
+                    + <alloy::sol_types::sol_data::Bytes as alloy_sol_types::EventTopic>::topic_preimage_length(
+                        &rust.predicate,
                     )
                     + <alloy::sol_types::sol_data::Array<
                         alloy::sol_types::sol_data::Bytes,
@@ -1227,20 +1810,24 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
                     &rust.priority,
                     out,
                 );
-                <TaskType as alloy_sol_types::EventTopic>::encode_topic_preimage(
-                    &rust.taskType,
-                    out,
-                );
-                <TaskState as alloy_sol_types::EventTopic>::encode_topic_preimage(
-                    &rust.state,
-                    out,
-                );
                 <alloy::sol_types::sol_data::Address as alloy_sol_types::EventTopic>::encode_topic_preimage(
                     &rust.owner,
                     out,
                 );
+                <LibCommon::TaskType as alloy_sol_types::EventTopic>::encode_topic_preimage(
+                    &rust.taskType,
+                    out,
+                );
+                <LibCommon::TaskState as alloy_sol_types::EventTopic>::encode_topic_preimage(
+                    &rust.taskState,
+                    out,
+                );
                 <alloy::sol_types::sol_data::Bytes as alloy_sol_types::EventTopic>::encode_topic_preimage(
                     &rust.payloadTx,
+                    out,
+                );
+                <alloy::sol_types::sol_data::Bytes as alloy_sol_types::EventTopic>::encode_topic_preimage(
+                    &rust.predicate,
                     out,
                 );
                 <alloy::sol_types::sol_data::Array<
@@ -1265,543 +1852,11 @@ struct TaskDetails { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automati
             }
         }
     };
-    use alloy::contract as alloy_contract;
-    /**Creates a new wrapper around an on-chain [`CommonUtils`](self) contract instance.
-
-See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
-    #[inline]
-    pub const fn new<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    >(
-        address: alloy_sol_types::private::Address,
-        __provider: P,
-    ) -> CommonUtilsInstance<P, N> {
-        CommonUtilsInstance::<P, N>::new(address, __provider)
-    }
-    /**A [`CommonUtils`](self) instance.
-
-Contains type-safe methods for interacting with an on-chain instance of the
-[`CommonUtils`](self) contract located at a given `address`, using a given
-provider `P`.
-
-If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
-documentation on how to provide it), the `deploy` and `deploy_builder` methods can
-be used to deploy a new instance of the contract.
-
-See the [module-level documentation](self) for all the available methods.*/
-    #[derive(Clone)]
-    pub struct CommonUtilsInstance<P, N = alloy_contract::private::Ethereum> {
-        address: alloy_sol_types::private::Address,
-        provider: P,
-        _network: ::core::marker::PhantomData<N>,
-    }
-    #[automatically_derived]
-    impl<P, N> ::core::fmt::Debug for CommonUtilsInstance<P, N> {
-        #[inline]
-        fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-            f.debug_tuple("CommonUtilsInstance").field(&self.address).finish()
-        }
-    }
-    /// Instantiation and getters/setters.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > CommonUtilsInstance<P, N> {
-        /**Creates a new wrapper around an on-chain [`CommonUtils`](self) contract instance.
-
-See the [wrapper's documentation](`CommonUtilsInstance`) for more details.*/
-        #[inline]
-        pub const fn new(
-            address: alloy_sol_types::private::Address,
-            __provider: P,
-        ) -> Self {
-            Self {
-                address,
-                provider: __provider,
-                _network: ::core::marker::PhantomData,
-            }
-        }
-        /// Returns a reference to the address.
-        #[inline]
-        pub const fn address(&self) -> &alloy_sol_types::private::Address {
-            &self.address
-        }
-        /// Sets the address.
-        #[inline]
-        pub fn set_address(&mut self, address: alloy_sol_types::private::Address) {
-            self.address = address;
-        }
-        /// Sets the address and returns `self`.
-        pub fn at(mut self, address: alloy_sol_types::private::Address) -> Self {
-            self.set_address(address);
-            self
-        }
-        /// Returns a reference to the provider.
-        #[inline]
-        pub const fn provider(&self) -> &P {
-            &self.provider
-        }
-    }
-    impl<P: ::core::clone::Clone, N> CommonUtilsInstance<&P, N> {
-        /// Clones the provider and returns a new instance with the cloned provider.
-        #[inline]
-        pub fn with_cloned_provider(self) -> CommonUtilsInstance<P, N> {
-            CommonUtilsInstance {
-                address: self.address,
-                provider: ::core::clone::Clone::clone(&self.provider),
-                _network: ::core::marker::PhantomData,
-            }
-        }
-    }
-    /// Function calls.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > CommonUtilsInstance<P, N> {
-        /// Creates a new call builder using this contract instance's provider and address.
-        ///
-        /// Note that the call can be any function call, not just those defined in this
-        /// contract. Prefer using the other methods for building type-safe contract calls.
-        pub fn call_builder<C: alloy_sol_types::SolCall>(
-            &self,
-            call: &C,
-        ) -> alloy_contract::SolCallBuilder<&P, C, N> {
-            alloy_contract::SolCallBuilder::new_sol(&self.provider, &self.address, call)
-        }
-    }
-    /// Event filters.
-    impl<
-        P: alloy_contract::private::Provider<N>,
-        N: alloy_contract::private::Network,
-    > CommonUtilsInstance<P, N> {
-        /// Creates a new event filter using this contract instance's provider and address.
-        ///
-        /// Note that the type can be any event, not just those defined in this contract.
-        /// Prefer using the other methods for building type-safe event filters.
-        pub fn event_filter<E: alloy_sol_types::SolEvent>(
-            &self,
-        ) -> alloy_contract::Event<&P, E, N> {
-            alloy_contract::Event::new_sol(&self.provider, &self.address)
-        }
-    }
-}
-/**
-
-Generated by the following Solidity interface...
-```solidity
-library CommonUtils {
-    type CycleState is uint8;
-    type TaskState is uint8;
-    type TaskType is uint8;
-    struct CycleDetails {
-        uint64 index;
-        uint64 startTime;
-        uint64 durationSecs;
-        CycleState state;
-        uint64 nextTaskIndexPosition;
-        uint64[] expectedTasksToBeProcessed;
-    }
-    struct TaskDetails {
-        uint128 maxGasAmount;
-        uint128 gasPriceCap;
-        uint128 automationFeeCapForCycle;
-        uint128 depositFee;
-        bytes32 txHash;
-        uint64 taskIndex;
-        uint64 registrationTime;
-        uint64 expiryTime;
-        uint64 priority;
-        TaskType taskType;
-        TaskState state;
-        address owner;
-        bytes payloadTx;
-        bytes[] auxData;
-    }
-}
-
-interface SupraContractsBindings {
-    event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed state, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState indexed oldState);
-
-    function blockPrologue() external;
-    function getAllActiveTaskIds() external view returns (uint256[] memory);
-    function getCycleStateDetails() external view returns (CommonUtils.CycleDetails memory details);
-    function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory);
-    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (CommonUtils.TaskDetails[] memory);
-    function getTaskIdList() external view returns (uint256[] memory);
-    function isAutomationEnabled() external view returns (bool);
-    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
-}
-```
-
-...which was generated by the following JSON ABI:
-```json
-[
-  {
-    "type": "function",
-    "name": "blockPrologue",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "getAllActiveTaskIds",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getCycleStateDetails",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "details",
-        "type": "tuple",
-        "internalType": "struct CommonUtils.CycleDetails",
-        "components": [
-          {
-            "name": "index",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "startTime",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "durationSecs",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "state",
-            "type": "uint8",
-            "internalType": "enum CommonUtils.CycleState"
-          },
-          {
-            "name": "nextTaskIndexPosition",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "expectedTasksToBeProcessed",
-            "type": "uint64[]",
-            "internalType": "uint64[]"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getTaskDetails",
-    "inputs": [
-      {
-        "name": "_taskIndex",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct CommonUtils.TaskDetails",
-        "components": [
-          {
-            "name": "maxGasAmount",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "gasPriceCap",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "automationFeeCapForCycle",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "depositFee",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "txHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "taskIndex",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "registrationTime",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "expiryTime",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "priority",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskType",
-            "type": "uint8",
-            "internalType": "enum CommonUtils.TaskType"
-          },
-          {
-            "name": "state",
-            "type": "uint8",
-            "internalType": "enum CommonUtils.TaskState"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "payloadTx",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "auxData",
-            "type": "bytes[]",
-            "internalType": "bytes[]"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getTaskDetailsBulk",
-    "inputs": [
-      {
-        "name": "_taskIndexes",
-        "type": "uint64[]",
-        "internalType": "uint64[]"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple[]",
-        "internalType": "struct CommonUtils.TaskDetails[]",
-        "components": [
-          {
-            "name": "maxGasAmount",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "gasPriceCap",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "automationFeeCapForCycle",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "depositFee",
-            "type": "uint128",
-            "internalType": "uint128"
-          },
-          {
-            "name": "txHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "taskIndex",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "registrationTime",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "expiryTime",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "priority",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskType",
-            "type": "uint8",
-            "internalType": "enum CommonUtils.TaskType"
-          },
-          {
-            "name": "state",
-            "type": "uint8",
-            "internalType": "enum CommonUtils.TaskState"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "payloadTx",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "auxData",
-            "type": "bytes[]",
-            "internalType": "bytes[]"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getTaskIdList",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isAutomationEnabled",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "processTasks",
-    "inputs": [
-      {
-        "name": "_cycleIndex",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "_taskIndexes",
-        "type": "uint64[]",
-        "internalType": "uint64[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "event",
-    "name": "AutomationCycleEvent",
-    "inputs": [
-      {
-        "name": "index",
-        "type": "uint64",
-        "indexed": true,
-        "internalType": "uint64"
-      },
-      {
-        "name": "state",
-        "type": "uint8",
-        "indexed": true,
-        "internalType": "enum CommonUtils.CycleState"
-      },
-      {
-        "name": "startTime",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      },
-      {
-        "name": "durationSecs",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      },
-      {
-        "name": "oldState",
-        "type": "uint8",
-        "indexed": true,
-        "internalType": "enum CommonUtils.CycleState"
-      }
-    ],
-    "anonymous": false
-  }
-]
-```*/
-#[allow(
-    non_camel_case_types,
-    non_snake_case,
-    clippy::pub_underscore_fields,
-    clippy::style,
-    clippy::empty_structs_with_brackets
-)]
-pub mod SupraContractsBindings {
-    use super::*;
-    use alloy::sol_types as alloy_sol_types;
-    /// The creation / init bytecode of the contract.
-    ///
-    /// ```text
-    ///0x
-    /// ```
-    #[rustfmt::skip]
-    #[allow(clippy::all)]
-    pub static BYTECODE: alloy_sol_types::private::Bytes = alloy_sol_types::private::Bytes::from_static(
-        b"",
-    );
-    /// The runtime bytecode of the contract, as deployed on the network.
-    ///
-    /// ```text
-    ///0x
-    /// ```
-    #[rustfmt::skip]
-    #[allow(clippy::all)]
-    pub static DEPLOYED_BYTECODE: alloy_sol_types::private::Bytes = alloy_sol_types::private::Bytes::from_static(
-        b"",
-    );
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**Event with signature `AutomationCycleEvent(uint64,uint8,uint64,uint64,uint8)` and selector `0xe3a609ff9d35dde784f4ecc5c5988b3a4ad5ebeabb27e7ad22a76570128e51df`.
 ```solidity
-event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed state, uint64 startTime, uint64 durationSecs, CommonUtils.CycleState indexed oldState);
+event AutomationCycleEvent(uint64 indexed index, LibCommon.CycleState indexed state, uint64 startTime, uint64 durationSecs, LibCommon.CycleState indexed oldState);
 ```*/
     #[allow(
         non_camel_case_types,
@@ -1814,13 +1869,13 @@ event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed 
         #[allow(missing_docs)]
         pub index: u64,
         #[allow(missing_docs)]
-        pub state: <CommonUtils::CycleState as alloy::sol_types::SolType>::RustType,
+        pub state: <LibCommon::CycleState as alloy::sol_types::SolType>::RustType,
         #[allow(missing_docs)]
         pub startTime: u64,
         #[allow(missing_docs)]
         pub durationSecs: u64,
         #[allow(missing_docs)]
-        pub oldState: <CommonUtils::CycleState as alloy::sol_types::SolType>::RustType,
+        pub oldState: <LibCommon::CycleState as alloy::sol_types::SolType>::RustType,
     }
     #[allow(
         non_camel_case_types,
@@ -1842,8 +1897,8 @@ event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed 
             type TopicList = (
                 alloy_sol_types::sol_data::FixedBytes<32>,
                 alloy::sol_types::sol_data::Uint<64>,
-                CommonUtils::CycleState,
-                CommonUtils::CycleState,
+                LibCommon::CycleState,
+                LibCommon::CycleState,
             );
             const SIGNATURE: &'static str = "AutomationCycleEvent(uint64,uint8,uint64,uint64,uint8)";
             const SIGNATURE_HASH: alloy_sol_types::private::B256 = alloy_sol_types::private::B256::new([
@@ -1915,10 +1970,10 @@ event AutomationCycleEvent(uint64 indexed index, CommonUtils.CycleState indexed 
                 out[1usize] = <alloy::sol_types::sol_data::Uint<
                     64,
                 > as alloy_sol_types::EventTopic>::encode_topic(&self.index);
-                out[2usize] = <CommonUtils::CycleState as alloy_sol_types::EventTopic>::encode_topic(
+                out[2usize] = <LibCommon::CycleState as alloy_sol_types::EventTopic>::encode_topic(
                     &self.state,
                 );
-                out[3usize] = <CommonUtils::CycleState as alloy_sol_types::EventTopic>::encode_topic(
+                out[3usize] = <LibCommon::CycleState as alloy_sol_types::EventTopic>::encode_topic(
                     &self.oldState,
                 );
                 Ok(())
@@ -2080,19 +2135,19 @@ function blockPrologue() external;
     };
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
-    /**Function with signature `getAllActiveTaskIds()` and selector `0xc5dcf6ac`.
+    /**Function with signature `getActiveTaskIds()` and selector `0x2321cca3`.
 ```solidity
-function getAllActiveTaskIds() external view returns (uint256[] memory);
+function getActiveTaskIds() external view returns (uint256[] memory);
 ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
-    pub struct getAllActiveTaskIdsCall;
+    pub struct getActiveTaskIdsCall;
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
-    ///Container type for the return parameters of the [`getAllActiveTaskIds()`](getAllActiveTaskIdsCall) function.
+    ///Container type for the return parameters of the [`getActiveTaskIds()`](getActiveTaskIdsCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
-    pub struct getAllActiveTaskIdsReturn {
+    pub struct getActiveTaskIdsReturn {
         #[allow(missing_docs)]
         pub _0: alloy::sol_types::private::Vec<
             alloy::sol_types::private::primitives::aliases::U256,
@@ -2125,16 +2180,16 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getAllActiveTaskIdsCall>
+            impl ::core::convert::From<getActiveTaskIdsCall>
             for UnderlyingRustTuple<'_> {
-                fn from(value: getAllActiveTaskIdsCall) -> Self {
+                fn from(value: getActiveTaskIdsCall) -> Self {
                     ()
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
             impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getAllActiveTaskIdsCall {
+            for getActiveTaskIdsCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self
                 }
@@ -2165,23 +2220,23 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<getAllActiveTaskIdsReturn>
+            impl ::core::convert::From<getActiveTaskIdsReturn>
             for UnderlyingRustTuple<'_> {
-                fn from(value: getAllActiveTaskIdsReturn) -> Self {
+                fn from(value: getActiveTaskIdsReturn) -> Self {
                     (value._0,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
             impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for getAllActiveTaskIdsReturn {
+            for getActiveTaskIdsReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self { _0: tuple.0 }
                 }
             }
         }
         #[automatically_derived]
-        impl alloy_sol_types::SolCall for getAllActiveTaskIdsCall {
+        impl alloy_sol_types::SolCall for getActiveTaskIdsCall {
             type Parameters<'a> = ();
             type Token<'a> = <Self::Parameters<
                 'a,
@@ -2195,8 +2250,8 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
             type ReturnToken<'a> = <Self::ReturnTuple<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
-            const SIGNATURE: &'static str = "getAllActiveTaskIds()";
-            const SELECTOR: [u8; 4] = [197u8, 220u8, 246u8, 172u8];
+            const SIGNATURE: &'static str = "getActiveTaskIds()";
+            const SELECTOR: [u8; 4] = [35u8, 33u8, 204u8, 163u8];
             #[inline]
             fn new<'a>(
                 tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
@@ -2221,7 +2276,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
                     '_,
                 > as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(|r| {
-                        let r: getAllActiveTaskIdsReturn = r.into();
+                        let r: getActiveTaskIdsReturn = r.into();
                         r._0
                     })
             }
@@ -2233,7 +2288,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
                     '_,
                 > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
                     .map(|r| {
-                        let r: getAllActiveTaskIdsReturn = r.into();
+                        let r: getActiveTaskIdsReturn = r.into();
                         r._0
                     })
             }
@@ -2243,7 +2298,7 @@ function getAllActiveTaskIds() external view returns (uint256[] memory);
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getCycleStateDetails()` and selector `0x6b5d8c56`.
 ```solidity
-function getCycleStateDetails() external view returns (CommonUtils.CycleDetails memory details);
+function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
 ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2255,7 +2310,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
     #[derive(Clone)]
     pub struct getCycleStateDetailsReturn {
         #[allow(missing_docs)]
-        pub details: <CommonUtils::CycleDetails as alloy::sol_types::SolType>::RustType,
+        pub _0: <LibCommon::CycleDetails as alloy::sol_types::SolType>::RustType,
     }
     #[allow(
         non_camel_case_types,
@@ -2302,10 +2357,10 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
         {
             #[doc(hidden)]
             #[allow(dead_code)]
-            type UnderlyingSolTuple<'a> = (CommonUtils::CycleDetails,);
+            type UnderlyingSolTuple<'a> = (LibCommon::CycleDetails,);
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (
-                <CommonUtils::CycleDetails as alloy::sol_types::SolType>::RustType,
+                <LibCommon::CycleDetails as alloy::sol_types::SolType>::RustType,
             );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
@@ -2323,7 +2378,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
             impl ::core::convert::From<getCycleStateDetailsReturn>
             for UnderlyingRustTuple<'_> {
                 fn from(value: getCycleStateDetailsReturn) -> Self {
-                    (value.details,)
+                    (value._0,)
                 }
             }
             #[automatically_derived]
@@ -2331,7 +2386,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
             impl ::core::convert::From<UnderlyingRustTuple<'_>>
             for getCycleStateDetailsReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
-                    Self { details: tuple.0 }
+                    Self { _0: tuple.0 }
                 }
             }
         }
@@ -2341,8 +2396,8 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
             type Token<'a> = <Self::Parameters<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
-            type Return = <CommonUtils::CycleDetails as alloy::sol_types::SolType>::RustType;
-            type ReturnTuple<'a> = (CommonUtils::CycleDetails,);
+            type Return = <LibCommon::CycleDetails as alloy::sol_types::SolType>::RustType;
+            type ReturnTuple<'a> = (LibCommon::CycleDetails,);
             type ReturnToken<'a> = <Self::ReturnTuple<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
@@ -2360,7 +2415,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
             }
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
-                (<CommonUtils::CycleDetails as alloy_sol_types::SolType>::tokenize(ret),)
+                (<LibCommon::CycleDetails as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
@@ -2369,7 +2424,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
                 > as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(|r| {
                         let r: getCycleStateDetailsReturn = r.into();
-                        r.details
+                        r._0
                     })
             }
             #[inline]
@@ -2381,7 +2436,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
                 > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
                     .map(|r| {
                         let r: getCycleStateDetailsReturn = r.into();
-                        r.details
+                        r._0
                     })
             }
         }
@@ -2390,7 +2445,7 @@ function getCycleStateDetails() external view returns (CommonUtils.CycleDetails 
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetails(uint64)` and selector `0xb2ef6896`.
 ```solidity
-function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.TaskDetails memory);
+function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
 ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2399,13 +2454,13 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
         pub _taskIndex: u64,
     }
     #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive()]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`getTaskDetails(uint64)`](getTaskDetailsCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskDetailsReturn {
         #[allow(missing_docs)]
-        pub _0: <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
+        pub _0: <TaskMetadata as alloy::sol_types::SolType>::RustType,
     }
     #[allow(
         non_camel_case_types,
@@ -2450,10 +2505,10 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
         {
             #[doc(hidden)]
             #[allow(dead_code)]
-            type UnderlyingSolTuple<'a> = (CommonUtils::TaskDetails,);
+            type UnderlyingSolTuple<'a> = (TaskMetadata,);
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (
-                <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
+                <TaskMetadata as alloy::sol_types::SolType>::RustType,
             );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
@@ -2489,8 +2544,8 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             type Token<'a> = <Self::Parameters<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
-            type Return = <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType;
-            type ReturnTuple<'a> = (CommonUtils::TaskDetails,);
+            type Return = <TaskMetadata as alloy::sol_types::SolType>::RustType;
+            type ReturnTuple<'a> = (TaskMetadata,);
             type ReturnToken<'a> = <Self::ReturnTuple<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
@@ -2512,7 +2567,7 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
             }
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
-                (<CommonUtils::TaskDetails as alloy_sol_types::SolType>::tokenize(ret),)
+                (<TaskMetadata as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
             fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
@@ -2542,7 +2597,7 @@ function getTaskDetails(uint64 _taskIndex) external view returns (CommonUtils.Ta
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetailsBulk(uint64[])` and selector `0x12f72cf4`.
 ```solidity
-function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (CommonUtils.TaskDetails[] memory);
+function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
 ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2551,14 +2606,14 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
         pub _taskIndexes: alloy::sol_types::private::Vec<u64>,
     }
     #[derive(serde::Serialize, serde::Deserialize)]
-    #[derive()]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
     ///Container type for the return parameters of the [`getTaskDetailsBulk(uint64[])`](getTaskDetailsBulkCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskDetailsBulkReturn {
         #[allow(missing_docs)]
         pub _0: alloy::sol_types::private::Vec<
-            <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
+            <TaskMetadata as alloy::sol_types::SolType>::RustType,
         >,
     }
     #[allow(
@@ -2609,12 +2664,12 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             #[doc(hidden)]
             #[allow(dead_code)]
             type UnderlyingSolTuple<'a> = (
-                alloy::sol_types::sol_data::Array<CommonUtils::TaskDetails>,
+                alloy::sol_types::sol_data::Array<TaskMetadata>,
             );
             #[doc(hidden)]
             type UnderlyingRustTuple<'a> = (
                 alloy::sol_types::private::Vec<
-                    <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
+                    <TaskMetadata as alloy::sol_types::SolType>::RustType,
                 >,
             );
             #[cfg(test)]
@@ -2654,11 +2709,9 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
             type Return = alloy::sol_types::private::Vec<
-                <CommonUtils::TaskDetails as alloy::sol_types::SolType>::RustType,
+                <TaskMetadata as alloy::sol_types::SolType>::RustType,
             >;
-            type ReturnTuple<'a> = (
-                alloy::sol_types::sol_data::Array<CommonUtils::TaskDetails>,
-            );
+            type ReturnTuple<'a> = (alloy::sol_types::sol_data::Array<TaskMetadata>,);
             type ReturnToken<'a> = <Self::ReturnTuple<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
@@ -2682,7 +2735,7 @@ function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns 
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
                 (
                     <alloy::sol_types::sol_data::Array<
-                        CommonUtils::TaskDetails,
+                        TaskMetadata,
                     > as alloy_sol_types::SolType>::tokenize(ret),
                 )
             }
@@ -2862,6 +2915,158 @@ function getTaskIdList() external view returns (uint256[] memory);
                 > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
                     .map(|r| {
                         let r: getTaskIdListReturn = r.into();
+                        r._0
+                    })
+            }
+        }
+    };
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    /**Function with signature `ifTaskExists(uint64)` and selector `0x8aaa404e`.
+```solidity
+function ifTaskExists(uint64 _taskIndex) external view returns (bool);
+```*/
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct ifTaskExistsCall {
+        #[allow(missing_docs)]
+        pub _taskIndex: u64,
+    }
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    ///Container type for the return parameters of the [`ifTaskExists(uint64)`](ifTaskExistsCall) function.
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct ifTaskExistsReturn {
+        #[allow(missing_docs)]
+        pub _0: bool,
+    }
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (alloy::sol_types::sol_data::Uint<64>,);
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (u64,);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<ifTaskExistsCall> for UnderlyingRustTuple<'_> {
+                fn from(value: ifTaskExistsCall) -> Self {
+                    (value._taskIndex,)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for ifTaskExistsCall {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self { _taskIndex: tuple.0 }
+                }
+            }
+        }
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (alloy::sol_types::sol_data::Bool,);
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (bool,);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<ifTaskExistsReturn> for UnderlyingRustTuple<'_> {
+                fn from(value: ifTaskExistsReturn) -> Self {
+                    (value._0,)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for ifTaskExistsReturn {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self { _0: tuple.0 }
+                }
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolCall for ifTaskExistsCall {
+            type Parameters<'a> = (alloy::sol_types::sol_data::Uint<64>,);
+            type Token<'a> = <Self::Parameters<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            type Return = bool;
+            type ReturnTuple<'a> = (alloy::sol_types::sol_data::Bool,);
+            type ReturnToken<'a> = <Self::ReturnTuple<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            const SIGNATURE: &'static str = "ifTaskExists(uint64)";
+            const SELECTOR: [u8; 4] = [138u8, 170u8, 64u8, 78u8];
+            #[inline]
+            fn new<'a>(
+                tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                tuple.into()
+            }
+            #[inline]
+            fn tokenize(&self) -> Self::Token<'_> {
+                (
+                    <alloy::sol_types::sol_data::Uint<
+                        64,
+                    > as alloy_sol_types::SolType>::tokenize(&self._taskIndex),
+                )
+            }
+            #[inline]
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                (
+                    <alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(
+                        ret,
+                    ),
+                )
+            }
+            #[inline]
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                    .map(|r| {
+                        let r: ifTaskExistsReturn = r.into();
+                        r._0
+                    })
+            }
+            #[inline]
+            fn abi_decode_returns_validate(
+                data: &[u8],
+            ) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
+                    .map(|r| {
+                        let r: ifTaskExistsReturn = r.into();
                         r._0
                     })
             }
@@ -3182,7 +3387,7 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         #[allow(missing_docs)]
         blockPrologue(blockPrologueCall),
         #[allow(missing_docs)]
-        getAllActiveTaskIds(getAllActiveTaskIdsCall),
+        getActiveTaskIds(getActiveTaskIdsCall),
         #[allow(missing_docs)]
         getCycleStateDetails(getCycleStateDetailsCall),
         #[allow(missing_docs)]
@@ -3191,6 +3396,8 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         getTaskDetailsBulk(getTaskDetailsBulkCall),
         #[allow(missing_docs)]
         getTaskIdList(getTaskIdListCall),
+        #[allow(missing_docs)]
+        ifTaskExists(ifTaskExistsCall),
         #[allow(missing_docs)]
         isAutomationEnabled(isAutomationEnabledCall),
         #[allow(missing_docs)]
@@ -3205,33 +3412,36 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
         /// Prefer using `SolInterface` methods instead.
         pub const SELECTORS: &'static [[u8; 4usize]] = &[
             [18u8, 247u8, 44u8, 244u8],
+            [35u8, 33u8, 204u8, 163u8],
             [107u8, 93u8, 140u8, 86u8],
             [125u8, 237u8, 9u8, 27u8],
             [127u8, 105u8, 195u8, 92u8],
+            [138u8, 170u8, 64u8, 78u8],
             [178u8, 239u8, 104u8, 150u8],
-            [197u8, 220u8, 246u8, 172u8],
             [228u8, 142u8, 14u8, 152u8],
             [236u8, 130u8, 180u8, 41u8],
         ];
         /// The names of the variants in the same order as `SELECTORS`.
         pub const VARIANT_NAMES: &'static [&'static str] = &[
             ::core::stringify!(getTaskDetailsBulk),
+            ::core::stringify!(getActiveTaskIds),
             ::core::stringify!(getCycleStateDetails),
             ::core::stringify!(blockPrologue),
             ::core::stringify!(processTasks),
+            ::core::stringify!(ifTaskExists),
             ::core::stringify!(getTaskDetails),
-            ::core::stringify!(getAllActiveTaskIds),
             ::core::stringify!(isAutomationEnabled),
             ::core::stringify!(getTaskIdList),
         ];
         /// The signatures in the same order as `SELECTORS`.
         pub const SIGNATURES: &'static [&'static str] = &[
             <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
             <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <ifTaskExistsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
-            <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <isAutomationEnabledCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskIdListCall as alloy_sol_types::SolCall>::SIGNATURE,
         ];
@@ -3260,15 +3470,15 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
     impl alloy_sol_types::SolInterface for SupraContractsBindingsCalls {
         const NAME: &'static str = "SupraContractsBindingsCalls";
         const MIN_DATA_LENGTH: usize = 0usize;
-        const COUNT: usize = 8usize;
+        const COUNT: usize = 9usize;
         #[inline]
         fn selector(&self) -> [u8; 4] {
             match self {
                 Self::blockPrologue(_) => {
                     <blockPrologueCall as alloy_sol_types::SolCall>::SELECTOR
                 }
-                Self::getAllActiveTaskIds(_) => {
-                    <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::SELECTOR
+                Self::getActiveTaskIds(_) => {
+                    <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::getCycleStateDetails(_) => {
                     <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SELECTOR
@@ -3281,6 +3491,9 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                 }
                 Self::getTaskIdList(_) => {
                     <getTaskIdListCall as alloy_sol_types::SolCall>::SELECTOR
+                }
+                Self::ifTaskExists(_) => {
+                    <ifTaskExistsCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::isAutomationEnabled(_) => {
                     <isAutomationEnabledCall as alloy_sol_types::SolCall>::SELECTOR
@@ -3319,6 +3532,17 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     getTaskDetailsBulk
                 },
                 {
+                    fn getActiveTaskIds(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <getActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::getActiveTaskIds)
+                    }
+                    getActiveTaskIds
+                },
+                {
                     fn getCycleStateDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3352,6 +3576,17 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     processTasks
                 },
                 {
+                    fn ifTaskExists(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::ifTaskExists)
+                    }
+                    ifTaskExists
+                },
+                {
                     fn getTaskDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3361,17 +3596,6 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                             .map(SupraContractsBindingsCalls::getTaskDetails)
                     }
                     getTaskDetails
-                },
-                {
-                    fn getAllActiveTaskIds(
-                        data: &[u8],
-                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::getAllActiveTaskIds)
-                    }
-                    getAllActiveTaskIds
                 },
                 {
                     fn isAutomationEnabled(
@@ -3427,6 +3651,17 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     getTaskDetailsBulk
                 },
                 {
+                    fn getActiveTaskIds(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <getActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::getActiveTaskIds)
+                    }
+                    getActiveTaskIds
+                },
+                {
                     fn getCycleStateDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3460,6 +3695,17 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                     processTasks
                 },
                 {
+                    fn ifTaskExists(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::ifTaskExists)
+                    }
+                    ifTaskExists
+                },
+                {
                     fn getTaskDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3469,17 +3715,6 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                             .map(SupraContractsBindingsCalls::getTaskDetails)
                     }
                     getTaskDetails
-                },
-                {
-                    fn getAllActiveTaskIds(
-                        data: &[u8],
-                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::getAllActiveTaskIds)
-                    }
-                    getAllActiveTaskIds
                 },
                 {
                     fn isAutomationEnabled(
@@ -3522,8 +3757,8 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         inner,
                     )
                 }
-                Self::getAllActiveTaskIds(inner) => {
-                    <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encoded_size(
+                Self::getActiveTaskIds(inner) => {
+                    <getActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encoded_size(
                         inner,
                     )
                 }
@@ -3544,6 +3779,11 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                 }
                 Self::getTaskIdList(inner) => {
                     <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encoded_size(
+                        inner,
+                    )
+                }
+                Self::ifTaskExists(inner) => {
+                    <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encoded_size(
                         inner,
                     )
                 }
@@ -3568,8 +3808,8 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                         out,
                     )
                 }
-                Self::getAllActiveTaskIds(inner) => {
-                    <getAllActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                Self::getActiveTaskIds(inner) => {
+                    <getActiveTaskIdsCall as alloy_sol_types::SolCall>::abi_encode_raw(
                         inner,
                         out,
                     )
@@ -3594,6 +3834,12 @@ function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external
                 }
                 Self::getTaskIdList(inner) => {
                     <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                        inner,
+                        out,
+                    )
+                }
+                Self::ifTaskExists(inner) => {
+                    <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encode_raw(
                         inner,
                         out,
                     )
@@ -3876,11 +4122,11 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
         ) -> alloy_contract::SolCallBuilder<&P, blockPrologueCall, N> {
             self.call_builder(&blockPrologueCall)
         }
-        ///Creates a new call builder for the [`getAllActiveTaskIds`] function.
-        pub fn getAllActiveTaskIds(
+        ///Creates a new call builder for the [`getActiveTaskIds`] function.
+        pub fn getActiveTaskIds(
             &self,
-        ) -> alloy_contract::SolCallBuilder<&P, getAllActiveTaskIdsCall, N> {
-            self.call_builder(&getAllActiveTaskIdsCall)
+        ) -> alloy_contract::SolCallBuilder<&P, getActiveTaskIdsCall, N> {
+            self.call_builder(&getActiveTaskIdsCall)
         }
         ///Creates a new call builder for the [`getCycleStateDetails`] function.
         pub fn getCycleStateDetails(
@@ -3911,6 +4157,13 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             &self,
         ) -> alloy_contract::SolCallBuilder<&P, getTaskIdListCall, N> {
             self.call_builder(&getTaskIdListCall)
+        }
+        ///Creates a new call builder for the [`ifTaskExists`] function.
+        pub fn ifTaskExists(
+            &self,
+            _taskIndex: u64,
+        ) -> alloy_contract::SolCallBuilder<&P, ifTaskExistsCall, N> {
+            self.call_builder(&ifTaskExistsCall { _taskIndex })
         }
         ///Creates a new call builder for the [`isAutomationEnabled`] function.
         pub fn isAutomationEnabled(
