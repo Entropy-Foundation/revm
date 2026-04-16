@@ -100,7 +100,7 @@ contract CoreFacet is ICoreFacet {
         return s.durationSecs;
     }
 
-    /// @notice Returns the refund duration and automation fee per sec of the transtition state.
+    /// @notice Returns the refund duration and automation fee per sec of the transition state.
     /// @return Refund duration
     /// @return Automation fee per sec
     function getTransitionInfo() external view returns (uint64, uint128) {

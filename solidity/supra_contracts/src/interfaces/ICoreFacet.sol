@@ -78,6 +78,7 @@ interface ICoreFacet {
     function getCycleDuration() external view returns (uint64);
     function getTransitionInfo() external view returns (uint64, uint128);
     function isAutomationEnabled() external view returns (bool);
+    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
 
     // =============================================================
     //                  State update functions
