@@ -6,10 +6,11 @@ import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
+import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract RegistryFacet is IRegistryFacet {
+contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     using EnumerableSet for *;
 
     /// @dev State variables 
@@ -419,5 +420,45 @@ contract RegistryFacet is IRegistryFacet {
             _taskOccupancy,
             _committedOccupancy
         );
+    }
+
+    function getSelectors() external pure override returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](36);
+        selectors[0]  = RegistryFacet.register.selector;
+        selectors[1]  = RegistryFacet.registerSystemTask.selector;
+        selectors[2]  = RegistryFacet.cancelTasks.selector;
+        selectors[3]  = RegistryFacet.cancelSystemTasks.selector;
+        selectors[4]  = RegistryFacet.stopTasks.selector;
+        selectors[5]  = RegistryFacet.stopSystemTasks.selector;
+        selectors[6]  = RegistryFacet.getTaskIdList.selector;
+        selectors[7]  = RegistryFacet.getSystemTaskIds.selector;
+        selectors[8]  = RegistryFacet.getTaskOwner.selector;
+        selectors[9]  = RegistryFacet.getNextTaskIndex.selector;
+        selectors[10] = RegistryFacet.totalTasks.selector;
+        selectors[11] = RegistryFacet.totalSystemTasks.selector;
+        selectors[12] = RegistryFacet.getTaskDetails.selector;
+        selectors[13] = RegistryFacet.getTaskDetailsBulk.selector;
+        selectors[14] = this.isAuthorizedSubmitter.selector;
+        selectors[15] = RegistryFacet.getTotalActiveTasks.selector;
+        selectors[16] = RegistryFacet.getActiveTaskIds.selector;
+        selectors[17] = this.hasActiveUserTask.selector;
+        selectors[18] = this.hasActiveSystemTask.selector;
+        selectors[19] = this.hasActiveTaskOfType.selector;
+        selectors[20] = RegistryFacet.getGasCommittedForNextCycle.selector;
+        selectors[21] = RegistryFacet.getGasCommittedForCurrentCycle.selector;
+        selectors[22] = RegistryFacet.getSystemGasCommittedForNextCycle.selector;
+        selectors[23] = RegistryFacet.getSystemGasCommittedForCurrentCycle.selector;
+        selectors[24] = RegistryFacet.getNextCycleRegistryMaxGasCap.selector;
+        selectors[25] = RegistryFacet.getNextCycleSysRegistryMaxGasCap.selector;
+        selectors[26] = RegistryFacet.getCycleLockedFees.selector;
+        selectors[27] = RegistryFacet.getTotalDepositedAutomationFees.selector;
+        selectors[28] = RegistryFacet.getTotalLockedBalance.selector;
+        selectors[29] = RegistryFacet.calculateAutomationFeeMultiplierForCommittedOccupancy.selector;
+        selectors[30] = RegistryFacet.calculateAutomationFeeMultiplierForCurrentCycle.selector;
+        selectors[31] = RegistryFacet.estimateAutomationFee.selector;
+        selectors[32] = RegistryFacet.estimateAutomationFeeWithCommittedOccupancy.selector;
+        selectors[33] = RegistryFacet.ifTaskExists.selector;
+        selectors[34] = RegistryFacet.ifSysTaskExists.selector;
+        selectors[35] = RegistryFacet.getTasksByAddress.selector;
     }
 }

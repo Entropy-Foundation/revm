@@ -10,11 +10,12 @@ use std::fmt::{Debug, Display};
 pub const CREATE2_FACTORY_OWNER: Address =
     address!("0x3fAB184622Dc19b6109349B94811493BF2a45362");
 
-/// The default CREATE2 FACTORY contract address.
+/// The default CREATE2 FACTORY contract address. Assumed deployed by [CREATE2_FACTORY_OWNER] with nonce 0
 pub const CREATE2_FACTORY_ADDRESS: Address =
     address!("0x4e59b44847b379578588920ca78fbf26c0b4956c");
 
-/// The initcode of the default CREATE2 FACTORY.
+/// The init-code of the default CREATE2 FACTORY widely used in community
+/// Retrieved from https://github.com/Arachnid/deterministic-deployment-proxy
 pub const CREATE2_FACTORY_CODE: &[u8] = &hex!(
     "604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3"
 );
@@ -22,16 +23,22 @@ pub const CREATE2_FACTORY_CODE: &[u8] = &hex!(
 /// Represents data required to construct genesis contracts deployment transaction
 #[derive(Clone, Getters, Dissolve, Constructor)]
 pub struct GenesisTransaction {
+    /// Sender of the transaction
     sender: Address,
+    /// Kind of the transaction.
     kind: TxKind,
+    /// Input data of the transaction.
     data: Vec<u8>,
+    /// Expected nonce of the sender account.
     nonce: u64,
+    /// Pre-computed deploy address of the contract if the transaction deploys a contract.
     deploy_address: Address,
+    /// Amount to mint to the contract address if the transaction deploys a contract.
     value: u128,
 }
 
 impl GenesisTransaction {
-    /// Creates a new genesis transaction with the given parameters to deploy a contract.
+    /// Creates a new genesis transaction with the given parameters to deploy a contract via standard create API.
     pub fn create(
         sender: Address,
         data: Vec<u8>,
@@ -48,7 +55,7 @@ impl GenesisTransaction {
         )
     }
 
-    /// Creates a new genesis transaction with the given parameters to deploy a contract.
+    /// Creates a new genesis transaction with the given parameters to deploy a contract via create2 API.
     pub fn create2(
         sender: Address,
         salt: &str,
@@ -102,13 +109,13 @@ pub enum GenesisTransactionTags {
 
     // Automation registry contracts
     DiamondCutFacet = 10,
-    Diamond = 11,
-    DiamondLoupeFacet = 12,
-    OwnershipFacet = 13,
-    ConfigFacet = 14,
-    RegistryFacet = 15,
-    CoreFacet = 16,
-    DiamondInit = 17,
+    DiamondLoupeFacet = 11,
+    OwnershipFacet = 12,
+    ConfigFacet = 13,
+    RegistryFacet = 14,
+    CoreFacet = 15,
+    DiamondInit = 16,
+    Diamond = 17,
 
     // Supra Nova contracts
     WrappedToken = 18, // Impl

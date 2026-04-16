@@ -5,14 +5,15 @@ import {AppStorage, Config, RegistryState, LibAppStorage} from "../libraries/Lib
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {IConfigFacet} from "../interfaces/IConfigFacet.sol";
+import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract ConfigFacet is IConfigFacet {
+contract ConfigFacet is IConfigFacet, IFacetSelectors {
     using EnumerableSet for *;
 
-    /// @dev State variables 
+    /// @dev State variables
     AppStorage internal s;
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -154,5 +155,20 @@ contract ConfigFacet is IConfigFacet {
     /// @notice Returns the pending configuration.
     function getConfigBuffer() external view returns (Config memory) {
         return LibAppStorage.bufferConfig();
+    }
+
+    function getSelectors() external pure override returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](11);
+        selectors[0]  = ConfigFacet.grantAuthorization.selector;
+        selectors[1]  = ConfigFacet.revokeAuthorization.selector;
+        selectors[2]  = ConfigFacet.enableRegistration.selector;
+        selectors[3]  = ConfigFacet.disableRegistration.selector;
+        selectors[4]  = ConfigFacet.withdrawFees.selector;
+        selectors[5]  = ConfigFacet.updateConfigBuffer.selector;
+        selectors[6]  = ConfigFacet.getVmSigner.selector;
+        selectors[7]  = ConfigFacet.erc20Supra.selector;
+        selectors[8]  = ConfigFacet.isRegistrationEnabled.selector;
+        selectors[9]  = ConfigFacet.getConfig.selector;
+        selectors[10] = ConfigFacet.getConfigBuffer.selector;
     }
 }

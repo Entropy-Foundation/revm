@@ -37,21 +37,18 @@ contract DeployDiamond is Script {
     function run() external {
         vm.startBroadcast();
 
-        // Deploy the Diamond, its facets and the DiamondInit
-        Deployment memory deployment = LibDiamondUtils.deploy(multiSig);
-        
-        // Execute the diamond cut to initialize the Diamond state
-        LibDiamondUtils.executeCut(erc20Supra, initParams, deployment);
+        // Deploy the Diamond, its facets and the DiamondInit and initialize the Diamond in a single transaction
+        Deployment memory deployment = LibDiamondUtils.deploy(multiSig, erc20Supra, initParams);
 
         console.log("Diamond owner:", OwnershipFacet(address(deployment.diamond)).owner());
         console.log("Diamond deployed at:", address(deployment.diamond));
-        console.log("DiamondCutFacet deployed at:", address(deployment.diamondCutFacet));
-        console.log("DiamondLoupeFacet deployed at:", address(deployment.loupeFacet));
-        console.log("OwnershipFacet deployed at:", address(deployment.ownershipFacet));
-        console.log("ConfigFacet deployed at:", address(deployment.configFacet));
-        console.log("RegistryFacet deployed at:", address(deployment.registryFacet));
-        console.log("CoreFacet deployed at:", address(deployment.coreFacet));
-        console.log("DiamondInit deployed at:", address(deployment.diamondInit));
+        console.log("DiamondCutFacet deployed at:", address(deployment.facets.diamondCutFacet));
+        console.log("DiamondLoupeFacet deployed at:", address(deployment.facets.loupeFacet));
+        console.log("OwnershipFacet deployed at:", address(deployment.facets.ownershipFacet));
+        console.log("ConfigFacet deployed at:", address(deployment.facets.configFacet));
+        console.log("RegistryFacet deployed at:", address(deployment.facets.registryFacet));
+        console.log("CoreFacet deployed at:", address(deployment.facets.coreFacet));
+        console.log("DiamondInit deployed at:", address(deployment.facets.diamondInit));
 
         vm.stopBroadcast();
     }

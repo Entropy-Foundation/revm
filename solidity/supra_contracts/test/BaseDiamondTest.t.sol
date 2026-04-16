@@ -43,8 +43,7 @@ abstract contract BaseDiamondTest is Test {
         erc20SupraHandler = ERC20SupraHandler(payable(address(proxy)));
         
         defaultParams = LibDiamondUtils.defaultInitParams();
-        deployment = LibDiamondUtils.deploy(admin);
-        LibDiamondUtils.executeCut(address(erc20Supra), defaultParams, deployment);
+        deployment = LibDiamondUtils.deploy(admin, address(erc20Supra), defaultParams);
         diamondAddr = deployment.diamond;
 
         IConfigFacet(diamondAddr).grantAuthorization(bob);

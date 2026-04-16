@@ -113,4 +113,5 @@ contract DiamondInit {
         registryState.nextCycleRegistryMaxGasCap = _params.registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _params.sysRegistryMaxGasCap;
     }
+
 }

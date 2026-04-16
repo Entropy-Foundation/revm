@@ -6,10 +6,11 @@ import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibCore} from "../libraries/LibCore.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
+import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract CoreFacet is ICoreFacet {
+contract CoreFacet is ICoreFacet, IFacetSelectors {
     using LibUtils for address;
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -127,32 +128,31 @@ contract CoreFacet is ICoreFacet {
     /// @notice Removes registered tasks when predicate validation fails during runtime.
     /// @param _taskIndexes Array of task indexes that failed predicate validation.
     /// @param _reasons Array of reasons for task removal.
-    function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external {
-        // Check caller is VM Signer
+    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external {
         msg.sender.enforceIsVmSigner();
-        
-        uint256 tasksCount = _taskIndexes.length;
-        if (!s.automationEnabled || tasksCount == 0) { return; }
-        if (tasksCount != _reasons.length) { revert InvalidArrayLength(); }
+
+        if (!s.automationEnabled) { return; }
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
-
-        LibCommon.RemovedTask[] memory removedTasks = new LibCommon.RemovedTask[](tasksCount);    
-        uint256 counter;
-
-        // Calculate duration for refundable fee for the tasks in current cycle
+        // Calculate refundable fee for this remaining time task in current cycle
         uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
-            
-        for (uint256 i = 0; i < tasksCount; i++) {
-            uint64 taskId = _taskIndexes[i];
-            if (LibCommon.ifTaskExists(taskId)) {
-                LibCommon.RemovedTask memory rt = LibCore.handleTasksRemoval(taskId, cycleEndTime, currentTime, residualInterval, _reasons[i]);
-                removedTasks[counter++] = rt;
-            }
-        }
 
-        if (counter > 0) {
-            emit TasksRemovedBySystem(removedTasks);
-        }
+        LibCommon.RemovedTask memory rt = LibCore.handleTasksRemoval(_taskIndex, cycleEndTime, currentTime, residualInterval, _reason);
+        emit TasksRemovedAsPredicateFailed([rt]);
+    }
+
+
+    function getSelectors() external pure override returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](10);
+        selectors[0] = CoreFacet.processTasks.selector;
+        selectors[1] = CoreFacet.monitorCycleEnd.selector;
+        selectors[2] = CoreFacet.enableAutomation.selector;
+        selectors[3] = CoreFacet.disableAutomation.selector;
+        selectors[4] = CoreFacet.removeRegisteredTask.selector;
+        selectors[5] = CoreFacet.getCycleInfo.selector;
+        selectors[6] = CoreFacet.getCycleDuration.selector;
+        selectors[7] = CoreFacet.getTransitionInfo.selector;
+        selectors[8] = CoreFacet.isAutomationEnabled.selector;
+        selectors[9] = CoreFacet.getCycleStateDetails.selector;
     }
 }

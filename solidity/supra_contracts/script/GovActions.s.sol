@@ -9,14 +9,14 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 contract InitializeCycleMonitoring is Script {
     address payable multisigWalletAddr;
     address blockMetadata;
-    address automationController;
+    address registry;
     bytes4 selector;
     uint64 timeout;
 
     function setUp() public {
         multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
         blockMetadata = vm.envAddress("BLOCK_METADATA_ADDRESS");
-        automationController = vm.envAddress("AUTOMATION_CONTROLLER");
+        registry = vm.envAddress("REGISTRY");
         selector = bytes4(keccak256("monitorCycleEnd()"));
         timeout = uint64(vm.envUint("TIMEOUT"));
     }
@@ -29,9 +29,9 @@ contract InitializeCycleMonitoring is Script {
         uint256 nextTxnIndex = wallet.getNextTransactionIndex();
         console.log("TxnIndex: ", nextTxnIndex);
 
-        // Submit a foundation/gov action to register automationController::monitor_cycle_event
+        // Submit a foundation/gov action to register registry::monitor_cycle_event
         // to be executed for each block
-        bytes memory data = abi.encodeCall(BlockMeta.register, (automationController, selector));
+        bytes memory data = abi.encodeCall(BlockMeta.register, (registry, selector));
         wallet.submitTransaction(blockMetadata, 0,  timeout, data);
 
         vm.stopBroadcast();

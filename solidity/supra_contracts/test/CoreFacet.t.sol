@@ -56,8 +56,7 @@ contract CoreFacetTest is BaseDiamondTest {
             automationEnabled: false
         }); 
 
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        Deployment memory deployment = LibDiamondUtils.deploy(admin, address(erc20Supra), initParams);
 
         address diamondAddr = deployment.diamond;
         vm.stopPrank();

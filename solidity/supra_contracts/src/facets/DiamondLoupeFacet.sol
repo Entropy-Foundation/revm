@@ -8,11 +8,13 @@ pragma solidity ^0.8.0;
 import { LibDiamond } from  "../libraries/LibDiamond.sol";
 import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
+import { IFacetSelectors } from "../interfaces/IFacetSelectors.sol";
 
 // The functions in DiamondLoupeFacet MUST be added to a diamond.
 // The EIP-2535 Diamond standard requires these functions.
 
-contract DiamondLoupeFacet is IDiamondLoupe, IERC165 {
+contract DiamondLoupeFacet is IDiamondLoupe, IERC165, IFacetSelectors {
+
     // Diamond Loupe Functions
     ////////////////////////////////////////////////////////////////////
     /// These functions are expected to be called frequently by tools.
@@ -63,5 +65,14 @@ contract DiamondLoupeFacet is IDiamondLoupe, IERC165 {
     function supportsInterface(bytes4 _interfaceId) external override view returns (bool) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         return ds.supportedInterfaces[_interfaceId];
+    }
+
+    function getSelectors() external pure override returns (bytes4[] memory s) {
+        s = new bytes4[](5);
+        s[0] = DiamondLoupeFacet.facets.selector;
+        s[1] = DiamondLoupeFacet.facetFunctionSelectors.selector;
+        s[2] = DiamondLoupeFacet.facetAddresses.selector;
+        s[3] = DiamondLoupeFacet.facetAddress.selector;
+        s[4] = DiamondLoupeFacet.supportsInterface.selector;
     }
 }

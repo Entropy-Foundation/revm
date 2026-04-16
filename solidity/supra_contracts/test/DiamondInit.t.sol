@@ -7,7 +7,7 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
-import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
+import {FacetsDeployment, Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -16,6 +16,7 @@ import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
 import {IERC165} from "../src/interfaces/IERC165.sol";
 import {DiamondInit} from "../src/upgradeInitializers/DiamondInit.sol";
+import {Diamond} from "../src//Diamond.sol";
 
 contract DiamondInitTest is BaseDiamondTest {
 
@@ -104,11 +105,11 @@ contract DiamondInitTest is BaseDiamondTest {
         bool coreExists;
 
         for (uint i; i < facets.length; i++) {
-            if (facets[i] == deployment.diamondCutFacet) diamondCutExists = true;
-            if (facets[i] == deployment.loupeFacet) loupeExists = true;
-            if (facets[i] == deployment.ownershipFacet) ownershipExists = true;
-            if (facets[i] == deployment.registryFacet) registryExists = true;
-            if (facets[i] == deployment.coreFacet) coreExists = true;
+            if (facets[i] == deployment.facets.diamondCutFacet) diamondCutExists = true;
+            if (facets[i] == deployment.facets.loupeFacet) loupeExists = true;
+            if (facets[i] == deployment.facets.ownershipFacet) ownershipExists = true;
+            if (facets[i] == deployment.facets.registryFacet) registryExists = true;
+            if (facets[i] == deployment.facets.coreFacet) coreExists = true;
         }
 
         assertTrue(diamondCutExists);
@@ -122,17 +123,17 @@ contract DiamondInitTest is BaseDiamondTest {
     function testSelectorRouting() public view {
         assertEq(
             IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.register.selector),
-            deployment.registryFacet
+            deployment.facets.registryFacet
         );
 
         assertEq(
             IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.enableAutomation.selector),
-            deployment.coreFacet
+            deployment.facets.coreFacet
         );
 
         assertEq(
             IDiamondLoupe(diamondAddr).facetAddress(OwnershipFacet.transferOwnership.selector),
-            deployment.ownershipFacet
+            deployment.facets.ownershipFacet
         );
     }
 
@@ -228,7 +229,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
-            facetAddress: deployment.registryFacet,
+            facetAddress: deployment.facets.registryFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: selectors
         });
@@ -259,7 +260,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
     /// @dev Test to ensure removing a selector works correclty.
     function testRemoveSelector() public {
-        uint256 numSelectorsBefore =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.registryFacet).length;
+        uint256 numSelectorsBefore =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.facets.registryFacet).length;
 
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IRegistryFacet.cancelTasks.selector;
@@ -278,7 +279,7 @@ contract DiamondInitTest is BaseDiamondTest {
         address facet = IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.cancelTasks.selector);
         assertEq(facet, address(0));
 
-        uint256 numSelectorsAfter =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.registryFacet).length;
+        uint256 numSelectorsAfter =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.facets.registryFacet).length;
         assertEq(numSelectorsAfter, numSelectorsBefore - 1);
 
         uint64[] memory taskIndexes = new uint64[](1);
@@ -340,7 +341,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
-            facetAddress: deployment.configFacet,
+            facetAddress: deployment.facets.configFacet,
             action: IDiamondCut.FacetCutAction.Replace,
             functionSelectors: selectors
         });
@@ -354,31 +355,27 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
     function testInitializeRevertsIfErc20SupraIsZero() public {   
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
-
         // address(0) as ERC20Supra
-        LibDiamondUtils.executeCut(address(0), defaultParams, deployment);
+        new Diamond(admin, facets, address(0), defaultParams);
         vm.stopPrank();
     }
   
     /// @dev Test to ensure initialization fails if EOA is passed as ERC20Supra address.
     function testInitializeRevertsIfErc20SupraIsEoa() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
-
         // EOA address as ERC20Supra
-        LibDiamondUtils.executeCut(admin, defaultParams, deployment);
+        new Diamond(admin, facets, admin, defaultParams);
         vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if task duration is <= cycle duration.
     function testInitializeRevertsIfInvalidTaskDuration() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 1200,
@@ -396,18 +393,17 @@ contract DiamondInitTest is BaseDiamondTest {
             registrationEnabled: true,
             automationEnabled: true
         });
-        
-        vm.expectRevert(LibCommon.InvalidTaskDuration.selector);
 
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        vm.expectRevert(LibCommon.InvalidTaskDuration.selector);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if registry max gas cap is zero.
     function testInitializeRevertsIfRegistryMaxGasCapZero() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 0,
@@ -423,19 +419,18 @@ contract DiamondInitTest is BaseDiamondTest {
             sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
-        }); 
+        });
 
         vm.expectRevert(LibCommon.InvalidRegistryMaxGasCap.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if congestion threshold percentage is > 100.
     function testInitializeRevertsIfInvalidCongestionThreshold() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -451,18 +446,17 @@ contract DiamondInitTest is BaseDiamondTest {
             sysTaskCapacity: 100,
             registrationEnabled: true,
             automationEnabled: true
-        }); 
+        });
 
         vm.expectRevert(LibCommon.InvalidCongestionThreshold.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if congestion exponent is 0.
     function testInitializeRevertsIfCongestionExponentZero() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
@@ -482,16 +476,15 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidCongestionExponent.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
-        vm.stopPrank();      
+        new Diamond(admin, facets, address(erc20Supra), initParams);
+        vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if task capacity is 0.
     function testInitializeRevertsIfTaskCapacityZero() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -510,16 +503,14 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidTaskCapacity.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
-        vm.stopPrank();     
+        new Diamond(admin, facets, address(erc20Supra), initParams);
+        vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if cycle duration is 0.
     function testInitializeRevertsIfCycleDurationZero() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -538,16 +529,14 @@ contract DiamondInitTest is BaseDiamondTest {
         });
         
         vm.expectRevert(LibCommon.InvalidCycleDuration.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
     
     /// @dev Test to ensure initialization fails if system task duration is <= cycle duration.
     function testInitializeRevertsIfInvalidSysTaskDuration() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -566,16 +555,14 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidSysTaskDuration.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if system registry max gas cap is 0.
     function testInitializeRevertsIfSysRegistryMaxGasCapZero() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -594,16 +581,14 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidSysRegistryMaxGasCap.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
 
     /// @dev Test to ensure initialization fails if system task capacity is 0.
     function testInitializeRevertsIfSysTaskCapacityZero() public {
         vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        
+        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -622,8 +607,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidSysTaskCapacity.selector);
-
-        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
+        new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
 }

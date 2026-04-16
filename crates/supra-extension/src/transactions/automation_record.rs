@@ -227,7 +227,7 @@ impl AutomationRecordBuilder {
     pub fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
         let process_task_call = processTasksCall {
             _cycleIndex: _cycle_index,
-            _taskIndexes: _task_indexes,
+            _taskIndexes: _task_indexes.into_iter().map(U256::from).collect(),
         };
         Bytes::from(process_task_call.abi_encode())
     }
