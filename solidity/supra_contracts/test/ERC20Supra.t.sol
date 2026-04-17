@@ -141,6 +141,30 @@ contract ERC20SupraTest is Test {
         token.burnFrom(alice, 10);
     }
 
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'burn' :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'burn' works correctly when called by authorized address.
+    function testBurn() public {
+        vm.prank(bridge);
+        token.mint(bridge, 100);
+        assertEq(token.balanceOf(bridge), 100);
+
+        vm.prank(bridge);
+        token.burn(50);
+
+        assertEq(token.balanceOf(bridge), 50);
+    }
+
+    /// @dev Test to ensure 'burn' reverts if called by an unauthorized caller.
+    function testBurnRevertsIfUnauthorizedCaller() public {
+        vm.expectRevert(IERC20Supra.UnauthorizedCaller.selector);
+
+        vm.prank(alice);
+        token.burn(10);
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'addAuthorizedAddress' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
     /// @dev Test to ensure adding authorized address works.
     function testAddAuthorizedAddress() public {
         vm.prank(owner);
@@ -181,6 +205,8 @@ contract ERC20SupraTest is Test {
         vm.prank(owner);
         token.addAuthorizedAddress(bridge);
     }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'removeAuthorizedAddress' :::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure removing authorized address works.
     function testRemoveAuthorizedAddress() public {

@@ -162,7 +162,8 @@ contract ERC20SupraHandlerTest is Test {
 
         // Transfer tokens to the rejecting contract
         vm.prank(alice);
-        token.transfer(address(rejector), 1 ether);
+        bool success = token.transfer(address(rejector), 1 ether);
+        assertTrue(success);
 
         // Attempt withdrawal → should revert
         vm.expectRevert(ERC20SupraHandler.TransferFailed.selector);
@@ -183,7 +184,8 @@ contract ERC20SupraHandlerTest is Test {
         assertEq(token.balanceOf(alice) , 5 ether);
 
         vm.prank(alice);
-        token.transfer(bob, 2 ether);
+        bool success = token.transfer(bob, 2 ether);
+        assertTrue(success);
 
         assertEq(token.balanceOf(alice), 3 ether);
         assertEq(token.balanceOf(bob), 2 ether);
@@ -198,7 +200,8 @@ contract ERC20SupraHandlerTest is Test {
         token.approve(bob, 3 ether);
 
         vm.prank(bob);
-        token.transferFrom(alice, bob, 2 ether);
+        bool success = token.transferFrom(alice, bob, 2 ether);
+        assertTrue(success);
 
         assertEq(token.balanceOf(alice), 3 ether);
         assertEq(token.balanceOf(bob), 2 ether);

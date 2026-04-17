@@ -24,6 +24,7 @@ interface IERC20Supra {
     event AuthorizedAddressRemoved(address indexed authorizedAddress, address indexed removedBy);
 
     function mint(address _to, uint256 _amount) external;
+    function burn(uint256 _amount) external;
     function burnFrom(address _from, uint256 _amount) external;
     function addAuthorizedAddress(address _addr) external;
     function removeAuthorizedAddress(address _addr) external;

@@ -54,6 +54,14 @@ contract ERC20Supra is ERC20Upgradeable, ERC20PermitUpgradeable, IERC20Supra, Ow
         _mint(_to, _amount);
     }
 
+    /// @notice Burns ERC20Supra tokens from the caller.
+    /// @dev Can only be called by authorized addresses.
+    /// @param _amount Amount of tokens to burn.
+    function burn(uint256 _amount) external {
+        isAuthorized();
+        _burn(msg.sender, _amount);
+    }
+
     /// @notice Burns ERC20Supra tokens from a specified address.
     /// @dev Can only be called by authorized addresses.
     /// @param _from Address whose tokens will be burned.
