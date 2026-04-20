@@ -29,6 +29,7 @@ foundry-compilers = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace =  true , features = ["serde"]}
 once_cell = { workspace = true }
+serde_with = { workspace = true , features = ["hex"]}
 
 [lints]
 workspace = true

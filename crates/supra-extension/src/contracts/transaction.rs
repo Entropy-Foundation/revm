@@ -4,6 +4,9 @@ use derive_getters::{Dissolve, Getters};
 use derive_more::Constructor;
 use primitives::{keccak256, Address, TxKind, address, hex};
 use std::fmt::{Debug, Display};
+use serde::{Serialize, Deserialize};
+use serde_with::hex::Hex ;
+use serde_with::serde_as;
 
 
 /// The address that deploys the default CREATE2 deployer contract.
@@ -21,20 +24,22 @@ pub const CREATE2_FACTORY_CODE: &[u8] = &hex!(
 );
 
 /// Represents data required to construct genesis contracts deployment transaction
-#[derive(Clone, Getters, Dissolve, Constructor)]
+#[serde_as]
+#[derive(Clone, Getters, Dissolve, Constructor, Serialize, Deserialize)]
 pub struct GenesisTransaction {
     /// Sender of the transaction
     sender: Address,
-    /// Kind of the transaction.
-    kind: TxKind,
-    /// Input data of the transaction.
-    data: Vec<u8>,
     /// Expected nonce of the sender account.
     nonce: u64,
-    /// Pre-computed deploy address of the contract if the transaction deploys a contract.
-    deploy_address: Address,
     /// Amount to mint to the contract address if the transaction deploys a contract.
     value: u128,
+    /// Input data of the transaction.
+    #[serde_as(as = "Hex")]
+    data: Vec<u8>,
+    /// Kind of the transaction.
+    kind: TxKind,
+    /// Pre-computed deploy address of the contract if the transaction deploys a contract.
+    deploy_address: Address,
 }
 
 impl GenesisTransaction {
@@ -47,11 +52,11 @@ impl GenesisTransaction {
     ) -> Self {
         Self::new (
             sender,
-            TxKind::Create,
-            data,
             nonce,
-            deploy_address,
             0,
+            data,
+            TxKind::Create,
+            deploy_address,
         )
     }
 
@@ -67,11 +72,11 @@ impl GenesisTransaction {
         let call_data = [ salt_hash.to_vec(), data].concat();
         Self::new (
             sender,
-            TxKind::Call(CREATE2_FACTORY_ADDRESS),
-            call_data,
             nonce,
-            deploy_address,
             0,
+            call_data,
+            TxKind::Call(CREATE2_FACTORY_ADDRESS),
+            deploy_address,
         )
     }
 
@@ -91,7 +96,7 @@ impl Debug for GenesisTransaction {
 }
 
 /// Genesis transaction tags which also guide deployment/execution order
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[allow(missing_docs)]
 #[repr(u8)]
 pub enum GenesisTransactionTags {

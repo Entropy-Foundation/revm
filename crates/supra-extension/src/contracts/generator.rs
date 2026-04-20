@@ -164,11 +164,11 @@ impl GenesisTransactionGenerator {
     fn generate_create2_factory_transaction() -> GenesisTransaction {
         GenesisTransaction::new(
             CREATE2_FACTORY_OWNER,
-            TxKind::Create,
+            0,
+            0,
             CREATE2_FACTORY_CODE.to_owned(),
-            0,
+            TxKind::Create,
             CREATE2_FACTORY_ADDRESS,
-            0,
         )
     }
 
@@ -480,11 +480,11 @@ impl GenesisTransactionGenerator {
         let proxy_txn_data = [proxy_impl_data, proxy_args].concat();
         let erc20supra_handler = GenesisTransaction::new(
             self.address,
-            TxKind::Create,
-            proxy_txn_data,
             self.nonce,
-            erc20_handler_address,
             initial_native_tokens,
+            proxy_txn_data,
+            TxKind::Create,
+            erc20_handler_address,
         );
         self.nonce += 1;
 
@@ -714,7 +714,7 @@ impl GenesisTransactionGenerator {
             sysRegistryMaxGasCap: config.sys_registry_max_gas_cap,
             sysTaskCapacity: config.sys_task_capacity,
             registrationEnabled: true,
-            automationEnabled: true,
+            automationEnabled: config.enable_automation_feature,
         };
 
         let diamond_constructor_data = Diamond::constructorCall {

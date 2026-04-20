@@ -143,10 +143,12 @@ pub struct GenesisTransactionGeneratorConfig {
     pub foundation_threshold: u64,
     /// Flag indicating whether full set of genesis transaction should be generated or only mandatory once.
     pub full_set: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// Automation configuration parameters (optional, uses defaults if None).
     pub automation_config: Option<AutomationRegistryConfig>,
     /// Initial native tokens to be minted to ERC20Supra handler contract
     pub  initial_native_token: u128,
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// Indicates whether the genesis transactions are generated for localnet.
     pub  supra_nova_config: Option<SupraNovaConfig>,
 }
