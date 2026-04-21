@@ -84,19 +84,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         return (s.index, s.startTime, s.durationSecs, s.cycleState);
     }
 
-    /// @notice Returns the index, start time, duration, state, transition details if any of the current cycle.
-    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory details) {
-        TransitionState storage transitionState = LibAppStorage.transitionState();
-        
-        details.index = s.index;
-        details.startTime = s.startTime;
-        details.durationSecs = s.durationSecs;
-        details.state = s.cycleState;
-        details.nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
-        details.expectedTasksToBeProcessed = transitionState.expectedTasksToBeProcessed.values();
-    }
-
-    /// @notice Returns the duration of the current cycle. 
+    /// @notice Returns the duration of the current cycle.
     function getCycleDuration() external view returns (uint64) {
         return s.durationSecs;
     }
