@@ -149,7 +149,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Calls all registered functions for the targets.
     function blockPrologue() external {
-        if (!msg.sender.isVmSigner()) revert CallerNotVmSigner();   // Caller must be VM Signer
+        msg.sender.enforceIsVmSigner();     // Caller must be VM Signer
 
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {

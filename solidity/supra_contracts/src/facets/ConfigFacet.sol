@@ -136,8 +136,8 @@ contract ConfigFacet is IConfigFacet {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
 
     /// @notice Returns the VM Signer address.
-    function getVmSigner() external view returns (address) {
-        return s.vmSigner;
+    function getVmSigner() external pure returns (address) {
+        return LibUtils.VM_SIGNER;
     }
 
     /// @notice Returns the ERC20Supra address.

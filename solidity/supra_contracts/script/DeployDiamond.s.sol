@@ -6,7 +6,6 @@ import {OwnershipFacet} from "../src/facets/OwnershipFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 
 contract DeployDiamond is Script {
-    address vmSigner;
     address erc20Supra;
     address multiSig;
 
@@ -31,7 +30,6 @@ contract DeployDiamond is Script {
             registrationEnabled: vm.envBool("REGISTRATION_ENABLED")
         });
 
-        vmSigner = vm.envAddress("VM_SIGNER");
         erc20Supra = vm.envAddress("ERC20_SUPRA");
         multiSig = vm.envAddress("MULTI_SIG");
     }
@@ -43,7 +41,7 @@ contract DeployDiamond is Script {
         Deployment memory deployment = LibDiamondUtils.deploy(multiSig);
         
         // Execute the diamond cut to initialize the Diamond state
-        LibDiamondUtils.executeCut(vmSigner, erc20Supra, initParams, deployment);
+        LibDiamondUtils.executeCut(erc20Supra, initParams, deployment);
 
         console.log("Diamond owner:", OwnershipFacet(address(deployment.diamond)).owner());
         console.log("Diamond deployed at:", address(deployment.diamond));

@@ -34,18 +34,10 @@ library LibUtils {
         if (_addr == address(0)) { revert AddressCannotBeZero(); }
     }
 
-    /// @notice Checks if an address is VM Signer.
-    /// @param _addr Address to check.
-    /// @return bool If it is VM Signer.
-    function isVmSigner(address _addr) internal pure returns (bool) {
-        return _addr == VM_SIGNER;
-    }
-
     /// @notice Checks if an address is VM Signer, reverts if it is not.
     /// @param _addr Address to check.
-    /// @param _vmSigner Address of VM signer.
-    function enforceIsVmSigner(address _addr, address _vmSigner) internal pure {
-        if (_addr != _vmSigner) revert CallerNotVmSigner();
+    function enforceIsVmSigner(address _addr) internal pure {
+        if (_addr != VM_SIGNER) revert CallerNotVmSigner();
     }
 
     /// @notice Checks if an address is a reserved address. 

@@ -32,7 +32,7 @@ abstract contract BaseDiamondTest is Test {
     /// @dev Sets balance of 'alice' to 100 ether.
     /// @dev Deploys all the contracts and initializes the Diamond with required parameters. 
     function setUp() public {
-        vm.deal(alice, 100 ether);
+        vm.deal(alice, 500 ether);
 
         erc20SupraHandlerAddr = vm.computeCreateAddress(admin, 3);
         erc20Supra = ERC20Supra(deployErc20Supra(bridge, erc20SupraHandlerAddr));
@@ -45,7 +45,7 @@ abstract contract BaseDiamondTest is Test {
         
         defaultParams = LibDiamondUtils.defaultInitParams();
         deployment = LibDiamondUtils.deploy(admin);
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), defaultParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), defaultParams, deployment);
         diamondAddr = deployment.diamond;
 
         IConfigFacet(diamondAddr).grantAuthorization(bob);

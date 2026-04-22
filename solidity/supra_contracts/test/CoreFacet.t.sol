@@ -56,7 +56,7 @@ contract CoreFacetTest is BaseDiamondTest {
         }); 
 
         Deployment memory deployment = LibDiamondUtils.deploy(admin);
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
 
         address diamondAddr = deployment.diamond;
         vm.stopPrank();
@@ -446,10 +446,10 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).enableAutomation();
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'removeRegisteredTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'removeRegisteredTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'removeRegisteredTask' removes a UST when predicate validation fails.
-    function testRemoveRegisteredTaskForUST() public {
+    /// @dev Test to ensure 'removeRegisteredTasks' removes a UST when predicate validation fails.
+    function testRemoveRegisteredTasksForUST() public {
         // Register a UST
         registerUst();
         
@@ -465,9 +465,14 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
         assertEq(erc20Supra.balanceOf(alice), 38.9 ether);
         
-        // Remove task due to predicate failure
+        // Remove task due to predicate failure        
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+        string[] memory reasons = new string[](1);
+        reasons[0] = "Predicate failed";
+
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTasks(taskIndexes, reasons);
         
         // Verify task is removed
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
@@ -479,8 +484,8 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(alice), 68.95 ether);
     }
 
-    /// @dev Test to ensure 'removeRegisteredTask' removes a GST when predicate validation fails.
-    function testRemoveRegisteredTaskForGST() public {
+    /// @dev Test to ensure 'removeRegisteredTasks' removes a GST when predicate validation fails.
+    function testRemoveRegisteredTasksForGST() public {
         // Register a GST
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
@@ -507,8 +512,13 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(userTasks[0], 0);
 
         // Remove task due to predicate failure
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+        string[] memory reasons = new string[](1);
+        reasons[0] = "Predicate failed";
+
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTasks(taskIndexes, reasons);
 
         // Verify task is removed
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
@@ -519,8 +529,8 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
-    /// @dev Test to ensure 'removeRegisteredTask' emits 'TaskRemovedAsPredicateFailed' event.
-    function testRemoveRegisteredTaskEmitsEvent() public {
+    /// @dev Test to ensure 'removeRegisteredTasks' emits 'TaskRemovedAsPredicateFailed' event.
+    function testRemoveRegisteredTasksEmitsEvent() public {
         registerUst();
         
         vm.expectEmit(true, true, true, true);
@@ -532,17 +542,63 @@ contract CoreFacetTest is BaseDiamondTest {
             "Predicate failed"
         );
         
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+        string[] memory reasons = new string[](1);
+        reasons[0] = "Predicate failed";
+        
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTasks(taskIndexes, reasons);
     }
 
-    /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
-    function testRemoveRegisteredTaskRevertsIfNotVmSigner() public {
+    /// @dev Test to ensure `removeRegisteredTasks` removes multiple tasks.
+    function testRemoveRegisteredTasksMultipleTasks() public {
+        registerUst();      // task index 0
+        registerUst();      // task index 1
+
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 2);
+
+        uint64[] memory taskIndexes = new uint64[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+
+        string[] memory reasons = new string[](2);
+        reasons[0] = "Predicate failed";
+        reasons[1] = "Predicate failed";
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTasks(taskIndexes, reasons);
+
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTasks' reverts if caller is not VM Signer.
+    function testRemoveRegisteredTasksRevertsIfNotVmSigner() public {
         registerUst();
         
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
         
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+        string[] memory reasons = new string[](1);
+        reasons[0] = "Predicate failed";
+
         vm.prank(alice);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTasks(taskIndexes, reasons);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTasks' reverts if array length mismatch.
+    function testRemoveRegisteredTasksRevertsIfArrayLengthMismatch() public {
+        registerUst();
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        string[] memory reasons = new string[](0);
+
+        vm.expectRevert(LibCore.InvalidArrayLength.selector);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTasks(taskIndexes, reasons);
     }
 }

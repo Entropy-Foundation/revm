@@ -20,6 +20,7 @@ library LibCore {
     
     error InconsistentTransitionState();
     error InvalidInputCycleIndex();
+    error InvalidArrayLength();
     error InvalidRegistryState();
     error OutOfOrderTaskProcessingRequest();
     error TaskIndexNotFound();
@@ -526,41 +527,48 @@ library LibCore {
     }
 
     /// @notice Removes a registered task when predicate validation fails during runtime.
-    /// @param _taskIndex Task index that failed predicate validation.
-    /// @param _reason Reason for task removal.
-    function handleTaskRemoval(uint64 _taskIndex, string memory _reason) internal {
+    /// @param _taskIndexes Task index that failed predicate validation.
+    /// @param _reasons Reason for task removal.
+    function handleTasksRemoval(uint64[] memory _taskIndexes, string[] memory _reasons) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        if (s.automationEnabled && LibCommon.ifTaskExists(_taskIndex)) { 
-            TaskMetadata memory task = LibAppStorage.registryState().tasks[_taskIndex];
-            bool isGst = task.taskType == LibCommon.TaskType.GST;
+        uint256 tasksCount = _taskIndexes.length;
+        if (!s.automationEnabled || tasksCount == 0) { return; }
+        if (tasksCount != _reasons.length) { revert InvalidArrayLength(); }
+            
+        for (uint256 i = 0; i < tasksCount; i++) {
+            uint64 taskId = _taskIndexes[i];
+            if (LibCommon.ifTaskExists(taskId)) {
+                TaskMetadata memory task = LibAppStorage.registryState().tasks[taskId];
+                bool isGst = task.taskType == LibCommon.TaskType.GST;
 
-            // Remove task and update gas commitments
-            LibCommon.removeTask(_taskIndex, task.owner, isGst);
+                // Remove task and update gas commitments
+                LibCommon.removeTask(taskId, task.owner, isGst);
 
-            // Refund only for UST
-            if (!isGst) {
-                bool result = LibAccounting.safeDepositRefund(
-                    _taskIndex,
-                    task.owner,
-                    task.depositFee / LibAccounting.REFUND_FACTOR,
-                    task.depositFee
-                );
-                require(result, TransferFailed());
-            }
+                // Refund only for UST
+                if (!isGst) {
+                    bool result = LibAccounting.safeDepositRefund(
+                        taskId,
+                        task.owner,
+                        task.depositFee / LibAccounting.REFUND_FACTOR,
+                        task.depositFee
+                    );
+                    require(result, TransferFailed());
+                }
 
-            // Remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-            if (task.expiryTime > LibCommon.getCycleEndTime()) {
-                LibRegistry.updateGasCommittedForNextCycle(isGst, task.maxGasAmount);
-            }
+                // Remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
+                if (task.expiryTime > LibCommon.getCycleEndTime()) {
+                    LibRegistry.updateGasCommittedForNextCycle(isGst, task.maxGasAmount);
+                }
         
-            emit ICoreFacet.TaskRemovedAsPredicateFailed(
-                _taskIndex,
-                task.owner,
-                task.taskType,
-                task.txHash,
-                _reason
-            );
+                emit ICoreFacet.TaskRemovedAsPredicateFailed(
+                    taskId,
+                    task.owner,
+                    task.taskType,
+                    task.txHash,
+                    _reasons[i]
+                );
+            } 
         }
     }
 

@@ -105,7 +105,6 @@ library LibDiamondUtils {
     // =============================================================
 
     function executeCut(
-        address _vmSigner,
         address _erc20Supra,
         InitParams memory _params,
         Deployment memory _deployment
@@ -125,7 +124,6 @@ library LibDiamondUtils {
             DiamondInit.init,
             (
                 _params,
-                _vmSigner,
                 _erc20Supra
             )
         );
@@ -269,7 +267,7 @@ library LibDiamondUtils {
             selectors[1] = CoreFacet.monitorCycleEnd.selector;
             selectors[2] = CoreFacet.enableAutomation.selector;
             selectors[3] = CoreFacet.disableAutomation.selector;
-            selectors[4] = CoreFacet.removeRegisteredTask.selector;
+            selectors[4] = CoreFacet.removeRegisteredTasks.selector;
             selectors[5] = CoreFacet.getCycleInfo.selector;
             selectors[6] = CoreFacet.getCycleDuration.selector;
             selectors[7] = CoreFacet.getTransitionInfo.selector;

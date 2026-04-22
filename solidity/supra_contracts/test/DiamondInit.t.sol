@@ -74,7 +74,6 @@ contract DiamondInitTest is BaseDiamondTest {
         vm.prank(admin);
         DiamondInit(diamondAddr).init(
             params,
-            LibUtils.VM_SIGNER, 
             address(erc20Supra)
         );
     }
@@ -352,18 +351,6 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
     }
 
-    /// @dev Test to ensure initialization fails if zero address is passed as VM Signer.
-    function testInitializeRevertsIfVmSignerZero() public {
-        vm.startPrank(admin);
-        Deployment memory deployment = LibDiamondUtils.deploy(admin);
-
-        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
-
-        // address(0) as VM signer
-        LibDiamondUtils.executeCut(address(0), address(erc20Supra), defaultParams, deployment);
-        vm.stopPrank();
-    }
-
     /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
     function testInitializeRevertsIfErc20SupraIsZero() public {   
         vm.startPrank(admin);
@@ -372,7 +359,7 @@ contract DiamondInitTest is BaseDiamondTest {
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         // address(0) as ERC20Supra
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(0), defaultParams, deployment);
+        LibDiamondUtils.executeCut(address(0), defaultParams, deployment);
         vm.stopPrank();
     }
   
@@ -384,7 +371,7 @@ contract DiamondInitTest is BaseDiamondTest {
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         // EOA address as ERC20Supra
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, admin, defaultParams, deployment);
+        LibDiamondUtils.executeCut(admin, defaultParams, deployment);
         vm.stopPrank();
     }
 
@@ -412,7 +399,7 @@ contract DiamondInitTest is BaseDiamondTest {
         
         vm.expectRevert(LibCommon.InvalidTaskDuration.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
 
@@ -440,7 +427,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidRegistryMaxGasCap.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
 
@@ -468,7 +455,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidCongestionThreshold.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
 
@@ -496,7 +483,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidCongestionExponent.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();      
     }
 
@@ -524,7 +511,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidTaskCapacity.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();     
     }
 
@@ -552,7 +539,7 @@ contract DiamondInitTest is BaseDiamondTest {
         
         vm.expectRevert(LibCommon.InvalidCycleDuration.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
     
@@ -580,7 +567,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidSysTaskDuration.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
 
@@ -608,7 +595,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidSysRegistryMaxGasCap.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
 
@@ -636,7 +623,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.InvalidSysTaskCapacity.selector);
 
-        LibDiamondUtils.executeCut(LibUtils.VM_SIGNER, address(erc20Supra), initParams, deployment);
+        LibDiamondUtils.executeCut(address(erc20Supra), initParams, deployment);
         vm.stopPrank();
     }
 }

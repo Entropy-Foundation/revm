@@ -80,7 +80,6 @@ struct AppStorage {
     
     bool automationEnabled;
     bool registrationEnabled;
-    address vmSigner;
     address erc20Supra;
     EnumerableSet.AddressSet authorizedAccounts;
     mapping(uint256 => Config) configuration;

@@ -23,7 +23,7 @@ contract CoreFacet is ICoreFacet {
     /// @param _taskIndexes Array of task index to be processed.
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external {
         // Check caller is VM Signer
-        msg.sender.enforceIsVmSigner(s.vmSigner);
+        msg.sender.enforceIsVmSigner();
         
         LibCommon.CycleState state = s.cycleState; 
         if (state == LibCommon.CycleState.FINISHED) {
@@ -36,7 +36,7 @@ contract CoreFacet is ICoreFacet {
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
     function monitorCycleEnd() external {
-        tx.origin.enforceIsVmSigner(s.vmSigner);
+        tx.origin.enforceIsVmSigner();
 
         if (!LibCommon.isCycleStarted() || LibCommon.getCycleEndTime() > block.timestamp) {
             return;
@@ -113,13 +113,13 @@ contract CoreFacet is ICoreFacet {
         return s.automationEnabled;
     }
 
-    /// @notice Removes a registered task when predicate validation fails during runtime.
-    /// @param _taskIndex Task index that failed predicate validation.
-    /// @param _reason Reason for task removal.
-    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external {
+    /// @notice Removes registered tasks when predicate validation fails during runtime.
+    /// @param _taskIndexes Array of task indexes that failed predicate validation.
+    /// @param _reasons Array of reasons for task removal.
+    function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external {
         // Check caller is VM Signer
-        msg.sender.enforceIsVmSigner(s.vmSigner);
+        msg.sender.enforceIsVmSigner();
         
-        LibCore.handleTaskRemoval(_taskIndex, _reason);
+        LibCore.handleTasksRemoval(_taskIndexes, _reasons);
     }
 }

@@ -14,7 +14,7 @@ error InitializationFunctionReverted(address _initializationContractAddress, byt
 
 library LibDiamond {
     // 32 bytes keccak hash of a string to use as a diamond storage location.
-    bytes32 constant DIAMOND_STORAGE_POSITION = keccak256("diamond.standard.diamond.storage");
+    bytes32 constant DIAMOND_STORAGE_POSITION = keccak256("diamond.registry.automation.storage");
 
     struct FacetAddressAndPosition {
         address facetAddress;

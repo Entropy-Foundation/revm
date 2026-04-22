@@ -41,11 +41,9 @@ contract DiamondInit {
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
-    /// @param _vmSigner Address for the VM Signer.
     /// @param _erc20Supra Address of the ERC20Supra contract.
     function init(
         InitParams memory _params,
-        address _vmSigner,
         address _erc20Supra
     ) external {
         // Adding ERC165 data
@@ -67,7 +65,6 @@ contract DiamondInit {
             _params.sysRegistryMaxGasCap,
             _params.sysTaskCapacity
         );
-        require(_vmSigner != address(0), LibUtils.AddressCannotBeZero());
         LibUtils.validateContractAddress(_erc20Supra);
 
         // ---------------------------------------------------------------------
@@ -92,7 +89,6 @@ contract DiamondInit {
 
         s.automationEnabled = _params.automationEnabled;
         s.registrationEnabled = _params.registrationEnabled;
-        s.vmSigner = _vmSigner;
         s.erc20Supra = _erc20Supra;
 
         // ---------------------------------------------------------------------
