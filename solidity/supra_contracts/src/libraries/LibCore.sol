@@ -20,7 +20,6 @@ library LibCore {
     
     error InconsistentTransitionState();
     error InvalidInputCycleIndex();
-    error InvalidArrayLength();
     error InvalidRegistryState();
     error OutOfOrderTaskProcessingRequest();
     error TaskIndexNotFound();
@@ -295,7 +294,7 @@ library LibCore {
                     LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
                 } else {
                     // Remove the task from registry and system registry
-                    LibCommon.removeTask(_taskIndex, task.owner, true);
+                    LibCommon.removeTask(_taskIndex, task.owner, true, false);
                 }
                 result.isRemoved = true;
             } else if (!isUst) {
@@ -393,7 +392,7 @@ library LibCore {
                 // DON'T refund the locked deposit, but simply unlock it and emit an event.
 
                 LibAccounting.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
-                LibCommon.removeTask(_taskIndex, _owner, false);
+                LibCommon.removeTask(_taskIndex, _owner, false, false);
 
                 isRemoved = true;
 
@@ -504,7 +503,7 @@ library LibCore {
             if (LibCommon.ifTaskExists(taskId)) {
                 TaskMetadata memory task = LibCommon.getTask(taskId);
 
-                LibCommon.removeTask(taskId, task.owner, false);
+                LibCommon.removeTask(taskId, task.owner, false, false);
 
                 removedTasks[removedCounter++] = taskId;
                 markTaskProcessed(taskId);
@@ -527,49 +526,41 @@ library LibCore {
     }
 
     /// @notice Removes a registered task when predicate validation fails during runtime.
-    /// @param _taskIndexes Task index that failed predicate validation.
-    /// @param _reasons Reason for task removal.
-    function handleTasksRemoval(uint64[] memory _taskIndexes, string[] memory _reasons) internal {
-        AppStorage storage s = LibAppStorage.appStorage();
-
-        uint256 tasksCount = _taskIndexes.length;
-        if (!s.automationEnabled || tasksCount == 0) { return; }
-        if (tasksCount != _reasons.length) { revert InvalidArrayLength(); }
+    /// @param _taskId Task index that failed predicate validation.
+    /// @param _cycleEndTime Cycle end time.
+    /// @param _currentTime Current time.
+    /// @param _residualInterval Residual interval.
+    /// @param _reason Reason for task removal.
+    function handleTasksRemoval(
+        uint64 _taskId, 
+        uint64 _cycleEndTime, 
+        uint64 _currentTime, 
+        uint64 _residualInterval,
+        string memory _reason
+    ) internal returns (LibCommon.RemovedTask memory removedTask) {
+        RegistryState storage registryState = LibAppStorage.registryState();
             
-        for (uint256 i = 0; i < tasksCount; i++) {
-            uint64 taskId = _taskIndexes[i];
-            if (LibCommon.ifTaskExists(taskId)) {
-                TaskMetadata memory task = LibAppStorage.registryState().tasks[taskId];
-                bool isGst = task.taskType == LibCommon.TaskType.GST;
+        TaskMetadata memory task = registryState.tasks[_taskId];
+        bool isGst = task.taskType == LibCommon.TaskType.GST;
 
-                // Remove task and update gas commitments
-                LibCommon.removeTask(taskId, task.owner, isGst);
-
-                // Refund only for UST
-                if (!isGst) {
-                    bool result = LibAccounting.safeDepositRefund(
-                        taskId,
-                        task.owner,
-                        task.depositFee / LibAccounting.REFUND_FACTOR,
-                        task.depositFee
-                    );
-                    require(result, TransferFailed());
-                }
-
-                // Remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
-                if (task.expiryTime > LibCommon.getCycleEndTime()) {
-                    LibRegistry.updateGasCommittedForNextCycle(isGst, task.maxGasAmount);
-                }
+        (uint128 cycleFeeRefund, uint128 depositRefund) = LibRegistry.removeTaskAndComputeRefund(
+            _taskId, 
+            _cycleEndTime, 
+            _currentTime, 
+            _residualInterval,
+            task.expiryTime,
+            task.maxGasAmount,
+            task.depositFee,
+            task.owner,
+            task.taskState,
+            isGst
+        );
         
-                emit ICoreFacet.TaskRemovedAsPredicateFailed(
-                    taskId,
-                    task.owner,
-                    task.taskType,
-                    task.txHash,
-                    _reasons[i]
-                );
-            } 
+        if (!isGst) {
+            LibAccounting.refund(task.owner, (cycleFeeRefund + depositRefund));
         }
+
+        removedTask = LibCommon.RemovedTask(_taskId, task.taskType, task.owner, task.txHash, _reason);
     }
 
     /// @notice Helper function called when cycle end is identified.

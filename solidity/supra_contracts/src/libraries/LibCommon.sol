@@ -69,6 +69,15 @@ library LibCommon {
         bytes32 txHash;
     }
 
+    /// @notice Struct representing a removed task due to predicate failure.
+    struct RemovedTask {
+        uint64 taskIndex;
+        TaskType taskType;
+        address owner;
+        bytes32 txHash;
+        string reason;
+    }
+
     /// @notice Struct representing an entry in access list.
     struct AccessListEntry {
         address addr;
@@ -144,7 +153,8 @@ library LibCommon {
     /// @param _taskIndex Index of the task to remove.
     /// @param _owner Address of the task owner.  
     /// @param _removeFromSysReg Wheather to remove from system task registry.
-    function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg) internal {
+    /// @param _removeFromActive Wheather to remove from active task list.
+    function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg, bool _removeFromActive) internal {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         if (_removeFromSysReg) {
@@ -154,5 +164,9 @@ library LibCommon {
         delete registryState.tasks[_taskIndex];
         require(registryState.taskIdList.remove(_taskIndex), TaskIndexNotFound());
         require(registryState.addressToTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
+
+        if (_removeFromActive) {
+            require(registryState.activeTaskIds.remove(_taskIndex), TaskIndexNotFound());
+        }
     }
 }

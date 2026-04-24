@@ -120,6 +120,28 @@ contract CoreFacet is ICoreFacet {
         // Check caller is VM Signer
         msg.sender.enforceIsVmSigner();
         
-        LibCore.handleTasksRemoval(_taskIndexes, _reasons);
+        uint256 tasksCount = _taskIndexes.length;
+        if (!s.automationEnabled || tasksCount == 0) { return; }
+        if (tasksCount != _reasons.length) { revert InvalidArrayLength(); }
+        uint64 cycleEndTime = LibCommon.getCycleEndTime();
+        uint64 currentTime = uint64(block.timestamp);
+
+        LibCommon.RemovedTask[] memory removedTasks = new LibCommon.RemovedTask[](tasksCount);    
+        uint256 counter;
+
+        // Calculate refundable fee for this remaining time task in current cycle
+        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
+            
+        for (uint256 i = 0; i < tasksCount; i++) {
+            uint64 taskId = _taskIndexes[i];
+            if (LibCommon.ifTaskExists(taskId)) {
+                LibCommon.RemovedTask memory rt = LibCore.handleTasksRemoval(taskId, cycleEndTime, currentTime, residualInterval, _reasons[i]);
+                removedTasks[counter++] = rt;
+            }
+        }
+
+        if (counter > 0) {
+            emit TasksRemovedAsPredicateFailed(removedTasks);
+        }
     }
 }

@@ -219,7 +219,7 @@ library LibRegistry {
         registryState.currentIndex += 1;
     }
 
-    function updateGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) internal {
+    function updateGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 gasCommittedForNextCycle = _isGst ? registryState.sysGasCommittedForNextCycle : registryState.gasCommittedForNextCycle;        
@@ -235,26 +235,6 @@ library LibRegistry {
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Function to update the cycle locked fees and gas committed.
-    /// @param _lockedFees Updated cycle locked fees
-    /// @param _sysGasCommittedForNextCycle Updated system gas committed for next cycle 
-    /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
-    /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
-    function updateGasCommittedAndCycleLockedFees(
-        uint256 _lockedFees,
-        uint128 _sysGasCommittedForNextCycle,
-        uint128 _gasCommittedForNextCycle,
-        uint128 _gasCommittedForNewCycle
-    ) internal {
-        RegistryState storage registryState = LibAppStorage.registryState();
-
-        registryState.cycleLockedFees  = _lockedFees;
-        registryState.sysGasCommittedForNextCycle = _sysGasCommittedForNextCycle;
-        registryState.sysGasCommittedForThisCycle = _sysGasCommittedForNextCycle;
-        registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
-        registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
-    }
 
     function registerTask(
         bytes memory _payloadTx,
@@ -311,7 +291,7 @@ library LibRegistry {
         validateOwnerType(task.owner, task.taskType, _isGst);
         if (task.taskState == LibCommon.TaskState.CANCELLED) { revert AlreadyCancelled(); }
         if (task.taskState == LibCommon.TaskState.PENDING) {
-            LibCommon.removeTask(_taskIndex, task.owner, _isGst);
+            LibCommon.removeTask(_taskIndex, task.owner, _isGst, false);
 
             // Refund only for UST
             // When Pending tasks are cancelled, refund of the deposit fee is done with penalty
@@ -342,61 +322,65 @@ library LibRegistry {
     function stopTask(
         uint64 _taskId,
         uint64 _cycleEndTime,
+        uint64 _currentTime,
+        uint64 _residualInterval,
         bool _isGst
-    ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refundAmount) {
+    ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         RegistryState storage registryState = LibAppStorage.registryState();
-
         TaskMetadata memory task = registryState.tasks[_taskId];
         
         validateOwnerType(task.owner, task.taskType, _isGst);
 
-        // Remove task from the registry
-        LibCommon.removeTask(_taskId, task.owner, _isGst);
-        // Remove from active tasks
-        require(registryState.activeTaskIds.remove(_taskId), TaskIndexNotFound());
+        (uint128 cycleFeeRefund, uint128 depositRefund) = removeTaskAndComputeRefund(
+            _taskId, 
+            _cycleEndTime, 
+            _currentTime, 
+            _residualInterval,
+            task.expiryTime,
+            task.maxGasAmount,
+            task.depositFee,
+            task.owner,
+            task.taskState,
+            _isGst
+        );
+
+        refund = cycleFeeRefund + depositRefund;
+        taskStopped = LibCommon.TaskStopped(_taskId, depositRefund, cycleFeeRefund, task.txHash);
+    }
+
+    function removeTaskAndComputeRefund(
+        uint64 _taskId,
+        uint64 _cycleEndTime,
+        uint64 _currentTime,
+        uint64 _residualInterval,
+        uint64 _expiryTime,
+        uint128 _maxGasAmount,
+        uint128 _depositFee,
+        address _owner,
+        LibCommon.TaskState _taskState,
+        bool _isGst
+    ) internal returns (uint128 cycleFeeRefund, uint128 depositRefund) {
+        // Remove task from the registry and active tasks
+        LibCommon.removeTask(_taskId, _owner, _isGst, true);
 
         // This check means the task was expected to be executed in the next cycle, but it has been stopped.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         // Also it checks that task should not be cancelled.
-        if (task.taskState != LibCommon.TaskState.CANCELLED && task.expiryTime > _cycleEndTime) {
+        if (_taskState != LibCommon.TaskState.CANCELLED && _expiryTime > _cycleEndTime) {
             // Reduce committed gas by the stopped task's max gas
-            updateGasCommittedForNextCycle(_isGst, task.maxGasAmount);
+            updateGasCommittedForNextCycle(_isGst, _maxGasAmount);
         }
-
-        uint128 totalRefund;
 
         if (!_isGst) {
-            // Calculate refundable fee for this remaining time task in current cycle
-            uint64 currentTime = uint64(block.timestamp);
-            uint64 residualInterval = _cycleEndTime <= currentTime ? 0 : (_cycleEndTime - currentTime);
-
-            (uint128 cycleFeeRefund, uint128 depositRefund) = LibAccounting.unlockDepositAndCycleFee(
+            (cycleFeeRefund, depositRefund) = LibAccounting.unlockDepositAndCycleFee(
                 _taskId,
-                task.taskState,
-                task.expiryTime,
-                task.maxGasAmount,
-                residualInterval,
-                currentTime,
-                task.depositFee
-            );
-
-            totalRefund = cycleFeeRefund + depositRefund;
-
-            taskStopped = LibCommon.TaskStopped(
-                _taskId,
-                depositRefund,
-                cycleFeeRefund,
-                task.txHash
-            );
-        } else {
-            taskStopped = LibCommon.TaskStopped(
-                _taskId,
-                0,
-                0,
-                task.txHash
+                _taskState,
+                _expiryTime,
+                _maxGasAmount,
+                _residualInterval,
+                _currentTime,
+                _depositFee
             );
         }
-
-        return (taskStopped, totalRefund);
     }
 }

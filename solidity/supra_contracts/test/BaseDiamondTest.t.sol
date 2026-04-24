@@ -9,7 +9,6 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
-import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 abstract contract BaseDiamondTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract

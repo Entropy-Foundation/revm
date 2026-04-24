@@ -54,21 +54,15 @@ interface ICoreFacet {
         bytes32 registrationHash
     );
 
-    /// @notice Emitted when a task is removed due to predicate validation failure.
-    event TaskRemovedAsPredicateFailed(
-        uint64 indexed taskIndex,
-        address indexed owner,
-        LibCommon.TaskType taskType,
-        bytes32 indexed registrationHash,
-        string reason
-    );
-
+    /// @notice Emitted when tasks are removed due to predicate validation failure.
+    event TasksRemovedAsPredicateFailed(LibCommon.RemovedTask[] indexed removedTasks);
 
     // =============================================================
     //                      Custom errors
     // =============================================================
     error AlreadyDisabled();
     error AlreadyEnabled();
+    error InvalidArrayLength();
     error InvalidRegistryState();
 
     // =============================================================

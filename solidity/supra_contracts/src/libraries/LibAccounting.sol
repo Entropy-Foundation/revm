@@ -282,7 +282,7 @@ library LibAccounting {
         if (LibAppStorage.registryState().tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
-        LibCommon.removeTask(_taskIndex, _taskOwner,false);
+        LibCommon.removeTask(_taskIndex, _taskOwner, false, false);
 
         // Refund
         safeDepositRefund(
@@ -295,6 +295,7 @@ library LibAccounting {
 
     /// @notice Internally calls _refund, reverts if caller is not AutomationRegistry.
     function refund(address _to, uint128 _amount) internal {
+        if (_amount == 0) return;
         AppStorage storage s = LibAppStorage.appStorage();
         
         address erc20Supra = s.erc20Supra;
@@ -390,7 +391,7 @@ library LibAccounting {
                 automationFeePerSec
             );
 
-            // Refund full deposit and the half of the remaining run-time fee when task is active or cancelled stage
+            // Refund full deposit and half of the remaining run-time fee when a task is in active or cancelled stage
             cycleLockedFeeForTask = taskFeeForFullCycle;
             cycleFeeRefund = taskFeeForResidualTime / REFUND_FRACTION; 
             depositRefund = _depositFee;
