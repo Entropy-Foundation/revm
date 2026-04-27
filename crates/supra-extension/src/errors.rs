@@ -24,6 +24,9 @@ pub enum SupraExtensionError {
     /// Reported when automated transaction builder is attempted to be built for inactive task.
     #[error("Attempt to create automated transaction builder for non-active task")]
     InvalidAutomationTaskStateForBuilder,
+    /// Reported when automated transaction builder is attempted to be built for inactive task.
+    #[error("AutomationRecordBuilder.RemoveTasks: Task indexes count mismatches with reasons.")]
+    InvalidAutomationRecordBuilderForTaskRemoval,
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].

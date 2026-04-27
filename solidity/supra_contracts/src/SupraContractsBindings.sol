@@ -20,6 +20,12 @@ interface SupraContractsBindings {
     // Entry function to be called by node runtime for bookkeeping
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
 
+    // Entry function to be called by node runtime for bookkeeping
+    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external;
+
+    // Entry function to be called by node runtime for bookkeeping
+    function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external;
+
     // Entry function of the BlockMeta for block metadata transaction
     function blockPrologue() external;
 
