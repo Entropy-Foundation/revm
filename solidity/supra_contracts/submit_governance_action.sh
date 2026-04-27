@@ -20,6 +20,12 @@
 #   - run this script
 #
 
+if [ -z "$1" ]; then
+    echo "Usage: $0 GOV_ACTION_SCRIPT_NAME"
+fi
+
+action=$1
+
 password=""
 if [ -n ${PASSWORD} ]; then
   password="--password ${PASSWORD}"
@@ -35,7 +41,7 @@ done
 
 echo ${foundation_owners[*]} ${foundation_owners_addresses[*]}
 
-result=$(forge script ${script_path}/script/GovActions.s.sol:InitializeCycleMonitoring --keystore ${foundation_owners[0]} --sender ${foundation_owners_addresses[0]} --broadcast ${password})
+result=$(forge script ${script_path}/script/GovActions.s.sol:${action} --keystore ${foundation_owners[0]} --sender ${foundation_owners_addresses[0]} --broadcast ${password})
 export GOV_TXN_INDEX=$(echo ${result} | grep -o "TxnIndex: [0-9]* "| cut -d ":" -f2 | tr -d " ")
 
 echo "Voting for: ${GOV_TXN_INDEX}"
