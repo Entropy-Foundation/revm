@@ -194,9 +194,9 @@ library LibCore {
     }
 
     /// @notice Updates the cycle state if the transition is identified to be finalized.
-    /// From FINISHED state we always move to the next cycle and in STARTED state.
-    /// But if it happened so that there was a suspension during cycle transition which was ignored, then immediately cycle state is updated to suspended.
-    /// Expectation will be that native layer catches this double transition and issues refund for the new cycle fees which will not be proceeded further in any case.
+    /// From FINISHED state we always move to the next cycle in STARTED state first (incrementing cycle index).
+    /// If automation was disabled during the transition, we immediately initiate suspension from the new STARTED state.
+    /// This ensures cycle index is always incremented before suspension, and a fresh suspension transition is set up.
     function updateCycleTransitionStateFromFinished() private {
         AppStorage storage s = LibAppStorage.appStorage();
 
@@ -204,27 +204,26 @@ library LibCore {
         if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
 
         if (isTransitionFinalized()) {
-            if (!s.automationEnabled && s.cycleState == LibCommon.CycleState.FINISHED) {
+            TransitionState storage transitionState = LibAppStorage.transitionState();
+            updateRegistryState(
+                transitionState.lockedFees,
+                transitionState.sysGasCommittedForNextCycle,
+                transitionState.gasCommittedForNextCycle,
+                transitionState.gasCommittedForNewCycle,
+                LibCommon.CycleState.FINISHED
+            );
+
+            // Set current timestamp as cycle start time
+            // Increment the cycle and update the state to STARTED
+            moveToStartedState();
+
+            RegistryState storage registryState = LibAppStorage.registryState();
+            if (registryState.activeTaskIds.length() > 0 ) {
+                uint256[] memory activeTasks = registryState.activeTaskIds.values();
+                emit ICoreFacet.ActiveTasks(activeTasks);
+            }
+            if (!s.automationEnabled) {
                 tryMoveToSuspendedState();
-            } else {
-                TransitionState storage transitionState= LibAppStorage.transitionState();
-                updateRegistryState(
-                    transitionState.lockedFees,
-                    transitionState.sysGasCommittedForNextCycle,
-                    transitionState.gasCommittedForNextCycle,
-                    transitionState.gasCommittedForNewCycle,
-                    LibCommon.CycleState.FINISHED
-                );
-
-                // Set current timestamp as cycle start time
-                // Increment the cycle and update the state to STARTED
-                moveToStartedState();
-
-                RegistryState storage registryState = LibAppStorage.registryState();
-                if (registryState.activeTaskIds.length() > 0 ) {
-                    uint256[] memory activeTasks = registryState.activeTaskIds.values();
-                    emit ICoreFacet.ActiveTasks(activeTasks);
-                }
             }
         }
     }
@@ -681,6 +680,7 @@ library LibCore {
         // Check if the transition state exists
         if (s.ifTransitionStateExists) {
             s.durationSecs = LibAppStorage.transitionState().newCycleDuration;
+            s.ifTransitionStateExists = false;
         }
 
         updateCycleStateTo(LibCommon.CycleState.STARTED);
