@@ -1,7 +1,6 @@
 //! Automation registry transaction record definition to assist automation bookkeeping.
 use crate::errors::SupraExtensionError;
-use crate::value_or_error;
-use crate::{processTasksCall, removeRegisteredTasksCall};
+use crate::{processTasksCall, removeRegisteredTaskCall, value_or_error};
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};
 use alloy_consensus::transaction::Transaction;
@@ -140,58 +139,69 @@ impl Typed2718 for AutomationRegistryRecord {
     }
 }
 
+/// Action to be preformed automation registry record
 #[derive(Clone, Debug)]
 pub enum AutomationRecordAction {
+    /// Process the tasks during cycle transition.
     Process(Vec<u64>),
-    Remove((Vec<u64>, Vec<String>)),
+    /// Remove the task with specified index due to the reason provided by the runtime.
+    Remove {
+        /// Index of the task to be removed.
+        task_index: u64,
+        /// Reason of the removal
+        reason: String
+    },
 }
 
 impl AutomationRecordAction {
+    /// Converts to vector of task indexes to be handled by action.
     pub fn into_task_indexes(self) -> Vec<u64> {
         match self {
             AutomationRecordAction::Process(tasks) => tasks,
-            AutomationRecordAction::Remove((tasks, _)) => tasks,
+            AutomationRecordAction::Remove {
+                task_index,
+                reason: _,
+            } => vec![task_index],
         }
     }
 
-    pub fn task_indexes(&self) -> &Vec<u64> {
+    /// List of task indexes to be processed.
+    /// If the action is [Self::Remove], None is returned
+    pub fn task_indexes(&self) -> Option<&Vec<u64>> {
         match self {
-            AutomationRecordAction::Process(tasks) => tasks,
-            AutomationRecordAction::Remove((tasks, _)) => tasks,
+            AutomationRecordAction::Process(tasks) => Some(tasks),
+            AutomationRecordAction::Remove { .. } => None,
         }
     }
 
+    /// Number of tasks to be handled by action.
     pub fn task_count(&self) -> usize {
-        self.task_indexes().len()
+        match self {
+            AutomationRecordAction::Process(tasks) => tasks.len(),
+            AutomationRecordAction::Remove { .. } => 1,
+        }
     }
 
+    /// Flattens action to be single task if multiple tasks are configured to be processed.
     pub fn flatten(self) -> Vec<Self> {
         match self {
             AutomationRecordAction::Process(tasks) => tasks
                 .into_iter()
                 .map(|t| AutomationRecordAction::Process(vec![t]))
                 .collect(),
-            AutomationRecordAction::Remove((tasks, reasons)) => tasks
-                .into_iter()
-                .zip(reasons.into_iter())
-                .map(|(t, r)| AutomationRecordAction::Remove((vec![t], vec![r])))
-                .collect(),
+            AutomationRecordAction::Remove { .. } => vec![self],
         }
     }
 
+    /// Returns minimum and maximum task indexes configured to be processed.
     pub fn task_range(&self) -> (u64, u64) {
-        (
-            self.task_indexes()
-                .iter()
-                .min()
-                .cloned()
-                .unwrap_or(u64::MAX),
-            self.task_indexes()
-                .iter()
-                .max()
-                .cloned()
-                .unwrap_or(u64::MAX),
-        )
+        match self {
+            AutomationRecordAction::Process(tasks) => (
+                tasks.iter().min().cloned().unwrap_or(u64::MAX),
+                tasks.iter().max().cloned().unwrap_or(u64::MAX),
+            ),
+            AutomationRecordAction::Remove { task_index, .. } => (*task_index, *task_index),
+        }
     }
 }
 
@@ -240,8 +250,8 @@ impl AutomationRecordBuilder {
         self
     }
 
-    pub fn remove_task_indexes(mut self, task_indexes: Vec<u64>, reasons: Vec<String>) -> Self {
-        self.action = Some(AutomationRecordAction::Remove((task_indexes, reasons)));
+    pub fn remove_task(mut self, task_index: u64, reason: String) -> Self {
+        self.action = Some(AutomationRecordAction::Remove { task_index, reason });
         self
     }
 
@@ -275,11 +285,8 @@ impl AutomationRecordBuilder {
             AutomationRecordAction::Process(task_indexes) => {
                 Self::get_process_tasks_payload(cycle_index, task_indexes)
             }
-            AutomationRecordAction::Remove((task_indexes, reasons)) => {
-                if task_indexes.len() != reasons.len() {
-                    return Err(SupraExtensionError::InvalidAutomationRecordBuilderForTaskRemoval);
-                }
-                Self::get_remove_tasks_payload(task_indexes, reasons)
+            AutomationRecordAction::Remove { task_index, reason } => {
+                Self::get_remove_tasks_payload(task_index, reason)
             }
         };
 
@@ -304,10 +311,10 @@ impl AutomationRecordBuilder {
     }
 
     /// Generates [`AutomationRegistryRecord`] input data to process tasks.
-    pub fn get_remove_tasks_payload(_task_indexes: Vec<u64>, _reasons: Vec<String>) -> Bytes {
-        let remove_tasks_call = removeRegisteredTasksCall {
-            _taskIndexes: _task_indexes,
-            _reasons,
+    pub fn get_remove_tasks_payload(task_index: u64, reason: String) -> Bytes {
+        let remove_tasks_call = removeRegisteredTaskCall {
+            _taskIndex: task_index,
+            _reason: reason,
         };
         Bytes::from(remove_tasks_call.abi_encode())
     }

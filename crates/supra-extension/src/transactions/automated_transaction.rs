@@ -8,7 +8,6 @@ use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_consensus::transaction::Transaction;
 use alloy_eips::eip2718::Typed2718;
 use alloy_sol_types::SolType;
-use alloy_sol_types::SolValue;
 use context::transaction::{AccessListItem, SignedAuthorization};
 use context::TransactionType;
 use derive_getters::{Dissolve, Getters};
@@ -35,7 +34,16 @@ impl TryFrom<&[u8]> for TaskPredicate {
         if value.is_empty() {
             return Ok(Self::default());
         }
-        let (address, input) = <(Address, Bytes)>::abi_decode(value)?;
+        type PredicateType = (
+            alloy_sol_types::sol_data::Address,
+            alloy_sol_types::sol_data::Bytes,
+        );
+        let (address, input) = PredicateType::abi_decode_sequence(value).map_err(|e| {
+            SupraExtensionError::PayloadDecode {
+                error: e,
+                payload: "predicate".to_owned(),
+            }
+        })?;
         Ok(Self { address, input })
     }
 }
@@ -44,8 +52,10 @@ impl TryFrom<&[u8]> for TaskPredicate {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum AutomationTaskPredicate {
+    /// Represents always true predicate
     #[default]
     ByPass,
+    /// Predicate to be executed.
     Predicate(TaskPredicate),
 }
 
@@ -316,7 +326,13 @@ impl TryFrom<&[u8]> for TaskPayload {
     type Error = SupraExtensionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(value)?;
+        let (value, to, input, access_list) =
+            ExpandedPayloadTy::abi_decode(value).map_err(|e| {
+                SupraExtensionError::PayloadDecode {
+                    error: e,
+                    payload: "task action".to_owned(),
+                }
+            })?;
         let access_items = access_list
             .into_iter()
             .map(|(address, storage_keys)| AccessListItem {
@@ -629,7 +645,7 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::automated_transaction::ExpandedPayloadTy;
+    use crate::transactions::automated_transaction::{ExpandedPayloadTy, TaskPredicate};
     use alloy::hex;
     use alloy_sol_types::SolType;
     #[test]
@@ -640,5 +656,13 @@ mod test {
         println!("value: {:?}", value);
         println!("access_list: {:?}", access_list);
         println!("input: {:?}", input);
+    }
+
+    #[test]
+    fn check_predicate_decode() {
+        let encoded = hex!("000000000000000000000000d3e2a56659d5113fa44c3d09dc21ea8ff48452570000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000426a7076400000000000000000000000000000000000000000000000000000000");
+        let payload = TaskPredicate::try_from(encoded.as_slice()).unwrap();
+        println!("to: {:?}", payload.address);
+        println!("input: {:?}", payload.input);
     }
 }
