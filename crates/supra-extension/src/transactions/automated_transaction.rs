@@ -243,7 +243,19 @@ type ExpandedPayloadTy = (
 );
 
 /// Evm automation task execution payload.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Getters, Dissolve, Constructor)]
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Getters,
+    Dissolve,
+    Constructor,
+)]
 pub struct TaskPayload {
     to: Address,
     value: U256,
@@ -252,7 +264,6 @@ pub struct TaskPayload {
 }
 
 impl TaskPayload {
-
     /// Generates random [`TaskPayload`] for testing propose only.
     pub fn random() -> Self {
         TaskPayload {
@@ -262,7 +273,6 @@ impl TaskPayload {
             access_list: AccessList::default(),
         }
     }
-
 }
 
 impl TryFrom<&[u8]> for TaskPayload {
@@ -340,7 +350,7 @@ pub struct AutomatedTransactionBuilder {
     task_index: Option<u64>,
     expiry_timestamp: Option<u64>,
     owner: Option<Address>,
-    tpy: Option<AutomatedTransactionType>,
+    typ: Option<AutomatedTransactionType>,
     priority: Option<u64>,
 
     to: Option<Address>,
@@ -362,7 +372,7 @@ impl AutomatedTransactionBuilder {
             task_index: None,
             expiry_timestamp: None,
             owner: None,
-            tpy: None,
+            typ: None,
             priority: None,
             to: None,
             value: Some(U256::from(0)),
@@ -409,8 +419,8 @@ impl AutomatedTransactionBuilder {
         self.owner = Some(owner);
         self
     }
-    pub fn with_tpy(mut self, tpy: AutomatedTransactionType) -> Self {
-        self.tpy = Some(tpy);
+    pub fn with_typ(mut self, typ: AutomatedTransactionType) -> Self {
+        self.typ = Some(typ);
         self
     }
     pub fn with_priority(mut self, priority: u64) -> Self {
@@ -444,20 +454,27 @@ impl AutomatedTransactionBuilder {
             task_index,
             expiry_timestamp: _,
             owner,
-            tpy,
+            typ,
             priority,
             to,
             value,
             access_list,
             input,
         } = self;
+        let typ = value_or_error!(AutomatedTransactionBuilder, "type", typ);
         let block_height =
             value_or_error!(AutomatedTransactionBuilder, "block_height", block_height);
         let chain_id = value_or_error!(AutomatedTransactionBuilder, "chain_id", chain_id);
         let gas_limit = value_or_error!(AutomatedTransactionBuilder, "gas_limit", gas_limit);
         let gas_price_cap =
             value_or_error!(AutomatedTransactionBuilder, "gas_price_cap", gas_price_cap);
-        let gas_price = value_or_error!(AutomatedTransactionBuilder, "gas_price", gas_price);
+        // GST based automated transaction are not charged, so the gas price is not mandatory and default to 0.
+        let gas_price = match typ {
+            AutomatedTransactionType::UST => {
+                value_or_error!(AutomatedTransactionBuilder, "gas_price", gas_price)
+            }
+            AutomatedTransactionType::GST => 0,
+        };
         let registration_hash = value_or_error!(
             AutomatedTransactionBuilder,
             "registration_hash",
@@ -465,13 +482,12 @@ impl AutomatedTransactionBuilder {
         );
         let task_index = value_or_error!(AutomatedTransactionBuilder, "task_index", task_index);
         let owner = value_or_error!(AutomatedTransactionBuilder, "owner", owner);
-        let tpy = value_or_error!(AutomatedTransactionBuilder, "type", tpy);
         let priority = priority.unwrap_or(task_index);
         let to = value_or_error!(AutomatedTransactionBuilder, "to", to);
         let value = value_or_error!(AutomatedTransactionBuilder, "value", value);
         let access_list = value_or_error!(AutomatedTransactionBuilder, "access_list", access_list);
         let input = value_or_error!(AutomatedTransactionBuilder, "input", input);
-        if gas_price_cap < gas_price {
+        if typ == AutomatedTransactionType::UST && gas_price_cap < gas_price{
             return Ok(BuildResult::GasPriceLimitExceeded {
                 task_index,
                 value: gas_price,
@@ -482,7 +498,7 @@ impl AutomatedTransactionBuilder {
             block_height,
             registration_hash,
             sender: owner,
-            txn_type: tpy,
+            txn_type: typ,
             chain_id,
             nonce: task_index,
             gas_limit,
@@ -542,7 +558,7 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
             .with_value(value)
             .with_input(input)
             .with_access_list(access_list)
-            .with_tpy(typ)
+            .with_typ(typ)
             .with_priority(priority);
         Ok(builder)
     }

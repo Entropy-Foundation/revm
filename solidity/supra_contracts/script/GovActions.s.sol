@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {Script, console} from "forge-std/Script.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
+import {IAutomationRegistry} from "../src/interfaces/IAutomationRegistry.sol";
 
 contract InitializeCycleMonitoring is Script {
     address payable multisigWalletAddr;
@@ -32,6 +33,35 @@ contract InitializeCycleMonitoring is Script {
         // to be executed for each block
         bytes memory data = abi.encodeCall(BlockMeta.register, (automationController, selector));
         wallet.submitTransaction(blockMetadata, 0,  timeout, data);
+
+        vm.stopBroadcast();
+    }
+}
+
+contract AuthorizeAccount is Script {
+    address payable multisigWalletAddr;
+    address automationRegistry;
+    address account;
+    uint64 timeout;
+
+    function setUp() public {
+        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
+        automationRegistry = vm.envAddress("REGISTRY");
+        account = vm.envAddress("ACCOUNT_TO_AUTHORIZE");
+        timeout = uint64(vm.envUint("TIMEOUT"));
+    }
+
+    function run() public {
+        vm.startBroadcast();
+
+        // Initialize MultiSignatureWallet and get nextTxnIndex
+        MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
+        uint256 nextTxnIndex = wallet.getNextTransactionIndex();
+        console.log("TxnIndex: ", nextTxnIndex);
+
+        // Submit a foundation/gov action to grant authorization for gst task registration
+        bytes memory data = abi.encodeCall(IAutomationRegistry.grantAuthorization, (account));
+        wallet.submitTransaction(automationRegistry, 0,  timeout, data);
 
         vm.stopBroadcast();
     }
