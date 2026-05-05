@@ -128,7 +128,6 @@ sol! {
         constructor(
             address _contractOwner,
             FacetsDeployment memory _facets,
-            address _vmSigner,
             address _erc20Supra,
             InitParams memory _params
         );
@@ -720,7 +719,6 @@ impl GenesisTransactionGenerator {
         let diamond_constructor_data = Diamond::constructorCall {
             _contractOwner: owner,
             _facets: facets,
-            _vmSigner: VM_SIGNER,
             _erc20Supra: erc20_supra_address,
             _params: init_params,
         }
