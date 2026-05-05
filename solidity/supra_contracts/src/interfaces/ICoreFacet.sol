@@ -56,7 +56,7 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when tasks are removed by system due to various reasons.
-    event TasksRemovedBySystem(LibCommon.RemovedTask[] indexed removedTasks);
+    event TaskRemovedBySystem(LibCommon.RemovedTask indexed removedTask);
 
     // =============================================================
     //                      Custom errors
@@ -82,5 +82,5 @@ interface ICoreFacet {
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
-    function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external;
+    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external;
 }
