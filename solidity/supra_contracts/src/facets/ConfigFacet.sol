@@ -17,7 +17,8 @@ contract ConfigFacet is IConfigFacet {
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Grants authorization to the input account to submit system automation tasks.
+    /// @notice Grants authorization to the input account to submit system automation tasks. 
+    /// It is foundation governance responsibility to make sure that the target is and instance of `MultiSignatureWallet`
     /// @param _account Address to grant authorization to.
     function grantAuthorization(address _account) external {
         LibDiamond.enforceIsContractOwner();
@@ -134,11 +135,6 @@ contract ConfigFacet is IConfigFacet {
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
-
-    /// @notice Returns the VM Signer address.
-    function getVmSigner() external pure returns (address) {
-        return LibUtils.VM_SIGNER;
-    }
 
     /// @notice Returns the ERC20Supra address.
     function erc20Supra() external view returns (address) {

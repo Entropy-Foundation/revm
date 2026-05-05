@@ -219,7 +219,7 @@ library LibRegistry {
         registryState.currentIndex += 1;
     }
 
-    function updateGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
+    function reduceGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 gasCommittedForNextCycle = _isGst ? registryState.sysGasCommittedForNextCycle : registryState.gasCommittedForNextCycle;        
@@ -313,7 +313,7 @@ library LibRegistry {
         // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         if (task.expiryTime > LibCommon.getCycleEndTime()) {
-            updateGasCommittedForNextCycle(_isGst, task.maxGasAmount);
+            reduceGasCommittedForNextCycle(_isGst, task.maxGasAmount);
         }
 
         cancelledTask = LibCommon.TaskCancelled(_taskIndex, task.taskType, task.txHash);
@@ -361,14 +361,14 @@ library LibRegistry {
         bool _isGst
     ) internal returns (uint128 cycleFeeRefund, uint128 depositRefund) {
         // Remove task from the registry and active tasks
-        LibCommon.removeTask(_taskId, _owner, _isGst, true);
+        LibCommon.removeTask(_taskId, _owner, _isGst, _taskState != LibCommon.TaskState.PENDING);
 
         // This check means the task was expected to be executed in the next cycle, but it has been stopped.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         // Also it checks that task should not be cancelled.
         if (_taskState != LibCommon.TaskState.CANCELLED && _expiryTime > _cycleEndTime) {
             // Reduce committed gas by the stopped task's max gas
-            updateGasCommittedForNextCycle(_isGst, _maxGasAmount);
+            reduceGasCommittedForNextCycle(_isGst, _maxGasAmount);
         }
 
         if (!_isGst) {

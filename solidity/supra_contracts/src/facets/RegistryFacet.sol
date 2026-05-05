@@ -208,15 +208,13 @@ contract RegistryFacet is IRegistryFacet {
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
-        // Calculate refundable fee for this remaining time task in current cycle
-        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
         uint256 counter;
         
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
-                (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, currentTime, residualInterval, true);
+                (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, currentTime, 0, true);
                 stoppedTasks[counter++] = ts;
             }
         }

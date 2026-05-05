@@ -4,6 +4,7 @@ pragma solidity 0.8.27;
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {OwnershipFacet} from "../src/facets/OwnershipFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
+import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
@@ -32,7 +33,6 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 20_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
         assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
-        assertEq(IConfigFacet(diamondAddr).getVmSigner(), LibUtils.VM_SIGNER);
         assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(erc20Supra));
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
@@ -69,7 +69,7 @@ contract DiamondInitTest is BaseDiamondTest {
     function testInitReverts() public {
         InitParams memory params = LibDiamondUtils.defaultInitParams();
 
-        vm.expectRevert(bytes("Diamond: Function does not exist"));
+        vm.expectRevert(LibDiamond.FunctionDoesNotExist.selector);
 
         vm.prank(admin);
         DiamondInit(diamondAddr).init(
@@ -87,7 +87,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
     /// @dev Test to ensure Diamond reverts if an unknown selector is called.
     function testUnknownSelectorReverts() public {
-        vm.expectRevert(bytes("Diamond: Function does not exist"));
+        vm.expectRevert(LibDiamond.FunctionDoesNotExist.selector);
 
         INonExistent(diamondAddr).nonExistent();
     }
@@ -146,7 +146,7 @@ contract DiamondInitTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'transferOwnership' reverts if caller is not owner.
     function testTransferOwnershipRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         OwnershipFacet(diamondAddr).transferOwnership(bob);
@@ -165,7 +165,7 @@ contract DiamondInitTest is BaseDiamondTest {
             functionSelectors: selectors
         });
             
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);    
         IDiamondCut(diamondAddr).diamondCut(
@@ -207,7 +207,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = MockRegistryFacet.getVmSigner.selector;
+        selectors[0] = MockRegistryFacet.erc20Supra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -216,7 +216,7 @@ contract DiamondInitTest is BaseDiamondTest {
             functionSelectors: selectors
         });
 
-        vm.expectRevert(bytes("LibDiamondCut: Can't add function that already exists"));
+        vm.expectRevert(LibDiamond.FunctionAlreadyExists.selector);
 
         vm.prank(admin);
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
@@ -233,7 +233,7 @@ contract DiamondInitTest is BaseDiamondTest {
             functionSelectors: selectors
         });
 
-        vm.expectRevert(bytes("LibDiamondCut: No selectors in facet to cut"));
+        vm.expectRevert(LibDiamond.NoSelectorsInFacetToCut.selector);
 
         vm.prank(admin);
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
@@ -251,7 +251,7 @@ contract DiamondInitTest is BaseDiamondTest {
             functionSelectors: selectors
         });
 
-        vm.expectRevert(bytes("LibDiamondCut: Add facet can't be address(0)"));
+        vm.expectRevert(LibDiamond.AddressCannotBeZero.selector);
 
         vm.prank(admin);
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
@@ -285,7 +285,7 @@ contract DiamondInitTest is BaseDiamondTest {
         taskIndexes[0] = 0;
         
         // Verify call now reverts
-        vm.expectRevert(bytes("Diamond: Function does not exist"));
+        vm.expectRevert(LibDiamond.FunctionDoesNotExist.selector);
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
@@ -301,7 +301,7 @@ contract DiamondInitTest is BaseDiamondTest {
             functionSelectors: selectors
         });
 
-        vm.expectRevert(bytes("LibDiamondCut: Can't remove function that doesn't exist"));
+        vm.expectRevert(LibDiamond.FunctionDoesNotExist.selector);
 
         vm.prank(admin);
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
@@ -313,7 +313,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IConfigFacet.getVmSigner.selector;
+        selectors[0] = IConfigFacet.erc20Supra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -326,17 +326,17 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
 
         // Verify selector now points to mockRegistryFacet
-        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.getVmSigner.selector);
+        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.erc20Supra.selector);
         assertEq(facet, address(mockRegistryFacet));
 
         // Verify logic changed
-        assertEq(IConfigFacet(diamondAddr).getVmSigner(), address(0x999));
+        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(0x999));
     }
 
     /// @dev Test to ensure replacing a selector with same facet address reverts.
     function testReplaceWithSameFacetReverts() public {
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IConfigFacet.getVmSigner.selector;
+        selectors[0] = IConfigFacet.erc20Supra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -345,7 +345,7 @@ contract DiamondInitTest is BaseDiamondTest {
             functionSelectors: selectors
         });
 
-        vm.expectRevert(bytes("LibDiamondCut: Can't replace function with same function"));
+        vm.expectRevert(LibDiamond.CannotReplaceFunctionWithSameFunction.selector);
 
         vm.prank(admin);
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
@@ -633,7 +633,7 @@ interface INonExistent {
 }
 
 contract MockRegistryFacet {
-    function getVmSigner() external pure returns (address) {
+    function erc20Supra() external pure returns (address) {
         return address(0x999);
     }
 

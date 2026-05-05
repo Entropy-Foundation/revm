@@ -30,6 +30,7 @@ interface ICoreFacet {
 
     /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
     event TaskCycleFeeWithdraw(
+        uint64 cycleIndex,
         uint64 indexed taskIndex,
         address indexed owner,
         uint128 indexed fee
@@ -54,8 +55,8 @@ interface ICoreFacet {
         bytes32 registrationHash
     );
 
-    /// @notice Emitted when tasks are removed due to predicate validation failure.
-    event TasksRemovedAsPredicateFailed(LibCommon.RemovedTask[] indexed removedTasks);
+    /// @notice Emitted when tasks are removed by system due to various reasons.
+    event TasksRemovedBySystem(LibCommon.RemovedTask[] indexed removedTasks);
 
     // =============================================================
     //                      Custom errors

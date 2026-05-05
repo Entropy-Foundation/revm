@@ -69,7 +69,7 @@ library LibCore {
         }
     }
 
-    /// @notice Function to update the registry configuration, reverts if caller is not AutomationController.
+    /// @notice Function to update the registry configuration with buffered one if exists.
     function applyPendingConfig() private returns (bool, uint64) {
         AppStorage storage s = LibAppStorage.appStorage();
 
@@ -255,11 +255,11 @@ library LibCore {
             if (result.isRemoved) {
                 removedBuffer[removedCount] = taskId;
                 removedCount += 1; 
+            } else {
+                intermediateState.gasCommittedForNextCycle += result.gas;
+                intermediateState.sysGasCommittedForNextCycle += result.sysGas;
+                intermediateState.cycleLockedFees += result.fees;
             }
-
-            intermediateState.gasCommittedForNextCycle += result.gas;
-            intermediateState.sysGasCommittedForNextCycle += result.sysGas;
-            intermediateState.cycleLockedFees += result.fees;
         }
 
         uint64[] memory removedTasks = new uint64[](removedCount);
@@ -341,7 +341,7 @@ library LibCore {
     /// @param _owner Owner of the task.
     /// @param _maxGasAmount Max gas amount of the task.
     /// @param _expiryTime Expiry time of the task.
-    /// @param _lockedFeeForNextCycle Locked fees of the task.
+    /// @param _depositRefund Deposit refund of the task.
     /// @param _fee Fees to be charged for the task. 
     /// @param _currentCycleEndTime End time of the current cycle.
     /// @param _automationFeeCapForCycle Max automation fee for a cycle to be paid.
@@ -354,7 +354,7 @@ library LibCore {
         address _owner,
         uint128 _maxGasAmount,
         uint64 _expiryTime,
-        uint128 _lockedFeeForNextCycle,
+        uint128 _depositRefund,
         uint128 _fee,
         uint64 _currentCycleEndTime,
         uint128 _automationFeeCapForCycle,
@@ -370,7 +370,7 @@ library LibCore {
         uint128 gas;
         uint128 fees;
         if (_fee > _automationFeeCapForCycle) {
-            LibAccounting.refundDepositAndDrop(_taskIndex, _owner, _lockedFeeForNextCycle,  _lockedFeeForNextCycle);
+            LibAccounting.refundDepositAndDrop(_taskIndex, _owner, _depositRefund, _depositRefund);
 
             isRemoved = true;
 
@@ -390,7 +390,7 @@ library LibCore {
                 // If the user hasn't granted enough allowance or if they don't have enough balance, remove the task.
                 // DON'T refund the locked deposit, but simply unlock it and emit an event.
 
-                LibAccounting.safeUnlockLockedDeposit(_taskIndex, _lockedFeeForNextCycle);
+                LibAccounting.safeUnlockLockedDeposit(_taskIndex, _depositRefund);
                 LibCommon.removeTask(_taskIndex, _owner, false, false);
 
                 isRemoved = true;
@@ -413,6 +413,7 @@ library LibCore {
                 }
               
                 emit ICoreFacet.TaskCycleFeeWithdraw(
+                    s.index,
                     _taskIndex,
                     _owner,
                     _fee

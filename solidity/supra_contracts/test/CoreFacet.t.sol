@@ -7,6 +7,7 @@ import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibCore} from "../src/libraries/LibCore.sol";
+import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 
@@ -398,7 +399,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'disableAutomation' reverts if caller is not owner.
     function testDisableAutomationRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
         
         vm.prank(alice);
         ICoreFacet(diamondAddr).disableAutomation();
@@ -440,7 +441,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'enableAutomation' reverts if caller is not owner.
     function testEnableAutomationRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         ICoreFacet(diamondAddr).enableAutomation();
@@ -532,7 +533,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
     }
 
-    /// @dev Test to ensure 'removeRegisteredTasks' emits 'TaskRemovedAsPredicateFailed' event.
+    /// @dev Test to ensure 'removeRegisteredTasks' emits 'TasksRemovedBySystem' event.
     function testRemoveRegisteredTasksEmitsEvent() public {
         registerUst();
         
@@ -552,7 +553,7 @@ contract CoreFacetTest is BaseDiamondTest {
         removedTasks[0] = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), "Predicate failed");
 
         vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.TasksRemovedAsPredicateFailed(removedTasks);
+        emit ICoreFacet.TasksRemovedBySystem(removedTasks);
 
         // Remove task due to predicate failure
         ICoreFacet(diamondAddr).removeRegisteredTasks(tasksUint64, reasons);

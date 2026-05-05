@@ -5,6 +5,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
+import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
 
 contract ConfigFacetTest is BaseDiamondTest {
@@ -41,7 +42,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'grantAuthorization' reverts if caller is not owner.
     function testGrantAuthorizationRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         IConfigFacet(diamondAddr).grantAuthorization(alice);
@@ -83,7 +84,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'revokeAuthorization' reverts if caller is not owner.
     function testRevokeAuthorizationRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         IConfigFacet(diamondAddr).revokeAuthorization(alice);
@@ -121,7 +122,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'disableRegistration' reverts if caller is not owner.
     function testDisableRegistrationRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
         
         vm.prank(alice);
         IConfigFacet(diamondAddr).disableRegistration();
@@ -164,7 +165,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'enableRegistration' reverts if caller is not owner.
     function testEnableRegistrationRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         IConfigFacet(diamondAddr).enableRegistration();
@@ -208,7 +209,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' reverts if caller is not owner.
     function testWithdrawFeesRevertsIfNotOwner() public {
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
@@ -323,7 +324,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     function testUpdateConfigBufferRevertsIfNotOwner() public {
         Config memory cfg = validConfig();
 
-        vm.expectRevert(bytes("LibDiamond: Must be contract owner"));
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
 
         vm.prank(alice);
         IConfigFacet(diamondAddr).updateConfigBuffer(

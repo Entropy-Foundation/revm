@@ -34,7 +34,7 @@ contract CoreFacet is ICoreFacet {
         }
     }
 
-    /// @notice Checks the cycle end and emit an event on it. Does nothing if SUPRA_NATIVE_AUTOMATION or SUPRA_AUTOMATION_V2 is disabled.
+    /// @notice Checks the cycle end and emit an event on it. Does nothing if cycle is not in `STARTED` state.
     function monitorCycleEnd() external {
         tx.origin.enforceIsVmSigner();
 
@@ -129,7 +129,7 @@ contract CoreFacet is ICoreFacet {
         LibCommon.RemovedTask[] memory removedTasks = new LibCommon.RemovedTask[](tasksCount);    
         uint256 counter;
 
-        // Calculate refundable fee for this remaining time task in current cycle
+        // Calculate duration for refundable fee for the tasks in current cycle
         uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
             
         for (uint256 i = 0; i < tasksCount; i++) {
@@ -141,7 +141,7 @@ contract CoreFacet is ICoreFacet {
         }
 
         if (counter > 0) {
-            emit TasksRemovedAsPredicateFailed(removedTasks);
+            emit TasksRemovedBySystem(removedTasks);
         }
     }
 }

@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {Script, console} from "forge-std/Script.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
-import {IAutomationRegistry} from "../src/interfaces/IAutomationRegistry.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 
 contract InitializeCycleMonitoring is Script {
     address payable multisigWalletAddr;
@@ -60,7 +60,7 @@ contract AuthorizeAccount is Script {
         console.log("TxnIndex: ", nextTxnIndex);
 
         // Submit a foundation/gov action to grant authorization for gst task registration
-        bytes memory data = abi.encodeCall(IAutomationRegistry.grantAuthorization, (account));
+        bytes memory data = abi.encodeCall(IConfigFacet.grantAuthorization, (account));
         wallet.submitTransaction(automationRegistry, 0,  timeout, data);
 
         vm.stopBroadcast();

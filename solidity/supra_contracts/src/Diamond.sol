@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /******************************************************************************\
-* Author: Nick Mudge <nick@perfectabstractions.com> (https://twitter.com/mudgen)
+* Credits: Nick Mudge <nick@perfectabstractions.com> (https://twitter.com/mudgen)
 * EIP-2535 Diamonds: https://eips.ethereum.org/EIPS/eip-2535
 *
 * Implementation of a diamond.
@@ -12,7 +12,9 @@ import { LibDiamond } from "./libraries/LibDiamond.sol";
 import { IDiamondCut } from "./interfaces/IDiamondCut.sol";
 
 contract Diamond {    
-
+    /// @notice Constructor to initialize the diamond with owner and diamond cut facet.
+    /// @param _contractOwner The address of the contract owner.
+    /// @param _diamondCutFacet The address of the diamond cut facet.
     constructor(address _contractOwner, address _diamondCutFacet) {        
         LibDiamond.setContractOwner(_contractOwner);
 
@@ -28,8 +30,8 @@ contract Diamond {
         LibDiamond.diamondCut(cut, address(0), "");        
     }
 
-    // Find facet for function that is called and execute the
-    // function if a facet is found and return any value.
+    /// @notice Find facet for function that is called and execute the
+    /// function if a facet is found and return any value.
     fallback() external {
         LibDiamond.DiamondStorage storage ds;
         bytes32 position = LibDiamond.DIAMOND_STORAGE_POSITION;
@@ -39,7 +41,7 @@ contract Diamond {
         }
         // get facet from function selector
         address facet = ds.selectorToFacetAndPosition[msg.sig].facetAddress;
-        require(facet != address(0), "Diamond: Function does not exist");
+        if (facet == address(0)) { revert LibDiamond.FunctionDoesNotExist(); }
         // Execute external function from facet using delegatecall and return any value.
         assembly {
             // copy function selector and any arguments

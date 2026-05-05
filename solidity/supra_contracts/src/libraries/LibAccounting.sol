@@ -15,9 +15,6 @@ library LibAccounting {
     uint8 constant DEPOSIT_CYCLE_FEE = 0;
     uint8 constant CYCLE_FEE = 1;
 
-    /// @dev Refund fraction
-    uint8 constant REFUND_FRACTION = 2;
-
     /// @dev Defines divisor for refunds of deposit fees with penalty
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
@@ -130,14 +127,16 @@ library LibAccounting {
         }
 
         // Calculate how much usage exceeds threshold
-        uint256 surplusScaled = (thresholdUsageScaled - thresholdPercentageScaled) / 100;
+        uint256 surplus;
+        if (thresholdUsageScaled > 100 * DECIMAL) {
+            surplus = (100 * DECIMAL) - thresholdPercentageScaled;
+        } else {
+            surplus = thresholdUsageScaled - thresholdPercentageScaled;
+        }
+        uint256 surplusScaled = surplus / 100;
 
-        // Ensure threshold + threshold surplus does not exceed 1 (1 in scaled terms)
-        uint256 thresholdScaledAsFraction = thresholdPercentageScaled / 100;    // DECIMAL-scaled fraction
-        uint256 surplusClipped = thresholdScaledAsFraction + surplusScaled > DECIMAL ? DECIMAL - thresholdScaledAsFraction : surplusScaled;
-        
         uint256 exponentResult = calculateExponentiation(
-            surplusClipped,
+            surplusScaled,
             congestionExponent
         );
 
@@ -193,6 +192,7 @@ library LibAccounting {
 
     /// @notice Calculates automation task fees for a single task at the time of new cycle.
     /// This is supposed to be called only after removing expired task and must not be called for expired task.
+    /// @dev _automationFeePerSec is expected to be base automation fee + congestion fee if any.
     function calculateAutomationFeeForInterval(
         uint64 _duration,
         uint128 _taskOccupancy,
@@ -267,7 +267,7 @@ library LibAccounting {
         return result;
     }
 
-    /// @notice Refunds the deposit fee of the task and removes from the registry.
+    /// @notice Refunds the deposit fee of the task and removes from the registry during cycle transition.
     /// @param _taskIndex Index of the task.
     /// @param _taskOwner Owner of the task.
     /// @param _refundableDeposit Refundable amount of deposit.
@@ -355,7 +355,9 @@ library LibAccounting {
         return calculateAutomationFeeForInterval(s.durationSecs, _taskOccupancy, automationFeePerSec, registryState.nextCycleRegistryMaxGasCap);
     }
 
-    /// @notice Helper function to unlock locked deposit and cycle fees when stopTasks is called.
+    /// @notice Helper function to unlock locked deposit and cycle fees when stopTasks is called. Calculates cycle fee and 
+    /// deposit fee that needs to be refunded. Tries to unlock the same from corresponding counters and returns the refund amounts. 
+    /// Function reverts if unlocking fails. Note that this function does not do actual refund, but only unlocking.
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         LibCommon.TaskState _taskState,
@@ -393,12 +395,12 @@ library LibAccounting {
 
             // Refund full deposit and half of the remaining run-time fee when a task is in active or cancelled stage
             cycleLockedFeeForTask = taskFeeForFullCycle;
-            cycleFeeRefund = taskFeeForResidualTime / REFUND_FRACTION; 
+            cycleFeeRefund = taskFeeForResidualTime / REFUND_FACTOR; 
             depositRefund = _depositFee;
         } else {
             cycleLockedFeeForTask = 0;
             cycleFeeRefund = 0;
-            depositRefund = _depositFee / REFUND_FRACTION;
+            depositRefund = _depositFee / REFUND_FACTOR;
         }
 
         bool result = safeUnlockLockedDeposit(_taskIndex, _depositFee);
