@@ -8,9 +8,9 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 struct Config {
     uint128 registryMaxGasCap;
     uint128 sysRegistryMaxGasCap;
-    uint128 automationBaseFeeWeiPerSec;                     // TO_DO: need to decide on the currency
-    uint128 flatRegistrationFeeWei;                         // TO_DO: need to decide on the currency        
-    uint128 congestionBaseFeeWeiPerSec;                     // TO_DO: need to decide on the currency
+    uint128 automationBaseFeeWeiPerSec;
+    uint128 flatRegistrationFeeWei;
+    uint128 congestionBaseFeeWeiPerSec;
     uint64 taskDurationCapSecs; 
     uint64 sysTaskDurationCapSecs;
     uint64 cycleDurationSecs;
