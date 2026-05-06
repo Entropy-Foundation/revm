@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
 
 const CURRENT_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -60,10 +59,6 @@ fn rebuild_rust_bindings() {
 struct CompileConfig {
     /// Supra contracts relative path
     supra_dapp_path: PathBuf,
-    /// Supra nova dapp repository
-    supra_nova_repo: String,
-    /// Supra nova dapp tag to reference to
-    supra_nova_tag: String,
     /// Supra nova dapp relative path in repo
     supra_nova_dapp_path: String,
 }
@@ -81,57 +76,9 @@ impl CompileConfig {
             .expect("failed to canonicalize dapp path")
     }
 
-    fn supra_nova_dapp_path(&self) -> Result<PathBuf> {
-        self.checkout_supra_nova_repo()
-            .map(|path| path.join(self.supra_nova_dapp_path.clone()))
-    }
-
-    fn checkout_supra_nova_repo(&self) -> Result<PathBuf> {
-        let out_dir = env::var("OUT_DIR")?;
-        let repo_dir = Path::new(&out_dir).join("supranova-contracts");
-
-        if repo_dir.exists() {
-            // Check whether the already-cloned repo is at the right tag.
-            let output = Command::new("git")
-                .args(["describe", "--tags", "--exact-match"])
-                .current_dir(&repo_dir)
-                .output()?;
-            let current_tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if current_tag == self.supra_nova_tag {
-                return Ok(repo_dir);
-            }
-            // Wrong tag – remove and re-clone.
-            std::fs::remove_dir_all(&repo_dir)?;
-        }
-
-        let status = Command::new("git")
-            .env(
-                "GIT_SSH_COMMAND",
-                "ssh -o BatchMode=yes -o StrictHostKeyChecking=no",
-            )
-            .args([
-                "clone",
-                "--recurse-submodules",
-                "--branch",
-                self.supra_nova_tag.as_str(),
-                "--depth",
-                "1",
-                self.supra_nova_repo.as_str(),
-                repo_dir
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("non-UTF-8 OUT_DIR path"))?,
-            ])
-            .status()?;
-
-        if !status.success() {
-            return Err(anyhow::anyhow!(
-                "Failed to clone {} at tag {}",
-                self.supra_nova_repo,
-                self.supra_nova_tag
-            ));
-        }
-
-        Ok(repo_dir)
+    fn supra_nova_dapp_path(&self) -> PathBuf {
+        utils::canonicalize(Path::new(CURRENT_DIR).join(&self.supra_nova_dapp_path))
+            .expect("failed to canonicalize supranova dapp path")
     }
 }
 
@@ -267,12 +214,8 @@ fn main() {
     let config = CompileConfig::load().expect("Config should always be valid");
     let supra_contracts_artifacts = compile_contracts(&config.supra_contracts_dapp_path())
         .expect("Successful supra contracts compilation");
-    let supra_nova_artifacts = compile_contracts(
-        &config
-            .supra_nova_dapp_path()
-            .expect("Successful supra nova dapp path resolve"),
-    )
-    .expect("Successful supra nova contracts compilation");
+    let supra_nova_artifacts = compile_contracts(&config.supra_nova_dapp_path())
+        .expect("Successful supra nova contracts compilation");
     let mut contracts_bytecode = BTreeMap::new();
     load_supra_contracts_bytecode(&supra_contracts_artifacts, &mut contracts_bytecode)
         .expect("Supra contracts loaded successfully");
