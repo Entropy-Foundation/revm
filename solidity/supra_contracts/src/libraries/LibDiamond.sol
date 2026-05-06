@@ -105,9 +105,9 @@ library LibDiamond {
     }
 
     function addFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
-        if (_functionSelectors.length == 0) { revert NoSelectorsInFacetToCut(); }
+        assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();        
-        if (_facetAddress == address(0)) { revert AddressCannotBeZero(); }
+        assertNonZeroAddress(_facetAddress);
         uint96 selectorPosition = uint96(ds.facetFunctionSelectors[_facetAddress].functionSelectors.length);
         // add new facet address if it does not exist
         if (selectorPosition == 0) {
@@ -123,9 +123,9 @@ library LibDiamond {
     }
 
     function replaceFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
-        if (_functionSelectors.length == 0) { revert NoSelectorsInFacetToCut(); }
+        assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();
-        if (_facetAddress == address(0)) { revert AddressCannotBeZero(); }
+        assertNonZeroAddress(_facetAddress);
         uint96 selectorPosition = uint96(ds.facetFunctionSelectors[_facetAddress].functionSelectors.length);
         // add new facet address if it does not exist
         if (selectorPosition == 0) {
@@ -142,7 +142,7 @@ library LibDiamond {
     }
 
     function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
-        if (_functionSelectors.length == 0) { revert NoSelectorsInFacetToCut(); }
+        assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();
         // if function does not exist then do nothing and return
         if (_facetAddress != address(0)) { revert AddressMustBeZero(); }
@@ -154,7 +154,7 @@ library LibDiamond {
     }
 
     function addFacet(DiamondStorage storage ds, address _facetAddress) internal {
-        if (!_facetAddress.isContract()) { revert AddressNotAContract(); }
+        assertIsContract(_facetAddress);
         ds.facetFunctionSelectors[_facetAddress].facetAddressPosition = ds.facetAddresses.length;
         ds.facetAddresses.push(_facetAddress);
     }    
@@ -202,7 +202,7 @@ library LibDiamond {
         if (_init == address(0)) {
             return;
         }
-        if (!_init.isContract()) { revert AddressNotAContract(); }
+        assertIsContract(_init);
         (bool success, bytes memory error) = _init.delegatecall(_calldata);
         if (!success) {
             if (error.length > 0) {
@@ -216,5 +216,23 @@ library LibDiamond {
                 revert InitializationFunctionReverted(_init, _calldata);
             }
         }
+    }
+
+    /// @notice Assert that the given address is not zero address
+    /// @param _addr The address to check
+    function assertNonZeroAddress(address _addr) private pure {
+        if (_addr == address(0)) { revert AddressCannotBeZero(); }
+    }
+
+    /// @notice Assert that the given selectors array is not empty
+    /// @param _selectors The selectors array to check
+    function assertNonEmptySelectors(bytes4[] memory _selectors) private pure {
+        if (_selectors.length == 0) { revert NoSelectorsInFacetToCut(); }
+    }
+
+    /// @notice Assert that the given address is a contract
+    /// @param _addr The address to check
+    function assertIsContract(address _addr) private view {
+        if (!_addr.isContract()) { revert AddressNotAContract(); }
     }
 }
