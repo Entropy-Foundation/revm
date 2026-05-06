@@ -1,6 +1,6 @@
 supra_dapp_path = "../../solidity/supra_contracts/"
 
-supra_nova_repo = "ssh://git@github.com:Entropy-Foundation/supranova-contracts-private.git"
+supra_nova_repo = "ssh://git@github.com/Entropy-Foundation/supranova-contracts-private.git"
 supra_nova_tag = "supranova-evm-v2.0.0-beta.1"
 supra_nova_dapp_path = "hypernova/evm"
 
