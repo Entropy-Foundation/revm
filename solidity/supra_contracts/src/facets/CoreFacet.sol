@@ -126,7 +126,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
 
         LibCommon.RemovedTask memory rt = LibCore.handleTasksRemoval(_taskIndex, cycleEndTime, currentTime, residualInterval, _reason);
-        emit TasksRemovedAsPredicateFailed(rt);
+        emit TaskRemovedBySystem(rt);
     }
 
 

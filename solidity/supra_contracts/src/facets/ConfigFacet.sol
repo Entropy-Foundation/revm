@@ -158,17 +158,16 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](11);
-        selectors[0]  = ConfigFacet.grantAuthorization.selector;
-        selectors[1]  = ConfigFacet.revokeAuthorization.selector;
-        selectors[2]  = ConfigFacet.enableRegistration.selector;
-        selectors[3]  = ConfigFacet.disableRegistration.selector;
-        selectors[4]  = ConfigFacet.withdrawFees.selector;
-        selectors[5]  = ConfigFacet.updateConfigBuffer.selector;
-        selectors[6]  = ConfigFacet.getVmSigner.selector;
-        selectors[7]  = ConfigFacet.erc20Supra.selector;
-        selectors[8]  = ConfigFacet.isRegistrationEnabled.selector;
-        selectors[9]  = ConfigFacet.getConfig.selector;
-        selectors[10] = ConfigFacet.getConfigBuffer.selector;
+        selectors = new bytes4[](10);
+        selectors[0] = ConfigFacet.grantAuthorization.selector;
+        selectors[1] = ConfigFacet.revokeAuthorization.selector;
+        selectors[2] = ConfigFacet.enableRegistration.selector;
+        selectors[3] = ConfigFacet.disableRegistration.selector;
+        selectors[4] = ConfigFacet.withdrawFees.selector;
+        selectors[5] = ConfigFacet.updateConfigBuffer.selector;
+        selectors[6] = ConfigFacet.erc20Supra.selector;
+        selectors[7] = ConfigFacet.isRegistrationEnabled.selector;
+        selectors[8] = ConfigFacet.getConfig.selector;
+        selectors[9] = ConfigFacet.getConfigBuffer.selector;
     }
 }
