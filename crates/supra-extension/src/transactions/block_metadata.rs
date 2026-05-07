@@ -2,7 +2,7 @@
 //! to aid block based checks to assist chain regular operations
 
 use crate::errors::SupraExtensionError;
-use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBindings::blockPrologueCall;
+use crate::blockPrologueCall;
 use crate::value_or_error;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_consensus::transaction::Transaction;

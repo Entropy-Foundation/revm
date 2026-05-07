@@ -1,8 +1,8 @@
 //! AutomatedTransaction generated based on the registered active automation task.
 
 use crate::errors::SupraExtensionError;
-use crate::supra_contract_bindings::supra_contracts_bindings::CommonUtils::TaskDetails;
 use crate::value_or_error;
+use crate::TaskMetadata;
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_consensus::transaction::Transaction;
@@ -519,11 +519,11 @@ impl AutomatedTransactionBuilder {
 /// Fails if:
 ///   - inner payload cannot be deserialized based on the  [`ExpandedPayloadTy`] schema
 ///   - Loaded task is not in active state (Active | Cancelled)
-impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
+impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
     type Error = SupraExtensionError;
 
-    fn try_from(value: TaskDetails) -> Result<Self, Self::Error> {
-        let TaskDetails {
+    fn try_from(value: TaskMetadata) -> Result<Self, Self::Error> {
+        let TaskMetadata {
             maxGasAmount,
             gasPriceCap,
             automationFeeCapForCycle: _,
@@ -535,12 +535,14 @@ impl TryFrom<TaskDetails> for AutomatedTransactionBuilder {
             priority,
             taskType,
             owner,
-            state,
+            taskState,
             payloadTx,
+            // TODO: handle predicate
+            predicate: _,
             auxData: _,
         } = value;
 
-        if AutomationTaskState::try_from(state)? == AutomationTaskState::Pending {
+        if AutomationTaskState::try_from(taskState)? == AutomationTaskState::Pending {
             return Err(SupraExtensionError::InvalidAutomationTaskStateForBuilder);
         }
         let typ = AutomatedTransactionType::try_from(taskType)?;

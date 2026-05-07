@@ -15,12 +15,10 @@ interface SupraContractsBindings {
 
     // View functions of CoreFacet
     function isAutomationEnabled() external view returns (bool);
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommon.CycleState);
-    function getTransitionInfo() external view returns (uint64, uint128);
-    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory details);
+    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
 
     // Entry function to be called by node runtime for bookkeeping
-    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
 
     // Entry function of the BlockMeta for block metadata transaction
     function blockPrologue() external;

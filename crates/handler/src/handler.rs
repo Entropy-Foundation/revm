@@ -14,6 +14,8 @@ use interpreter::interpreter_action::FrameInit;
 use interpreter::{Gas, InitialAndFloorGas, SharedMemory};
 use primitives::supra_constants::{is_supra_reserved, is_vm_signer};
 use primitives::U256;
+use std::format;
+use std::string::String;
 
 /// Trait for errors that can occur during EVM execution.
 ///

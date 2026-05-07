@@ -1,14 +1,4 @@
-dapp_relative_path = "../../solidity/supra_contracts/"
-remappings = [["@openzeppelin/contracts/", "lib/openzeppelin-contracts/contracts/"]]
+supra_dapp_path = "../../solidity/supra_contracts/"
+supra_nova_dapp_path = "../../solidity/supranova/hypernova/evm"
 
-[solc_settings]
-evmVersion = "prague"
-viaIR = true
 
-[solc_settings.optimizer]
-enabled = true
-runs = 200
-
-[solc_settings.outputSelection."*"]
-"" = ["ast"]
-"*" = ["abi", "evm.bytecode.object"]

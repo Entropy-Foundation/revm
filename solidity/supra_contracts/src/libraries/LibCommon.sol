@@ -6,7 +6,16 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
-    
+
+    struct CycleDetails {
+        uint64 index;
+        uint64 startTime;
+        uint64 durationSecs;
+        LibCommon.CycleState state;
+        uint64 nextTaskIndexPosition;
+        uint64[] expectedTasksToBeProcessed;
+    }
+
     /// @notice Enum describing state of the cycle.
     enum CycleState {
         READY,
@@ -26,16 +35,6 @@ library LibCommon {
     enum TaskType {
         UST,
         GST
-    }
-
-    /// @notice Struct to hold cycle details.
-    struct CycleDetails {
-        uint64 index;
-        uint64 startTime;
-        uint64 durationSecs;
-        CycleState state;
-        uint64 nextTaskIndexPosition;
-        uint256[] expectedTasksToBeProcessed;
     }
 
     /// @notice Represents intermediate state of the registry on cycle change.

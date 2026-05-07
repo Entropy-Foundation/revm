@@ -2,11 +2,10 @@
 
 use anyhow::Result;
 use bincode;
-use foundry_compilers::artifacts::Remapping;
-use foundry_compilers::multi::MultiCompilerSettings;
-use foundry_compilers::solc::SolcSettings;
-use foundry_compilers::{utils, Project, ProjectPathsConfig};
+use foundry_compilers::utils;
+use foundry_config::Config;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
@@ -58,10 +57,10 @@ fn rebuild_rust_bindings() {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct CompileConfig {
-    dapp_relative_path: PathBuf,
-    solc_settings: SolcSettings,
-    #[serde(default)]
-    remappings: Vec<(String, String)>,
+    /// Supra contracts relative path
+    supra_dapp_path: PathBuf,
+    /// Supra nova dapp relative path in repo
+    supra_nova_dapp_path: String,
 }
 
 impl CompileConfig {
@@ -72,45 +71,22 @@ impl CompileConfig {
             .inspect_err(|e| println!("Error: {}", e))
     }
 
-    fn dapp_path(&self) -> PathBuf {
-        utils::canonicalize(Path::new(CURRENT_DIR).join(&self.dapp_relative_path))
+    fn supra_contracts_dapp_path(&self) -> PathBuf {
+        utils::canonicalize(Path::new(CURRENT_DIR).join(&self.supra_dapp_path))
             .expect("failed to canonicalize dapp path")
     }
 
-    fn remappings(&self) -> Vec<Remapping> {
-        self.remappings
-            .iter()
-            .map(|(name, rel_path)| Remapping {
-                context: None,
-                name: name.clone(),
-                path: self
-                    .dapp_path()
-                    .join(rel_path)
-                    .to_string_lossy()
-                    .into_owned(),
-            })
-            .collect()
-    }
-
-    fn to_multi_compiler_settings(self) -> MultiCompilerSettings {
-        let mut settings = MultiCompilerSettings::default();
-        settings.solc = self.solc_settings;
-        settings
+    fn supra_nova_dapp_path(&self) -> PathBuf {
+        utils::canonicalize(Path::new(CURRENT_DIR).join(&self.supra_nova_dapp_path))
+            .expect("failed to canonicalize supranova dapp path")
     }
 }
 
-fn compile_contracts() -> Result<PathBuf> {
-    let config = CompileConfig::load()?;
+fn compile_contracts(path: &impl AsRef<Path>) -> Result<PathBuf> {
+    let foundry_config = Config::load_with_root(path.as_ref())?.sanitized();
+    let _ = foundry_config.install_lib_dir();
+    let project = foundry_config.project()?;
 
-    let mut paths = ProjectPathsConfig::dapptools(&config.dapp_path())?;
-    for (idx, value) in config.remappings().into_iter().enumerate() {
-        paths.remappings.insert(idx, value)
-    }
-
-    let project = Project::builder()
-        .paths(paths)
-        .settings(config.to_multi_compiler_settings())
-        .build(Default::default())?;
     let output = project.compile()?;
     let _ = output.succeeded();
     // Tell Cargo that if a source file changes, to rerun this build script.
@@ -126,24 +102,59 @@ fn compile_contracts() -> Result<PathBuf> {
     Ok(artifacts_dir)
 }
 
-fn combine_and_dump_contracts_bytecode(artifacts_path: &Path) -> Result<()> {
+fn load_supra_contracts_bytecode(
+    artifacts_path: &Path,
+    bytecodes: &mut BTreeMap<String, Vec<u8>>,
+) -> Result<()> {
     // Contract names to load
-    let contract_names = vec![
+    let contract_names = [
         "MultiSignatureWallet",
         "MultisigBeacon",
         "BeaconProxy",
         "ERC20Supra",
+        "ERC20SupraHandler",
         "BlockMeta",
         "ERC1967Proxy",
-        "AutomationCore",
-        "AutomationRegistry",
-        "AutomationController",
+        "DiamondCutFacet",
+        "Diamond",
+        "DiamondLoupeFacet",
+        "OwnershipFacet",
+        "ConfigFacet",
+        "RegistryFacet",
+        "CoreFacet",
+        "DiamondInit",
     ];
+    load_contracts_bytecode(&contract_names, artifacts_path, bytecodes)
+}
 
-    let mut bytecodes = std::collections::BTreeMap::new();
+fn load_supra_nova_contracts_bytecode(
+    artifacts_path: &Path,
+    bytecodes: &mut BTreeMap<String, Vec<u8>>,
+) -> Result<()> {
+    // Contract names to load
+    let contract_names = [
+        "WrappedToken",             // Impl
+        "WrappedTokenFactory",      // Beacon
+        "WrappedTokenFactoryProxy", // Beacon Proxy
+        "TokenVault",
+        "TokenVaultProxy",
+        "Hypernova",
+        "HypernovaProxy",
+        "FeeOperator",
+        "FeeOperatorProxy",
+        "TokenBridge",
+        "TokenBridgeProxy",
+    ];
+    load_contracts_bytecode(&contract_names, artifacts_path, bytecodes)
+}
 
+fn load_contracts_bytecode(
+    contract_names: &[&'static str],
+    artifacts_path: &Path,
+    bytecodes: &mut BTreeMap<String, Vec<u8>>,
+) -> Result<()> {
     // Load each contract's bytecode
-    for contract_name in &contract_names {
+    for contract_name in contract_names {
         let path = artifacts_path
             .join(format!("{contract_name}.sol"))
             .join(format!("{contract_name}.json"));
@@ -169,12 +180,22 @@ fn combine_and_dump_contracts_bytecode(artifacts_path: &Path) -> Result<()> {
                 anyhow::anyhow!("Failed to load bytecode for contract: {contract_name}")
             })?;
 
-        bytecodes.insert(contract_name.to_string(), bytecode);
+        let inserted = bytecodes.insert(contract_name.to_string(), bytecode);
+        if inserted.is_some() {
+            return Err(anyhow::anyhow!(
+                "Duplicate contract name: {contract_name} in {artifacts_path:?} path"
+            ));
+        }
     }
+    Ok(())
+}
 
+fn dump_bytecodes(bytecodes: BTreeMap<String, Vec<u8>>, bin_file_name: &str) -> Result<()> {
     // Dump the combined contract bytecodes to be loaded at compile to by generator.
     let out_dir = env::var("OUT_DIR")?;
-    let out_path = Path::new(&out_dir).join("contract_bytecodes.bin");
+    let out_path = Path::new(&out_dir)
+        .join(bin_file_name)
+        .with_extension("bin");
 
     std::fs::write(
         &out_path,
@@ -183,17 +204,23 @@ fn combine_and_dump_contracts_bytecode(artifacts_path: &Path) -> Result<()> {
     )
     .expect("Failed to write bytecodes to file");
 
-    println!("cargo:rustc-env=CONTRACTS_LOADED=1");
+    println!("cargo:rustc-env=CONTRACTS_DUMPED=1");
     Ok(())
 }
 
 fn main() {
     rebuild_rust_bindings();
-    let artifacts_dir = compile_contracts()
-        .inspect_err(|e| panic!("{e:?}"))
-        .unwrap();
 
-    combine_and_dump_contracts_bytecode(&artifacts_dir)
-        .inspect_err(|e| panic!("Failed to combine and dump contract bytecodes: {e:?}"))
-        .unwrap()
+    let config = CompileConfig::load().expect("Config should always be valid");
+    let supra_contracts_artifacts = compile_contracts(&config.supra_contracts_dapp_path())
+        .expect("Successful supra contracts compilation");
+    let supra_nova_artifacts = compile_contracts(&config.supra_nova_dapp_path())
+        .expect("Successful supra nova contracts compilation");
+    let mut contracts_bytecode = BTreeMap::new();
+    load_supra_contracts_bytecode(&supra_contracts_artifacts, &mut contracts_bytecode)
+        .expect("Supra contracts loaded successfully");
+    load_supra_nova_contracts_bytecode(&supra_nova_artifacts, &mut contracts_bytecode)
+        .expect("Supra nova contracts loaded successfully");
+    dump_bytecodes(contracts_bytecode, "supra_contracts_bytecode")
+        .expect("Bytecodes dumped successfully");
 }

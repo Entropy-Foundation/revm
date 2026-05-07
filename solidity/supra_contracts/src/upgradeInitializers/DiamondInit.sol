@@ -17,7 +17,7 @@ import { IERC165 } from "../interfaces/IERC165.sol";
 import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
-import { InitParams } from "../libraries/LibDiamondUtils.sol";
+import { InitParams } from "../libraries/DiamondTypes.sol";
 
 /// @title DiamondInit
 /// @notice Initialization contract for the Automation Registry
@@ -113,4 +113,5 @@ contract DiamondInit {
         registryState.nextCycleRegistryMaxGasCap = _params.registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _params.sysRegistryMaxGasCap;
     }
+
 }

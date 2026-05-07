@@ -1,6 +1,6 @@
 //! Automation registry transaction record definition to assist automation bookkeeping.
 use crate::errors::SupraExtensionError;
-use crate::supra_contract_bindings::supra_contracts_bindings::SupraContractsBindings::processTasksCall;
+use crate::processTasksCall;
 use crate::value_or_error;
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};
@@ -227,7 +227,7 @@ impl AutomationRecordBuilder {
     pub fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
         let process_task_call = processTasksCall {
             _cycleIndex: _cycle_index,
-            _taskIndexes: _task_indexes,
+            _taskIndexes: _task_indexes.into_iter().map(U256::from).collect(),
         };
         Bytes::from(process_task_call.abi_encode())
     }
