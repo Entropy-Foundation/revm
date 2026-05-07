@@ -3,9 +3,9 @@ pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {Counter} from "./Counter.sol";
-import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {BeaconProxy} from "../lib/openzeppelin-contracts/contracts/proxy/beacon/BeaconProxy.sol";
-import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {MultisigBeacon, UpgradeableBeacon} from "../src/MultisigBeacon.sol";
 

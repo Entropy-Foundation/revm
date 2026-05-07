@@ -2,11 +2,11 @@
 pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {ERC1967Proxy} from "../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {OwnableUpgradeable} from"../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {Counter} from "./Counter.sol";
-import {CommonUtils} from "../src/CommonUtils.sol";
+import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 contract BlockMetaTest is Test {
     BlockMeta blockMeta;                        // BlockMeta instance on proxy address
@@ -17,9 +17,6 @@ contract BlockMetaTest is Test {
     address admin = address(0xA11CE);
     address vmAddress = address(0x99);
     address alice = address(0x123);
-
-    // Address of the VM Signer: SUP0
-    address constant VM_SIGNER = address(0x53555000);
 
     /// @dev Sets up initial state for testing.
     /// @dev Deploys and initializes BlockMeta and AutomationController contracts.
@@ -86,14 +83,14 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'register' reverts if address(0) is passed.
     function testRegisterRevertsIfAddressZero() public {
-        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         register(address(0), selector);
     }
 
     /// @dev Test to ensure 'register' reverts if EOA is passed.
     function testRegisterRevertsIfEOA() public {
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         register(alice, selector);
     }
@@ -282,7 +279,7 @@ contract BlockMetaTest is Test {
         executionOrder[0] = packExecution(counterAddress, selector); 
         executionOrder[1] = packExecution(address(0), selector);
 
-        vm.expectRevert(CommonUtils.AddressCannotBeZero.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -294,7 +291,7 @@ contract BlockMetaTest is Test {
         executionOrder[0] = packExecution(counterAddress, selector); 
         executionOrder[1] = packExecution(alice, selector);
 
-        vm.expectRevert(CommonUtils.AddressCannotBeEOA.selector);
+        vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -360,7 +357,7 @@ contract BlockMetaTest is Test {
 	    assertEq(counter.counter(), 0);
         testRegister();
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
 	    assertEq(counter.counter(), 1);
     }
@@ -384,7 +381,7 @@ contract BlockMetaTest is Test {
         vm.expectEmit(true, true, false, true);
         emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
     }
 
@@ -395,7 +392,7 @@ contract BlockMetaTest is Test {
         vm.expectEmit(true, true, false, false);
         emit BlockMeta.CallSucceeded(counterAddress, selector);
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
     }
 
@@ -417,7 +414,7 @@ contract BlockMetaTest is Test {
         vm.expectEmit(true, true, false, false);
         emit BlockMeta.CallSucceeded(counterAddress, selector);
 
-        vm.prank(VM_SIGNER);
+        vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
 
         // Counter must still be incremented even though the first call failed

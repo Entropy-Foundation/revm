@@ -31,7 +31,7 @@ forge script script/DeployERC20Supra.s.sol:DeployERC20Supra \
     --skip-simulation \
     -vvvv > "$DEPLOY_LOG" 2>&1
 
-ERC20_SUPRA=$(extract "ERC20Supra deployed at: ")
+ERC20_SUPRA=$(extract "ERC20Supra proxy deployed at: ")
 if [[ "$ERC20_SUPRA" == "NOT_FOUND" ]]; then
     echo "ERROR: ERC20Supra address not found"
     exit 1
@@ -39,7 +39,22 @@ fi
 
 export ERC20_SUPRA
 
-forge script script/DeployAutomationRegistry.s.sol:DeployAutomationRegistry \
+forge script script/DeployERC20SupraHandler.s.sol:DeployERC20SupraHandler \
+    --rpc-url "$RPC_URL" \
+    --private-key "$PRIVATE_KEY" \
+    --broadcast \
+    --skip-simulation \
+    -vvvv >> "$DEPLOY_LOG" 2>&1
+
+ERC20_SUPRA_HANDLER=$(extract "ERC20SupraHandler proxy deployed at: ")
+if [[ "$ERC20_SUPRA_HANDLER" == "NOT_FOUND" ]]; then
+    echo "ERROR: ERC20SupraHandler address not found"
+    exit 1
+fi
+
+export ERC20_SUPRA_HANDLER
+
+forge script script/DeployDiamond.s.sol:DeployDiamond \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
@@ -54,12 +69,15 @@ echo "Deployment logs saved to $DEPLOY_LOG"
 echo ""
 echo "=== Extracting deployed addresses ==="
 
-AUTOMATION_CORE_IMPL=$(extract "AutomationCore implementation deployed at:")
-AUTOMATION_CORE_PROXY=$(extract "AutomationCore proxy deployed at:")
-AUTOMATION_REGISTRY_IMPL=$(extract "AutomationRegistry implementation deployed at:")
-AUTOMATION_REGISTRY_PROXY=$(extract "AutomationRegistry proxy deployed at:")
-AUTOMATION_CONTROLLER_IMPL=$(extract "AutomationController implementation deployed at:")
-AUTOMATION_CONTROLLER_PROXY=$(extract "AutomationController proxy deployed at:")
+DIAMOND_OWNER=$(extract "Diamond owner:")
+DIAMOND=$(extract "Diamond deployed at:")
+DIAMOND_CUT_FACET=$(extract "DiamondCutFacet deployed at:")
+DIAMOND_LOUPE_FACET=$(extract "DiamondLoupeFacet deployed at:")
+OWNERSHIP_FACET=$(extract "OwnershipFacet deployed at:")
+CONFIG_FACET=$(extract "ConfigFacet deployed at:")
+REGISTRY_FACET=$(extract "RegistryFacet deployed at:")
+CORE_FACET=$(extract "CoreFacet deployed at:")
+DIAMOND_INIT=$(extract "DiamondInit deployed at:")
 
 # ------------------------------------------------------------
 # WRITE TO .env
@@ -72,15 +90,17 @@ cat <<EOF > "$ENV_FILE"
 # Auto-generated deployment output
 
 ERC20_SUPRA=$ERC20_SUPRA
+ERC20_SUPRA_HANDLER=$ERC20_SUPRA_HANDLER
 
-AUTOMATION_CORE_IMPL=$AUTOMATION_CORE_IMPL
-AUTOMATION_CORE_PROXY=$AUTOMATION_CORE_PROXY
-
-AUTOMATION_REGISTRY_IMPL=$AUTOMATION_REGISTRY_IMPL
-AUTOMATION_REGISTRY_PROXY=$AUTOMATION_REGISTRY_PROXY
-
-AUTOMATION_CONTROLLER_IMPL=$AUTOMATION_CONTROLLER_IMPL
-AUTOMATION_CONTROLLER_PROXY=$AUTOMATION_CONTROLLER_PROXY
+DIAMOND_OWNER=$DIAMOND_OWNER
+DIAMOND=$DIAMOND
+DIAMOND_CUT_FACET=$DIAMOND_CUT_FACET
+DIAMOND_LOUPE_FACET=$DIAMOND_LOUPE_FACET
+OWNERSHIP_FACET=$OWNERSHIP_FACET
+CONFIG_FACET=$CONFIG_FACET
+REGISTRY_FACET=$REGISTRY_FACET
+CORE_FACET=$CORE_FACET
+DIAMOND_INIT=$DIAMOND_INIT
 EOF
 
 cat "$ENV_FILE"

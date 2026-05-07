@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {Script, console} from "forge-std/Script.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
-import {IAutomationRegistry} from "../src/IAutomationRegistry.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 
 contract InitializeCycleMonitoring is Script {
     address payable multisigWalletAddr;
@@ -60,7 +60,7 @@ contract AuthorizeAccount is Script {
         console.log("TxnIndex: ", nextTxnIndex);
 
         // Submit a foundation/gov action to grant authorization for gst task registration
-        bytes memory data = abi.encodeCall(IAutomationRegistry.grantAuthorization, (account));
+        bytes memory data = abi.encodeCall(IConfigFacet.grantAuthorization, (account));
         wallet.submitTransaction(automationRegistry, 0,  timeout, data);
 
         vm.stopBroadcast();
@@ -69,37 +69,37 @@ contract AuthorizeAccount is Script {
 
 contract VoteForTxn is Script {
     address payable multisigWalletAddr;
-    uint256 txn_index;
+    uint256 txIndex;
 
 
     function setUp() public {
         multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        txn_index = uint256(vm.envUint("GOV_TXN_INDEX"));
+        txIndex = uint256(vm.envUint("GOV_TXN_INDEX"));
     }
 
     function run() public {
         vm.startBroadcast();
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
         console.log("Txn count", wallet.txCount());
-        wallet.confirmTransaction(txn_index);
+        wallet.confirmTransaction(txIndex);
         vm.stopBroadcast();
     }
 }
 
 contract ExecuteTxn is Script {
     address payable multisigWalletAddr;
-    uint256 txn_index;
+    uint256 txIndex;
 
 
     function setUp() public {
         multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        txn_index = uint256(vm.envUint("GOV_TXN_INDEX"));
+        txIndex = uint256(vm.envUint("GOV_TXN_INDEX"));
     }
 
     function run() public {
         vm.startBroadcast();
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
-        wallet.executeTransaction(txn_index);
+        wallet.executeTransaction(txIndex);
         vm.stopBroadcast();
     }
 }

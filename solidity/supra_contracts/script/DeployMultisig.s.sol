@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {Script, console} from "forge-std/Script.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {MultisigBeacon} from "../src/MultisigBeacon.sol";
-import {BeaconProxy} from "../lib/openzeppelin-contracts/contracts/proxy/beacon/BeaconProxy.sol";
+import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 
 contract DeployMultisig is Script {
     address[] owners;
