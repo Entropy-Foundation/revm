@@ -927,6 +927,8 @@ interface SupraContractsBindings {
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function isAutomationEnabled() external view returns (bool);
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
+    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external;
+    function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external;
 }
 ```
 
@@ -1248,6 +1250,42 @@ interface SupraContractsBindings {
         "name": "_taskIndexes",
         "type": "uint256[]",
         "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "removeRegisteredTask",
+    "inputs": [
+      {
+        "name": "_taskIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "_reason",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "removeRegisteredTasks",
+    "inputs": [
+      {
+        "name": "_taskIndexes",
+        "type": "uint64[]",
+        "internalType": "uint64[]"
+      },
+      {
+        "name": "_reasons",
+        "type": "string[]",
+        "internalType": "string[]"
       }
     ],
     "outputs": [],
@@ -3386,6 +3424,337 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
             }
         }
     };
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    /**Function with signature `removeRegisteredTask(uint64,string)` and selector `0x65293078`.
+```solidity
+function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external;
+```*/
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct removeRegisteredTaskCall {
+        #[allow(missing_docs)]
+        pub _taskIndex: u64,
+        #[allow(missing_docs)]
+        pub _reason: alloy::sol_types::private::String,
+    }
+    ///Container type for the return parameters of the [`removeRegisteredTask(uint64,string)`](removeRegisteredTaskCall) function.
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct removeRegisteredTaskReturn {}
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (
+                alloy::sol_types::sol_data::Uint<64>,
+                alloy::sol_types::sol_data::String,
+            );
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (u64, alloy::sol_types::private::String);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<removeRegisteredTaskCall>
+            for UnderlyingRustTuple<'_> {
+                fn from(value: removeRegisteredTaskCall) -> Self {
+                    (value._taskIndex, value._reason)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>>
+            for removeRegisteredTaskCall {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self {
+                        _taskIndex: tuple.0,
+                        _reason: tuple.1,
+                    }
+                }
+            }
+        }
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = ();
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = ();
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<removeRegisteredTaskReturn>
+            for UnderlyingRustTuple<'_> {
+                fn from(value: removeRegisteredTaskReturn) -> Self {
+                    ()
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>>
+            for removeRegisteredTaskReturn {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self {}
+                }
+            }
+        }
+        impl removeRegisteredTaskReturn {
+            fn _tokenize(
+                &self,
+            ) -> <removeRegisteredTaskCall as alloy_sol_types::SolCall>::ReturnToken<
+                '_,
+            > {
+                ()
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolCall for removeRegisteredTaskCall {
+            type Parameters<'a> = (
+                alloy::sol_types::sol_data::Uint<64>,
+                alloy::sol_types::sol_data::String,
+            );
+            type Token<'a> = <Self::Parameters<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            type Return = removeRegisteredTaskReturn;
+            type ReturnTuple<'a> = ();
+            type ReturnToken<'a> = <Self::ReturnTuple<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            const SIGNATURE: &'static str = "removeRegisteredTask(uint64,string)";
+            const SELECTOR: [u8; 4] = [101u8, 41u8, 48u8, 120u8];
+            #[inline]
+            fn new<'a>(
+                tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                tuple.into()
+            }
+            #[inline]
+            fn tokenize(&self) -> Self::Token<'_> {
+                (
+                    <alloy::sol_types::sol_data::Uint<
+                        64,
+                    > as alloy_sol_types::SolType>::tokenize(&self._taskIndex),
+                    <alloy::sol_types::sol_data::String as alloy_sol_types::SolType>::tokenize(
+                        &self._reason,
+                    ),
+                )
+            }
+            #[inline]
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                removeRegisteredTaskReturn::_tokenize(ret)
+            }
+            #[inline]
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                    .map(Into::into)
+            }
+            #[inline]
+            fn abi_decode_returns_validate(
+                data: &[u8],
+            ) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
+                    .map(Into::into)
+            }
+        }
+    };
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    /**Function with signature `removeRegisteredTasks(uint64[],string[])` and selector `0x04b9b5fd`.
+```solidity
+function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external;
+```*/
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct removeRegisteredTasksCall {
+        #[allow(missing_docs)]
+        pub _taskIndexes: alloy::sol_types::private::Vec<u64>,
+        #[allow(missing_docs)]
+        pub _reasons: alloy::sol_types::private::Vec<alloy::sol_types::private::String>,
+    }
+    ///Container type for the return parameters of the [`removeRegisteredTasks(uint64[],string[])`](removeRegisteredTasksCall) function.
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct removeRegisteredTasksReturn {}
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (
+                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
+                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::String>,
+            );
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (
+                alloy::sol_types::private::Vec<u64>,
+                alloy::sol_types::private::Vec<alloy::sol_types::private::String>,
+            );
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<removeRegisteredTasksCall>
+            for UnderlyingRustTuple<'_> {
+                fn from(value: removeRegisteredTasksCall) -> Self {
+                    (value._taskIndexes, value._reasons)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>>
+            for removeRegisteredTasksCall {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self {
+                        _taskIndexes: tuple.0,
+                        _reasons: tuple.1,
+                    }
+                }
+            }
+        }
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = ();
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = ();
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<removeRegisteredTasksReturn>
+            for UnderlyingRustTuple<'_> {
+                fn from(value: removeRegisteredTasksReturn) -> Self {
+                    ()
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>>
+            for removeRegisteredTasksReturn {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self {}
+                }
+            }
+        }
+        impl removeRegisteredTasksReturn {
+            fn _tokenize(
+                &self,
+            ) -> <removeRegisteredTasksCall as alloy_sol_types::SolCall>::ReturnToken<
+                '_,
+            > {
+                ()
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolCall for removeRegisteredTasksCall {
+            type Parameters<'a> = (
+                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
+                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::String>,
+            );
+            type Token<'a> = <Self::Parameters<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            type Return = removeRegisteredTasksReturn;
+            type ReturnTuple<'a> = ();
+            type ReturnToken<'a> = <Self::ReturnTuple<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            const SIGNATURE: &'static str = "removeRegisteredTasks(uint64[],string[])";
+            const SELECTOR: [u8; 4] = [4u8, 185u8, 181u8, 253u8];
+            #[inline]
+            fn new<'a>(
+                tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                tuple.into()
+            }
+            #[inline]
+            fn tokenize(&self) -> Self::Token<'_> {
+                (
+                    <alloy::sol_types::sol_data::Array<
+                        alloy::sol_types::sol_data::Uint<64>,
+                    > as alloy_sol_types::SolType>::tokenize(&self._taskIndexes),
+                    <alloy::sol_types::sol_data::Array<
+                        alloy::sol_types::sol_data::String,
+                    > as alloy_sol_types::SolType>::tokenize(&self._reasons),
+                )
+            }
+            #[inline]
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                removeRegisteredTasksReturn::_tokenize(ret)
+            }
+            #[inline]
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                    .map(Into::into)
+            }
+            #[inline]
+            fn abi_decode_returns_validate(
+                data: &[u8],
+            ) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
+                    .map(Into::into)
+            }
+        }
+    };
     ///Container for all the [`SupraContractsBindings`](self) function calls.
     #[derive(Clone)]
     #[derive(serde::Serialize, serde::Deserialize)]
@@ -3409,6 +3778,10 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
         isAutomationEnabled(isAutomationEnabledCall),
         #[allow(missing_docs)]
         processTasks(processTasksCall),
+        #[allow(missing_docs)]
+        removeRegisteredTask(removeRegisteredTaskCall),
+        #[allow(missing_docs)]
+        removeRegisteredTasks(removeRegisteredTasksCall),
     }
     impl SupraContractsBindingsCalls {
         /// All the selectors of this enum.
@@ -3418,9 +3791,11 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
         ///
         /// Prefer using `SolInterface` methods instead.
         pub const SELECTORS: &'static [[u8; 4usize]] = &[
+            [4u8, 185u8, 181u8, 253u8],
             [18u8, 247u8, 44u8, 244u8],
             [35u8, 33u8, 204u8, 163u8],
             [64u8, 183u8, 203u8, 198u8],
+            [101u8, 41u8, 48u8, 120u8],
             [107u8, 93u8, 140u8, 86u8],
             [125u8, 237u8, 9u8, 27u8],
             [138u8, 170u8, 64u8, 78u8],
@@ -3430,9 +3805,11 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
         ];
         /// The names of the variants in the same order as `SELECTORS`.
         pub const VARIANT_NAMES: &'static [&'static str] = &[
+            ::core::stringify!(removeRegisteredTasks),
             ::core::stringify!(getTaskDetailsBulk),
             ::core::stringify!(getActiveTaskIds),
             ::core::stringify!(processTasks),
+            ::core::stringify!(removeRegisteredTask),
             ::core::stringify!(getCycleStateDetails),
             ::core::stringify!(blockPrologue),
             ::core::stringify!(ifTaskExists),
@@ -3442,9 +3819,11 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
         ];
         /// The signatures in the same order as `SELECTORS`.
         pub const SIGNATURES: &'static [&'static str] = &[
+            <removeRegisteredTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <removeRegisteredTaskCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
             <ifTaskExistsCall as alloy_sol_types::SolCall>::SIGNATURE,
@@ -3477,7 +3856,7 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
     impl alloy_sol_types::SolInterface for SupraContractsBindingsCalls {
         const NAME: &'static str = "SupraContractsBindingsCalls";
         const MIN_DATA_LENGTH: usize = 0usize;
-        const COUNT: usize = 9usize;
+        const COUNT: usize = 11usize;
         #[inline]
         fn selector(&self) -> [u8; 4] {
             match self {
@@ -3508,6 +3887,12 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
                 Self::processTasks(_) => {
                     <processTasksCall as alloy_sol_types::SolCall>::SELECTOR
                 }
+                Self::removeRegisteredTask(_) => {
+                    <removeRegisteredTaskCall as alloy_sol_types::SolCall>::SELECTOR
+                }
+                Self::removeRegisteredTasks(_) => {
+                    <removeRegisteredTasksCall as alloy_sol_types::SolCall>::SELECTOR
+                }
             }
         }
         #[inline]
@@ -3527,6 +3912,17 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
             static DECODE_SHIMS: &[fn(
                 &[u8],
             ) -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
+                {
+                    fn removeRegisteredTasks(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <removeRegisteredTasksCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::removeRegisteredTasks)
+                    }
+                    removeRegisteredTasks
+                },
                 {
                     fn getTaskDetailsBulk(
                         data: &[u8],
@@ -3559,6 +3955,17 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
                             .map(SupraContractsBindingsCalls::processTasks)
                     }
                     processTasks
+                },
+                {
+                    fn removeRegisteredTask(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <removeRegisteredTaskCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::removeRegisteredTask)
+                    }
+                    removeRegisteredTask
                 },
                 {
                     fn getCycleStateDetails(
@@ -3647,6 +4054,17 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
                 &[u8],
             ) -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
                 {
+                    fn removeRegisteredTasks(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <removeRegisteredTasksCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::removeRegisteredTasks)
+                    }
+                    removeRegisteredTasks
+                },
+                {
                     fn getTaskDetailsBulk(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3678,6 +4096,17 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
                             .map(SupraContractsBindingsCalls::processTasks)
                     }
                     processTasks
+                },
+                {
+                    fn removeRegisteredTask(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <removeRegisteredTaskCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::removeRegisteredTask)
+                    }
+                    removeRegisteredTask
                 },
                 {
                     fn getCycleStateDetails(
@@ -3804,6 +4233,16 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
                         inner,
                     )
                 }
+                Self::removeRegisteredTask(inner) => {
+                    <removeRegisteredTaskCall as alloy_sol_types::SolCall>::abi_encoded_size(
+                        inner,
+                    )
+                }
+                Self::removeRegisteredTasks(inner) => {
+                    <removeRegisteredTasksCall as alloy_sol_types::SolCall>::abi_encoded_size(
+                        inner,
+                    )
+                }
             }
         }
         #[inline]
@@ -3859,6 +4298,18 @@ function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) externa
                 }
                 Self::processTasks(inner) => {
                     <processTasksCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                        inner,
+                        out,
+                    )
+                }
+                Self::removeRegisteredTask(inner) => {
+                    <removeRegisteredTaskCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                        inner,
+                        out,
+                    )
+                }
+                Self::removeRegisteredTasks(inner) => {
+                    <removeRegisteredTasksCall as alloy_sol_types::SolCall>::abi_encode_raw(
                         inner,
                         out,
                     )
@@ -4190,6 +4641,32 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
                 &processTasksCall {
                     _cycleIndex,
                     _taskIndexes,
+                },
+            )
+        }
+        ///Creates a new call builder for the [`removeRegisteredTask`] function.
+        pub fn removeRegisteredTask(
+            &self,
+            _taskIndex: u64,
+            _reason: alloy::sol_types::private::String,
+        ) -> alloy_contract::SolCallBuilder<&P, removeRegisteredTaskCall, N> {
+            self.call_builder(
+                &removeRegisteredTaskCall {
+                    _taskIndex,
+                    _reason,
+                },
+            )
+        }
+        ///Creates a new call builder for the [`removeRegisteredTasks`] function.
+        pub fn removeRegisteredTasks(
+            &self,
+            _taskIndexes: alloy::sol_types::private::Vec<u64>,
+            _reasons: alloy::sol_types::private::Vec<alloy::sol_types::private::String>,
+        ) -> alloy_contract::SolCallBuilder<&P, removeRegisteredTasksCall, N> {
+            self.call_builder(
+                &removeRegisteredTasksCall {
+                    _taskIndexes,
+                    _reasons,
                 },
             )
         }

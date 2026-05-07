@@ -1,7 +1,6 @@
 //! Automation registry transaction record definition to assist automation bookkeeping.
 use crate::errors::SupraExtensionError;
-use crate::processTasksCall;
-use crate::value_or_error;
+use crate::{processTasksCall, removeRegisteredTaskCall, value_or_error};
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};
 use alloy_consensus::transaction::Transaction;
@@ -140,6 +139,72 @@ impl Typed2718 for AutomationRegistryRecord {
     }
 }
 
+/// Action to be preformed automation registry record
+#[derive(Clone, Debug)]
+pub enum AutomationRecordAction {
+    /// Process the tasks during cycle transition.
+    Process(Vec<u64>),
+    /// Remove the task with specified index due to the reason provided by the runtime.
+    Remove {
+        /// Index of the task to be removed.
+        task_index: u64,
+        /// Reason of the removal
+        reason: String
+    },
+}
+
+impl AutomationRecordAction {
+    /// Converts to vector of task indexes to be handled by action.
+    pub fn into_task_indexes(self) -> Vec<u64> {
+        match self {
+            AutomationRecordAction::Process(tasks) => tasks,
+            AutomationRecordAction::Remove {
+                task_index,
+                reason: _,
+            } => vec![task_index],
+        }
+    }
+
+    /// List of task indexes to be processed.
+    /// If the action is [Self::Remove], None is returned
+    pub fn task_indexes(&self) -> Option<&Vec<u64>> {
+        match self {
+            AutomationRecordAction::Process(tasks) => Some(tasks),
+            AutomationRecordAction::Remove { .. } => None,
+        }
+    }
+
+    /// Number of tasks to be handled by action.
+    pub fn task_count(&self) -> usize {
+        match self {
+            AutomationRecordAction::Process(tasks) => tasks.len(),
+            AutomationRecordAction::Remove { .. } => 1,
+        }
+    }
+
+    /// Flattens action to be single task if multiple tasks are configured to be processed.
+    pub fn flatten(self) -> Vec<Self> {
+        match self {
+            AutomationRecordAction::Process(tasks) => tasks
+                .into_iter()
+                .map(|t| AutomationRecordAction::Process(vec![t]))
+                .collect(),
+            AutomationRecordAction::Remove { .. } => vec![self],
+        }
+    }
+
+    /// Returns minimum and maximum task indexes configured to be processed.
+    pub fn task_range(&self) -> (u64, u64) {
+        match self {
+            AutomationRecordAction::Process(tasks) => (
+                tasks.iter().min().cloned().unwrap_or(u64::MAX),
+                tasks.iter().max().cloned().unwrap_or(u64::MAX),
+            ),
+            AutomationRecordAction::Remove { task_index, .. } => (*task_index, *task_index),
+        }
+    }
+}
+
 /// Builder for [`AutomationRegistryRecord`]
 #[derive(Clone, Debug)]
 pub struct AutomationRecordBuilder {
@@ -148,8 +213,8 @@ pub struct AutomationRecordBuilder {
     block_height: Option<u64>,
     nonce: Option<u64>,
     gas_limit: Option<u64>,
-    task_indexes: Option<Vec<u64>>,
     cycle_index: Option<u64>,
+    action: Option<AutomationRecordAction>,
 }
 
 #[allow(missing_docs)]
@@ -162,8 +227,8 @@ impl AutomationRecordBuilder {
             block_height: None,
             nonce: None,
             gas_limit: None,
-            task_indexes: None,
             cycle_index: None,
+            action: None,
         }
     }
     pub fn with_block_height(mut self, block_height: u64) -> Self {
@@ -180,8 +245,13 @@ impl AutomationRecordBuilder {
         self.gas_limit = Some(gas_limit);
         self
     }
-    pub fn with_task_indexes(mut self, task_indexes: Vec<u64>) -> Self {
-        self.task_indexes = Some(task_indexes);
+    pub fn process_task_indexes(mut self, task_indexes: Vec<u64>) -> Self {
+        self.action = Some(AutomationRecordAction::Process(task_indexes));
+        self
+    }
+
+    pub fn remove_task(mut self, task_index: u64, reason: String) -> Self {
+        self.action = Some(AutomationRecordAction::Remove { task_index, reason });
         self
     }
 
@@ -202,15 +272,23 @@ impl AutomationRecordBuilder {
             block_height,
             nonce,
             gas_limit,
-            task_indexes,
             cycle_index,
+            action,
         } = self;
         let block_height = value_or_error!(AutomationRecordBuilder, "block_height", block_height);
         let nonce = value_or_error!(AutomationRecordBuilder, "nonce", nonce);
-        let task_indexes = value_or_error!(AutomationRecordBuilder, "task_indexes", task_indexes);
         let gas_limit = value_or_error!(AutomationRecordBuilder, "gas_limit", gas_limit);
         let cycle_index = value_or_error!(AutomationRecordBuilder, "cycle_index", cycle_index);
         let chain_id = value_or_error!(AutomationRecordBuilder, "chain_id", chain_id);
+        let action = value_or_error!(AutomationRecordBuilder, "action", action);
+        let input = match action {
+            AutomationRecordAction::Process(task_indexes) => {
+                Self::get_process_tasks_payload(cycle_index, task_indexes)
+            }
+            AutomationRecordAction::Remove { task_index, reason } => {
+                Self::get_remove_tasks_payload(task_index, reason)
+            }
+        };
 
         Ok(AutomationRegistryRecord {
             sender: VM_SIGNER,
@@ -219,7 +297,7 @@ impl AutomationRecordBuilder {
             nonce,
             gas_limit,
             to,
-            input: Self::get_process_tasks_payload(cycle_index, task_indexes),
+            input,
         })
     }
 
@@ -232,12 +310,46 @@ impl AutomationRecordBuilder {
         Bytes::from(process_task_call.abi_encode())
     }
 
-    pub  fn task_count(&self) -> usize {
-        self.task_indexes.as_ref().map(|idx| idx.len()).unwrap_or(0)
+    /// Generates [`AutomationRegistryRecord`] input data to process tasks.
+    pub fn get_remove_tasks_payload(task_index: u64, reason: String) -> Bytes {
+        let remove_tasks_call = removeRegisteredTaskCall {
+            _taskIndex: task_index,
+            _reason: reason,
+        };
+        Bytes::from(remove_tasks_call.abi_encode())
+    }
+
+    pub fn task_count(&self) -> usize {
+        self.action.as_ref().map(|a| a.task_count()).unwrap_or(0)
+    }
+
+    pub fn flatten(mut self) -> Vec<AutomationRecordBuilder> {
+        let Some(action) = self.action.take() else {
+            return vec![self];
+        };
+        let builder_base = self.clone();
+        action
+            .flatten()
+            .into_iter()
+            .map(|a| {
+                let mut b = builder_base.clone();
+                b.action = Some(a);
+                b.nonce = None;
+                b
+            })
+            .collect()
+    }
+
+    pub fn task_range(&self) -> (u64, u64) {
+        self.action
+            .as_ref()
+            .map(|action| action.task_range())
+            .unwrap_or_else(|| (u64::MAX, u64::MAX))
     }
 
     pub fn into_task_indexes(self) -> Vec<u64> {
-        self.task_indexes.unwrap_or_default()
-
+        self.action
+            .map(|action| action.into_task_indexes())
+            .unwrap_or_default()
     }
 }

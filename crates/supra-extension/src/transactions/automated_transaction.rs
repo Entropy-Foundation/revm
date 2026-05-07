@@ -16,6 +16,49 @@ use primitives::TxKind;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+/// Represents automation task predicate details.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub struct TaskPredicate {
+    /// Contract address holding predicate function
+    pub address: Address,
+    /// Encoded predicate function pointer and inputs
+    pub input: Bytes,
+}
+
+impl TryFrom<&[u8]> for TaskPredicate {
+    type Error = SupraExtensionError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            return Ok(Self::default());
+        }
+        type PredicateType = (
+            alloy_sol_types::sol_data::Address,
+            alloy_sol_types::sol_data::Bytes,
+        );
+        let (address, input) = PredicateType::abi_decode_sequence(value).map_err(|e| {
+            SupraExtensionError::PayloadDecode {
+                error: e,
+                payload: "predicate".to_owned(),
+            }
+        })?;
+        Ok(Self { address, input })
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub enum AutomationTaskPredicate {
+    /// Represents always true predicate
+    #[default]
+    ByPass,
+    /// Predicate to be executed.
+    Predicate(TaskPredicate),
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -101,6 +144,10 @@ pub struct AutomatedTransaction {
     /// Input: An unlimited size byte array specifying the
     /// input data of the message call.
     pub input: Bytes,
+
+    /// Predicate controlling task execution.
+    /// If predicate execution is successful and true the main action will be executed.
+    pub predicate: AutomationTaskPredicate,
 }
 
 impl Transaction for AutomatedTransaction {
@@ -279,7 +326,13 @@ impl TryFrom<&[u8]> for TaskPayload {
     type Error = SupraExtensionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(value)?;
+        let (value, to, input, access_list) =
+            ExpandedPayloadTy::abi_decode(value).map_err(|e| {
+                SupraExtensionError::PayloadDecode {
+                    error: e,
+                    payload: "task action".to_owned(),
+                }
+            })?;
         let access_items = access_list
             .into_iter()
             .map(|(address, storage_keys)| AccessListItem {
@@ -357,6 +410,7 @@ pub struct AutomatedTransactionBuilder {
     value: Option<U256>,
     access_list: Option<AccessList>,
     input: Option<Bytes>,
+    predicate: Option<TaskPredicate>,
 }
 
 #[allow(missing_docs)]
@@ -378,6 +432,7 @@ impl AutomatedTransactionBuilder {
             value: Some(U256::from(0)),
             access_list: Some(AccessList::default()),
             input: None,
+            predicate: None,
         }
     }
 
@@ -395,26 +450,32 @@ impl AutomatedTransactionBuilder {
         self.gas_limit = Some(gas_limit);
         self
     }
+
     pub fn with_gas_price(mut self, gas_price: u128) -> Self {
         self.gas_price = Some(gas_price);
         self
     }
+
     pub fn with_gas_price_cap(mut self, gas_price_cap: u128) -> Self {
         self.gas_price_cap = Some(gas_price_cap);
         self
     }
+
     pub fn with_registration_hash(mut self, registration_hash: B256) -> Self {
         self.registration_hash = Some(registration_hash);
         self
     }
+
     pub fn with_task_index(mut self, task_index: u64) -> Self {
         self.task_index = Some(task_index);
         self
     }
+
     pub fn with_expiry_timestamp(mut self, expiry_timestamp: u64) -> Self {
         self.expiry_timestamp = Some(expiry_timestamp);
         self
     }
+
     pub fn with_owner(mut self, owner: Address) -> Self {
         self.owner = Some(owner);
         self
@@ -423,26 +484,37 @@ impl AutomatedTransactionBuilder {
         self.typ = Some(typ);
         self
     }
+
     pub fn with_priority(mut self, priority: u64) -> Self {
         self.priority = Some(priority);
         self
     }
+
     pub fn with_to(mut self, to: Address) -> Self {
         self.to = Some(to);
         self
     }
+
     pub fn with_value(mut self, value: U256) -> Self {
         self.value = Some(value);
         self
     }
+
     pub fn with_access_list(mut self, access_list: AccessList) -> Self {
         self.access_list = Some(access_list);
         self
     }
+
     pub fn with_input(mut self, input: Bytes) -> Self {
         self.input = Some(input);
         self
     }
+
+    pub fn with_predicate(mut self, predicate: TaskPredicate) -> Self {
+        self.predicate = Some(predicate);
+        self
+    }
+
     pub fn build(self) -> Result<BuildResult, SupraExtensionError> {
         let Self {
             block_height,
@@ -460,6 +532,7 @@ impl AutomatedTransactionBuilder {
             value,
             access_list,
             input,
+            predicate,
         } = self;
         let typ = value_or_error!(AutomatedTransactionBuilder, "type", typ);
         let block_height =
@@ -507,6 +580,9 @@ impl AutomatedTransactionBuilder {
             value,
             access_list,
             input,
+            predicate: predicate
+                .map(AutomationTaskPredicate::Predicate)
+                .unwrap_or_default(),
         };
         Ok(BuildResult::Success(AutomatedTransactionDetails {
             txn,
@@ -537,8 +613,7 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
             owner,
             taskState,
             payloadTx,
-            // TODO: handle predicate
-            predicate: _,
+            predicate,
             auxData: _,
         } = value;
 
@@ -548,6 +623,7 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
         let typ = AutomatedTransactionType::try_from(taskType)?;
 
         let (to, value, input, access_list) = TaskPayload::try_from(payloadTx.as_ref())?.dissolve();
+        let predicate = TaskPredicate::try_from(predicate.as_ref())?;
         let builder = Self::new()
             .with_gas_price_cap(gasPriceCap)
             .with_gas_limit(maxGasAmount as u64)
@@ -561,14 +637,15 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
             .with_input(input)
             .with_access_list(access_list)
             .with_typ(typ)
-            .with_priority(priority);
+            .with_priority(priority)
+            .with_predicate(predicate);
         Ok(builder)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::automated_transaction::ExpandedPayloadTy;
+    use crate::transactions::automated_transaction::{ExpandedPayloadTy, TaskPredicate};
     use alloy::hex;
     use alloy_sol_types::SolType;
     #[test]
@@ -579,5 +656,13 @@ mod test {
         println!("value: {:?}", value);
         println!("access_list: {:?}", access_list);
         println!("input: {:?}", input);
+    }
+
+    #[test]
+    fn check_predicate_decode() {
+        let encoded = hex!("000000000000000000000000d3e2a56659d5113fa44c3d09dc21ea8ff48452570000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000426a7076400000000000000000000000000000000000000000000000000000000");
+        let payload = TaskPredicate::try_from(encoded.as_slice()).unwrap();
+        println!("to: {:?}", payload.address);
+        println!("input: {:?}", payload.input);
     }
 }

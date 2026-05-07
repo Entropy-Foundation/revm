@@ -40,6 +40,7 @@ contract Diamond {
         _d.diamondCutFacet.validateContractAddress();
         _d.registryFacet.validateContractAddress();
         _d.ownershipFacet.validateContractAddress();
+        _d.loupeFacet.validateContractAddress();
         _d.diamondInit.validateContractAddress();
 
         // ------------------------------------------------------------------

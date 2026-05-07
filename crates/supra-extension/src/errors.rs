@@ -10,8 +10,13 @@ pub enum SupraExtensionError {
     MissingBuilderValue(String, String),
 
     /// Reported on failure of automation task inner payload decode.
-    #[error("Failed to decode payload: {0}")]
-    PayloadDecode(#[from] alloy_sol_types::Error),
+    #[error("Failed to decode {payload} payload: {error}")]
+    PayloadDecode {
+        /// Error description
+        error: alloy_sol_types::Error,
+        /// Payload description for which error has been identified
+        payload: String
+    },
 
     /// Reported on failure of task state conversion to counterpart in native layer.
     #[error("Invalid automation task state value: {0}, expected [0(PENDING), 1(ACTIVE), 2(CANCELLED)]")]
