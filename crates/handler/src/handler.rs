@@ -261,6 +261,7 @@ pub trait Handler {
         if is_supra_reserved(&caller)
             && !(execution_mode.is_system() || execution_mode.is_genesis())
         {
+            // TODO create InvalidTransaction variant to report the error instead
             Err(Self::Error::from_string(format!(
                 "Invalid caller: supra reserved address. TxnHash {}",
                 ctx.tx().tx_hash()

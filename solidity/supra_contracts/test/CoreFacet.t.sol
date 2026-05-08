@@ -468,14 +468,15 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
         string memory reason = "Predicate failed";
 
+
         vm.warp(1201);
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();        
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
 
-        // Remove task due to predicate failure        
-        ICoreFacet(diamondAddr).removeRegisteredTask(tasksUint64[0], reason);
+        // Remove task due to predicate failure, cycle index is 2
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
         vm.stopPrank();
         
         // Verify task is removed
@@ -521,7 +522,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
 
         // Remove task due to predicate failure
-        ICoreFacet(diamondAddr).removeRegisteredTask(tasksUint64[0], reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
         vm.stopPrank();
 
         // Verify task is removed
@@ -551,7 +552,7 @@ contract CoreFacetTest is BaseDiamondTest {
         emit ICoreFacet.TaskRemovedBySystem(removedTask);
 
         // Remove task due to predicate failure
-        ICoreFacet(diamondAddr).removeRegisteredTask(tasksUint64[0], reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
         vm.stopPrank();
     }
 
@@ -565,7 +566,33 @@ contract CoreFacetTest is BaseDiamondTest {
         string memory reason = "Predicate failed";
 
         vm.prank(alice);
-        ICoreFacet(diamondAddr).removeRegisteredTask(taskIndex, reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, taskIndex, reason);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
+    function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect() public {
+        registerUst();
+
+        vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
+
+        uint64  taskIndex = 0;
+        string memory reason = "Predicate failed";
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, taskIndex, reason);
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
+    function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect2() public {
+        registerUst();
+
+        vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
+
+        uint64  taskIndex = 0;
+        string memory reason = "Predicate failed";
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0, taskIndex, reason);
     }
 
 }

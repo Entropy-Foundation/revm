@@ -4,16 +4,10 @@ pragma solidity ^0.8.27;
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {LibUtils} from "./libraries/LibUtils.sol";
+import {IBlockMeta} from "./interfaces/IBlockMeta.sol";
 
-contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
+contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     using LibUtils for address;
-
-    /// @dev Custom errors
-    error CallerNotVmSigner();
-    error InvalidIndex();
-    error InvalidSelector();
-    error SelectorAlreadyRegistered();
-    error SelectorNotRegistered();
 
     /**
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -25,44 +19,6 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Ordered list of functions to be executed
     /// @dev Layout: [target[160] | selector[32] | 0[64]]
     uint256[] private executions;
-
-    /**
-     * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-     *                                                                        EVENTS
-     * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-     */
-
-    /// @notice Emitted when a selector is registered.
-    /// @param targetContract Address of the target contract.
-    /// @param selector Function selector to be called on target contract.
-    event SelectorRegistered(address indexed targetContract, bytes4 indexed selector);
-
-    /// @notice Emitted when a selector is deregistered.
-    /// @param targetContract Address of the target contract.
-    /// @param selector Deregistered function selector.
-    event SelectorDeregistered(address indexed targetContract, bytes4 indexed selector);
-
-    /// @notice Emitted when the execution order is updated.
-    /// @param executionOrder Updated execution order.
-    event ExecutionOrderUpdated(uint256[] indexed executionOrder);
-
-    /// @notice Emitted when call to a function fails.
-    /// @param targetContract Address of the target contract.
-    /// @param selector Called function selector.
-    /// @param returndata Returned data.
-    event CallFailed(
-        address indexed targetContract,
-        bytes4 indexed selector,
-        bytes returndata
-    );
-
-    /// @notice Emitted when call to a function is successful.
-    /// @param targetContract Address of the target contract.
-    /// @param selector Called function selector.
-    event CallSucceeded(
-        address indexed targetContract, 
-        bytes4 indexed selector 
-    );
 
     /**
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

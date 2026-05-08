@@ -7,6 +7,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {Counter} from "./Counter.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
+import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 
 contract BlockMetaTest is Test {
     BlockMeta blockMeta;                        // BlockMeta instance on proxy address
@@ -68,7 +69,7 @@ contract BlockMetaTest is Test {
     /// @dev Test to ensure 'register' emits event 'SelectorRegistered'.
     function testRegisterEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit BlockMeta.SelectorRegistered(counterAddress, selector);
+        emit IBlockMeta.SelectorRegistered(counterAddress, selector);
 
         register(counterAddress, selector);
     }
@@ -97,7 +98,7 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'register' reverts if empty selector is passed.
     function testRegisterRevertsIfEmptySelector() public {
-        vm.expectRevert(BlockMeta.InvalidSelector.selector);
+        vm.expectRevert(IBlockMeta.InvalidSelector.selector);
 
         register(counterAddress, bytes4(0));
     }
@@ -106,7 +107,7 @@ contract BlockMetaTest is Test {
     function testRegisterRevertsIfSelectorAlreadyExists() public {
         testRegister();
 
-        vm.expectRevert(BlockMeta.SelectorAlreadyRegistered.selector);
+        vm.expectRevert(IBlockMeta.SelectorAlreadyRegistered.selector);
         register(counterAddress, selector);
     }
 
@@ -141,7 +142,7 @@ contract BlockMetaTest is Test {
         testRegister();
 
         vm.expectEmit(true, true, false, false);
-        emit BlockMeta.SelectorDeregistered(counterAddress, selector);
+        emit IBlockMeta.SelectorDeregistered(counterAddress, selector);
 
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
@@ -163,7 +164,7 @@ contract BlockMetaTest is Test {
 
         bytes4 invalidSelector = bytes4(keccak256("foo()"));
 
-        vm.expectRevert(BlockMeta.SelectorNotRegistered.selector);
+        vm.expectRevert(IBlockMeta.SelectorNotRegistered.selector);
         
         vm.prank(admin);
         blockMeta.deregister(counterAddress, invalidSelector);
@@ -201,7 +202,7 @@ contract BlockMetaTest is Test {
         testRegister();
 
         vm.expectEmit(true, true, false, false);
-        emit BlockMeta.SelectorDeregistered(counterAddress, selector);
+        emit IBlockMeta.SelectorDeregistered(counterAddress, selector);
 
         vm.prank(admin);
         blockMeta.deregisterAt(0);
@@ -221,7 +222,7 @@ contract BlockMetaTest is Test {
     function testDeregisterAtRevertsIfInvalidIndex() public {
         testRegister();
 
-        vm.expectRevert(BlockMeta.InvalidIndex.selector);
+        vm.expectRevert(IBlockMeta.InvalidIndex.selector);
 
         vm.prank(admin);
         blockMeta.deregisterAt(1);
@@ -257,7 +258,7 @@ contract BlockMetaTest is Test {
         uint256[] memory executionOrder = createExecutionOrder();
 
         vm.expectEmit(true, false, false, false);
-        emit BlockMeta.ExecutionOrderUpdated(executionOrder);
+        emit IBlockMeta.ExecutionOrderUpdated(executionOrder);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -303,7 +304,7 @@ contract BlockMetaTest is Test {
         executionOrder[0] = packExecution(counterAddress, selector); 
         executionOrder[1] = packExecution(counterAddress, bytes4(0));
 
-        vm.expectRevert(BlockMeta.InvalidSelector.selector);
+        vm.expectRevert(IBlockMeta.InvalidSelector.selector);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -315,7 +316,7 @@ contract BlockMetaTest is Test {
         executionOrder[0] = packExecution(counterAddress, selector); 
         executionOrder[1] = packExecution(counterAddress, selector);
 
-        vm.expectRevert(BlockMeta.SelectorAlreadyRegistered.selector);
+        vm.expectRevert(IBlockMeta.SelectorAlreadyRegistered.selector);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -364,7 +365,7 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'blockPrologue' reverts if caller is not VM Signer.
     function testBlockPrologueRevertsIfNotVmSigner() public {
-        vm.expectRevert(BlockMeta.CallerNotVmSigner.selector);
+        vm.expectRevert(IBlockMeta.CallerNotVmSigner.selector);
 
         vm.prank(alice);
         blockMeta.blockPrologue();
@@ -379,7 +380,7 @@ contract BlockMetaTest is Test {
         register(address(failingContract), failSelector);
 
         vm.expectEmit(true, true, false, true);
-        emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
+        emit IBlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
 
         vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
@@ -390,7 +391,7 @@ contract BlockMetaTest is Test {
         register(counterAddress, selector);
 
         vm.expectEmit(true, true, false, false);
-        emit BlockMeta.CallSucceeded(counterAddress, selector);
+        emit IBlockMeta.CallSucceeded(counterAddress, selector);
 
         vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
@@ -408,11 +409,11 @@ contract BlockMetaTest is Test {
 
         // Expect the failing call event
         vm.expectEmit(true, true, false, true);
-        emit BlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
+        emit IBlockMeta.CallFailed(address(failingContract), failSelector, abi.encodeWithSignature("Fail()"));
 
         // Expect the successful call event
         vm.expectEmit(true, true, false, false);
-        emit BlockMeta.CallSucceeded(counterAddress, selector);
+        emit IBlockMeta.CallSucceeded(counterAddress, selector);
 
         vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
@@ -491,7 +492,7 @@ contract BlockMetaTest is Test {
     function testGetExecutionAtRevertsIfInvalidIndex() public {
         testRegister();
 
-        vm.expectRevert(BlockMeta.InvalidIndex.selector);
+        vm.expectRevert(IBlockMeta.InvalidIndex.selector);
         blockMeta.getExecutionAt(1);
     }
 
@@ -508,7 +509,7 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'getExecutionIndex' reverts if selector does not exist.
     function testGetExecutionIndexRevertsIfSelectorDoesNotExist() public {
-        vm.expectRevert(BlockMeta.SelectorNotRegistered.selector);
+        vm.expectRevert(IBlockMeta.SelectorNotRegistered.selector);
         
         blockMeta.getExecutionIndex(counterAddress, selector);
     }

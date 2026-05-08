@@ -30,6 +30,7 @@ serde_json = { workspace = true }
 bincode = { workspace =  true , features = ["serde"]}
 once_cell = { workspace = true }
 serde_with = { workspace = true , features = ["hex"]}
+enum-kinds = "0.5.1"
 
 [lints]
 workspace = true
@@ -46,6 +47,7 @@ toml = { workspace =  true }
 serde = {workspace =  true }
 serde_json = { workspace = true }
 bincode = { workspace =  true , features = ["serde"]}
+enum-kinds = { workspace = true }
 
 [features]
 serde = ["alloy-serde"]

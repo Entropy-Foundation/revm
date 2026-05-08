@@ -201,3 +201,129 @@ impl BlockMetadataBuilder {
         Bytes::from(blockPrologueCall.abi_encode())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy::primitives::{address, b256, Address, B256, U256};
+    use alloy_consensus::transaction::Transaction;
+    use alloy_eips::eip2718::Typed2718;
+    use crate::errors::SupraExtensionError;
+    use primitives::eip7825::TX_GAS_LIMIT_CAP;
+    use primitives::supra_constants::VM_SIGNER;
+
+    const REGISTRY: Address = address!("1111111111111111111111111111111111111111");
+    const CHAIN_ID: u64 = 6;
+    const HEIGHT: u64 = 42;
+    const BLOCK_HASH: B256 = b256!("abababababababababababababababababababababababababababababababab");
+    const TIMESTAMP: u64 = 1_700_000_000;
+
+    fn full_builder() -> BlockMetadataBuilder {
+        BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .block_hash(BLOCK_HASH)
+            .timestamp(U256::from(TIMESTAMP))
+            .chain_id(CHAIN_ID)
+    }
+
+    // ── Builder: successful build ─────────────────────────────────────────────
+
+    #[test]
+    fn build_sets_all_fields_correctly() {
+        let meta = full_builder().build().unwrap();
+
+        assert_eq!(meta.sender, VM_SIGNER);
+        assert_eq!(meta.chain_id, CHAIN_ID);
+        assert_eq!(meta.height, HEIGHT);
+        assert_eq!(meta.block_hash, BLOCK_HASH);
+        assert_eq!(meta.timestamp, U256::from(TIMESTAMP));
+        assert_eq!(meta.to, REGISTRY);
+    }
+
+    #[test]
+    fn build_input_matches_block_prologue_abi_encoding() {
+        use crate::blockPrologueCall;
+        use alloy_sol_types::SolCall;
+        let meta = full_builder().build().unwrap();
+        assert_eq!(meta.input.as_ref(), blockPrologueCall.abi_encode().as_slice());
+    }
+
+    // ── Builder: missing mandatory field errors ───────────────────────────────
+
+    #[test]
+    fn build_missing_mandatory_field_returns_error() {
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .block_hash(BLOCK_HASH)
+            .timestamp(U256::from(TIMESTAMP))
+            .chain_id(CHAIN_ID)
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "height"));
+
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .timestamp(U256::from(TIMESTAMP))
+            .chain_id(CHAIN_ID)
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "block_hash"));
+
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .block_hash(BLOCK_HASH)
+            .chain_id(CHAIN_ID)
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "timestamp"));
+        
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .block_hash(BLOCK_HASH)
+            .timestamp(U256::from(TIMESTAMP))
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "chain_id"));
+    }
+
+    // ── Transaction trait impl ────────────────────────────────────────────────
+
+    #[test]
+    fn transaction_trait_field_accessors() {
+        let meta = full_builder().build().unwrap();
+
+        assert_eq!(meta.chain_id(), Some(CHAIN_ID));
+        assert_eq!(meta.nonce(), HEIGHT);           // nonce == height
+        assert_eq!(meta.gas_limit(), TX_GAS_LIMIT_CAP);
+        assert_eq!(meta.gas_price(), None);
+        assert_eq!(meta.max_fee_per_gas(), 0);
+        assert_eq!(meta.max_priority_fee_per_gas(), Some(0));
+        assert_eq!(meta.max_fee_per_blob_gas(), None);
+        assert_eq!(meta.priority_fee_or_price(), 0);
+        assert_eq!(meta.effective_gas_price(None), 0);
+        assert_eq!(meta.effective_gas_price(Some(9_999)), 0);
+        assert!(!meta.is_dynamic_fee());
+        assert_eq!(meta.kind(), TxKind::Call(REGISTRY));
+        assert!(!meta.is_create());
+        assert_eq!(meta.value(), U256::ZERO);
+        assert_eq!(meta.access_list(), None);
+        assert_eq!(meta.blob_versioned_hashes(), None);
+        assert_eq!(meta.authorization_list(), None);
+
+        assert_eq!(meta.input(), &meta.input);
+        assert_eq!(meta.ty(), 0xFF); // TransactionType::Custom
+    }
+
+    // ── BlockMetadata default ─────────────────────────────────────────────────
+
+    #[test]
+    fn default_produces_zero_values() {
+        let meta = BlockMetadata::default();
+        assert_eq!(meta.chain_id, 0);
+        assert_eq!(meta.sender, Address::ZERO);
+        assert_eq!(meta.height, 0);
+        assert_eq!(meta.block_hash, B256::ZERO);
+        assert_eq!(meta.timestamp, U256::ZERO);
+        assert_eq!(meta.to, Address::ZERO);
+        assert!(meta.input.is_empty());
+    }
+}

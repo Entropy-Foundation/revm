@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
+import {IERC20SupraHandler} from "../src/interfaces/IERC20SupraHandler.sol";
 
 contract ERC20SupraHandlerTest is Test {
     ERC20Supra token;
@@ -60,7 +61,7 @@ contract ERC20SupraHandlerTest is Test {
     /// @dev Test to ensure 'deposit' emits event.
     function testDepositEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ERC20SupraHandler.Deposit(alice, 5 ether);
+        emit IERC20SupraHandler.Deposit(alice, 5 ether);
 
         vm.prank(alice);
         erc20SupraHandler.deposit{value: 5 ether}();
@@ -68,7 +69,7 @@ contract ERC20SupraHandlerTest is Test {
 
     /// @dev Test to ensure 'deposit' reverts if amount sent is zero.
     function testDepositRevertsIfAmountZero() public {
-        vm.expectRevert(ERC20SupraHandler.InvalidAmount.selector);
+        vm.expectRevert(IERC20SupraHandler.InvalidAmount.selector);
 
         vm.prank(alice);
         erc20SupraHandler.deposit{value: 0}();
@@ -90,7 +91,7 @@ contract ERC20SupraHandlerTest is Test {
     /// @dev Test to ensure 'receive' emits event.
     function testReceiveEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit ERC20SupraHandler.Deposit(alice, 3 ether);
+        emit IERC20SupraHandler.Deposit(alice, 3 ether);
 
         vm.prank(alice);
         (bool success, ) = address(erc20SupraHandler).call{value: 3 ether}("");
@@ -103,7 +104,7 @@ contract ERC20SupraHandlerTest is Test {
         (bool success, bytes memory data) = address(erc20SupraHandler).call{value: 0}("");
 
         assertFalse(success);
-        assertEq(bytes4(data), ERC20SupraHandler.InvalidAmount.selector);
+        assertEq(bytes4(data), IERC20SupraHandler.InvalidAmount.selector);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdraw' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -129,7 +130,7 @@ contract ERC20SupraHandlerTest is Test {
         erc20SupraHandler.deposit{value: 5 ether}();
 
         vm.expectEmit(true, true, false, false);
-        emit ERC20SupraHandler.Withdrawal(alice, 2 ether);
+        emit IERC20SupraHandler.Withdrawal(alice, 2 ether);
 
         vm.prank(alice);
         erc20SupraHandler.withdraw(2 ether);
@@ -137,7 +138,7 @@ contract ERC20SupraHandlerTest is Test {
 
     /// @dev Test to ensure 'withdraw' reverts if balance is less than requested amount.
     function testWithdrawRevertsIfInsufficientBalance() public {
-        vm.expectRevert(ERC20SupraHandler.InsufficientBalance.selector);
+        vm.expectRevert(IERC20SupraHandler.InsufficientBalance.selector);
 
         vm.prank(alice);
         erc20SupraHandler.withdraw(1 ether);
@@ -145,7 +146,7 @@ contract ERC20SupraHandlerTest is Test {
 
     /// @dev Test to ensure 'withdraw' reverts if requested amount is zero.
     function testWithdrawRevertsIfAmountZero() public {
-        vm.expectRevert(ERC20SupraHandler.InvalidAmount.selector);
+        vm.expectRevert(IERC20SupraHandler.InvalidAmount.selector);
 
         vm.prank(alice);
         erc20SupraHandler.withdraw(0);
@@ -166,7 +167,7 @@ contract ERC20SupraHandlerTest is Test {
         assertTrue(success);
 
         // Attempt withdrawal → should revert
-        vm.expectRevert(ERC20SupraHandler.TransferFailed.selector);
+        vm.expectRevert(IERC20SupraHandler.TransferFailed.selector);
 
         vm.prank(address(rejector));
         erc20SupraHandler.withdraw(1 ether);

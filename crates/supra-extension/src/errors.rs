@@ -29,6 +29,14 @@ pub enum SupraExtensionError {
     /// Reported when automated transaction builder is attempted to be built for inactive task.
     #[error("Attempt to create automated transaction builder for non-active task")]
     InvalidAutomationTaskStateForBuilder,
+
+    /// Reported when automation record action can not be decoded from input bytes of the corresponding transaction
+    #[error("Failed to decode automation record action: {0}")]
+    InvalidAutomationRecord(String),
+
+    /// Reported when automation record action can not be decoded from input bytes of the corresponding transaction
+    #[error("Failed to decode automation record action: {0}")]
+    InvalidInput(#[from] alloy_sol_types::Error),
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].

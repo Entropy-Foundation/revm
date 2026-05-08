@@ -3,34 +3,16 @@ pragma solidity 0.8.27;
 
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {IERC20Supra} from "../src/interfaces/IERC20Supra.sol";
+import {IERC20SupraHandler} from "../src/interfaces/IERC20SupraHandler.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable {
+contract ERC20SupraHandler is OwnableUpgradeable, UUPSUpgradeable, IERC20SupraHandler {
     using LibUtils for address;
 
     /// @notice Address of the ERC20Supra contract.
     address public erc20Supra;
-
-    /// @notice Error thrown if user has insufficient balance.
-    error InsufficientBalance();
-    /// @notice Error thrown if contract has insufficient native balance.
-    error InsufficientContractBalance();
-    /// @notice Error thrown if 0 is passed as amount.
-    error InvalidAmount();
-    /// @notice Error thrown if low level call fails.
-    error TransferFailed();
-
-    /// @notice Emitted when native tokens are deposited to mint and receive ERC20Supra tokens.
-    /// @param account Address of the depositer.
-    /// @param amount Amount deposited.
-    event Deposit(address indexed account, uint256 indexed amount);
-
-    /// @notice Emitted when native tokens are withdrawn by burning ERC20Supra tokens. 
-    /// @param account Address withdrawing.
-    /// @param amount Amount withdrawn.
-    event Withdrawal(address indexed account, uint256 indexed amount);
 
     /**
     * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

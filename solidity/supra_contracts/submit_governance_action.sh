@@ -27,6 +27,7 @@ fi
 action=$1
 
 password=""
+PASSWORD="Blue!Tiger99@Moon.PROFILE"
 if [ -n ${PASSWORD} ]; then
   password="--password ${PASSWORD}"
 fi

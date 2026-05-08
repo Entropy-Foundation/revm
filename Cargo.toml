@@ -133,6 +133,7 @@ tokio = "1.45"
 either = { version = "1.15.0", default-features = false }
 derive_more = { version = "2.0.1" }
 derive-getters = { version = "0.5.0" }
+enum-kinds = { version = "0.5.1" }
 
 # dev-dependencies
 anyhow = "1.0.98"
