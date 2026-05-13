@@ -6,6 +6,9 @@ import {TaskMetadata} from "./libraries/LibAppStorage.sol";
 
 interface SupraContractsBindings {
 
+    // View function of Automation Registry Diamond
+    function isInitialized() external view returns (bool);
+
     // View functions of RegistryFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function getActiveTaskIds() external view returns (uint256[] memory);

@@ -33,10 +33,6 @@ pub enum SupraExtensionError {
     /// Reported when automation record action can not be decoded from input bytes of the corresponding transaction
     #[error("Failed to decode automation record action: {0}")]
     InvalidAutomationRecord(String),
-
-    /// Reported when automation record action can not be decoded from input bytes of the corresponding transaction
-    #[error("Failed to decode automation record action: {0}")]
-    InvalidInput(#[from] alloy_sol_types::Error),
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].

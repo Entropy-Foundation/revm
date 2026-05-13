@@ -926,6 +926,7 @@ interface SupraContractsBindings {
     function getTaskIdList() external view returns (uint256[] memory);
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function isAutomationEnabled() external view returns (bool);
+    function isInitialized() external view returns (bool);
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
 }
@@ -1226,6 +1227,19 @@ interface SupraContractsBindings {
   {
     "type": "function",
     "name": "isAutomationEnabled",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isInitialized",
     "inputs": [],
     "outputs": [
       {
@@ -3247,6 +3261,151 @@ function isAutomationEnabled() external view returns (bool);
     };
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    /**Function with signature `isInitialized()` and selector `0x392e53cd`.
+```solidity
+function isInitialized() external view returns (bool);
+```*/
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct isInitializedCall;
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
+    ///Container type for the return parameters of the [`isInitialized()`](isInitializedCall) function.
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct isInitializedReturn {
+        #[allow(missing_docs)]
+        pub _0: bool,
+    }
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = ();
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = ();
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<isInitializedCall> for UnderlyingRustTuple<'_> {
+                fn from(value: isInitializedCall) -> Self {
+                    ()
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for isInitializedCall {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self
+                }
+            }
+        }
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (alloy::sol_types::sol_data::Bool,);
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (bool,);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(
+                _t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>,
+            ) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<isInitializedReturn> for UnderlyingRustTuple<'_> {
+                fn from(value: isInitializedReturn) -> Self {
+                    (value._0,)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for isInitializedReturn {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self { _0: tuple.0 }
+                }
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolCall for isInitializedCall {
+            type Parameters<'a> = ();
+            type Token<'a> = <Self::Parameters<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            type Return = bool;
+            type ReturnTuple<'a> = (alloy::sol_types::sol_data::Bool,);
+            type ReturnToken<'a> = <Self::ReturnTuple<
+                'a,
+            > as alloy_sol_types::SolType>::Token<'a>;
+            const SIGNATURE: &'static str = "isInitialized()";
+            const SELECTOR: [u8; 4] = [57u8, 46u8, 83u8, 205u8];
+            #[inline]
+            fn new<'a>(
+                tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                tuple.into()
+            }
+            #[inline]
+            fn tokenize(&self) -> Self::Token<'_> {
+                ()
+            }
+            #[inline]
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                (
+                    <alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(
+                        ret,
+                    ),
+                )
+            }
+            #[inline]
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence(data)
+                    .map(|r| {
+                        let r: isInitializedReturn = r.into();
+                        r._0
+                    })
+            }
+            #[inline]
+            fn abi_decode_returns_validate(
+                data: &[u8],
+            ) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<
+                    '_,
+                > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
+                    .map(|r| {
+                        let r: isInitializedReturn = r.into();
+                        r._0
+                    })
+            }
+        }
+    };
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `processTasks(uint64,uint256[])` and selector `0x40b7cbc6`.
 ```solidity
 function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
@@ -3604,6 +3763,8 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
         #[allow(missing_docs)]
         isAutomationEnabled(isAutomationEnabledCall),
         #[allow(missing_docs)]
+        isInitialized(isInitializedCall),
+        #[allow(missing_docs)]
         processTasks(processTasksCall),
         #[allow(missing_docs)]
         removeRegisteredTask(removeRegisteredTaskCall),
@@ -3619,6 +3780,7 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             [18u8, 247u8, 44u8, 244u8],
             [35u8, 33u8, 204u8, 163u8],
             [49u8, 63u8, 197u8, 229u8],
+            [57u8, 46u8, 83u8, 205u8],
             [64u8, 183u8, 203u8, 198u8],
             [107u8, 93u8, 140u8, 86u8],
             [125u8, 237u8, 9u8, 27u8],
@@ -3632,6 +3794,7 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             ::core::stringify!(getTaskDetailsBulk),
             ::core::stringify!(getActiveTaskIds),
             ::core::stringify!(removeRegisteredTask),
+            ::core::stringify!(isInitialized),
             ::core::stringify!(processTasks),
             ::core::stringify!(getCycleStateDetails),
             ::core::stringify!(blockPrologue),
@@ -3645,6 +3808,7 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <removeRegisteredTaskCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <isInitializedCall as alloy_sol_types::SolCall>::SIGNATURE,
             <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
@@ -3678,7 +3842,7 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
     impl alloy_sol_types::SolInterface for SupraContractsBindingsCalls {
         const NAME: &'static str = "SupraContractsBindingsCalls";
         const MIN_DATA_LENGTH: usize = 0usize;
-        const COUNT: usize = 10usize;
+        const COUNT: usize = 11usize;
         #[inline]
         fn selector(&self) -> [u8; 4] {
             match self {
@@ -3705,6 +3869,9 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                 }
                 Self::isAutomationEnabled(_) => {
                     <isAutomationEnabledCall as alloy_sol_types::SolCall>::SELECTOR
+                }
+                Self::isInitialized(_) => {
+                    <isInitializedCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::processTasks(_) => {
                     <processTasksCall as alloy_sol_types::SolCall>::SELECTOR
@@ -3763,6 +3930,17 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                             .map(SupraContractsBindingsCalls::removeRegisteredTask)
                     }
                     removeRegisteredTask
+                },
+                {
+                    fn isInitialized(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <isInitializedCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::isInitialized)
+                    }
+                    isInitialized
                 },
                 {
                     fn processTasks(
@@ -3895,6 +4073,17 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                     removeRegisteredTask
                 },
                 {
+                    fn isInitialized(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <isInitializedCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::isInitialized)
+                    }
+                    isInitialized
+                },
+                {
                     fn processTasks(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -4025,6 +4214,11 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                         inner,
                     )
                 }
+                Self::isInitialized(inner) => {
+                    <isInitializedCall as alloy_sol_types::SolCall>::abi_encoded_size(
+                        inner,
+                    )
+                }
                 Self::processTasks(inner) => {
                     <processTasksCall as alloy_sol_types::SolCall>::abi_encoded_size(
                         inner,
@@ -4084,6 +4278,12 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                 }
                 Self::isAutomationEnabled(inner) => {
                     <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                        inner,
+                        out,
+                    )
+                }
+                Self::isInitialized(inner) => {
+                    <isInitializedCall as alloy_sol_types::SolCall>::abi_encode_raw(
                         inner,
                         out,
                     )
@@ -4414,6 +4614,12 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
             &self,
         ) -> alloy_contract::SolCallBuilder<&P, isAutomationEnabledCall, N> {
             self.call_builder(&isAutomationEnabledCall)
+        }
+        ///Creates a new call builder for the [`isInitialized`] function.
+        pub fn isInitialized(
+            &self,
+        ) -> alloy_contract::SolCallBuilder<&P, isInitializedCall, N> {
+            self.call_builder(&isInitializedCall)
         }
         ///Creates a new call builder for the [`processTasks`] function.
         pub fn processTasks(

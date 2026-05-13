@@ -61,11 +61,11 @@ impl AutomationRegistryRecord {
         let selector = &self.input[..SELECTOR_LEN];
         if removeRegisteredTaskCall::SELECTOR.as_slice().eq(selector) {
             removeRegisteredTaskCall::abi_decode(&self.input)
-                .map_err(SupraExtensionError::from)
+                .map_err(|e| SupraExtensionError::PayloadDecode { error: e, payload: "AutomationRecordAction::Remove".to_string() })
                 .map(AutomationRecordAction::Remove)
         } else if processTasksCall::SELECTOR.as_slice().eq(selector) {
             processTasksCall::abi_decode(&self.input)
-                .map_err(SupraExtensionError::from)
+                .map_err(|e| SupraExtensionError::PayloadDecode { error: e, payload: "AutomationRecordAction::Process".to_string() })
                 .map(AutomationRecordAction::Process)
         } else {
             Err(SupraExtensionError::InvalidAutomationRecord(format!(
@@ -274,13 +274,6 @@ impl AutomationRecordAction {
         }
     }
 
-    fn set_cycle_index(&mut self, cycle_index: u64) {
-        match self {
-            AutomationRecordAction::Process(task) => task._cycleIndex = cycle_index,
-            AutomationRecordAction::Remove(task) => task._cycleIndex = cycle_index,
-        }
-    }
-
     /// Converts into abi encoded bytes.
     pub  fn into_bytes(self) -> Bytes {
         match self {
@@ -298,7 +291,6 @@ pub struct AutomationRecordBuilder {
     block_height: Option<u64>,
     nonce: Option<u64>,
     gas_limit: Option<u64>,
-    cycle_index: Option<u64>,
     action: Option<AutomationRecordAction>,
 }
 
@@ -312,7 +304,6 @@ impl AutomationRecordBuilder {
             block_height: None,
             nonce: None,
             gas_limit: None,
-            cycle_index: None,
             action: None,
         }
     }
@@ -330,18 +321,14 @@ impl AutomationRecordBuilder {
         self.gas_limit = Some(gas_limit);
         self
     }
-    pub fn process_task_indexes(mut self, task_indexes: Vec<u64>) -> Self {
-        self.action = Some(AutomationRecordAction::process(u64::MAX, task_indexes));
+
+    pub fn process_task_indexes(mut self, cycle_index: u64, task_indexes: Vec<u64>) -> Self {
+        self.action = Some(AutomationRecordAction::process(cycle_index, task_indexes));
         self
     }
 
-    pub fn remove_task(mut self, task_index: u64, reason: String) -> Self {
-        self.action = Some(AutomationRecordAction::remove(u64::MAX, task_index, reason));
-        self
-    }
-
-    pub fn with_cycle_index(mut self, cycle_index: u64) -> Self {
-        self.cycle_index = Some(cycle_index);
+    pub fn remove_task(mut self, cycle_index: u64, task_index: u64, reason: String) -> Self {
+        self.action = Some(AutomationRecordAction::remove(cycle_index, task_index, reason));
         self
     }
 
@@ -357,16 +344,13 @@ impl AutomationRecordBuilder {
             block_height,
             nonce,
             gas_limit,
-            cycle_index,
             action,
         } = self;
         let block_height = value_or_error!(AutomationRecordBuilder, "block_height", block_height);
         let nonce = value_or_error!(AutomationRecordBuilder, "nonce", nonce);
         let gas_limit = value_or_error!(AutomationRecordBuilder, "gas_limit", gas_limit);
-        let cycle_index = value_or_error!(AutomationRecordBuilder, "cycle_index", cycle_index);
         let chain_id = value_or_error!(AutomationRecordBuilder, "chain_id", chain_id);
-        let mut action = value_or_error!(AutomationRecordBuilder, "action", action);
-        action.set_cycle_index(cycle_index);
+        let action = value_or_error!(AutomationRecordBuilder, "action", action);
         let input = action.into_bytes();
 
         Ok(AutomationRegistryRecord {
@@ -437,22 +421,12 @@ mod tests {
         Bytes::from(process_task_call.abi_encode())
     }
 
-    fn get_remove_tasks_payload(cycle_index: u64, task_index: u64, reason: String) -> Bytes {
-        let remove_tasks_call = removeRegisteredTaskCall {
-            _cycleIndex: cycle_index,
-            _taskIndex: task_index,
-            _reason: reason,
-        };
-        Bytes::from(remove_tasks_call.abi_encode())
-    }
-
     fn base_builder() -> AutomationRecordBuilder {
         AutomationRecordBuilder::new(REGISTRY_ADDR)
             .with_chain_id(CHAIN_ID)
             .with_block_height(BLOCK_HEIGHT)
             .with_nonce(NONCE)
             .with_gas_limit(GAS_LIMIT)
-            .with_cycle_index(CYCLE_INDEX)
     }
 
     // ── Builder: successful builds ────────────────────────────────────────────
@@ -460,7 +434,7 @@ mod tests {
     #[test]
     fn build_process_record_sets_all_fields() {
         let record = base_builder()
-            .process_task_indexes(vec![1, 2, 3])
+            .process_task_indexes(CYCLE_INDEX, vec![1, 2, 3])
             .build()
             .unwrap();
 
@@ -476,7 +450,7 @@ mod tests {
     #[test]
     fn build_remove_record_sets_all_fields() {
         let record = base_builder()
-            .remove_task(7, "expired".to_string())
+            .remove_task(CYCLE_INDEX, 7, "expired".to_string())
             .build()
             .unwrap();
 
@@ -491,7 +465,7 @@ mod tests {
 
     #[test]
     fn build_process_record_with_empty_task_list() {
-        let record = base_builder().process_task_indexes(vec![]).build().unwrap();
+        let record = base_builder().process_task_indexes(CYCLE_INDEX, vec![]).build().unwrap();
         assert!(!record.input.is_empty()); // selector + ABI-encoded empty array still produces bytes
     }
 
@@ -503,8 +477,7 @@ mod tests {
             .with_chain_id(CHAIN_ID)
             .with_nonce(NONCE)
             .with_gas_limit(GAS_LIMIT)
-            .with_cycle_index(CYCLE_INDEX)
-            .process_task_indexes(vec![1])
+            .process_task_indexes(CYCLE_INDEX, vec![1])
             .build()
             .unwrap_err();
         assert!(
@@ -518,8 +491,7 @@ mod tests {
             .with_chain_id(CHAIN_ID)
             .with_block_height(BLOCK_HEIGHT)
             .with_gas_limit(GAS_LIMIT)
-            .with_cycle_index(CYCLE_INDEX)
-            .process_task_indexes(vec![1])
+            .process_task_indexes(CYCLE_INDEX, vec![1])
             .build()
             .unwrap_err();
         assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "nonce"));
@@ -531,27 +503,11 @@ mod tests {
             .with_chain_id(CHAIN_ID)
             .with_block_height(BLOCK_HEIGHT)
             .with_nonce(NONCE)
-            .with_cycle_index(CYCLE_INDEX)
-            .process_task_indexes(vec![1])
+            .process_task_indexes(CYCLE_INDEX, vec![1])
             .build()
             .unwrap_err();
         assert!(
             matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "gas_limit")
-        );
-    }
-
-    #[test]
-    fn build_missing_cycle_index_returns_error() {
-        let err = AutomationRecordBuilder::new(REGISTRY_ADDR)
-            .with_chain_id(CHAIN_ID)
-            .with_block_height(BLOCK_HEIGHT)
-            .with_nonce(NONCE)
-            .with_gas_limit(GAS_LIMIT)
-            .process_task_indexes(vec![1])
-            .build()
-            .unwrap_err();
-        assert!(
-            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "cycle_index")
         );
     }
 
@@ -561,8 +517,7 @@ mod tests {
             .with_block_height(BLOCK_HEIGHT)
             .with_nonce(NONCE)
             .with_gas_limit(GAS_LIMIT)
-            .with_cycle_index(CYCLE_INDEX)
-            .process_task_indexes(vec![1])
+            .process_task_indexes(CYCLE_INDEX, vec![1])
             .build()
             .unwrap_err();
         assert!(
@@ -577,7 +532,6 @@ mod tests {
             .with_block_height(BLOCK_HEIGHT)
             .with_nonce(NONCE)
             .with_gas_limit(GAS_LIMIT)
-            .with_cycle_index(CYCLE_INDEX)
             .build()
             .unwrap_err();
         assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "action"));
@@ -588,7 +542,7 @@ mod tests {
     #[test]
     fn transaction_trait_field_accessors() {
         let record = base_builder()
-            .process_task_indexes(vec![5])
+            .process_task_indexes(CYCLE_INDEX, vec![5])
             .build()
             .unwrap();
 
@@ -615,7 +569,7 @@ mod tests {
     fn transaction_input_matches_built_payload() {
         let task_indexes = vec![10u64, 20];
         let record = base_builder()
-            .process_task_indexes(task_indexes.clone())
+            .process_task_indexes(CYCLE_INDEX, task_indexes.clone())
             .build()
             .unwrap();
 
@@ -629,7 +583,7 @@ mod tests {
     fn convert_process_input_roundtrips() {
         let task_indexes = vec![1u64, 2, 3];
         let record = base_builder()
-            .process_task_indexes(task_indexes.clone())
+            .process_task_indexes(CYCLE_INDEX, task_indexes.clone())
             .build()
             .unwrap();
 
@@ -647,7 +601,7 @@ mod tests {
     #[test]
     fn convert_remove_input_roundtrips() {
         let record = base_builder()
-            .remove_task(99, "bad task".to_string())
+            .remove_task(CYCLE_INDEX, 99, "bad task".to_string())
             .build()
             .unwrap();
 
@@ -701,7 +655,7 @@ mod tests {
     #[test]
     fn get_action_tag_process() {
         let record = base_builder()
-            .process_task_indexes(vec![1])
+            .process_task_indexes(CYCLE_INDEX, vec![1])
             .build()
             .unwrap();
         assert_eq!(
@@ -713,7 +667,7 @@ mod tests {
     #[test]
     fn get_action_tag_remove() {
         let record = base_builder()
-            .remove_task(5, "reason".to_string())
+            .remove_task(CYCLE_INDEX, 5, "reason".to_string())
             .build()
             .unwrap();
         assert_eq!(
@@ -858,7 +812,7 @@ mod tests {
 
     #[test]
     fn builder_task_count_with_action() {
-        let builder = base_builder().process_task_indexes(vec![1, 2, 3]);
+        let builder = base_builder().process_task_indexes(CYCLE_INDEX, vec![1, 2, 3]);
         assert_eq!(builder.task_count(), 3);
     }
 
@@ -870,13 +824,13 @@ mod tests {
 
     #[test]
     fn builder_task_range_with_action() {
-        let builder = base_builder().process_task_indexes(vec![5, 2, 8]);
+        let builder = base_builder().process_task_indexes(CYCLE_INDEX, vec![5, 2, 8]);
         assert_eq!(builder.task_range(), (2, 8));
     }
 
     #[test]
     fn builder_into_task_indexes() {
-        let builder = base_builder().process_task_indexes(vec![7, 8, 9]);
+        let builder = base_builder().process_task_indexes(CYCLE_INDEX, vec![7, 8, 9]);
         assert_eq!(builder.into_task_indexes(), vec![7, 8, 9]);
     }
 
@@ -888,7 +842,7 @@ mod tests {
 
     #[test]
     fn builder_flatten_clears_nonce_on_each_part() {
-        let builder = base_builder().process_task_indexes(vec![1, 2, 3]);
+        let builder = base_builder().process_task_indexes(CYCLE_INDEX, vec![1, 2, 3]);
         let parts = builder.flatten();
         assert_eq!(parts.len(), 3);
         for part in &parts {
@@ -899,7 +853,7 @@ mod tests {
 
     #[test]
     fn builder_flatten_remove_is_single_and_keeps_nonce_cleared() {
-        let builder = base_builder().remove_task(10, "r".to_string());
+        let builder = base_builder().remove_task(CYCLE_INDEX, 10, "r".to_string());
         let parts = builder.flatten();
         assert_eq!(parts.len(), 1);
         assert!(parts[0].nonce.is_none());
