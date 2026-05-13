@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 
 contract InitializeCycleMonitoring is Script {
     address payable multisigWalletAddr;
@@ -61,6 +62,43 @@ contract AuthorizeAccount is Script {
 
         // Submit a foundation/gov action to grant authorization for gst task registration
         bytes memory data = abi.encodeCall(IConfigFacet.grantAuthorization, (account));
+        wallet.submitTransaction(automationRegistry, 0,  timeout, data);
+
+        vm.stopBroadcast();
+    }
+}
+
+contract EnableDisableAutomation is Script {
+    address payable multisigWalletAddr;
+    address automationRegistry;
+    address account;
+    uint64 timeout;
+    bool enable;
+
+    function setUp() public {
+        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
+        automationRegistry = vm.envAddress("REGISTRY");
+        account = vm.envAddress("ACCOUNT_TO_AUTHORIZE");
+        timeout = uint64(vm.envUint("TIMEOUT"));
+        enable = bool(vm.envBool("ENABLE_AUTOMATION"));
+    }
+
+    function run() public {
+        vm.startBroadcast();
+
+        // Initialize MultiSignatureWallet and get nextTxnIndex
+        MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
+        uint256 nextTxnIndex = wallet.getNextTransactionIndex();
+        console.log("TxnIndex: ", nextTxnIndex);
+        console.log("Automation Flag: ", ICoreFacet(automationRegistry).isAutomationEnabled());
+
+        // Submit a foundation/gov action to enable/disable automation
+        bytes memory data = hex"";
+        if (enable) {
+            data = abi.encodeCall(ICoreFacet.enableAutomation, ());
+        } else {
+            data = abi.encodeCall(ICoreFacet.disableAutomation, ());
+        }
         wallet.submitTransaction(automationRegistry, 0,  timeout, data);
 
         vm.stopBroadcast();

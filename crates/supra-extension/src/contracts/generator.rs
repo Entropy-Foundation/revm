@@ -109,8 +109,8 @@ sol! {
         uint64 sysTaskDurationCapSecs;
         uint128 sysRegistryMaxGasCap;
         uint16 sysTaskCapacity;
-        bool registrationEnabled;
         bool automationEnabled;
+        bool registrationEnabled;
     }
 
     /// Addresses of the facets for diamond cut and diamond initializer contract

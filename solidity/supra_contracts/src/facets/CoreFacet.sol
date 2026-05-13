@@ -116,10 +116,12 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     /// @notice Removes registered tasks when predicate validation fails during runtime.
     /// @param _taskIndex index of the task that has a fatal error.
     /// @param _reason explained reason of task removal.
-    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external {
+    function removeRegisteredTask(uint64 cycleIndex, uint64 _taskIndex, string memory _reason) external {
         msg.sender.enforceIsVmSigner();
 
         if (!s.automationEnabled) { return; }
+        if (s.index != cycleIndex) { revert LibCore.InvalidInputCycleIndex(); }
+
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
         // Calculate refundable fee for this remaining time task in current cycle

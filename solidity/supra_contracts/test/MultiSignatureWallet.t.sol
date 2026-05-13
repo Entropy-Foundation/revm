@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
+import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
 import {MultisigBeacon, UpgradeableBeacon} from "../src/MultisigBeacon.sol";
 
 contract MultiSignatureWalletTest is Test {
@@ -74,7 +75,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'initialize' reverts if array of owners is empty.
     function testInitializeRevertsIfOwnersArrayEmpty() public {
         address[] memory emptyOwners;        
-        vm.expectRevert(MultiSignatureWallet.OwnersRequired.selector);
+        vm.expectRevert(IMultiSignatureWallet.OwnersRequired.selector);
 
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (emptyOwners, 1));
         new BeaconProxy(address(beacon), initData);
@@ -82,7 +83,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'initialize' reverts if number of confirmations required is zero.
     function testInitializeRevertsIfNumConfirmationsZero() public {
-        vm.expectRevert(MultiSignatureWallet.InvalidNumberOfConfirmations.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidNumberOfConfirmations.selector);
 
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (owners, 0));
         new BeaconProxy(address(beacon), initData);
@@ -90,7 +91,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'initialize' reverts if number of confirmations required is more than the number of owners.
     function testInitializeRevertsIfNumConfirmationsMoreThanOwners() public {
-        vm.expectRevert(MultiSignatureWallet.InvalidNumberOfConfirmations.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidNumberOfConfirmations.selector);
 
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (owners, 6));
         new BeaconProxy(address(beacon), initData);
@@ -103,7 +104,7 @@ contract MultiSignatureWalletTest is Test {
         invalidOwners[1] = address(0);          // Invalid owner
         invalidOwners[2] = address(1002);
 
-        vm.expectRevert(MultiSignatureWallet.InvalidOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidOwner.selector);
 
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (invalidOwners, 1));
         new BeaconProxy(address(beacon), initData);
@@ -116,7 +117,7 @@ contract MultiSignatureWalletTest is Test {
         duplicateOwners[1] = address(1001);       // Duplicate owner
         duplicateOwners[2] = address(1002);
 
-        vm.expectRevert(MultiSignatureWallet.OwnerNotUnique.selector);
+        vm.expectRevert(IMultiSignatureWallet.OwnerNotUnique.selector);
 
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (duplicateOwners, 1));
         new BeaconProxy(address(beacon), initData);
@@ -156,7 +157,7 @@ contract MultiSignatureWalletTest is Test {
     function testSubmitTransactionIncrementRevertsIfNotOwner() public {
         bytes memory data = dataForIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
         vm.prank(alice);                    // Not an owner
         multiSig.submitTransaction(
@@ -171,7 +172,7 @@ contract MultiSignatureWalletTest is Test {
     function testSubmitTransactionIncrementRevertsIfAddressZero() public {
         bytes memory data = dataForIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.InvalidRecipient.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidRecipient.selector);
 
         vm.prank(address(1001));
         multiSig.submitTransaction(
@@ -209,7 +210,7 @@ contract MultiSignatureWalletTest is Test {
     function testConfirmTransactionRevertsIfNotOwner() public {
         testSubmitTransactionIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
         confirmTransaction(alice, 0);      // Not an owner
     }
 
@@ -217,7 +218,7 @@ contract MultiSignatureWalletTest is Test {
     function testConfirmTransactionRevertsIfTxDoesNotExist() public {
         testSubmitTransactionIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         confirmTransaction(address(1002), 1);
     }
 
@@ -231,7 +232,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
 
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
 
         confirmTransaction(address(1005), txId);
     }
@@ -240,7 +241,7 @@ contract MultiSignatureWalletTest is Test {
     function testConfirmTransactionRevertsIfTxAlreadyConfirmed() public {
         testSubmitTransactionIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.TxnAlreadyConfirmed.selector);
+        vm.expectRevert(IMultiSignatureWallet.TxnAlreadyConfirmed.selector);
         confirmTransaction(address(1001), 0);
     }
 
@@ -251,7 +252,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
-        emit MultiSignatureWallet.TransactionExpired(0);
+        emit IMultiSignatureWallet.TransactionExpired(0);
         
         confirmTransaction(address(1005), 0);
         assertEq(multiSig.txCount(), 0);
@@ -280,7 +281,7 @@ contract MultiSignatureWalletTest is Test {
     function testRevokeConfirmationRevertsIfNotOwner() public {
         testSubmitTransactionIncrement();
         
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
         revokeConfirmation(alice, 1);
     }
 
@@ -288,7 +289,7 @@ contract MultiSignatureWalletTest is Test {
     function testRevokeConfirmationRevertsIfTxDoesNotExist() public {
         testSubmitTransactionIncrement();
         
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), 1);
     }
 
@@ -302,7 +303,7 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
 
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), txId);
     }
 
@@ -313,7 +314,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
-        emit MultiSignatureWallet.TransactionExpired(0);
+        emit IMultiSignatureWallet.TransactionExpired(0);
         
         revokeConfirmation(address(1001), 0);
         assertEq(multiSig.txCount(), 0);
@@ -323,7 +324,7 @@ contract MultiSignatureWalletTest is Test {
     function testRevokeConfirmationRevertsIfTxNotConfirmed() public {
         testSubmitTransactionIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.TransactionNotConfirmed.selector);
+        vm.expectRevert(IMultiSignatureWallet.TransactionNotConfirmed.selector);
         revokeConfirmation(address(1002), 0);
     }
 
@@ -345,7 +346,7 @@ contract MultiSignatureWalletTest is Test {
     function testExecuteTransactionRevertsIfCallerNotOwner() public {
         testSubmitTransactionIncrement();
 
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
         vm.prank(alice);
         multiSig.executeTransaction(0);
@@ -353,7 +354,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'executeTransaction' reverts if transaction does not exist.
     function testExecuteTransactionRevertsIfTxDoesNotExist() public {
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(1);
@@ -363,7 +364,7 @@ contract MultiSignatureWalletTest is Test {
     function testExecuteTransactionRevertsIfTxAlreadyExecuted() public {
         testExecuteTransaction();
 
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -376,7 +377,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
-        emit MultiSignatureWallet.TransactionExpired(0);
+        emit IMultiSignatureWallet.TransactionExpired(0);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -391,7 +392,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1002), txId);
         confirmTransaction(address(1003), txId);
         
-        vm.expectRevert(MultiSignatureWallet.NotEnoughConfirmation.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
 
         vm.prank(address(1001));
         multiSig.executeTransaction(txId);
@@ -451,7 +452,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -464,7 +465,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -475,7 +476,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToAddOwnerInMultiSig());    
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);        
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);        
 
         vm.prank(alice);            // Not an owner
         multiSig.executeTransaction(0);
@@ -491,7 +492,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
-        emit MultiSignatureWallet.TransactionExpired(0);
+        emit IMultiSignatureWallet.TransactionExpired(0);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -506,7 +507,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1004), txId);
         confirmTransaction(address(1005), txId);
 
-        vm.expectRevert(MultiSignatureWallet.NotEnoughConfirmation.selector);        
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);        
         
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
@@ -539,7 +540,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -556,7 +557,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -570,7 +571,7 @@ contract MultiSignatureWalletTest is Test {
         
         grantSufficientConfirmations(1);
 
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
         
         vm.prank(alice);        // Not an owner
         multiSig.executeTransaction(1);
@@ -588,7 +589,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
-        emit MultiSignatureWallet.TransactionExpired(1);
+        emit IMultiSignatureWallet.TransactionExpired(1);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(1);
@@ -605,7 +606,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1004), txId);
         confirmTransaction(address(1005), txId);
 
-        vm.expectRevert(MultiSignatureWallet.NotEnoughConfirmation.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
@@ -632,7 +633,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(0));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -643,7 +644,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(6));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -654,7 +655,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(MultiSignatureWallet.NotAnOwner.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
         vm.prank(alice);        // Not an owner
         multiSig.executeTransaction(0);
@@ -670,7 +671,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.warp(10501);
         vm.expectEmit(true, false, false, false);
-        emit MultiSignatureWallet.TransactionExpired(0);
+        emit IMultiSignatureWallet.TransactionExpired(0);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);    
@@ -685,7 +686,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1002), txId);
         confirmTransaction(address(1003), txId);
 
-        vm.expectRevert(MultiSignatureWallet.NotEnoughConfirmation.selector);
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
@@ -765,7 +766,7 @@ contract MultiSignatureWalletTest is Test {
     function testDeployContractRevertsIfCallerNotMultiSig() public {
         bytes memory creationCode = type(Counter).creationCode;
 
-        vm.expectRevert(MultiSignatureWallet.OnlyMultisigAccountCanCall.selector);
+        vm.expectRevert(IMultiSignatureWallet.OnlyMultisigAccountCanCall.selector);
 
         vm.prank(alice);
         multiSig.deployContract(creationCode, 0);
@@ -776,7 +777,7 @@ contract MultiSignatureWalletTest is Test {
         // Deploy implementation
         submitToDeploy("", 0, 0);   // Empty creation code
         
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -798,7 +799,7 @@ contract MultiSignatureWalletTest is Test {
         bytes memory creationCode = proxyCreationCode(impl);        
         submitToDeploy(creationCode, 1 ether, 1);
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(1);
@@ -809,7 +810,7 @@ contract MultiSignatureWalletTest is Test {
         // Deploy implementation
         submitToDeploy(hex"f1", 0, 0);  // Invalid creation code
 
-        vm.expectRevert(MultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -830,14 +831,14 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'receive' emits event 'Deposit'.
     function testReceiveEmitsEvent() public {
         vm.expectEmit(true, false, false, true);
-        emit MultiSignatureWallet.Deposit(alice, 1 ether, 1 ether);
+        emit IMultiSignatureWallet.Deposit(alice, 1 ether, 1 ether);
 
         testReceive();
     }
 
     /// @dev Test to ensure 'getTransaction' reverts if transaction does not exist.
     function testGetTransactionRevertsIfTxDoesNotExist() public {
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         multiSig.getTransaction(0);
     }
     
@@ -850,7 +851,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1005), 0);
         assertEq(multiSig.txCount(), 0);
 
-        vm.expectRevert(MultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         multiSig.getTransaction(0);
     }
 }

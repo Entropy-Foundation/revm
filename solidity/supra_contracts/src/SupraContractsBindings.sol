@@ -6,6 +6,9 @@ import {TaskMetadata} from "./libraries/LibAppStorage.sol";
 
 interface SupraContractsBindings {
 
+    // View function of Automation Registry Diamond
+    function isInitialized() external view returns (bool);
+
     // View functions of RegistryFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function getActiveTaskIds() external view returns (uint256[] memory);
@@ -20,11 +23,8 @@ interface SupraContractsBindings {
     // Entry function to be called by node runtime for bookkeeping
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
 
-    // Entry function to be called by node runtime for bookkeeping
-    function removeRegisteredTask(uint64 _taskIndex, string memory _reason) external;
-
-    // Entry function to be called by node runtime for bookkeeping
-    function removeRegisteredTasks(uint64[] memory _taskIndexes, string[] memory _reasons) external;
+    // Entry function to be called by node runtime to remove tasks with fatal errors
+    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
 
     // Entry function of the BlockMeta for block metadata transaction
     function blockPrologue() external;

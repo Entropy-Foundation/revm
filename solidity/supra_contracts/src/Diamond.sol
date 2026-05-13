@@ -87,14 +87,13 @@ contract Diamond {
         LibDiamond.diamondCut(cut, _d.diamondInit, initCalldata);
     }
 
-    /// @notice Returns true if the automation feature is enabled and the diamond has been initialized.
-    function is_feature_enabled_and_initialized() external view returns (bool) {
+    /// @notice Returns true if registry has been initialized.
+    function isInitialized() external view returns (bool) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        bool initialized = ds.supportedInterfaces[type(IERC165).interfaceId] &&
-                            ds.supportedInterfaces[type(IDiamondCut).interfaceId] &&
-                            ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] &&
-                            ds.supportedInterfaces[type(IERC173).interfaceId];
-        return initialized && LibAppStorage.appStorage().automationEnabled;
+        return ds.supportedInterfaces[type(IERC165).interfaceId] &&
+        ds.supportedInterfaces[type(IDiamondCut).interfaceId] &&
+        ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] &&
+        ds.supportedInterfaces[type(IERC173).interfaceId];
     }
 
     /// @notice Find facet for function that is called and execute the
