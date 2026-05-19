@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-interface IERC20Supra {
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IERC20Supra is IERC20 {
     /// @notice Thrown when a function is called by an address that is not authorized to perform the operation.    
     error UnauthorizedCaller();
     /// @notice Thrown when trying to add an already authorized address.
