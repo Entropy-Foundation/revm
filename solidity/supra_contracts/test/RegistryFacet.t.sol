@@ -7,7 +7,6 @@ import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
-import {LibRegistry} from "../src/libraries/LibRegistry.sol";
 import {TaskMetadata} from "../src/libraries/LibAppStorage.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 
@@ -50,7 +49,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.RegistrationDisabled.selector);
+        vm.expectRevert(IRegistryFacet.RegistrationDisabled.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -118,7 +117,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         bytes memory predicate = abi.encode(diamondAddr, bytes(""));
 
-        vm.expectRevert(LibRegistry.InvalidPayloadLength.selector);
+        vm.expectRevert(IRegistryFacet.InvalidPayloadLength.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -142,7 +141,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         bytes memory predicate = abi.encode(diamondAddr, invalidPayload);
 
-        vm.expectRevert(LibRegistry.InvalidPayloadLength.selector);
+        vm.expectRevert(IRegistryFacet.InvalidPayloadLength.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -177,7 +176,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             ))
         );
         
-        vm.expectRevert(LibRegistry.StaticCallToPredicateFailed.selector);
+        vm.expectRevert(IRegistryFacet.StaticCallToPredicateFailed.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -200,7 +199,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         // Create predicate that does not return 32 bytes
         bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreFacet.getCycleInfo, ())); 
 
-        vm.expectRevert(LibRegistry.InvalidReturnLengthOfPredicate.selector);
+        vm.expectRevert(IRegistryFacet.InvalidReturnLengthOfPredicate.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -223,7 +222,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         // Create predicate that doesn't return boolean
         bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreFacet.getCycleDuration, ()));
 
-        vm.expectRevert(LibRegistry.InvalidReturnTypeOfPredicate.selector);
+        vm.expectRevert(IRegistryFacet.InvalidReturnTypeOfPredicate.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -244,7 +243,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
         
-        vm.expectRevert(LibRegistry.InvalidExpiryTime.selector);
+        vm.expectRevert(IRegistryFacet.InvalidExpiryTime.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -265,7 +264,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.InvalidTaskDuration.selector);
+        vm.expectRevert(IRegistryFacet.InvalidTaskDuration.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -286,7 +285,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.TaskExpiresBeforeNextCycle.selector);
+        vm.expectRevert(IRegistryFacet.TaskExpiresBeforeNextCycle.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -332,7 +331,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.InvalidPayloadLength.selector);
+        vm.expectRevert(IRegistryFacet.InvalidPayloadLength.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -356,7 +355,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.InvalidPayloadLength.selector);
+        vm.expectRevert(IRegistryFacet.InvalidPayloadLength.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -399,7 +398,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.InvalidMaxGasAmount.selector);
+        vm.expectRevert(IRegistryFacet.InvalidMaxGasAmount.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -420,7 +419,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.InvalidGasPriceCap.selector);
+        vm.expectRevert(IRegistryFacet.InvalidGasPriceCap.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -443,7 +442,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                LibRegistry.InsufficientFeeCapForCycle.selector,
+                IRegistryFacet.InsufficientFeeCapForCycle.selector,
                 3 ether
             )
         );
@@ -467,7 +466,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.GasCommittedExceedsMaxGasCap.selector);
+        vm.expectRevert(IRegistryFacet.GasCommittedExceedsMaxGasCap.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).register(
@@ -631,7 +630,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.RegistrationDisabled.selector);
+        vm.expectRevert(IRegistryFacet.RegistrationDisabled.selector);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
@@ -650,7 +649,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.InvalidTaskDuration.selector);
+        vm.expectRevert(IRegistryFacet.InvalidTaskDuration.selector);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
@@ -669,7 +668,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
-        vm.expectRevert(LibRegistry.GasCommittedExceedsMaxGasCap.selector);
+        vm.expectRevert(IRegistryFacet.GasCommittedExceedsMaxGasCap.selector);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).registerSystemTask(
@@ -808,7 +807,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'cancelTasks' reverts if task type is not UST.
     function testCancelTasksRevertsIfTaskTypeNotUST() public {
         testRegisterSystemTask();
-        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
+        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
@@ -911,7 +910,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
+        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
@@ -1008,7 +1007,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
+        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
@@ -1136,7 +1135,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        vm.expectRevert(LibRegistry.UnsupportedTaskOperation.selector);
+        vm.expectRevert(IRegistryFacet.UnsupportedTaskOperation.selector);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);

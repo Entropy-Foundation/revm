@@ -53,12 +53,12 @@ library LibDiamondUtils {
         address _erc20Supra,
         InitParams memory _params
     ) internal returns (Deployment memory d) {
-        d.facets = deploy_facets();
+        d.facets = deployFacets();
         d.diamond = address (new Diamond(_owner, d.facets,  _erc20Supra, _params));
     }
 
     /// @notice Deploys all facets, DiamondInit.
-    function deploy_facets() internal returns (FacetsDeployment memory d) {
+    function deployFacets() internal returns (FacetsDeployment memory d) {
 
         // 1) Deploy DiamondCutFacet
         d.diamondCutFacet = address(new DiamondCutFacet());

@@ -120,7 +120,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         msg.sender.enforceIsVmSigner();
 
         if (!s.automationEnabled) { return; }
-        if (s.index != cycleIndex) { revert LibCore.InvalidInputCycleIndex(); }
+        if (s.index != cycleIndex) { revert InvalidInputCycleIndex(); }
 
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);

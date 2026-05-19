@@ -7,7 +7,7 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
-import {FacetsDeployment, Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
+import {FacetsDeployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -355,7 +355,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
     function testInitializeRevertsIfErc20SupraIsZero() public {   
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
         // address(0) as ERC20Supra
         new Diamond(admin, facets, address(0), defaultParams);
@@ -365,7 +365,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if EOA is passed as ERC20Supra address.
     function testInitializeRevertsIfErc20SupraIsEoa() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
         // EOA address as ERC20Supra
         new Diamond(admin, facets, admin, defaultParams);
@@ -375,7 +375,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if task duration is <= cycle duration.
     function testInitializeRevertsIfInvalidTaskDuration() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 1200,
@@ -402,7 +402,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if registry max gas cap is zero.
     function testInitializeRevertsIfRegistryMaxGasCapZero() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
@@ -429,7 +429,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if congestion threshold percentage is > 100.
     function testInitializeRevertsIfInvalidCongestionThreshold() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
@@ -456,7 +456,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if congestion exponent is 0.
     function testInitializeRevertsIfCongestionExponentZero() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
@@ -483,7 +483,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if task capacity is 0.
     function testInitializeRevertsIfTaskCapacityZero() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
 
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
@@ -510,7 +510,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if cycle duration is 0.
     function testInitializeRevertsIfCycleDurationZero() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -536,7 +536,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if system task duration is <= cycle duration.
     function testInitializeRevertsIfInvalidSysTaskDuration() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -562,7 +562,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if system registry max gas cap is 0.
     function testInitializeRevertsIfSysRegistryMaxGasCapZero() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
@@ -588,7 +588,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure initialization fails if system task capacity is 0.
     function testInitializeRevertsIfSysTaskCapacityZero() public {
         vm.startPrank(admin);
-        FacetsDeployment memory facets = LibDiamondUtils.deploy_facets();
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,

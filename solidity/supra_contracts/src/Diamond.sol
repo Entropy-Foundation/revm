@@ -10,7 +10,6 @@ pragma solidity 0.8.27;
 
 import {LibDiamond} from "./libraries/LibDiamond.sol";
 import {LibUtils} from "./libraries/LibUtils.sol";
-import {LibAppStorage} from "./libraries/LibAppStorage.sol";
 import {IDiamondCut} from "./interfaces/IDiamondCut.sol";
 import {IDiamondLoupe} from "./interfaces/IDiamondLoupe.sol";
 import {IFacetSelectors} from "./interfaces/IFacetSelectors.sol";

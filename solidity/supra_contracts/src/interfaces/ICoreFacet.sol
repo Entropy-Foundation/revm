@@ -63,8 +63,15 @@ interface ICoreFacet {
     // =============================================================
     error AlreadyDisabled();
     error AlreadyEnabled();
+    error InconsistentTransitionState();
+    error InsufficientBalanceForRefund();
     error InvalidArrayLength();
+    error InvalidInputCycleIndex();
     error InvalidRegistryState();
+    error OutOfOrderTaskProcessingRequest();
+    error RegisteredTaskInvalidType();
+    error TaskIndexNotFound();
+    error TransferFailed();
 
     // =============================================================
     //                      View functions
