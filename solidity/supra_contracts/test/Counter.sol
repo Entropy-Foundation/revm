@@ -29,16 +29,16 @@ contract Counter is OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice Returns true if the counter is not divisible by 3, false otherwise.
     /// Used during testing register automation task with condition "counter is not divisible by 3".
-    function is_not_divisible_by_3() external view returns (bool) {
+    function isNotDivisibleBy3() external view returns (bool) {
         return counter % 3 != 0;
     }
 
     /// @notice Updates the counter to a new value.
-    /// @param new_value New value for the counter.
-    /// Used during testing to register trigger automation task execution by making is_not_divisible_by_3 condition to be true.
-    function update(uint256 new_value) external {
+    /// @param newValue New value for the counter.
+    /// Used during testing to register trigger automation task execution by making isNotDivisibleBy3 condition to be true.
+    function update(uint256 newValue) external {
         if (msg.sender == privilegedAddress) {
-            counter = new_value;
+            counter = newValue;
         }
     }
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

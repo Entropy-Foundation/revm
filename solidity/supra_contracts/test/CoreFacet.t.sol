@@ -6,7 +6,6 @@ import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
-import {LibCore} from "../src/libraries/LibCore.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
@@ -246,7 +245,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
 
-        vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
+        vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(index, tasks);
@@ -359,7 +358,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
 
-        vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
+        vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
         
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter + 1, tasks);
@@ -573,7 +572,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect() public {
         registerUst();
 
-        vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
+        vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
         uint64  taskIndex = 0;
         string memory reason = "Predicate failed";
@@ -586,7 +585,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect2() public {
         registerUst();
 
-        vm.expectRevert(LibCore.InvalidInputCycleIndex.selector);
+        vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
         uint64  taskIndex = 0;
         string memory reason = "Predicate failed";

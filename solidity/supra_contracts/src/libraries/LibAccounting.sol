@@ -3,6 +3,7 @@ pragma solidity 0.8.27;
 
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
 import {LibCommon} from "./LibCommon.sol";
+import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -18,15 +19,6 @@ library LibAccounting {
     /// @dev Defines divisor for refunds of deposit fees with penalty
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
-
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ERRORS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    error ErrorCycleFeeRefund();
-    error ErrorDepositRefund();
-    error InsufficientBalanceForRefund();
-    error InvalidCycleRefundFee();
-    error RegisteredTaskInvalidType();
-    error TransferFailed();
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -82,7 +74,7 @@ library LibAccounting {
     /// @return Bool representing if refund was successful.
     function _refund(address _erc20Supra, address _to, uint128 _amount) private returns (bool) {
         bool sent = IERC20(_erc20Supra).transfer(_to, _amount);
-        if (!sent) { revert TransferFailed(); }
+        if (!sent) { revert IRegistryFacet.TransferFailed(); }
 
         return sent;
     }
@@ -279,7 +271,7 @@ library LibAccounting {
         uint128 _lockedDeposit
     ) internal {
         // Check if task is UST
-        if (LibAppStorage.registryState().tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert RegisteredTaskInvalidType(); }
+        if (LibAppStorage.registryState().tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert ICoreFacet.RegisteredTaskInvalidType(); }
 
         // Remove task from the registry state
         LibCommon.removeTask(_taskIndex, _taskOwner, false, false);
@@ -300,7 +292,7 @@ library LibAccounting {
         
         address erc20Supra = s.erc20Supra;
         uint256 balance = IERC20(erc20Supra).balanceOf(address(this));
-        if (balance < _amount) { revert InsufficientBalanceForRefund(); }
+        if (balance < _amount) { revert ICoreFacet.InsufficientBalanceForRefund(); }
         _refund(erc20Supra, _to, _amount);
     }
 
@@ -404,12 +396,12 @@ library LibAccounting {
         }
 
         bool result = safeUnlockLockedDeposit(_taskIndex, _depositFee);
-        if (!result) { revert ErrorDepositRefund(); }
+        if (!result) { revert IRegistryFacet.ErrorDepositRefund(); }
 
-        if (cycleLockedFeeForTask < cycleFeeRefund) { revert InvalidCycleRefundFee(); }
+        if (cycleLockedFeeForTask < cycleFeeRefund) { revert IRegistryFacet.InvalidCycleRefundFee(); }
 
         (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(registryState.cycleLockedFees, uint64(cycleLockedFeeForTask), _taskIndex);
-        if (!hasLockedFee) { revert ErrorCycleFeeRefund(); }
+        if (!hasLockedFee) { revert IRegistryFacet.ErrorCycleFeeRefund(); }
 
         registryState.cycleLockedFees = remainingCycleLockedFees;
 

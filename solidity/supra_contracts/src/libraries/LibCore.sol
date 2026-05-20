@@ -16,15 +16,6 @@ library LibCore {
     using LibUtils for address;
     using EnumerableSet for EnumerableSet.UintSet;
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: CUSTOM ERRORS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    
-    error InconsistentTransitionState();
-    error InvalidInputCycleIndex();
-    error InvalidRegistryState();
-    error OutOfOrderTaskProcessingRequest();
-    error TaskIndexNotFound();
-    error TransferFailed();
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Returns the number of total tasks.
@@ -161,7 +152,7 @@ library LibCore {
         AppStorage storage s = LibAppStorage.appStorage();
 
         // Check if transition state exists
-        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if (!s.ifTransitionStateExists) { revert ICoreFacet.InvalidRegistryState(); }
         if (!isTransitionFinalized()) {
             return; 
         }
@@ -186,10 +177,10 @@ library LibCore {
 
         uint64 nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
 
-        if (nextTaskIndexPosition >= transitionState.expectedTasksToBeProcessed.length()) { revert InconsistentTransitionState(); }
+        if (nextTaskIndexPosition >= transitionState.expectedTasksToBeProcessed.length()) { revert ICoreFacet.InconsistentTransitionState(); }
         uint64 expectedTask = uint64(transitionState.expectedTasksToBeProcessed.at(nextTaskIndexPosition));
 
-        if (expectedTask != _taskIndex) { revert OutOfOrderTaskProcessingRequest(); } 
+        if (expectedTask != _taskIndex) { revert ICoreFacet.OutOfOrderTaskProcessingRequest(); } 
         transitionState.nextTaskIndexPosition = nextTaskIndexPosition + 1;  
     }
 
@@ -201,7 +192,7 @@ library LibCore {
         AppStorage storage s = LibAppStorage.appStorage();
 
         // Check if transition state exists
-        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if (!s.ifTransitionStateExists) { revert ICoreFacet.InvalidRegistryState(); }
 
         if (isTransitionFinalized()) {
             TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -407,7 +398,7 @@ library LibCore {
                 if (_fee != 0)  {
                     // Charge the fee    
                     bool sent = IERC20(erc20Supra).transferFrom(_owner, address(this), _fee);
-                    if (!sent) { revert TransferFailed(); }
+                    if (!sent) { revert ICoreFacet.TransferFailed(); }
 
                     fees = _fee;
                 }
@@ -456,11 +447,11 @@ library LibCore {
 
         if (_taskIndexes.length == 0) { return; }
 
-        if (s.cycleState != LibCommon.CycleState.FINISHED) { revert InvalidRegistryState(); }
+        if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
         
         // Check if transition state exists
-        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
-        if (s.index + 1 != _cycleIndex) { revert InvalidInputCycleIndex(); }
+        if (!s.ifTransitionStateExists) { revert ICoreFacet.InvalidRegistryState(); }
+        if (s.index + 1 != _cycleIndex) { revert ICoreFacet.InvalidInputCycleIndex(); }
 
         LibCommon.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
         
@@ -486,10 +477,10 @@ library LibCore {
 
         if (_taskIndexes.length == 0) { return; }
 
-        if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert InvalidRegistryState(); }
-        if (s.index != _cycleIndex) { revert InvalidInputCycleIndex(); }
+        if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert ICoreFacet.InvalidRegistryState(); }
+        if (s.index != _cycleIndex) { revert ICoreFacet.InvalidInputCycleIndex(); }
         // Check if transition state exists
-        if (!s.ifTransitionStateExists) { revert InvalidRegistryState(); }
+        if (!s.ifTransitionStateExists) { revert ICoreFacet.InvalidRegistryState(); }
 
         uint64 currentTime = uint64(block.timestamp);
             
@@ -637,9 +628,9 @@ library LibCore {
             uint64 currentTime = uint64(block.timestamp); 
             uint64 cycleEndTime = LibCommon.getCycleEndTime();
 
-            if (currentTime < s.startTime) { revert InvalidRegistryState(); }
-            if (currentTime >= cycleEndTime) { revert InvalidRegistryState(); }
-            if (!LibCommon.isCycleStarted()) { revert InvalidRegistryState(); }
+            if (currentTime < s.startTime) { revert ICoreFacet.InvalidRegistryState(); }
+            if (currentTime >= cycleEndTime) { revert ICoreFacet.InvalidRegistryState(); }
+            if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
 
             uint256[] memory tasksIdList = getTaskIdList();
             uint256[] memory expectedTasksToBeProcessed = tasksIdList.sort();
@@ -658,8 +649,8 @@ library LibCore {
             
             updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
         } else {
-            if (s.cycleState != LibCommon.CycleState.FINISHED) { revert InvalidRegistryState(); }
-            if (isTransitionInProgress()) { revert InvalidRegistryState(); }
+            if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
+            if (isTransitionInProgress()) { revert ICoreFacet.InvalidRegistryState(); }
 
             // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
             // So the tasks sent for refund, will get only deposit refunded.  

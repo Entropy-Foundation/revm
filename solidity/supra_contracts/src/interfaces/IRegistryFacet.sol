@@ -76,11 +76,34 @@ interface IRegistryFacet {
     // =============================================================
     //                      Custom errors
     // =============================================================
+    error AlreadyCancelled();
     error AutomationNotEnabled();
     error CycleTransitionInProgress();
+    error ErrorCycleFeeRefund();
+    error ErrorDepositRefund();
+    error FailedToCallTxHashPrecompile();
+    error GasCommittedExceedsMaxGasCap();
+    error GasCommittedValueUnderflow();
+    error InsufficientFeeCapForCycle(uint128 estimatedAutomationFeeForCycle);
+    error InvalidCycleRefundFee(); 
+    error InvalidExpiryTime();
+    error InvalidGasPriceCap();
+    error InvalidMaxGasAmount();
+    error InvalidPayloadLength();
+    error InvalidReturnLengthOfPredicate();
+    error InvalidReturnTypeOfPredicate();
+    error InvalidTaskDuration();
+    error RegistrationDisabled();
+    error StaticCallToPredicateFailed();
+    error TaskCapacityReached();
+    error TaskExpiresBeforeNextCycle();
+    error TaskIndexNotFound();
+    error TaskIndexNotUnique();
     error TaskIndexesCannotBeEmpty();
     error TransferFailed();
+    error TxnHashLengthShouldBe32(uint64);
     error UnauthorizedAccount();
+    error UnsupportedTaskOperation();
 
     // =============================================================
     //                      View functions

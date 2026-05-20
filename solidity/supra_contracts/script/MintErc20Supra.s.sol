@@ -35,9 +35,9 @@ contract MintErc20Supra is Script {
 
         // Then do the conversion
         erc20SupraHandler.deposit{value: value}();
-        uint256 conf_all  = erc20Supra.allowance(msg.sender, authority);
+        uint256 confAll  = erc20Supra.allowance(msg.sender, authority);
 
-        console.log("Sender: ", msg.sender, conf_all, authority);
+        console.log("Sender: ", msg.sender, confAll, authority);
         console.log("Token balance after: ", erc20Supra.balanceOf(msg.sender));
 
         vm.stopBroadcast();

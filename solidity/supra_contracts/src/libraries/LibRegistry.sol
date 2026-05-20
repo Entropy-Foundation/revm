@@ -5,6 +5,7 @@ import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
+import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibRegistry {
@@ -13,33 +14,6 @@ library LibRegistry {
 
     /// @notice Address of the transaction hash precompile.
     address public constant TX_HASH_PRECOMPILE = 0x0000000000000000000000000000000053555001;
-
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ERRORS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    
-    error AlreadyCancelled();
-    error RegistrationDisabled();
-    error AutomationNotEnabled();
-    error CycleTransitionInProgress();
-    error ErrorDepositRefund();
-    error FailedToCallTxHashPrecompile();
-    error TxnHashLengthShouldBe32(uint64);
-    error InvalidMaxGasAmount();
-    error GasCommittedExceedsMaxGasCap();
-    error GasCommittedValueUnderflow();
-    error InsufficientFeeCapForCycle(uint128 estimatedAutomationFeeForCycle);
-    error InvalidExpiryTime();
-    error InvalidGasPriceCap();
-    error InvalidTaskDuration();
-    error TaskCapacityReached();
-    error TaskExpiresBeforeNextCycle();
-    error TaskIndexNotFound();
-    error TaskIndexNotUnique();
-    error UnauthorizedAccount();
-    error UnsupportedTaskOperation();
-    error StaticCallToPredicateFailed();
-    error InvalidPayloadLength();
-    error InvalidReturnLengthOfPredicate();
-    error InvalidReturnTypeOfPredicate();
     
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -50,28 +24,28 @@ library LibRegistry {
         uint64 _taskDurationCap,
         uint64 _cycleEndTime
     ) private pure {
-        if (_expiryTime <= _regTime) { revert InvalidExpiryTime(); }
+        if (_expiryTime <= _regTime) { revert IRegistryFacet.InvalidExpiryTime(); }
         
         uint64 taskDuration = _expiryTime - _regTime;
-        if (taskDuration > _taskDurationCap) { revert InvalidTaskDuration(); }
+        if (taskDuration > _taskDurationCap) { revert IRegistryFacet.InvalidTaskDuration(); }
         
-        if ( _expiryTime <= _cycleEndTime) { revert TaskExpiresBeforeNextCycle(); }
+        if ( _expiryTime <= _cycleEndTime) { revert IRegistryFacet.TaskExpiresBeforeNextCycle(); }
     }
 
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
         ( , address payloadTarget, bytes memory payload, ) = abi.decode(_payloadTx, (uint128, address, bytes, LibCommon.AccessListEntry[]));
         payloadTarget.validateContractAddress();
-        if (payload.length < 4) revert InvalidPayloadLength();
+        if (payload.length < 4) revert IRegistryFacet.InvalidPayloadLength();
         
-        if (_maxGasAmount == 0) { revert InvalidMaxGasAmount(); }
+        if (_maxGasAmount == 0) { revert IRegistryFacet.InvalidMaxGasAmount(); }
     }
 
     /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
     function readTxHash() private view returns (bytes32) {
         (bool ok, bytes memory out) = TX_HASH_PRECOMPILE.staticcall("");
-        require(ok, FailedToCallTxHashPrecompile());
-        require(out.length == 32, TxnHashLengthShouldBe32(uint64(out.length)));
+        require(ok, IRegistryFacet.FailedToCallTxHashPrecompile());
+        require(out.length == 32, IRegistryFacet.TxnHashLengthShouldBe32(uint64(out.length)));
         return abi.decode(out, (bytes32));
     }
 
@@ -81,16 +55,16 @@ library LibRegistry {
         bool _isGst
     ) private view {
         // Check if authorised
-        if (msg.sender != _owner) { revert UnauthorizedAccount(); }
+        if (msg.sender != _owner) { revert IRegistryFacet.UnauthorizedAccount(); }
 
         // Enforce task type
         if (_isGst) {
             if (_taskType == LibCommon.TaskType.UST) {
-                revert UnsupportedTaskOperation();
+                revert IRegistryFacet.UnsupportedTaskOperation();
             }
         } else {
             if (_taskType == LibCommon.TaskType.GST) {
-                revert UnsupportedTaskOperation();
+                revert IRegistryFacet.UnsupportedTaskOperation();
             }
         }
     }
@@ -100,14 +74,14 @@ library LibRegistry {
     function validatePredicate(bytes memory _predicate) private view {
         (address payloadTarget, bytes memory payload) = abi.decode(_predicate, (address, bytes));
         payloadTarget.validateContractAddress();
-        if (payload.length < 4) revert InvalidPayloadLength();
+        if (payload.length < 4) revert IRegistryFacet.InvalidPayloadLength();
 
         (bool success, bytes memory data) = payloadTarget.staticcall(payload);
-        if (!success) revert StaticCallToPredicateFailed();
-        if (data.length != 32) revert InvalidReturnLengthOfPredicate();
+        if (!success) revert IRegistryFacet.StaticCallToPredicateFailed();
+        if (data.length != 32) revert IRegistryFacet.InvalidReturnLengthOfPredicate();
 
         uint256 val = abi.decode(data, (uint256));
-        if (val > 1) revert InvalidReturnTypeOfPredicate();
+        if (val > 1) revert IRegistryFacet.InvalidReturnTypeOfPredicate();
     }
 
     /// @notice Helper function that performs validation and updates state for a valid task.
@@ -127,10 +101,10 @@ library LibRegistry {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         // Check if automation and registration is enabled
-        if (!s.automationEnabled) { revert AutomationNotEnabled(); }
-        if (!s.registrationEnabled) { revert RegistrationDisabled(); }
+        if (!s.automationEnabled) { revert IRegistryFacet.AutomationNotEnabled(); }
+        if (!s.registrationEnabled) { revert IRegistryFacet.RegistrationDisabled(); }
 
-        if (!LibCommon.isCycleStarted()) { revert CycleTransitionInProgress(); }
+        if (!LibCommon.isCycleStarted()) { revert IRegistryFacet.CycleTransitionInProgress(); }
 
         validatePredicate(_predicate);
    
@@ -138,16 +112,16 @@ library LibRegistry {
         uint128 gasCommittedForNextCycle;
         uint128 nextCycleRegistryMaxGasCap;
         if (_isUst) {
-            if (_totalTasks >= activeConfig.taskCapacity) { revert TaskCapacityReached(); }
-            if (_gasPriceCap == 0) { revert InvalidGasPriceCap(); }
+            if (_totalTasks >= activeConfig.taskCapacity) { revert IRegistryFacet.TaskCapacityReached(); }
+            if (_gasPriceCap == 0) { revert IRegistryFacet.InvalidGasPriceCap(); }
 
             gasCommittedForNextCycle = registryState.gasCommittedForNextCycle;
             uint128 estimatedAutomationFeeForCycle = LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
-            if (_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert InsufficientFeeCapForCycle(estimatedAutomationFeeForCycle); }
+            if (_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert IRegistryFacet.InsufficientFeeCapForCycle(estimatedAutomationFeeForCycle); }
             taskDurationCap = activeConfig.taskDurationCapSecs;
             nextCycleRegistryMaxGasCap = registryState.nextCycleRegistryMaxGasCap;
         } else {
-            if (_totalTasks >= activeConfig.sysTaskCapacity) { revert TaskCapacityReached(); }
+            if (_totalTasks >= activeConfig.sysTaskCapacity) { revert IRegistryFacet.TaskCapacityReached(); }
 
             gasCommittedForNextCycle = registryState.sysGasCommittedForNextCycle;
             taskDurationCap = activeConfig.sysTaskDurationCapSecs;
@@ -158,7 +132,7 @@ library LibRegistry {
         validateInputs(_payloadTx, _maxGasAmount);
 
         uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;
-        if (gasCommitted > nextCycleRegistryMaxGasCap) { revert GasCommittedExceedsMaxGasCap(); }
+        if (gasCommitted > nextCycleRegistryMaxGasCap) { revert IRegistryFacet.GasCommittedExceedsMaxGasCap(); }
 
         if (_isUst) {
             registryState.gasCommittedForNextCycle = gasCommitted;
@@ -210,11 +184,11 @@ library LibRegistry {
         });
     
         registryState.tasks[taskIndex] = taskMetadata;
-        require(registryState.taskIdList.add(taskIndex), TaskIndexNotUnique());
-        require(registryState.addressToTasks[msg.sender].add(taskIndex), TaskIndexNotUnique());
+        require(registryState.taskIdList.add(taskIndex), IRegistryFacet.TaskIndexNotUnique());
+        require(registryState.addressToTasks[msg.sender].add(taskIndex), IRegistryFacet.TaskIndexNotUnique());
     
         if (!_isUst) {
-            require(registryState.sysTaskIds.add(taskIndex), TaskIndexNotUnique());
+            require(registryState.sysTaskIds.add(taskIndex), IRegistryFacet.TaskIndexNotUnique());
         }
         registryState.currentIndex += 1;
     }
@@ -223,7 +197,7 @@ library LibRegistry {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 gasCommittedForNextCycle = _isGst ? registryState.sysGasCommittedForNextCycle : registryState.gasCommittedForNextCycle;        
-        if (gasCommittedForNextCycle < _maxGasAmount) { revert GasCommittedValueUnderflow(); }
+        if (gasCommittedForNextCycle < _maxGasAmount) { revert IRegistryFacet.GasCommittedValueUnderflow(); }
        
         // Adjust the gas committed for the next cycle by subtracting the gas amount of the cancelled/stopped task
         if (_isGst) {
@@ -289,7 +263,7 @@ library LibRegistry {
         TaskMetadata memory task = registryState.tasks[_taskIndex];
 
         validateOwnerType(task.owner, task.taskType, _isGst);
-        if (task.taskState == LibCommon.TaskState.CANCELLED) { revert AlreadyCancelled(); }
+        if (task.taskState == LibCommon.TaskState.CANCELLED) { revert IRegistryFacet.AlreadyCancelled(); }
         if (task.taskState == LibCommon.TaskState.PENDING) {
             LibCommon.removeTask(_taskIndex, task.owner, _isGst, false);
 
@@ -302,7 +276,7 @@ library LibRegistry {
                     task.depositFee / LibAccounting.REFUND_FACTOR,
                     task.depositFee
                 );
-                if (!result) revert ErrorDepositRefund();
+                if (!result) revert IRegistryFacet.ErrorDepositRefund();
             }
         } else {
             // It is safe not to check the state as above, the cancelled tasks are already rejected.
