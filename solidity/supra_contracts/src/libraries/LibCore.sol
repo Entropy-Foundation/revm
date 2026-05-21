@@ -78,7 +78,7 @@ library LibCore {
 
     /// @notice Updates the state of the cycle.
     /// @param _state Input state to update cycle state with.
-    function updateCycleStateTo(LibCommon.CycleState _state) private {
+    function updateCycleStateTo(LibCommon.CycleState _state) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         LibCommon.CycleState oldState = s.cycleState;
@@ -610,7 +610,6 @@ library LibCore {
     /// In all the cases if there are no tasks in registry the state will be updated directly to READY state.
     function tryMoveToSuspendedState() internal {
         AppStorage storage s = LibAppStorage.appStorage();
-        TransitionState storage transitionState = LibAppStorage.transitionState();
         
         if (totalTasks() == 0) {
             // Registry is empty move to ready state directly
@@ -625,32 +624,12 @@ library LibCore {
             // This holds true even if we identified suspention when moving from FINALIZED->STARTED state.
             // As in this case we will first transition to the STARTED state and only then to SUSPENDED.
             // And when transition to STARTED state we update the cycle start-time to be the current-chain-time.
-            uint64 currentTime = uint64(block.timestamp); 
-            uint64 cycleEndTime = LibCommon.getCycleEndTime();
-
-            if (currentTime < s.startTime) { revert ICoreFacet.InvalidRegistryState(); }
-            if (currentTime >= cycleEndTime) { revert ICoreFacet.InvalidRegistryState(); }
-            if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
-
-            uint256[] memory tasksIdList = getTaskIdList();
-            uint256[] memory expectedTasksToBeProcessed = tasksIdList.sort();
-
-            transitionState.refundDuration = cycleEndTime - currentTime;
-            transitionState.newCycleDuration = s.durationSecs;
-            transitionState.automationFeePerSec = LibAccounting.calculateAutomationFeeMultiplierForCurrentCycle();
-            transitionState.gasCommittedForNewCycle = 0;
-            transitionState.gasCommittedForNextCycle = 0;
-            transitionState.sysGasCommittedForNextCycle = 0;
-            transitionState.lockedFees = 0;
-            transitionState.nextTaskIndexPosition = 0;
-
-            updateExpectedTasks(expectedTasksToBeProcessed);
-            s.ifTransitionStateExists = true;
-            
-            updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
+            handleCycleSuspension();
         } else {
             if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
             if (isTransitionInProgress()) { revert ICoreFacet.InvalidRegistryState(); }
+            
+            TransitionState storage transitionState = LibAppStorage.transitionState();
 
             // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
             // So the tasks sent for refund, will get only deposit refunded.  
@@ -691,5 +670,49 @@ library LibCore {
         } else {
             s.durationSecs = cycleDuration;
         }    
+    }
+
+    /// @notice Handles the cycle suspension logic by updating the expected tasks, initialising the transition state and moving to the SUSPENDED state.
+    function handleCycleSuspension() private {
+        AppStorage storage s = LibAppStorage.appStorage();
+        TransitionState storage transitionState = LibAppStorage.transitionState();
+
+        uint64 currentTime = uint64(block.timestamp); 
+        uint64 cycleEndTime = LibCommon.getCycleEndTime();
+
+        if (currentTime < s.startTime) { revert ICoreFacet.InvalidRegistryState(); }
+        if (currentTime >= cycleEndTime) { revert ICoreFacet.InvalidRegistryState(); }
+        if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
+
+        uint256[] memory tasksIdList = getTaskIdList();
+        uint256[] memory expectedTasksToBeProcessed = tasksIdList.sort();
+
+        transitionState.refundDuration = cycleEndTime - currentTime;
+        transitionState.newCycleDuration = s.durationSecs;
+        transitionState.automationFeePerSec = LibAccounting.calculateAutomationFeeMultiplierForCurrentCycle();
+        transitionState.gasCommittedForNewCycle = 0;
+        transitionState.gasCommittedForNextCycle = 0;
+        transitionState.sysGasCommittedForNextCycle = 0;
+        transitionState.lockedFees = 0;
+        transitionState.nextTaskIndexPosition = 0;
+
+        updateExpectedTasks(expectedTasksToBeProcessed);
+        s.ifTransitionStateExists = true;
+            
+        updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
+    }
+
+    /// @notice Handles the disable automation logic based on the current cycle state.
+    /// @param _cycleState The current cycle state.
+    function handleDisableAutomation(LibCommon.CycleState _cycleState) internal {
+        if (_cycleState == LibCommon.CycleState.STARTED) {
+            if (totalTasks() == 0) {
+                moveToReadyState();
+            } else {
+                handleCycleSuspension();
+            }
+        } else if (_cycleState == LibCommon.CycleState.FINISHED && !LibCore.isTransitionInProgress()) {
+            updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
+        }
     }
 }
