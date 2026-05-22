@@ -651,7 +651,7 @@ library LibCore {
         } else {
             if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
             if (isTransitionInProgress()) { revert ICoreFacet.InvalidRegistryState(); }
-
+            
             // Did not manage to charge cycle fee, so automationFeePerSec will be 0 along with remaining duration
             // So the tasks sent for refund, will get only deposit refunded.  
             transitionState.refundDuration = 0;

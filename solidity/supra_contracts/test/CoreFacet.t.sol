@@ -8,7 +8,6 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 
 contract CoreFacetTest is BaseDiamondTest {
 
@@ -76,37 +75,6 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateAfter), uint8(stateBefore));
     }
 
-    /// @dev Test to ensure 'monitorCycleEnd' moves cycle state to READY if automation is disabled and no tasks exist.
-    function testMonitorCycleEndWhenAutomationDisabledNoTasks() public {
-        // Disable automation
-        vm.prank(admin);
-        ICoreFacet(diamondAddr).disableAutomation();
-
-        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
-
-        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(startBefore + durationBefore);
-        
-        vm.expectEmit(true, true, false, true);
-        emit ICoreFacet.AutomationCycleEvent(
-            indexBefore, 
-            LibCommon.CycleState.READY,
-            startBefore,
-            durationBefore,
-            stateBefore
-        );
-
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
-
-        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
-
-        assertEq(indexAfter, indexBefore);
-        assertEq(startAfter, startBefore);
-        assertEq(durationAfter, durationBefore);
-        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.READY));
-    }
-
     /// @dev Test to ensure 'monitorCycleEnd' moves cycle state to STARTED if automation is enabled and no tasks exist.
     function testMonitorCycleEndWhenAutomationEnabledNoTasks() public {
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -135,7 +103,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'monitorCycleEnd' moves cycle state to FINISHED if automation is enabled and tasks exist.
     function testMonitorCycleEndWhenAutomationEnabledAndTasksExist() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startBefore + durationBefore);
@@ -188,7 +156,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is FINISHED.
     function testProcessTasksWhenCycleStateFinished() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
@@ -231,7 +199,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is FINISHED.
     function testProcessTasksRevertsIfInvalidCycleIndexWhenCycleStateFinished() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
@@ -253,7 +221,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is disabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationDisabled() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -291,7 +259,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is enabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationEnabled() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -336,7 +304,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is SUSPENDED.
     function testProcessTasksRevertsIfInvalidCycleIndexWhenCycleStateSuspended() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -403,6 +371,138 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).disableAutomation();
     }
 
+    /// @dev Test to ensure 'disableAutomation' moves cycle state from STARTED to READY if automation is disabled and no tasks exist.
+    function testDisableAutomationStartedToReadyWhenNoTasksExist() public {
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.STARTED));
+
+        vm.expectEmit(true, true, false, true);
+        emit ICoreFacet.AutomationCycleEvent(
+            indexBefore, 
+            LibCommon.CycleState.READY,
+            startBefore,
+            durationBefore,
+            stateBefore
+        );
+
+        // Disable automation
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+        
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexBefore, indexAfter);
+        assertEq(startBefore, startAfter);
+        assertEq(durationBefore, durationAfter);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.READY));
+    }
+
+    /// @dev Test to ensure 'disableAutomation' moves cycle state from STARTED to SUSPENDED if automation is disabled and tasks exist.
+    function testDisableAutomationStartedToSuspendedWhenTasksExist() public {
+        registerUst(diamondAddr);
+        
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.STARTED));
+
+        vm.expectEmit(true, true, false, true);
+        emit ICoreFacet.AutomationCycleEvent(
+            indexBefore, 
+            LibCommon.CycleState.SUSPENDED,
+            startBefore,
+            durationBefore,
+            stateBefore
+        );
+
+        // Disable automation
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+        
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexBefore, indexAfter);
+        assertEq(startBefore, startAfter);
+        assertEq(durationBefore, durationAfter);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
+    }
+
+    /// @dev Test to ensure 'disableAutomation' moves cycle state from FINISHED to SUSPENDED if automation is disabled and transition is not started.
+    function testDisableAutomationFinishedToSuspendedWhenTransitionNotStarted() public {
+        registerUst(diamondAddr);
+
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+        
+        // Moves state to FINISHED
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
+
+        vm.expectEmit(true, true, false, true);
+        emit ICoreFacet.AutomationCycleEvent(
+            indexBefore, 
+            LibCommon.CycleState.SUSPENDED,
+            startBefore,
+            durationBefore,
+            stateBefore
+        );
+
+        // Disable automation
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexBefore, indexAfter);
+        assertEq(startBefore, startAfter);
+        assertEq(durationBefore, durationAfter);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
+    }
+
+    /// @dev Test to ensure 'disableAutomation' does not change cycle state from FINISHED if automation is disabled and transition is in progress.
+    function testDisableAutomationRetainsFinishedStateIfTransitionInProgress() public {
+        // Register 2 USTs so transition requires processing both
+        registerUst(diamondAddr); // task index 0
+        registerUst(diamondAddr); // task index 1
+
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+
+        // Move state to FINISHED
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
+
+        // Process only task 0 — transition is now in progress
+        uint256[] memory partialTasks = new uint256[](1);
+        partialTasks[0] = 0;
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexBefore + 1, partialTasks);
+
+        // Cycle state is FINISHED (transition not yet complete)
+        ( , , , LibCommon.CycleState stateAfterPartial) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfterPartial), uint8(LibCommon.CycleState.FINISHED));
+
+        // Disable automation
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+
+        (uint64 indexAfter, uint64 startAfter, uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexAfter, indexBefore);
+        assertEq(startAfter, startBefore);
+        assertEq(durationAfter, durationBefore);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
+    }
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'enableAutomation' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure 'enableAutomation' enables the automation.
@@ -450,7 +550,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'removeRegisteredTask' removes a UST when predicate validation fails.
     function testRemoveRegisteredTasksForUST() public {
         // Register a UST
-        registerUst();
+        registerUst(diamondAddr);
         
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
@@ -491,19 +591,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'removeRegisteredTask' removes a GST when predicate validation fails.
     function testRemoveRegisteredTasksForGST() public {
         // Register a GST
-        bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
-        bytes memory predicate = createPredicate(diamondAddr);
-
-        vm.prank(bob);
-        IRegistryFacet(diamondAddr).registerSystemTask(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            2,                                  // priority
-            auxData                             // aux data
-        );
+        registerGst(diamondAddr);
         
         assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
@@ -532,7 +620,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' emits 'TaskRemovedBySystem' event.
     function testRemoveRegisteredTasksEmitsEvent() public {
-        registerUst();
+        registerUst(diamondAddr);
         
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -557,7 +645,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
     function testRemoveRegisteredTasksRevertsIfNotVmSigner() public {
-        registerUst();
+        registerUst(diamondAddr);
         
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
 
@@ -570,7 +658,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
     function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
@@ -583,7 +671,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
     function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect2() public {
-        registerUst();
+        registerUst(diamondAddr);
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
