@@ -56,7 +56,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
 
         s.automationEnabled = true;
         if (s.cycleState == LibCommon.CycleState.READY) {
-            LibCore.updateCycleStateTo(LibCommon.CycleState.STARTED);
+            LibCore.moveToStartedState();
             LibCore.updateConfigFromBuffer();
         }
 
@@ -70,8 +70,9 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         if (!s.automationEnabled) { revert AlreadyDisabled(); }
         
         s.automationEnabled = false;
-        LibCore.handleDisableAutomation(s.cycleState);
-        
+        if (LibCommon.isCycleStarted() || (s.cycleState == LibCommon.CycleState.FINISHED && !LibCore.isTransitionInProgress())) {
+            LibCore.tryMoveToSuspendedState();
+        }
         emit AutomationDisabled(s.automationEnabled);
     }
 

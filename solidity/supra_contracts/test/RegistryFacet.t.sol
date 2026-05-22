@@ -191,6 +191,34 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
     }
 
+    /// @dev Test to ensure 'register' reverts if task capacity is reached.
+    function testRegisterRevertsIfTaskCapacityReached() public {
+        address diamond = deployCustomRegistry();
+
+        registerUst(diamond);
+        registerUst(diamond);
+        assertEq(IRegistryFacet(diamond).totalTasks(), 2);
+        
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
+        bytes memory predicate = createPredicate(diamond);
+        
+        // Third registration should revert with TaskCapacityReached
+        vm.expectRevert(IRegistryFacet.TaskCapacityReached.selector);
+
+        vm.prank(alice);
+        IRegistryFacet(diamond).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            2,
+            auxData
+        );
+    }
+    
     /// @dev Test to ensure 'register' reverts if predicate returns invalid data length.
     function testRegisterRevertsIfPredicateReturnsInvalidLength() public {
         bytes[] memory auxData;
@@ -604,43 +632,31 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
-        bytes memory predicate = createPredicate(diamondAddr);
-
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
-
-        vm.prank(bob);
-        IRegistryFacet(diamondAddr).registerSystemTask(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            2,                                  // priority
-            auxData                             // aux data
-        );
+        registerGst(diamondAddr);
     }
 
     /// @dev Test to ensure 'registerSystemTask' reverts if registration is disabled.
     function testRegisterSystemTaskRevertsIfRegistrationDisabled() public {
         vm.prank(admin);
         IConfigFacet(diamondAddr).disableRegistration();
-
-        bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
-        bytes memory predicate = createPredicate(diamondAddr);
-
+    
         vm.expectRevert(IRegistryFacet.RegistrationDisabled.selector);
+        registerGst(diamondAddr);
+    }
 
-        vm.prank(bob);
-        IRegistryFacet(diamondAddr).registerSystemTask(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            2,                                  // priority
-            auxData                             // aux data
-        );
+    /// @dev Test to ensure 'registerSystemTask' reverts if system task capacity is reached.
+    function testRegisterSystemTaskRevertsIfSysTaskCapacityReached() public {
+        address diamond = deployCustomRegistry();
+
+        registerGst(diamond);
+        registerGst(diamond);
+        assertEq(IRegistryFacet(diamond).totalTasks(), 2);
+        assertEq(IRegistryFacet(diamond).totalSystemTasks(), 2);
+        
+        // Third registration should revert with TaskCapacityReached
+        vm.expectRevert(IRegistryFacet.TaskCapacityReached.selector);
+        registerGst(diamond);
     }
 
     /// @dev Test to ensure 'registerSystemTask' reverts if task duration is greater than system task duration cap.

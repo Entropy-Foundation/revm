@@ -74,26 +74,45 @@ abstract contract BaseDiamondTest is Test {
     }
 
     /// @dev Helper function to register a UST.
-    function registerUst() internal {
+    /// @param _diamond The address of the diamond.
+    function registerUst(address _diamond) internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
-        bytes memory predicate = createPredicate(diamondAddr);
+        bytes memory predicate = createPredicate(_diamond);
         
         vm.startPrank(alice);
         erc20SupraHandler.deposit{value: 100 ether}();
-        erc20Supra.approve(diamondAddr, type(uint256).max);
+        erc20Supra.approve(_diamond, type(uint256).max);
 
-        IRegistryFacet(diamondAddr).register(
-            payload,
-            predicate,
-            uint64(block.timestamp + 1250),
-            uint128(100_000),
-            uint128(4 gwei),
-            uint128(60.1 ether),
-            2,
-            auxData
+        IRegistryFacet(_diamond).register(
+            payload,                            // payload
+            predicate,                          // predicate
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
+            uint128(4 gwei),                    // gasPriceCap
+            uint128(60.1 ether),                // automationFeeCapForCycle
+            2,                                  // priority
+            auxData                             // aux data
         );
         vm.stopPrank();
+    }
+
+    /// @dev Helper function to register a GST.
+    /// @param _diamond The address of the diamond.
+    function registerGst(address _diamond) internal {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
+        bytes memory predicate = createPredicate(_diamond);
+
+        vm.prank(bob);
+        IRegistryFacet(_diamond).registerSystemTask(
+            payload,                            // payload
+            predicate,                          // predicate
+            uint64(block.timestamp + 1250),     // expiryTime
+            uint128(100_000),                   // maxGasAmount
+            2,                                  // priority
+            auxData                             // aux data
+        );
     }
     
     /// @dev Helper function to return payload.
@@ -128,5 +147,33 @@ abstract contract BaseDiamondTest is Test {
         // Creates a predicate that checks if registration is enabled
         bytes memory callData = abi.encodeCall(IConfigFacet.isRegistrationEnabled, ());
         return abi.encode(_target, callData);
+    }
+
+    /// @dev Helper function to deploy a custom AutomationRegistry with taskCapacity and sysTaskCapacity set to 2.
+    function deployCustomRegistry() internal returns (address) {
+        InitParams memory initParams = InitParams({
+            taskDurationCapSecs: 3600 * 24 * 7,
+            registryMaxGasCap: 20_000_000,
+            automationBaseFeeWeiPerSec: 0.5 ether,
+            flatRegistrationFeeWei: 1 ether,
+            congestionThresholdPercentage: 50,
+            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionExponent: 6,
+            taskCapacity: 2,
+            cycleDurationSecs: 1200,
+            sysTaskDurationCapSecs: 3600 * 24 * 180,
+            sysRegistryMaxGasCap: 20_000_000,
+            sysTaskCapacity: 2,
+            registrationEnabled: true,
+            automationEnabled: true
+        });
+        
+        vm.startPrank(admin);
+        Deployment memory customDeployment = LibDiamondUtils.deploy(admin, address(erc20Supra), initParams);
+        address diamond = customDeployment.diamond;
+        IConfigFacet(diamond).grantAuthorization(bob);
+        vm.stopPrank();
+
+        return diamond;
     }
 }
