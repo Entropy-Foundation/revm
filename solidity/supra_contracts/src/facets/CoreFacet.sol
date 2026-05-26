@@ -56,8 +56,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
 
         s.automationEnabled = true;
         if (s.cycleState == LibCommon.CycleState.READY) {
-            LibCore.moveToStartedState();
             LibCore.updateConfigFromBuffer();
+            LibCore.moveToStartedState();
         }
 
         emit AutomationEnabled(s.automationEnabled);
