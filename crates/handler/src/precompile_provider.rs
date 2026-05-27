@@ -19,7 +19,7 @@ pub trait PrecompileProvider<CTX: ContextTr> {
     /// Returned booling will determine if precompile addresses should be injected into the journal.
     fn set_spec(&mut self, spec: <CTX::Cfg as Cfg>::Spec) -> bool;
 
-    /// Run precompile.
+    /// Run the precompile.
     fn run(
         &mut self,
         context: &mut CTX,
