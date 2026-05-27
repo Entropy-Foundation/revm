@@ -55,7 +55,7 @@ impl TryFrom<&[u8]> for TaskPredicate {
 pub enum AutomationTaskPredicate {
     /// Represents always true predicate
     #[default]
-    ByPass,
+    Bypass,
     /// Predicate to be executed.
     Predicate(TaskPredicate),
 }
@@ -818,7 +818,7 @@ mod tests {
             value: val,
             access_list: AccessList::default(),
             input: input_data.clone(),
-            predicate: AutomationTaskPredicate::ByPass,
+            predicate: AutomationTaskPredicate::Bypass,
         };
 
         assert_eq!(txn.chain_id(), Some(CHAIN_ID));
@@ -958,7 +958,7 @@ mod tests {
     #[test]
     fn build_without_predicate_sets_bypass() {
         let details = unwrap_success(base_ust_builder().build().unwrap());
-        assert_eq!(details.txn.predicate, AutomationTaskPredicate::ByPass);
+        assert_eq!(details.txn.predicate, AutomationTaskPredicate::Bypass);
     }
 
     #[test]

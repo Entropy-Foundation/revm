@@ -15,13 +15,13 @@ use primitives::supra_constants::VM_SIGNER;
 use primitives::TxKind;
 
 /// EVM system transaction generated based on the block sent for execution.
-/// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meat
+/// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meet
 /// other `supra-evm` SC checks requiring per-block execution.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct BlockMetadata {
-    /// Id of the chain in scope of which block is being executed
+    /// ID of the chain in scope of which block is being executed
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub chain_id: ChainId,
     /// Sender of the transaction. By default, will be agreed @evm_vm_signer

@@ -6,6 +6,13 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {LibUtils} from "./libraries/LibUtils.sol";
 import {IBlockMeta} from "./interfaces/IBlockMeta.sol";
 
+/**
+ * BlockMeta is a system-level execution scheduler — it maintains an ordered queue of (target contract, selector) pairs
+ * that the Supra VM fires once per block at block-start time via blockPrologue().
+ * Think of it as a deterministic cron-within-a-block for system-level hooks (oracle updates, reward distributions, etc.)
+ * that must run on every block without user transactions.
+ */
+
 contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     using LibUtils for address;
 
