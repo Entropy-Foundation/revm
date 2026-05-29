@@ -38,12 +38,8 @@ impl TryFrom<&[u8]> for TaskPredicate {
             alloy_sol_types::sol_data::Address,
             alloy_sol_types::sol_data::Bytes,
         );
-        let (address, input) = PredicateType::abi_decode_sequence(value).map_err(|e| {
-            SupraExtensionError::PayloadDecode {
-                error: e,
-                payload: "predicate".to_owned(),
-            }
-        })?;
+        let (address, input) = PredicateType::abi_decode_sequence(value)
+            .map_err(|e| SupraExtensionError::PredicateDecode { error: e })?;
         Ok(Self { address, input })
     }
 }
@@ -327,13 +323,8 @@ impl TryFrom<&[u8]> for TaskPayload {
     type Error = SupraExtensionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let (value, to, input, access_list) =
-            ExpandedPayloadTy::abi_decode(value).map_err(|e| {
-                SupraExtensionError::PayloadDecode {
-                    error: e,
-                    payload: "task action".to_owned(),
-                }
-            })?;
+        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(value)
+            .map_err(|e| SupraExtensionError::PayloadDecode { error: e })?;
         let access_items = access_list
             .into_iter()
             .map(|(address, storage_keys)| AccessListItem {
@@ -561,7 +552,7 @@ impl AutomatedTransactionBuilder {
         let value = value_or_error!(AutomatedTransactionBuilder, "value", value);
         let access_list = value_or_error!(AutomatedTransactionBuilder, "access_list", access_list);
         let input = value_or_error!(AutomatedTransactionBuilder, "input", input);
-        if typ == AutomatedTransactionType::UST && gas_price_cap < gas_price{
+        if typ == AutomatedTransactionType::UST && gas_price_cap < gas_price {
             return Ok(BuildResult::GasPriceLimitExceeded {
                 task_index,
                 value: gas_price,
@@ -647,12 +638,12 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::primitives::{address, b256, Address, B256, Bytes, U256};
-    use alloy_consensus::transaction::Transaction;
-    use alloy_sol_types::SolType;
-    use crate::{errors::SupraExtensionError, TaskMetadata};
     use crate::transactions::automated_transaction::{ExpandedPayloadTy, TaskPredicate};
+    use crate::{errors::SupraExtensionError, TaskMetadata};
     use alloy::hex;
+    use alloy::primitives::{address, b256, Address, Bytes, B256, U256};
+    use alloy_consensus::transaction::Transaction;
+    use alloy_sol_types::{SolType};
 
     type PredicateType = (
         alloy_sol_types::sol_data::Address,
@@ -667,7 +658,8 @@ mod tests {
     const GAS_LIMIT: u64 = 500_000;
     const GAS_PRICE: u128 = 1_000;
     const GAS_PRICE_CAP: u128 = 2_000;
-    const REG_HASH: B256 = b256!("0101010101010101010101010101010101010101010101010101010101010101");
+    const REG_HASH: B256 =
+        b256!("0101010101010101010101010101010101010101010101010101010101010101");
 
     fn encode_payload(value: U256, to: Address, input: &[u8]) -> Bytes {
         Bytes::from(ExpandedPayloadTy::abi_encode(&(
@@ -763,23 +755,31 @@ mod tests {
     #[test]
     fn predicate_from_invalid_bytes_returns_payload_decode_error() {
         let err = TaskPredicate::try_from([0xFF, 0x01, 0x02].as_slice()).unwrap_err();
-        assert!(matches!(err, SupraExtensionError::PayloadDecode { .. }));
+        assert!(matches!(err, SupraExtensionError::PredicateDecode { .. }));
     }
 
     // ── AutomatedTransactionType::try_from ───────────────────────────────────
 
     #[test]
     fn txn_type_checks() {
-
         // 0 is UST
-        assert_eq!(AutomatedTransactionType::try_from(0u8).unwrap(), AutomatedTransactionType::UST);
+        assert_eq!(
+            AutomatedTransactionType::try_from(0u8).unwrap(),
+            AutomatedTransactionType::UST
+        );
         // 1 is GST
-        assert_eq!(AutomatedTransactionType::try_from(1u8).unwrap(), AutomatedTransactionType::GST);
+        assert_eq!(
+            AutomatedTransactionType::try_from(1u8).unwrap(),
+            AutomatedTransactionType::GST
+        );
 
         // Any other value is error
         for v in [2u8, 50, 255] {
             assert!(
-                matches!(AutomatedTransactionType::try_from(v), Err(SupraExtensionError::InvalidAutomationTaskTypeValue(_))),
+                matches!(
+                    AutomatedTransactionType::try_from(v),
+                    Err(SupraExtensionError::InvalidAutomationTaskTypeValue(_))
+                ),
                 "expected error for {v}"
             );
         }
@@ -789,13 +789,19 @@ mod tests {
 
     #[test]
     fn ust_is_not_gasless() {
-        let txn = AutomatedTransaction { txn_type: AutomatedTransactionType::UST, ..Default::default() };
+        let txn = AutomatedTransaction {
+            txn_type: AutomatedTransactionType::UST,
+            ..Default::default()
+        };
         assert!(!txn.is_gasless());
     }
 
     #[test]
     fn gst_is_gasless() {
-        let txn = AutomatedTransaction { txn_type: AutomatedTransactionType::GST, ..Default::default() };
+        let txn = AutomatedTransaction {
+            txn_type: AutomatedTransactionType::GST,
+            ..Default::default()
+        };
         assert!(txn.is_gasless());
     }
 
@@ -841,36 +847,51 @@ mod tests {
 
     #[test]
     fn effective_gas_price_no_base_fee_equals_max_fee() {
-        let txn = AutomatedTransaction { max_fee_per_gas: 5_000, ..Default::default() };
+        let txn = AutomatedTransaction {
+            max_fee_per_gas: 5_000,
+            ..Default::default()
+        };
         assert_eq!(txn.effective_gas_price(None), 5_000);
     }
 
     #[test]
     fn effective_gas_price_base_fee_below_max_fee_uses_base_fee() {
-        let txn = AutomatedTransaction { max_fee_per_gas: 5_000, ..Default::default() };
+        let txn = AutomatedTransaction {
+            max_fee_per_gas: 5_000,
+            ..Default::default()
+        };
         // min(5000, 100 + 0) = 100
         assert_eq!(txn.effective_gas_price(Some(100)), 100);
     }
 
     #[test]
     fn effective_gas_price_base_fee_above_max_fee_is_capped() {
-        let txn = AutomatedTransaction { max_fee_per_gas: 1_000, ..Default::default() };
+        let txn = AutomatedTransaction {
+            max_fee_per_gas: 1_000,
+            ..Default::default()
+        };
         // min(1000, 9999 + 0) = 1000
         assert_eq!(txn.effective_gas_price(Some(9_999)), 1_000);
     }
 
     // ── AutomatedTransactionDetails ordering ──────────────────────────────────
 
-    fn make_details(txn_type: AutomatedTransactionType, priority: u64) -> AutomatedTransactionDetails {
+    fn make_details(
+        txn_type: AutomatedTransactionType,
+        priority: u64,
+    ) -> AutomatedTransactionDetails {
         AutomatedTransactionDetails {
-            txn: AutomatedTransaction { txn_type, ..Default::default() },
+            txn: AutomatedTransaction {
+                txn_type,
+                ..Default::default()
+            },
             priority,
         }
     }
 
     #[test]
     fn same_type_ordered_by_priority_ascending() {
-        let low  = make_details(AutomatedTransactionType::UST, 1);
+        let low = make_details(AutomatedTransactionType::UST, 1);
         let high = make_details(AutomatedTransactionType::UST, 10);
         assert!(low < high);
         assert!(high > low);
@@ -968,9 +989,15 @@ mod tests {
             input: Bytes::from(b"check"),
         };
         let details = unwrap_success(
-            base_ust_builder().with_predicate(pred.clone()).build().unwrap()
+            base_ust_builder()
+                .with_predicate(pred.clone())
+                .build()
+                .unwrap(),
         );
-        assert_eq!(details.txn.predicate, AutomationTaskPredicate::Predicate(pred));
+        assert_eq!(
+            details.txn.predicate,
+            AutomationTaskPredicate::Predicate(pred)
+        );
     }
 
     // ── AutomatedTransactionBuilder: gas price cap check ─────────────────────
@@ -983,7 +1010,11 @@ mod tests {
             .build()
             .unwrap();
         match result {
-            BuildResult::GasPriceLimitExceeded { task_index, value, threshold } => {
+            BuildResult::GasPriceLimitExceeded {
+                task_index,
+                value,
+                threshold,
+            } => {
                 assert_eq!(task_index, TASK_INDEX);
                 assert_eq!(value, 3_000);
                 assert_eq!(threshold, 1_000);
@@ -1034,107 +1065,179 @@ mod tests {
         };
     }
 
-    missing_field_test!(build_missing_type_returns_error,
+    missing_field_test!(
+        build_missing_type_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_block_height(BLOCK_HEIGHT).with_chain_id(CHAIN_ID)
-            .with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_to(TO)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
             .with_input(Bytes::from(b"d")),
         "type"
     );
 
-    missing_field_test!(build_missing_block_height_returns_error,
+    missing_field_test!(
+        build_missing_block_height_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_chain_id(CHAIN_ID)
-            .with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_to(TO)
+            .with_typ(AutomatedTransactionType::UST)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
             .with_input(Bytes::from(b"d")),
         "block_height"
     );
 
-    missing_field_test!(build_missing_chain_id_returns_error,
+    missing_field_test!(
+        build_missing_chain_id_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_to(TO)
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
             .with_input(Bytes::from(b"d")),
         "chain_id"
     );
 
-    missing_field_test!(build_missing_gas_limit_returns_error,
+    missing_field_test!(
+        build_missing_gas_limit_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_to(TO)
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
             .with_input(Bytes::from(b"d")),
         "gas_limit"
     );
 
-    missing_field_test!(build_missing_gas_price_cap_returns_error,
+    missing_field_test!(
+        build_missing_gas_price_cap_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_registration_hash(REG_HASH).with_task_index(TASK_INDEX)
-            .with_owner(OWNER).with_to(TO).with_input(Bytes::from(b"d")),
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
+            .with_input(Bytes::from(b"d")),
         "gas_price_cap"
     );
 
-    missing_field_test!(build_ust_missing_gas_price_returns_error,
+    missing_field_test!(
+        build_ust_missing_gas_price_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_to(TO)
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
             .with_input(Bytes::from(b"d")),
         "gas_price"
     );
 
-    missing_field_test!(build_missing_registration_hash_returns_error,
+    missing_field_test!(
+        build_missing_registration_hash_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_task_index(TASK_INDEX)
-            .with_owner(OWNER).with_to(TO).with_input(Bytes::from(b"d")),
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO)
+            .with_input(Bytes::from(b"d")),
         "registration_hash"
     );
 
-    missing_field_test!(build_missing_task_index_returns_error,
+    missing_field_test!(
+        build_missing_task_index_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_owner(OWNER).with_to(TO).with_input(Bytes::from(b"d")),
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_owner(OWNER)
+            .with_to(TO)
+            .with_input(Bytes::from(b"d")),
         "task_index"
     );
 
-    missing_field_test!(build_missing_owner_returns_error,
+    missing_field_test!(
+        build_missing_owner_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_to(TO).with_input(Bytes::from(b"d")),
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_to(TO)
+            .with_input(Bytes::from(b"d")),
         "owner"
     );
 
-    missing_field_test!(build_missing_to_returns_error,
+    missing_field_test!(
+        build_missing_to_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_input(Bytes::from(b"d")),
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_input(Bytes::from(b"d")),
         "to"
     );
 
-    missing_field_test!(build_missing_input_returns_error,
+    missing_field_test!(
+        build_missing_input_returns_error,
         AutomatedTransactionBuilder::new()
-            .with_typ(AutomatedTransactionType::UST).with_block_height(BLOCK_HEIGHT)
-            .with_chain_id(CHAIN_ID).with_gas_limit(GAS_LIMIT).with_gas_price(GAS_PRICE)
-            .with_gas_price_cap(GAS_PRICE_CAP).with_registration_hash(REG_HASH)
-            .with_task_index(TASK_INDEX).with_owner(OWNER).with_to(TO),
+            .with_typ(AutomatedTransactionType::UST)
+            .with_block_height(BLOCK_HEIGHT)
+            .with_chain_id(CHAIN_ID)
+            .with_gas_limit(GAS_LIMIT)
+            .with_gas_price(GAS_PRICE)
+            .with_gas_price_cap(GAS_PRICE_CAP)
+            .with_registration_hash(REG_HASH)
+            .with_task_index(TASK_INDEX)
+            .with_owner(OWNER)
+            .with_to(TO),
         "input"
     );
 
@@ -1144,21 +1247,30 @@ mod tests {
     fn task_metadata_pending_state_returns_error() {
         let metadata = base_task_metadata(0, 0); // Pending, UST
         let err = AutomatedTransactionBuilder::try_from(metadata).unwrap_err();
-        assert!(matches!(err, SupraExtensionError::InvalidAutomationTaskStateForBuilder));
+        assert!(matches!(
+            err,
+            SupraExtensionError::InvalidAutomationTaskStateForBuilder
+        ));
     }
 
     #[test]
     fn task_metadata_invalid_state_returns_error() {
         let metadata = base_task_metadata(3, 0); // invalid state
         let err = AutomatedTransactionBuilder::try_from(metadata).unwrap_err();
-        assert!(matches!(err, SupraExtensionError::InvalidAutomationTaskStateValue(3)));
+        assert!(matches!(
+            err,
+            SupraExtensionError::InvalidAutomationTaskStateValue(3)
+        ));
     }
 
     #[test]
     fn task_metadata_invalid_type_returns_error() {
         let metadata = base_task_metadata(1, 5); // Active, invalid type
         let err = AutomatedTransactionBuilder::try_from(metadata).unwrap_err();
-        assert!(matches!(err, SupraExtensionError::InvalidAutomationTaskTypeValue(5)));
+        assert!(matches!(
+            err,
+            SupraExtensionError::InvalidAutomationTaskTypeValue(5)
+        ));
     }
 
     #[test]
@@ -1213,7 +1325,7 @@ mod tests {
         let mut metadata = base_task_metadata(1, 0);
         metadata.predicate = Bytes::from(b"not_valid_abi");
         let err = AutomatedTransactionBuilder::try_from(metadata).unwrap_err();
-        assert!(matches!(err, SupraExtensionError::PayloadDecode { .. }));
+        assert!(matches!(err, SupraExtensionError::PredicateDecode { .. }));
     }
 
     #[test]

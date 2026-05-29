@@ -10,12 +10,35 @@ pub enum SupraExtensionError {
     MissingBuilderValue(String, String),
 
     /// Reported on failure of automation task inner payload decode.
-    #[error("Failed to decode {payload} payload: {error}")]
+    #[error("Failed to decode task payload: {error}")]
     PayloadDecode {
         /// Error description
+        #[source]
         error: alloy_sol_types::Error,
-        /// Payload description for which error has been identified
-        payload: String
+    },
+
+    /// Reported on failure of automation task predicate decode.
+    #[error("Failed to decode task predicate: {error}")]
+    PredicateDecode {
+        /// Error description
+        #[source]
+        error: alloy_sol_types::Error,
+    },
+
+    /// Reported on failure of automation record remove action decode.
+    #[error("Failed to decode automation record remove action: {error}")]
+    RecordRemoveDecode {
+        /// Error description
+        #[source]
+        error: alloy_sol_types::Error,
+    },
+
+    /// Reported on failure of automation record process action decode.
+    #[error("Failed to decode automation record process action: {error}")]
+    RecordProcessDecode {
+        /// Error description
+        #[source]
+        error: alloy_sol_types::Error,
     },
 
     /// Reported on failure of task state conversion to counterpart in native layer.

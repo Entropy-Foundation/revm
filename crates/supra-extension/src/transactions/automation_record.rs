@@ -61,11 +61,11 @@ impl AutomationRegistryRecord {
         let selector = &self.input[..SELECTOR_LEN];
         if removeRegisteredTaskCall::SELECTOR.as_slice().eq(selector) {
             removeRegisteredTaskCall::abi_decode(&self.input)
-                .map_err(|e| SupraExtensionError::PayloadDecode { error: e, payload: "AutomationRecordAction::Remove".to_string() })
+                .map_err(|e| SupraExtensionError::RecordRemoveDecode { error: e })
                 .map(AutomationRecordAction::Remove)
         } else if processTasksCall::SELECTOR.as_slice().eq(selector) {
             processTasksCall::abi_decode(&self.input)
-                .map_err(|e| SupraExtensionError::PayloadDecode { error: e, payload: "AutomationRecordAction::Process".to_string() })
+                .map_err(|e| SupraExtensionError::RecordProcessDecode { error: e })
                 .map(AutomationRecordAction::Process)
         } else {
             Err(SupraExtensionError::InvalidAutomationRecord(format!(
@@ -92,7 +92,6 @@ impl AutomationRegistryRecord {
             )))
         }
     }
-
 }
 
 impl Transaction for AutomationRegistryRecord {
@@ -198,10 +197,9 @@ pub enum AutomationRecordAction {
 }
 
 impl AutomationRecordAction {
-
     /// Crate process action with provided cycle index and list of task indexes to be processed.
     pub fn process(cycle_index: u64, task_indexes: Vec<u64>) -> Self {
-        Self::Process( processTasksCall {
+        Self::Process(processTasksCall {
             _cycleIndex: cycle_index,
             _taskIndexes: task_indexes.into_iter().map(U256::from).collect(),
         })
@@ -209,7 +207,7 @@ impl AutomationRecordAction {
 
     /// Crate remove action with provided cycle index and list of task indexes to be processed.
     pub fn remove(cycle_index: u64, task_index: u64, reason: String) -> Self {
-        Self::Remove( removeRegisteredTaskCall {
+        Self::Remove(removeRegisteredTaskCall {
             _cycleIndex: cycle_index,
             _taskIndex: task_index,
             _reason: reason,
@@ -275,7 +273,7 @@ impl AutomationRecordAction {
     }
 
     /// Converts into abi encoded bytes.
-    pub  fn into_bytes(self) -> Bytes {
+    pub fn into_bytes(self) -> Bytes {
         match self {
             AutomationRecordAction::Process(task) => task.abi_encode().into(),
             AutomationRecordAction::Remove(task) => task.abi_encode().into(),
@@ -328,7 +326,11 @@ impl AutomationRecordBuilder {
     }
 
     pub fn remove_task(mut self, cycle_index: u64, task_index: u64, reason: String) -> Self {
-        self.action = Some(AutomationRecordAction::remove(cycle_index, task_index, reason));
+        self.action = Some(AutomationRecordAction::remove(
+            cycle_index,
+            task_index,
+            reason,
+        ));
         self
     }
 
@@ -465,7 +467,10 @@ mod tests {
 
     #[test]
     fn build_process_record_with_empty_task_list() {
-        let record = base_builder().process_task_indexes(CYCLE_INDEX, vec![]).build().unwrap();
+        let record = base_builder()
+            .process_task_indexes(CYCLE_INDEX, vec![])
+            .build()
+            .unwrap();
         assert!(!record.input.is_empty()); // selector + ABI-encoded empty array still produces bytes
     }
 
@@ -794,7 +799,7 @@ mod tests {
 
     #[test]
     fn action_task_range_remove() {
-        let action = AutomationRecordAction::Remove (removeRegisteredTaskCall {
+        let action = AutomationRecordAction::Remove(removeRegisteredTaskCall {
             _taskIndex: 42,
             _reason: String::new(),
             _cycleIndex: 3,
