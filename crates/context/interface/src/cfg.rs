@@ -15,6 +15,8 @@ pub enum ExecutionMode {
     Automated,
     /// Executing governance sponsored automated transaction.
     AutomatedGasless,
+    /// Executing a transaction for which no state change is expected
+    ReadOnly,
     /// Executing governance native transaction.
     System,
     /// When transactions are executed in genesis mode.
@@ -26,7 +28,7 @@ impl ExecutionMode {
     pub fn charges_gas(&self) -> bool {
         match self {
             ExecutionMode::User | ExecutionMode::Automated => true,
-            ExecutionMode::AutomatedGasless | ExecutionMode::System | ExecutionMode::Genesis => {
+            ExecutionMode::AutomatedGasless | ExecutionMode::System | ExecutionMode::Genesis | ExecutionMode::ReadOnly => {
                 false
             }
         }
@@ -45,6 +47,12 @@ impl ExecutionMode {
     /// Returns true if the execution context is for governance genesis transaction
     pub fn is_genesis(&self) -> bool {
         matches!(self, ExecutionMode::Genesis)
+    }
+
+    /// Returns true if the execution context is configured for read-only execution,
+    /// i.e. for execution of pure view functions.
+    pub  fn is_read_only(&self) -> bool {
+        matches!(self, ExecutionMode::ReadOnly)
     }
 }
 

@@ -252,6 +252,10 @@ impl JournalTr for Backend {
     fn discard_tx(&mut self) {
         self.journaled_state.discard_tx()
     }
+
+    fn has_state_mutations(&self) -> bool {
+        self.journaled_state.has_state_mutations()
+    }
 }
 
 impl JournalExt for Backend {

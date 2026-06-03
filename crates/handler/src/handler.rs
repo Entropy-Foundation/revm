@@ -451,8 +451,14 @@ pub trait Handler {
 
     /// Processes the final execution output.
     ///
-    /// This method, retrieves the final state from the journal, converts internal results to the external output format.
-    /// Internal state is cleared and EVM is prepared for the next transaction.
+    /// This method retrieves the final state from the journal, converts internal results to the
+    /// external output format, and prepares the EVM for the next transaction.
+    ///
+    /// For [`ExecutionMode::ReadOnly`] transactions the journal is always discarded
+    /// via [`JournalTr::discard_tx`] rather than committed, preventing any side effects
+    /// (including account warmth) from leaking into subsequent transaction execution.
+    /// If the journal contains state-mutating entries the method returns an error, because
+    /// predicates are expected to be pure view functions.
     #[inline]
     fn execution_result(
         &mut self,
@@ -465,7 +471,31 @@ pub trait Handler {
             Ok(_) => (),
         }
 
+        // output() only calls take_logs() — it does not touch the journal entry list,
+        // so entries are still available for mutation detection below.
         let exec_result = post_execution::output(evm.ctx(), result);
+
+        if evm.ctx_ref().cfg().execution_mode().is_read_only() {
+            // Capture task identity before the mutable journal borrow.
+            let txn_nonce = evm.ctx_ref().tx().nonce();
+
+            // Inspect journal entries while they are still present — commit_tx() and
+            // discard_tx() both clear the list, so this must happen first.
+            let has_mutations = evm.ctx().journal_mut().has_state_mutations();
+
+            // Always discard: execution in read-only mode must never persist state changes or account
+            // warmth into the accumulated block state, regardless of mutation outcome.
+            evm.ctx().journal_mut().discard_tx();
+            evm.ctx().local_mut().clear();
+            evm.frame_stack().clear();
+
+            if has_mutations {
+                return Err(Self::Error::from_string(format!(
+                    "Execution in ReadOnly mode attempted state mutation: transcation_nonce={txn_nonce}"
+                )));
+            }
+            return Ok(exec_result);
+        }
 
         // commit transaction
         evm.ctx().journal_mut().commit_tx();
