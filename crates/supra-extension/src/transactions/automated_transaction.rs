@@ -31,9 +31,6 @@ impl TryFrom<&[u8]> for TaskPredicate {
     type Error = SupraExtensionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.is_empty() {
-            return Ok(Self::default());
-        }
         type PredicateType = (
             alloy_sol_types::sol_data::Address,
             alloy_sol_types::sol_data::Bytes,
@@ -54,6 +51,18 @@ pub enum AutomationTaskPredicate {
     Bypass,
     /// Predicate to be executed.
     Predicate(TaskPredicate),
+}
+
+impl TryFrom<&[u8]> for AutomationTaskPredicate {
+    type Error = SupraExtensionError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            Ok(Self::Bypass)
+        } else {
+            Ok(Self::Predicate(TaskPredicate::try_from(value)?))
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -402,7 +411,7 @@ pub struct AutomatedTransactionBuilder {
     value: Option<U256>,
     access_list: Option<AccessList>,
     input: Option<Bytes>,
-    predicate: Option<TaskPredicate>,
+    predicate: Option<AutomationTaskPredicate>,
 }
 
 #[allow(missing_docs)]
@@ -502,7 +511,7 @@ impl AutomatedTransactionBuilder {
         self
     }
 
-    pub fn with_predicate(mut self, predicate: TaskPredicate) -> Self {
+    pub fn with_predicate(mut self, predicate: AutomationTaskPredicate) -> Self {
         self.predicate = Some(predicate);
         self
     }
@@ -572,9 +581,7 @@ impl AutomatedTransactionBuilder {
             value,
             access_list,
             input,
-            predicate: predicate
-                .map(AutomationTaskPredicate::Predicate)
-                .unwrap_or_default(),
+            predicate: predicate.unwrap_or_default(),
         };
         Ok(BuildResult::Success(AutomatedTransactionDetails {
             txn,
@@ -615,7 +622,7 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
         let typ = AutomatedTransactionType::try_from(taskType)?;
 
         let (to, value, input, access_list) = TaskPayload::try_from(payloadTx.as_ref())?.dissolve();
-        let predicate = TaskPredicate::try_from(predicate.as_ref())?;
+        let predicate = AutomationTaskPredicate::try_from(predicate.as_ref())?;
         let builder = Self::new()
             .with_gas_price_cap(gasPriceCap)
             .with_gas_limit(maxGasAmount as u64)
@@ -643,7 +650,7 @@ mod tests {
     use alloy::hex;
     use alloy::primitives::{address, b256, Address, Bytes, B256, U256};
     use alloy_consensus::transaction::Transaction;
-    use alloy_sol_types::{SolType};
+    use alloy_sol_types::SolType;
 
     type PredicateType = (
         alloy_sol_types::sol_data::Address,
@@ -736,11 +743,18 @@ mod tests {
     // ── TaskPredicate::try_from ───────────────────────────────────────────────
 
     #[test]
-    fn predicate_from_empty_slice_returns_default() {
-        let p = TaskPredicate::try_from([].as_slice()).unwrap();
-        assert_eq!(p, TaskPredicate::default());
-        assert_eq!(p.address, Address::ZERO);
-        assert!(p.input.is_empty());
+    fn predicate_from_empty_slice_returns_error() {
+        let p = TaskPredicate::try_from([].as_slice());
+        assert!(matches!(
+            p,
+            Err(SupraExtensionError::PredicateDecode { .. })
+        ));
+    }
+
+    #[test]
+    fn automation_task_predicate_from_empty_slice_returns_bypass() {
+        let p = AutomationTaskPredicate::try_from([].as_slice()).unwrap();
+        assert!(matches!(p, AutomationTaskPredicate::Bypass));
     }
 
     #[test]
@@ -990,7 +1004,7 @@ mod tests {
         };
         let details = unwrap_success(
             base_ust_builder()
-                .with_predicate(pred.clone())
+                .with_predicate(AutomationTaskPredicate::Predicate(pred.clone()))
                 .build()
                 .unwrap(),
         );
@@ -1299,17 +1313,27 @@ mod tests {
         metadata.predicate = encode_predicate(pred_addr, b"pred_input");
         let builder = AutomatedTransactionBuilder::try_from(metadata).unwrap();
         let predicate = builder.predicate().as_ref().unwrap();
-        assert_eq!(predicate.address, pred_addr);
-        assert_eq!(predicate.input, Bytes::from(b"pred_input"));
+        match predicate {
+            AutomationTaskPredicate::Bypass => {
+                panic!("Expected valid predicate got Bypass");
+            }
+            AutomationTaskPredicate::Predicate(p) => {
+                assert_eq!(p.address, pred_addr);
+                assert_eq!(p.input, Bytes::from(b"pred_input"));
+            }
+        }
     }
 
     #[test]
     fn task_metadata_empty_predicate_produces_default_predicate_in_builder() {
-        // Empty predicate bytes → TaskPredicate::default() (address=ZERO, input=empty)
+        // Empty predicate bytes → AutomationTaskPredicate::Bypass
         // which is stored as Some(TaskPredicate::default()) in the builder
         let metadata = base_task_metadata(1, 0);
         let builder = AutomatedTransactionBuilder::try_from(metadata).unwrap();
-        assert_eq!(*builder.predicate(), Some(TaskPredicate::default()));
+        assert!(matches!(
+            *builder.predicate(),
+            Some(AutomationTaskPredicate::Bypass)
+        ));
     }
 
     #[test]
@@ -1358,8 +1382,12 @@ mod tests {
     #[test]
     fn check_predicate_decode() {
         let encoded = hex!("000000000000000000000000d3e2a56659d5113fa44c3d09dc21ea8ff48452570000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000426a7076400000000000000000000000000000000000000000000000000000000");
-        let payload = TaskPredicate::try_from(encoded.as_slice()).unwrap();
-        println!("to: {:?}", payload.address);
-        println!("input: {:?}", payload.input);
+        let raw_predicate = TaskPredicate::try_from(encoded.as_slice()).unwrap();
+        let tagged_predicate = AutomationTaskPredicate::try_from(encoded.as_slice()).unwrap();
+        assert!(
+            matches!(tagged_predicate, AutomationTaskPredicate::Predicate(p) if p == raw_predicate)
+        );
+        println!("to: {:?}", raw_predicate.address);
+        println!("input: {:?}", raw_predicate.input);
     }
 }
