@@ -215,6 +215,21 @@ pub trait JournalTr {
     /// any already committed changes and it is safe to call it multiple times.
     fn discard_tx(&mut self);
 
+    /// Returns `true` if the current transaction's journal contains any state-mutating entries.
+    ///
+    /// State-mutating entries are: storage writes (`SSTORE`), account creation (`CREATE`/`CREATE2`),
+    /// selfdestruct (`SELFDESTRUCT`), ETH transfers (`CALL` with non-zero value), nonce increments,
+    /// and code changes. `BalanceChange` entries are filtered by comparing the stored old balance
+    /// against the account's current balance in state, which eliminates false positives from the
+    /// unconditional `pre_execution` caller accounting entry emitted for zero-fee predicate calls.
+    ///
+    /// **Must be called before [`JournalTr::commit_tx`] or [`JournalTr::discard_tx`]** — both
+    /// of those methods clear the entry list, making detection impossible afterward.
+    ///
+    /// Used by [`Handler::execution_result`] to validate that [`ExecutionMode::ReadOnly`]
+    /// transactions are truly stateless.
+    fn has_state_mutations(&self) -> bool;
+
     /// Clear current journal resetting it to initial state and return changes state.
     fn finalize(&mut self) -> Self::State;
 }
