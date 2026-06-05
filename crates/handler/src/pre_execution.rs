@@ -184,7 +184,14 @@ pub fn validate_against_state_and_deduct_caller<
         }
     }
 
-    journal.caller_accounting_journal_entry(tx.caller(), old_balance, tx.kind().is_call());
+    // bump_nonce must be gated by should_update_nonce — otherwise a NonceChange journal entry
+    // is pushed even when the nonce was never incremented (e.g. ReadOnly mode),
+    // which would cause false-positive mutation detection in execution_result.
+    journal.caller_accounting_journal_entry(
+        tx.caller(),
+        old_balance,
+        should_update_nonce && tx.kind().is_call(),
+    );
     Ok(())
 }
 
