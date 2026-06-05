@@ -3,6 +3,8 @@ pragma solidity 0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 import {IERC20SupraHandler} from "../src/interfaces/IERC20SupraHandler.sol";
@@ -144,6 +146,17 @@ contract ERC20SupraHandlerTest is Test {
         erc20SupraHandler.withdraw(1 ether);
     }
 
+    /// @dev Test to ensure 'withdraw' reverts if contract balance is less than requested amount.
+    function testWithdrawRevertsIfInsufficientContractBalance() public {
+        vm.prank(bridge);
+        token.mint(alice, 1 ether);
+
+        vm.expectRevert(IERC20SupraHandler.InsufficientContractBalance.selector);
+        
+        vm.prank(alice);
+        erc20SupraHandler.withdraw(1 ether);
+    }
+
     /// @dev Test to ensure 'withdraw' reverts if requested amount is zero.
     function testWithdrawRevertsIfAmountZero() public {
         vm.expectRevert(IERC20SupraHandler.InvalidAmount.selector);
@@ -225,6 +238,36 @@ contract ERC20SupraHandlerTest is Test {
         assertEq(token.totalSupply(), 2 ether);
         assertEq(token.balanceOf(alice), 2 ether);
         assertEq(token.balanceOf(bob), 0);
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'upgradeToAndCall' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'upgradeToAndCall' upgrades the proxy to a new implementation.
+    function testUpgradeToAndCall() public {
+        vm.prank(alice);
+        erc20SupraHandler.deposit{value: 1 ether}();
+        assertEq(token.balanceOf(alice), 1 ether);
+
+        vm.startPrank(owner);
+        ERC20SupraHandler newImpl = new ERC20SupraHandler();
+        erc20SupraHandler.upgradeToAndCall(address(newImpl), "");
+        vm.stopPrank();
+
+        assertEq(address(uint160(uint256(vm.load(address(erc20SupraHandler), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
+
+        vm.prank(alice);
+        erc20SupraHandler.deposit{value: 1 ether}();
+        assertEq(token.balanceOf(alice), 2 ether);
+    }
+
+    /// @dev Test to ensure 'upgradeToAndCall' reverts if caller is not the owner.
+    function testUpgradeToAndCallRevertsIfNotOwner() public {
+        vm.prank(owner);
+        ERC20SupraHandler newImpl = new ERC20SupraHandler();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        erc20SupraHandler.upgradeToAndCall(address(newImpl), "");
     }
 }
 

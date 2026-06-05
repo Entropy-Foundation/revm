@@ -1057,11 +1057,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         erc20SupraHandler.deposit{value: 100 ether}();
 
-        vm.warp(1201);
-        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();        
-        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
-        vm.stopPrank();
+        processCycleTransition(taskIndexes);
 
         assertEq(erc20Supra.balanceOf(diamondAddr), 64.1 ether);
         assertEq(erc20Supra.balanceOf(alice), 135.9 ether);
@@ -1092,11 +1088,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         erc20SupraHandler.deposit{value: 100 ether}();
 
-        vm.warp(1201);
-        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();        
-        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
-        vm.stopPrank();
+        processCycleTransition(taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 0.0625 ether, keccak256("txHash"));
@@ -1181,12 +1173,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        vm.warp(1201);
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
-
-        vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        processCycleTransition(taskIndexes);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskUint64);
@@ -1209,12 +1196,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        vm.warp(1201);
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
-
-        vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        processCycleTransition(taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 0, 0, keccak256("txHash"));
@@ -1224,5 +1206,166 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskUint64);
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to view functions ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'getTaskIdList' returns correct task IDs.
+    function testGetTaskIdList() public {
+        registerUst(diamondAddr);
+        registerGst(diamondAddr);
+
+        uint256[] memory taskIds = IRegistryFacet(diamondAddr).getTaskIdList();
+        assertEq(taskIds.length, 2);
+        assertEq(taskIds[0], 0);
+        assertEq(taskIds[1], 1);
+    }
+
+    /// @dev Test to ensure 'getSystemTaskIds' returns correct system task IDs.
+    function testGetSystemTaskIds() public {
+        registerGst(diamondAddr);
+        registerGst(diamondAddr);
+
+        uint256[] memory sysTaskIds = IRegistryFacet(diamondAddr).getSystemTaskIds();
+        assertEq(sysTaskIds.length, 2);
+        assertEq(sysTaskIds[0], 0);
+        assertEq(sysTaskIds[1], 1);
+    }
+
+    /// @dev Test to ensure 'getTaskOwner' returns correct owner for an existing task.
+    function testGetTaskOwner() public {
+        registerUst(diamondAddr);
+
+        address owner = IRegistryFacet(diamondAddr).getTaskOwner(0);
+        assertEq(owner, alice);
+    }
+
+    /// @dev Test to ensure 'getTotalActiveTasks' returns the correct count of active tasks.
+    function testGetTotalActiveTasks() public {
+        registerUst(diamondAddr);
+        registerGst(diamondAddr);
+        
+        uint256[] memory taskIndexes = new uint256[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+
+        processCycleTransition(taskIndexes);
+
+        assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), 2);
+    }
+
+    /// @dev Test to ensure 'getTotalActiveTasks' returns zero when no active tasks.
+    function testGetTotalActiveTasksZero() public view {
+        assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), 0);
+    }
+
+    /// @dev Test to ensure 'getActiveTaskIds' returns correct active task IDs.
+    function testGetActiveTaskIds() public {
+        registerUst(diamondAddr);
+        registerGst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+
+        processCycleTransition(taskIndexes);
+
+        uint256[] memory activeIds = IRegistryFacet(diamondAddr).getActiveTaskIds();
+        assertEq(activeIds.length, 2);
+        assertEq(activeIds[0], 0);
+        assertEq(activeIds[1], 1);
+    }
+
+    /// @dev Test to ensure 'getActiveTaskIds' returns empty array when no tasks are active.
+    function testGetActiveTaskIdsEmpty() public view {
+        assertEq(IRegistryFacet(diamondAddr).getActiveTaskIds().length, 0);
+    }
+
+    /// @dev Test to ensure 'getTotalLockedBalance' returns the correct locked balance.
+    function testGetTotalLockedBalance() public {
+        registerUst(diamondAddr);
+
+        assertEq(IRegistryFacet(diamondAddr).getTotalLockedBalance(), 60.1 ether);
+    }
+
+    /// @dev Test to ensure 'hasActiveUserTask' returns true for an active task.
+    function testHasActiveUserTask() public {
+        registerUst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        processCycleTransition(taskIndexes);
+
+        assertTrue(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 0));
+    }
+
+    /// @dev Test to ensure 'hasActiveUserTask' returns false for a pending or non-existent task.
+    function testHasActiveUserTaskForPendingOrNonExistent() public {
+        registerUst(diamondAddr);
+
+        assertFalse(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 0));
+        assertFalse(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 99));
+    }
+
+    /// @dev Test to ensure 'hasActiveSystemTask' returns true for an active system task.
+    function testHasActiveSystemTask() public {
+        registerGst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        processCycleTransition(taskIndexes);
+
+        assertTrue(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 0));
+    }
+
+    /// @dev Test to ensure 'hasActiveSystemTask' returns false for a pending or non-existent system task.
+    function testHasActiveSystemTaskForPendingOrNonExistent() public {
+        registerGst(diamondAddr);
+
+        assertFalse(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 0));
+        assertFalse(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 99));
+    }
+
+    /// @dev Test to ensure 'hasActiveTaskOfType' returns correct values.
+    function testHasActiveTaskOfType() public {
+        registerUst(diamondAddr);
+        registerGst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+
+        processCycleTransition(taskIndexes);
+
+        assertTrue(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST));
+        assertTrue(IRegistryFacet(diamondAddr).hasActiveTaskOfType(bob, 1, LibCommon.TaskType.GST));
+    }
+
+    /// @dev Test to ensure 'hasActiveTaskOfType' returns false for pending or non-existent task.
+    function testHasActiveTaskOfTypeForPendingOrNonExistent() public {
+        registerUst(diamondAddr);
+
+        assertFalse(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST));
+        assertFalse(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 99, LibCommon.TaskType.UST));
+    }
+
+    /// @dev Test to ensure 'getTaskDetailsBulk' returns correct details for existing and non-existing tasks.
+    function testGetTaskDetailsBulk() public {
+        registerUst(diamondAddr);
+        registerGst(diamondAddr);
+
+        uint64[] memory taskIndexes = new uint64[](3);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+        taskIndexes[2] = 99;
+
+        TaskMetadata[] memory details = IRegistryFacet(diamondAddr).getTaskDetailsBulk(taskIndexes);
+        assertEq(details.length, 2);
+        assertEq(details[0].taskIndex, 0);
+        assertEq(details[0].owner, alice);
+        assertEq(details[1].taskIndex, 1);
+        assertEq(details[1].owner, bob);
     }
 }

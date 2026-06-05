@@ -6,9 +6,11 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
+import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 abstract contract BaseDiamondTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
@@ -147,6 +149,25 @@ abstract contract BaseDiamondTest is Test {
         // Creates a predicate that checks if registration is enabled
         bytes memory callData = abi.encodeCall(IConfigFacet.isRegistrationEnabled, ());
         return abi.encode(_target, callData);
+    }
+
+    /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
+    function processCycleTransition(uint256[] memory _taskIndexes) internal {
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(index, 1);
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        vm.expectEmit(true, false, false, false);
+        emit ICoreFacet.ActiveTasks(_taskIndexes);
+
+        ICoreFacet(diamondAddr).processTasks(index + 1, _taskIndexes);
+        vm.stopPrank();
     }
 
     /// @dev Helper function to deploy a custom AutomationRegistry with taskCapacity and sysTaskCapacity set to 2.

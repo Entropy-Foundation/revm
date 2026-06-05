@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
 import {Counter} from "./Counter.sol";
@@ -512,6 +513,35 @@ contract BlockMetaTest is Test {
         vm.expectRevert(IBlockMeta.SelectorNotRegistered.selector);
         
         blockMeta.getExecutionIndex(counterAddress, selector);
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'upgradeToAndCall' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'upgradeToAndCall' upgrades the proxy to a new implementation.
+    function testUpgradeToAndCall() public {
+        register(counterAddress, selector);
+
+        vm.startPrank(admin);
+        BlockMeta newImpl = new BlockMeta();
+        blockMeta.upgradeToAndCall(address(newImpl), "");
+        vm.stopPrank();
+
+        assertEq(address(uint160(uint256(vm.load(address(blockMeta), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
+        
+        register(counterAddress, bytes4(keccak256("foo()")));
+        (address[] memory targets, bytes4[] memory selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 2);
+        assertEq(selectors.length, 2);
+    }
+
+    /// @dev Test to ensure 'upgradeToAndCall' reverts if caller is not the owner.
+    function testUpgradeToAndCallRevertsIfNotOwner() public {
+        vm.prank(admin);
+        BlockMeta newImpl = new BlockMeta();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        blockMeta.upgradeToAndCall(address(newImpl), "");
     }
 
     /// @dev Helper function to pack a target contract address and function selector into a single uint256 execution entry.

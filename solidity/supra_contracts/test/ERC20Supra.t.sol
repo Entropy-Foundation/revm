@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {IERC20Supra} from "../src/interfaces/IERC20Supra.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
@@ -239,5 +240,36 @@ contract ERC20SupraTest is Test {
 
         vm.expectRevert(IERC20Supra.AddressNotAuthorized.selector);
         token.removeAuthorizedAddress(address(0x123));
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'upgradeToAndCall' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'upgradeToAndCall' upgrades the proxy to a new implementation.
+    function testUpgradeToAndCall() public {
+        vm.prank(bridge);
+        token.mint(alice, 50);
+        assertEq(token.balanceOf(alice), 50);
+
+        vm.prank(owner);
+        ERC20Supra newImpl = new ERC20Supra();
+
+        vm.prank(owner);
+        token.upgradeToAndCall(address(newImpl), "");
+
+        assertEq(address(uint160(uint256(vm.load(address(token), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
+
+        vm.prank(bridge);
+        token.mint(alice, 50);
+        assertEq(token.balanceOf(alice), 100);
+    }
+
+    /// @dev Test to ensure 'upgradeToAndCall' reverts if caller is not the owner.
+    function testUpgradeToAndCallRevertsIfNotOwner() public {
+        vm.prank(owner);
+        ERC20Supra newImpl = new ERC20Supra();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        token.upgradeToAndCall(address(newImpl), "");
     }
 }

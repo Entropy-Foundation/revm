@@ -240,6 +240,17 @@ contract ConfigFacetTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
     }
 
+    /// @dev Test to ensure 'withdrawFees' reverts if ERC20 transfer fails.
+    function testWithdrawFeesRevertsIfTransferFails() public {
+        FailingToken failingToken = new FailingToken();
+        vm.etch(address(erc20Supra), address(failingToken).code);
+
+        vm.expectRevert(IConfigFacet.TransferFailed.selector);
+        
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
+    }
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateConfigBuffer' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Helper function that returns a valid config.
@@ -390,4 +401,10 @@ contract ConfigFacetTest is BaseDiamondTest {
             cfg.sysTaskCapacity
         );
     }
+}
+
+/// @dev Mock ERC20 that returns `false` on transfer to test `TransferFailed` revert paths.
+contract FailingToken {
+    function balanceOf(address) external pure returns (uint256) { return 100 ether; }
+    function transfer(address, uint256) external pure returns (bool) { return false; }
 }
