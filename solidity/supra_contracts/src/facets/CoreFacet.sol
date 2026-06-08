@@ -26,6 +26,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         // Check caller is VM Signer
         msg.sender.enforceIsVmSigner();
         
+        if (_taskIndexes.length == 0) { return; }
+
         LibCommon.CycleState state = s.cycleState; 
         if (state == LibCommon.CycleState.FINISHED) {
             LibCore.onCycleTransition(_cycleIndex, _taskIndexes);

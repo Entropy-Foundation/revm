@@ -445,8 +445,6 @@ library LibCore {
     function onCycleTransition(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        if (_taskIndexes.length == 0) { return; }
-
         if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
         
         // Check if transition state exists
@@ -474,8 +472,6 @@ library LibCore {
     /// @param _taskIndexes Array of task indexes to be processed.
     function onCycleSuspend(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
-
-        if (_taskIndexes.length == 0) { return; }
 
         if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert ICoreFacet.InvalidRegistryState(); }
         if (s.index != _cycleIndex) { revert ICoreFacet.InvalidInputCycleIndex(); }

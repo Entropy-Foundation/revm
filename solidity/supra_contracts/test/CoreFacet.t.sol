@@ -2,6 +2,7 @@
 pragma solidity 0.8.27;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -686,5 +687,226 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(details.nextTaskIndexPosition, 0);
         assertEq(details.expectedTasksToBeProcessed.length, 1);
         assertEq(details.expectedTasksToBeProcessed[0], 0);
+    }
+
+    /// @notice Test to ensure config buffer is applied after monitorCycleEnd + processTasks, resulting in STARTED state with the updated cycle duration.
+    function testCycleTransitionAppliesConfigBuffer() public {
+        registerUst(diamondAddr);
+
+        (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(durationBefore, 1200);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2400, 3600, 5_000_000, 500
+        );
+        assertEq(IConfigFacet(diamondAddr).getConfigBuffer().cycleDurationSecs, 2400);
+
+        vm.warp(startBefore + durationBefore);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        ICoreFacet(diamondAddr).processTasks(indexBefore + 1, tasks);
+        vm.stopPrank();
+
+        (uint64 indexAfter, , uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexAfter, indexBefore + 1);
+        assertEq(durationAfter, 2400);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
+    }
+
+    /// @notice Test to ensure 'processTasks' with an empty array returns early.
+    function testProcessTasksWithEmptyArrayReturnsEarly() public {
+        registerUst(diamondAddr);
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        uint256[] memory empty;
+        ICoreFacet(diamondAddr).processTasks(index + 1, empty);
+        vm.stopPrank();
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+    }
+
+    /// @notice Test to ensure that when buffer changes cycle duration, moveToReadyState resets transition state.
+    function testMoveToReadyStateResetsTransitionStateOnDurationChange() public {
+        registerUst(diamondAddr);
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(duration, 1200);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2400, 3600, 5_000_000, 500
+        );
+
+        vm.warp(start + duration);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        ( , , , LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.SUSPENDED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index, tasks);
+
+        (uint64 refundDuration, uint128 automationFeePerSec) = ICoreFacet(diamondAddr).getTransitionInfo();
+        assertEq(refundDuration, 0);
+        assertEq(automationFeePerSec, 0);
+
+        ( , , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.READY));
+    }
+
+    /// @notice Test to ensure partial task processing in FINISHED state keeps state FINISHED
+    /// until the last task is processed, then transitions to STARTED.
+    function testPartialTaskProcessingInFinishedState() public {
+        registerUst(diamondAddr);
+        registerUst(diamondAddr);
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+        
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        tasks[0] = 1;
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+        vm.stopPrank();
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
+    }
+
+    /// @notice Test to ensure partial task processing in SUSPENDED state keeps state SUSPENDED
+    /// until the last task is processed, then transitions to READY.
+    function testPartialTaskProcessingInSuspendedState() public {
+        registerUst(diamondAddr);
+        registerUst(diamondAddr);
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        vm.startPrank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index, tasks);
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
+
+        tasks[0] = 1;
+        ICoreFacet(diamondAddr).processTasks(index, tasks);
+        vm.stopPrank();
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.READY));
+    }
+
+    /// @notice Test to ensure an expired task is removed from the registry and 'RemovedTasks' is emitted during cycle transition.
+    function testExpiredTaskRemovalInTransition() public {
+        registerUst(diamondAddr);
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+        
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        ( , , , LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
+
+        // Task is in registry before expiration
+        assertEq(IRegistryFacet(diamondAddr).getTaskIdList().length, 1);
+
+        // Move time forward past task expiration
+        vm.warp(block.timestamp + 100);
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+        
+        // Expect RemovedTasks event for the expired task
+        uint64[] memory expectedRemoved = new uint64[](1);
+        expectedRemoved[0] = 0;
+        
+        vm.expectEmit(true, false, false, false);
+        emit ICoreFacet.RemovedTasks(expectedRemoved);
+
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+        vm.stopPrank();
+
+        // Task is removed from registry
+        assertEq(IRegistryFacet(diamondAddr).getTaskIdList().length, 0);
+
+        ( , , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
+    }
+
+    /// @notice Test to ensure enabling automation during SUSPENDED state makes the finalised transition go to STARTED.
+    function testEnableAutomationDuringSuspendedFinalizesToStarted() public {
+        registerUst(diamondAddr);
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        ( , , , LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.SUSPENDED));
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).enableAutomation();
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index, tasks);
+
+        ( , , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
     }
 }
