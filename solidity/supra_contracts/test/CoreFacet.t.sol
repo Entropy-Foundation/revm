@@ -9,6 +9,7 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
+import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 
 contract CoreFacetTest is BaseDiamondTest {
 
@@ -82,7 +83,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.warp(startBefore + durationBefore);
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, true, true);
         emit ICoreFacet.AutomationCycleEvent(
             indexBefore + 1,
             LibCommon.CycleState.STARTED, 
@@ -109,7 +110,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startBefore + durationBefore);
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, true, true);
         emit ICoreFacet.AutomationCycleEvent(
             indexBefore,
             LibCommon.CycleState.FINISHED,
@@ -162,7 +163,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
 
-        processCycleTransition(tasks);
+        processCycleTransition(diamondAddr, tasks);
 
         (uint64 newIndex, uint64 newStart, uint64 newDuration, LibCommon.CycleState newState) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(newIndex, 2);
@@ -198,6 +199,29 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(index, tasks);
+    }
+
+    /// @notice Test to ensure 'processTasks' reverts if tasks are processed out of order.
+    function testProcessTasksRevertsIfTasksOutOfOrder() public {
+        registerUst(diamondAddr);
+        registerUst(diamondAddr);
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 1;
+
+        vm.expectRevert(ICoreFacet.OutOfOrderTaskProcessingRequest.selector);
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
     }
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is disabled.
@@ -357,7 +381,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.STARTED));
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, true, true);
         emit ICoreFacet.AutomationCycleEvent(
             indexBefore, 
             LibCommon.CycleState.READY,
@@ -386,7 +410,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.STARTED));
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, true, true);
         emit ICoreFacet.AutomationCycleEvent(
             indexBefore, 
             LibCommon.CycleState.SUSPENDED,
@@ -422,7 +446,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, true, true);
         emit ICoreFacet.AutomationCycleEvent(
             indexBefore, 
             LibCommon.CycleState.SUSPENDED,
@@ -549,7 +573,7 @@ contract CoreFacetTest is BaseDiamondTest {
         string memory reason = "Predicate failed";
 
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
 
         // Remove task due to predicate failure, cycle index is 2
@@ -581,7 +605,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
         string memory reason = "Predicate failed";
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
@@ -603,7 +627,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
         string memory reason = "Predicate failed";
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), "Predicate failed");
 
@@ -669,6 +693,46 @@ contract CoreFacetTest is BaseDiamondTest {
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
 
+    /// @notice Test to ensure that when automation is disabled mid-transition (FINISHED, some tasks
+    /// remaining), suspension is deferred until the transition completes and the new cycle starts.
+    function testDisableAutomationDefersSuspensionUntilTransitionEnds() public {
+        registerUst(diamondAddr);
+        registerUst(diamondAddr);
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 indexBefore, , , LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
+
+        // Process only task 0 — transition in progress
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexBefore + 1, taskIndexes);
+
+        ( , , , stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
+
+        // Disable automation — deferred because transition is in progress
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+
+        // Process task 1 — finalizes transition → new cycle STARTED → then SUSPENDED
+        taskIndexes[0] = 1;
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexBefore + 1, taskIndexes);
+
+        (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexAfter, indexBefore + 1);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
+    }
+
     /// @dev Test to ensure 'getCycleStateDetails' returns correct cycle details.
     function testGetCycleStateDetails() public {
         registerUst(diamondAddr);
@@ -687,6 +751,27 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(details.nextTaskIndexPosition, 0);
         assertEq(details.expectedTasksToBeProcessed.length, 1);
         assertEq(details.expectedTasksToBeProcessed[0], 0);
+    }
+
+    /// @notice Test to ensure config buffer is applied when no tasks exist during cycle end, updating the cycle duration directly.
+    function testConfigBufferAppliedWhenNoTasks() public {
+        ( , uint64 startBefore, uint64 durationBefore, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(durationBefore, 1200);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            3600, 20_000_000, 0.5 ether, 1 ether, 50, 0.5 ether, 6, 400, 2400, 3600, 20_000_000, 100
+        );
+
+        vm.warp(startBefore + durationBefore);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 indexAfter, , uint64 durationAfter, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(indexAfter, 2);
+        assertEq(durationAfter, 2400);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
     }
 
     /// @notice Test to ensure config buffer is applied after monitorCycleEnd + processTasks, resulting in STARTED state with the updated cycle duration.
@@ -881,6 +966,40 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
     }
 
+    /// @notice Test to ensure a task is removed during transition when the owner does not have enough
+    /// allowance for the automation fee. The deposit is unlocked and forfeited to the registry.
+    function testInsufficientAllowanceDuringTransitionRemovesTask() public {
+        registerUst(diamondAddr);
+        uint256 balanceBefore = erc20Supra.balanceOf(alice);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+
+        // Revoke alice's allowance for the AutomationRegistry
+        vm.prank(alice);
+        erc20Supra.approve(diamondAddr, 0);
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        vm.expectEmit(true, true, true, true);
+        emit ICoreFacet.TaskCancelledInsufficentBalanceAllowance(0, alice, 3 ether, 38.9 ether, 0, keccak256("txHash"));
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(erc20Supra.balanceOf(alice), balanceBefore);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+    }
+
     /// @notice Test to ensure enabling automation during SUSPENDED state makes the finalised transition go to STARTED.
     function testEnableAutomationDuringSuspendedFinalizesToStarted() public {
         registerUst(diamondAddr);
@@ -908,5 +1027,120 @@ contract CoreFacetTest is BaseDiamondTest {
 
         ( , , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
+    }
+
+    /// @dev Test to ensure refundTaskFees processes cycle and deposit refunds when processTasks runs
+    /// on an active UST while the system is in SUSPENDED state.
+    function testRefundTaskFeesOnSuspendForActiveTask() public {
+        registerUst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
+
+        // State before refund
+        assertEq(erc20Supra.balanceOf(alice), 35.9 ether);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index, taskIndexes);
+
+        // State after refund
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(erc20Supra.balanceOf(alice), 96.125 ether);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+    }
+
+    /// @dev Test to ensure the congestion fee uses the proportional surplus formula when
+    /// threshold usage exceeds congestion threshold percentage but not 100%.
+    function testRegisterWhenGasOccupancyIsAboveThresholdButBelowFullCapacity() public {
+        uint256 depositAmount = 451 ether;
+
+        // Congestion multiplier is inactive below threshold
+        uint128 baseMultiplier = IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCommittedOccupancy(100_000);
+        assertEq(baseMultiplier, 0.5 ether, "sub-threshold should use base fee only");
+
+        // Congestion multiplier activates above 50%
+        uint128 congestedMultiplier = IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCommittedOccupancy(11_000_000);
+        assertEq(congestedMultiplier, 0.67004782 ether, "congestion should raise fee above base");
+
+        // Estimated fee
+        uint128 estimatedFee = IRegistryFacet(diamondAddr).estimateAutomationFee(11_000_000);
+        assertEq(estimatedFee, 442.2315612 ether);
+
+        vm.startPrank(alice);
+        vm.deal(alice, depositAmount);
+        erc20SupraHandler.deposit{value: depositAmount}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+
+        uint128 cap = 450 ether;
+
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, uint128(100))),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + 1250),
+            uint128(11_000_000),
+            uint128(4 gwei),
+            uint128(cap),
+            0,
+            new bytes[](0)
+        );
+        vm.stopPrank();
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), cap, "automation fee not deposited");
+        assertEq(erc20Supra.balanceOf(alice), 0, "balance should be 0 after spending all [450 ether + 1 ether as flat reg fee]");
+    }
+
+    /// @dev Test to ensure registration succeeds when automation and congestion base fees are zero. 
+    /// The fee multiplier and estimated fee are both 0 regardless of gas occupancy. 
+    /// Only the flat registration fee and the user's cap are deducted from the balance.
+    function testRegisterWithZeroBaseFee() public {
+        address customRegistry = deployCustomRegistry();
+
+        // With zero base fees, multiplier and estimated fee should be 0
+        uint128 multiplier = IRegistryFacet(customRegistry).calculateAutomationFeeMultiplierForCommittedOccupancy(100_000);
+        assertEq(multiplier, 0);
+        uint128 estimatedFee = IRegistryFacet(customRegistry).estimateAutomationFee(100_000);
+        assertEq(estimatedFee, 0);
+        
+        registerUst(customRegistry);
+
+        assertTrue(IRegistryFacet(customRegistry).ifTaskExists(0));
+        // Only flat reg fee(1 ether) and automation fee cap(60.1 ether) is deducted since estimated automation fee is 0
+        assertEq(erc20Supra.balanceOf(alice), 38.9 ether);
+    }
+
+    /// @dev Test to ensure calculateTaskFee returns 0 when the automationBaseFeeWeiPerSec is 0.
+    /// This is exercised during a cycle transition: calculateTaskFee exits early with 0 fee,
+    /// no cycle fees are locked, and the task activates normally.
+    function testCalculateTaskFeeReturnsZeroWhenBaseFeeIsZero() public {
+        address customRegistry = deployCustomRegistry();
+        registerUst(customRegistry);
+
+        // Perform cycle transition
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+        processCycleTransition(customRegistry, tasks);
+
+        // With zero fee, the cycle locked fee should be 0
+        assertEq(IRegistryFacet(customRegistry).getCycleLockedFees(), 0);
+
+        // Task should be active
+        assertTrue(IRegistryFacet(customRegistry).ifTaskExists(0));
+        assertEq(IRegistryFacet(customRegistry).getActiveTaskIds().length, 1);
+        assertEq(IRegistryFacet(customRegistry).getActiveTaskIds()[0], 0);
     }
 }

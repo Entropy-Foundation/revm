@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
+import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
@@ -509,6 +509,32 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
     }
 
+    /// @dev Test to ensure 'register' reverts when 'transferFrom' returns false.
+    function testRegisterRevertsIfTransferFromFails() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 100 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+
+        vm.etch(address(erc20Supra), address(new FailingERC20()).code);
+
+        vm.expectRevert(IRegistryFacet.TransferFailed.selector);
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            2,
+            auxData
+        );
+        vm.stopPrank();
+    }
+
     /// @dev Test to ensure 'register' registers a UST.
     function testRegister() public {
         bytes[] memory auxData;
@@ -993,6 +1019,25 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
     }
+
+    /// @dev Test to ensure 'stopTasks' reverts when cycle transition is in progress.
+    function testStopTasksRevertsIfCycleTransitionInProgress() public {
+        registerUst(diamondAddr);
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.expectRevert(IRegistryFacet.CycleTransitionInProgress.selector);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
+    }
     
     /// @dev Test to ensure 'stopTasks' reverts if input array is empty. 
     function testStopTasksRevertsIfInputArrayEmpty() public {
@@ -1057,7 +1102,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         erc20SupraHandler.deposit{value: 100 ether}();
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         assertEq(erc20Supra.balanceOf(diamondAddr), 64.1 ether);
         assertEq(erc20Supra.balanceOf(alice), 135.9 ether);
@@ -1088,7 +1133,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         erc20SupraHandler.deposit{value: 100 ether}();
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 0.0625 ether, keccak256("txHash"));
@@ -1098,6 +1143,52 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
+    }
+
+    /// @dev Test to ensure stopping a PENDING task refunds half the deposit.
+    function testStopPendingTask() public {
+        registerUst(diamondAddr);
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+
+        uint256 balanceBefore = erc20Supra.balanceOf(alice);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
+
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(erc20Supra.balanceOf(alice), balanceBefore + 30.05 ether);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+    }
+
+    /// @dev Test to ensure stopping an expired task refunds the full deposit but returns 0 cycle fee.
+    function testStopExpiredTask() public {
+        registerUst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        // Warp past expiry (task was registered with expiry time = block.timestamp + 1250)
+        vm.warp(block.timestamp + 1251);
+
+        uint256 balanceBefore = erc20Supra.balanceOf(alice);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+        
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
+
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(erc20Supra.balanceOf(alice), balanceBefore + 60.1 ether);  // Cycle fee refund = 0, deposit refund = 60.1 ether
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1173,7 +1264,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskUint64);
@@ -1196,7 +1287,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 0, 0, keccak256("txHash"));
@@ -1249,7 +1340,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), 2);
     }
@@ -1268,7 +1359,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         uint256[] memory activeIds = IRegistryFacet(diamondAddr).getActiveTaskIds();
         assertEq(activeIds.length, 2);
@@ -1295,7 +1386,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         assertTrue(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 0));
     }
@@ -1315,7 +1406,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         assertTrue(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 0));
     }
@@ -1337,7 +1428,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 
-        processCycleTransition(taskIndexes);
+        processCycleTransition(diamondAddr, taskIndexes);
 
         assertTrue(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST));
         assertTrue(IRegistryFacet(diamondAddr).hasActiveTaskOfType(bob, 1, LibCommon.TaskType.GST));
@@ -1367,5 +1458,75 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(details[0].owner, alice);
         assertEq(details[1].taskIndex, 1);
         assertEq(details[1].owner, bob);
+    }
+
+    /// @dev Test to ensure 'calculateAutomationFeeMultiplierForCurrentCycle' returns the base fee when
+    ///      usage is below the 50% threshold, and a higher fee when it exceeds the threshold.
+    function testCalculateAutomationFeeMultiplierForCurrentCycle() public {
+        // Scenario 1. Register a 100_000-gas task and process first cycle transition
+        registerUst(diamondAddr);
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        // 100_000 gas committed but below 50% threshold (10_000_000) → returns base fee
+        assertEq(IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCurrentCycle(), 0.5 ether);
+
+
+        // Scenario 2. Register a 10_500_000-gas task to push usage above the threshold
+        vm.deal(alice, 800 ether);
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 800 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        bytes[] memory auxData;
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + 1250),
+            uint128(10_500_000),
+            uint128(4 gwei),
+            uint128(400 ether),
+            2,
+            auxData
+        );
+        vm.stopPrank();
+
+        // Process cycle transition 
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+        
+        (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+        uint256[] memory taskIds = new uint256[](2);
+        taskIds[0] = 0;
+        taskIds[1] = 1;
+        ICoreFacet(diamondAddr).processTasks(index + 1, taskIds);
+        vm.stopPrank();
+
+        // 10_500_000 gas > 50% threshold (10_000_000) → congestion fee added
+        assertEq(IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCurrentCycle(), 0.579846705 ether);
+    }
+
+    /// @dev Test to ensure 'estimateAutomationFeeWithCommittedOccupancy' returns zero for zero occupancy,
+    ///      scales linearly with task occupancy when total is below the 50% threshold, and increases
+    ///      when gas usage pushes total above the threshold.
+    function testEstimateAutomationFeeWithCommittedOccupancy() public view {
+        // Scenario 1: Zero task occupancy → fee is zero regardless of committed occupancy
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(0, 0), 0);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(0, 10_000_000), 0);
+
+        // Scenario 2: Total committed gas below 50% threshold → linear scaling with task occupancy
+        // (100_000 + 5_000_000 = 5_100_000 < 10_000_000) → 3 ether
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 5_000_000), 3 ether);
+        // (200_000 + 5_000_000 = 5_200_000 < 10_000_000) → 6 ether (occupancy doubled)
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(200_000, 5_000_000), 6 ether);
+
+        // Scenario 3: Total committed gas above 50% threshold → congestion fee is added
+        // (100_000 + 10_000_000 = 10_100_000 > 10_000_000)
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 10_000_000), 3.0911325 ether);
+        // (100_000 + 15_000_000 = 15_100_000 > 10_000_000, more congestion)
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 15_000_000), 11.72151126 ether);
     }
 }

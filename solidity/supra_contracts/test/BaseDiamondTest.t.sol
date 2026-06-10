@@ -152,33 +152,35 @@ abstract contract BaseDiamondTest is Test {
     }
 
     /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
-    function processCycleTransition(uint256[] memory _taskIndexes) internal {
-        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+    function processCycleTransition(address _diamond, uint256[] memory _taskIndexes) internal {
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTime + duration);
 
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
+        ICoreFacet(_diamond).monitorCycleEnd();
 
-        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(_diamond).getCycleInfo();
         assertEq(index, 1);
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
         vm.expectEmit(true, false, false, false);
         emit ICoreFacet.ActiveTasks(_taskIndexes);
 
-        ICoreFacet(diamondAddr).processTasks(index + 1, _taskIndexes);
+        ICoreFacet(_diamond).processTasks(index + 1, _taskIndexes);
         vm.stopPrank();
     }
 
-    /// @dev Helper function to deploy a custom AutomationRegistry with taskCapacity and sysTaskCapacity set to 2.
+    /// @dev Helper function to deploy a custom AutomationRegistry with:
+    /// - taskCapacity and sysTaskCapacity set to 2
+    /// - automation and congestion base fees set to 0
     function deployCustomRegistry() internal returns (address) {
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
-            automationBaseFeeWeiPerSec: 0.5 ether,
+            automationBaseFeeWeiPerSec: 0,
             flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionBaseFeeWeiPerSec: 0,
             congestionExponent: 6,
             taskCapacity: 2,
             cycleDurationSecs: 1200,
@@ -197,4 +199,11 @@ abstract contract BaseDiamondTest is Test {
 
         return diamond;
     }
+}
+
+/// @dev Mock ERC20 that returns `false` on transfer/transferFrom to test TransferFailed revert paths.
+contract FailingERC20 {
+    function balanceOf(address) external pure returns (uint256) { return 100 ether; }
+    function transfer(address, uint256) external pure returns (bool) { return false; }
+    function transferFrom(address, address, uint256) external pure returns (bool) { return false; }
 }
