@@ -22,6 +22,34 @@ library LibCore {
     function totalTasks() private view returns (uint256) {
         return LibAppStorage.registryState().taskIdList.length();
     }
+
+    /// @notice Sorts a uint256 array in ascending order using insertion sort.
+    /// @dev Insertion sort is chosen here because task ID lists originate from an
+    ///      EnumerableSet whose values are assigned incrementally, so the array is
+    ///      nearly-sorted in practice.  For nearly-sorted input, insertion sort runs
+    ///      in O(n) time (inner loop exits immediately when the element is already in
+    ///      place), making it strictly cheaper in gas than the generic quicksort used
+    ///      by OpenZeppelin's Arrays.sort, which cannot exploit existing order.
+    ///      The trade-off is worst-case O(n²) on a fully-reversed list, which is
+    ///      not a realistic scenario for monotonically-assigned task IDs.
+    /// @param arr The memory array to sort in-place.
+    /// @return The same memory reference, sorted ascending.
+    function insertionSort(uint256[] memory arr) private pure returns (uint256[] memory) {
+        // A single-element (or empty) array is trivially sorted.
+        for (uint256 i = 1; i < arr.length; i++) {
+            uint256 key = arr[i];
+            // Walk backwards, shifting elements one position right until we find
+            // the correct insertion point for `key`.  We use int256 for `j` to
+            // detect the j < 0 boundary without an underflow revert.
+            int256 j = int256(i) - 1;
+            while (j >= 0 && arr[uint256(j)] > key) {
+                arr[uint256(j + 1)] = arr[uint256(j)];
+                j--;
+            }
+            arr[uint256(j + 1)] = key;
+        }
+        return arr;
+    }
     
     /// @notice Returns all the automation tasks available in the registry.
     function getTaskIdList() private view returns (uint256[] memory) {
@@ -562,7 +590,9 @@ library LibCore {
                 updateConfigFromBuffer();
                 moveToStartedState();
             } else {
-                uint256[] memory expectedTasksToBeProcessed = getTaskIdList().sort();
+                // insertionSort is used here instead of Arrays.sort because task IDs are
+                // assigned incrementally and the list is nearly-sorted — see insertionSort NatSpec.
+                uint256[] memory expectedTasksToBeProcessed = insertionSort(getTaskIdList());
 
                 // Updates transition state
                 TransitionState storage transitionState = LibAppStorage.transitionState();

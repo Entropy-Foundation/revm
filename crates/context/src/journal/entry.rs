@@ -60,6 +60,19 @@ pub trait JournalEntryTr {
     /// Creates a journal entry for when an account's code is modified
     fn code_changed(address: Address) -> Self;
 
+    /// Returns `true` if this journal entry represents an operation that mutates persistent state.
+    ///
+    /// Used to verify that [`ExecutionMode::ReadOnly`] transactions are truly
+    /// stateless before committing or discarding them.
+    ///
+    /// `BalanceChange` requires the current `state` snapshot to filter out zero-delta entries
+    /// produced unconditionally by `pre_execution` for zero-fee predicate calls — the old
+    /// balance stored in the entry is compared against the account's current balance.
+    ///
+    /// Read-only / gas-metering entries (`AccountWarmed`, `AccountTouched`, `StorageWarmed`,
+    /// `TransientStorageChange`) always return `false`.
+    fn is_state_mutating(&self, state: &EvmState) -> bool;
+
     /// Reverts the state change recorded by this journal entry
     ///
     /// More information on what is reverted can be found in [`JournalEntry`] enum.
@@ -215,6 +228,35 @@ pub enum JournalEntry {
     },
 }
 impl JournalEntryTr for JournalEntry {
+    fn is_state_mutating(&self, state: &EvmState) -> bool {
+        match self {
+            // SSTORE wrote a storage value.
+            JournalEntry::StorageChanged { .. } => true,
+            // CREATE / CREATE2 deployed a new contract.
+            JournalEntry::AccountCreated { .. } => true,
+            // SELFDESTRUCT destroyed a contract.
+            JournalEntry::AccountDestroyed { .. } => true,
+            // Nonce was incremented (must not occur in ReadOnly mode).
+            JournalEntry::NonceChange { .. } => true,
+            // Contract bytecode was replaced.
+            JournalEntry::CodeChange { .. } => true,
+            // ETH transferred via a CALL with non-zero value.
+            JournalEntry::BalanceTransfer { balance, .. } => !balance.is_zero(),
+            // Balance was changed.  pre_execution unconditionally pushes a BalanceChange
+            // entry even for zero-fee predicate calls, so filter those out by comparing
+            // the stored old_balance against the account's current balance in state.
+            JournalEntry::BalanceChange { address, old_balance } => state
+                .get(address)
+                .map(|account| account.info.balance != *old_balance)
+                .unwrap_or(true),
+            // Read-only / gas-metering entries — never mutations.
+            JournalEntry::AccountWarmed { .. }
+            | JournalEntry::AccountTouched { .. }
+            | JournalEntry::StorageWarmed { .. }
+            | JournalEntry::TransientStorageChange { .. } => false,
+        }
+    }
+
     fn account_warmed(address: Address) -> Self {
         JournalEntry::AccountWarmed { address }
     }

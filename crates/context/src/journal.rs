@@ -291,6 +291,14 @@ impl<DB: Database, ENTRY: JournalEntryTr> JournalTr for Journal<DB, ENTRY> {
         self.inner.discard_tx();
     }
 
+    #[inline]
+    fn has_state_mutations(&self) -> bool {
+        self.inner
+            .journal
+            .iter()
+            .any(|entry| entry.is_state_mutating(&self.inner.state))
+    }
+
     /// Clear current journal resetting it to initial state and return changes state.
     #[inline]
     fn finalize(&mut self) -> Self::State {
