@@ -693,6 +693,26 @@ contract CoreFacetTest is BaseDiamondTest {
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
 
+    /// @notice Test to ensure removeRegisteredTask reverts with InsufficientBalanceForRefund if registry has insufficient balance.
+    function testRemoveRegisteredTaskRevertsIfInsufficientBalance() public {
+        registerUst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        uint256 diamondBalance = erc20Supra.balanceOf(diamondAddr);
+        vm.prank(diamondAddr);
+        erc20Supra.transfer(address(0xdead), diamondBalance);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 0);
+
+        vm.expectRevert(ICoreFacet.InsufficientBalanceForRefund.selector);
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, 0, "Predicate failed");
+    }
+
     /// @notice Test to ensure that when automation is disabled mid-transition (FINISHED, some tasks
     /// remaining), suspension is deferred until the transition completes and the new cycle starts.
     function testDisableAutomationDefersSuspensionUntilTransitionEnds() public {
@@ -1061,6 +1081,36 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(alice), 96.125 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+    }
+
+    /// @notice Test to ensure safeRefund emits ErrorInsufficientBalanceToRefund when the registry's balance is insufficient to process refund.
+    function testSafeRefundEmitsErrorInsufficientBalanceToRefundIfInsufficientBalance() public {
+        registerUst(diamondAddr);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        uint256 diamondBalance = erc20Supra.balanceOf(diamondAddr);
+        vm.prank(diamondAddr);
+        erc20Supra.transfer(bob, diamondBalance);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 0);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
+
+        vm.expectEmit(true, true, true, true);
+        emit IRegistryFacet.ErrorInsufficientBalanceToRefund(0, alice, 1, 0.125 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit IRegistryFacet.ErrorInsufficientBalanceToRefund(0, alice, 0, 60.1 ether);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
     }
 
     /// @dev Test to ensure the congestion fee uses the proportional surplus formula when

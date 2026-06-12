@@ -285,7 +285,7 @@ library LibAccounting {
         );
     }
 
-    /// @notice Internally calls _refund, reverts if caller is not AutomationRegistry.
+    /// @notice Internally calls _refund, reverts if the balance is insufficient.
     function refund(address _to, uint128 _amount) internal {
         if (_amount == 0) return;
         AppStorage storage s = LibAppStorage.appStorage();

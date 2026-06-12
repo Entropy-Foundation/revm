@@ -535,6 +535,35 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.stopPrank();
     }
 
+    /// @dev Test to ensure 'register' reverts if a cycle transition is in progress.
+    function testRegisterRevertsIfCycleTransitionInProgress() public {
+        registerUst(diamondAddr);
+
+        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.expectRevert(IRegistryFacet.CycleTransitionInProgress.selector);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            2,
+            auxData
+        );
+    }
+
     /// @dev Test to ensure 'register' registers a UST.
     function testRegister() public {
         bytes[] memory auxData;
