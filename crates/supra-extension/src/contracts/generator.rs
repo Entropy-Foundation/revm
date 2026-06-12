@@ -781,8 +781,8 @@ impl GenesisTransactionGenerator {
         let token_bridge_contracts = self.setup_token_bridge_contracts(
             owner,
             hyper_nova,
-            token_vault,
             fee_operator,
+            token_vault,
             wrapped_token,
             &config,
         )?;
