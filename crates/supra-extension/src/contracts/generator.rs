@@ -1,13 +1,7 @@
 //! Encloses transaction data generation logic based on the genesis contracts
 
 use crate::contracts::configs::{
-    AutomationRegistryConfig, GenesisTransactionGeneratorConfig, SupraNovaConfig,
-};
-use crate::contracts::supra_nova_contracts::{
-    FeeOperator, FeeOperatorProxy, Hypernova, HypernovaProxy, TokenBridge, TokenBridgeProxy,
-    TokenVault, TokenVaultProxy, WrappedTokenFactory, WrappedTokenFactoryProxy, FEE_OPERATOR,
-    FEE_OPERATOR_PROXY, HYPERNOVA, HYPERNOVA_PROXY, TOKEN_BRIDGE, TOKEN_BRIDGE_PROXY, TOKEN_VAULT,
-    TOKEN_VAULT_PROXY, WRAPPED_TOKEN, WRAPPED_TOKEN_FACTORY, WRAPPED_TOKEN_FACTORY_PROXY,
+    AutomationRegistryConfig, GenesisTransactionGeneratorConfig,
 };
 use crate::contracts::transaction::{
     GenesisTransaction, GenesisTransactionTags, CREATE2_FACTORY_ADDRESS, CREATE2_FACTORY_CODE,
@@ -21,6 +15,7 @@ use once_cell::sync::Lazy;
 use primitives::supra_constants::VM_SIGNER;
 use primitives::{Bytes, TxKind, U256};
 use std::collections::BTreeMap;
+use derive_getters::Getters;
 
 /// Load precompiled combined bytecode of contracts.
 const CONTRACT_BYTECODES_RAW: &[u8] =
@@ -138,7 +133,7 @@ sol! {
 /// Genesis Transaction generator using configured address as transaction owner.
 /// It provides means to generate minimal mandatory set of genesis transactions to set up evm state,
 /// and conditionally generates non-mandatory set of transactions.
-#[derive(Debug)]
+#[derive(Debug, Getters)]
 pub struct GenesisTransactionGenerator {
     nonce: u64,
     address: Address,
@@ -182,7 +177,6 @@ impl GenesisTransactionGenerator {
             full_set,
             automation_config,
             initial_native_token,
-            supra_nova_config,
         } = config;
         // First Create2 Factory contract deployment, which will allow later to utilize create2 API
         // if required during genesis
@@ -217,12 +211,6 @@ impl GenesisTransactionGenerator {
                     self.setup_automation_registry(multisig_address, erc20supra_address, config)?
                         .into_iter(),
                 );
-            }
-
-            // Supra Nova/Bridge contracts
-            if let Some(nova_conig) = supra_nova_config {
-                genesis_transactions
-                    .extend(self.setup_supra_nova_contracts(nova_conig, multisig_address)?);
             }
         };
 
@@ -740,313 +728,6 @@ impl GenesisTransactionGenerator {
         ]))
     }
 
-    fn setup_supra_nova_contracts(
-        &mut self,
-        config: SupraNovaConfig,
-        owner: Address,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        // First setup all independent contracts
-        // 1. Wrapped token contracts
-        // 2. Hypernova contracts
-        // 3. Token Vault contracts
-        let wrapped_token_contracts = self.setup_wrapped_token_contracts(owner)?;
-        let hyper_nova_contracts = self.setup_hyper_nova_contracts(owner, &config)?;
-        let token_vault_contracts = self.setup_token_vault_contracts(owner, &config)?;
-
-        // 4. Setup FeeOperator contracts which depends on hypernova deployment
-        let hyper_nova = *hyper_nova_contracts
-            .get(&GenesisTransactionTags::HypernovaProxy)
-            .expect("Hypernova contract should be deployed")
-            .deploy_address();
-
-        let fee_operator_contracts =
-            self.setup_fee_operator_contracts(owner, hyper_nova, &config)?;
-
-        // 5. Setup Token Bridge contracts which depends on all above
-        let token_vault = *token_vault_contracts
-            .get(&GenesisTransactionTags::TokenVaultProxy)
-            .expect("TokenVault contract should be deployed")
-            .deploy_address();
-
-        let fee_operator = *fee_operator_contracts
-            .get(&GenesisTransactionTags::FeeOperatorProxy)
-            .expect("FeeOperator contract should be deployed")
-            .deploy_address();
-
-        let wrapped_token = *wrapped_token_contracts
-            .get(&GenesisTransactionTags::WrappedTokenFactoryProxy)
-            .expect("WrappedToken contract should be deployed")
-            .deploy_address();
-
-        let token_bridge_contracts = self.setup_token_bridge_contracts(
-            owner,
-            hyper_nova,
-            fee_operator,
-            token_vault,
-            wrapped_token,
-            &config,
-        )?;
-
-        let mut contract_txns = wrapped_token_contracts;
-        contract_txns.extend(hyper_nova_contracts);
-        contract_txns.extend(token_vault_contracts);
-        contract_txns.extend(fee_operator_contracts);
-        contract_txns.extend(token_bridge_contracts);
-
-        Ok(contract_txns)
-    }
-
-    fn setup_wrapped_token_contracts(
-        &mut self,
-        owner: Address,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        let wrapped_token_init_data = Self::load_contract_bytecode(WRAPPED_TOKEN)?;
-        let wrapped_token_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::WRAPPED_TOKEN_IMPL_SALT,
-            wrapped_token_init_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        let wrapped_token_fct_init_data = Self::load_contract_bytecode(WRAPPED_TOKEN_FACTORY)?;
-        let wrapped_token_fct_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::WRAPPED_TOKEN_FACTORY_IMPL_SALT,
-            wrapped_token_fct_init_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        let wrapped_token_fct_init_call = WrappedTokenFactory::initializeCall {
-            owner,
-            token_impl: *wrapped_token_txn.deploy_address(),
-        }
-        .abi_encode();
-
-        let wrapped_token_proxy_init_data =
-            Self::load_contract_bytecode(WRAPPED_TOKEN_FACTORY_PROXY)?;
-        let wrapped_token_proxy_cnstr_data = WrappedTokenFactoryProxy::constructorCall {
-            factory_impl: *wrapped_token_fct_txn.deploy_address(),
-            init_data: wrapped_token_fct_init_call.into(),
-        }
-        .abi_encode();
-        let wrapped_token_proxy_txn_data = [
-            wrapped_token_proxy_init_data,
-            wrapped_token_proxy_cnstr_data,
-        ]
-        .concat();
-        let wrapped_token_proxy_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::WRAPPED_TOKEN_FACTORY_PROXY_SALT,
-            wrapped_token_proxy_txn_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::WrappedToken, wrapped_token_txn),
-            (
-                GenesisTransactionTags::WrappedTokenFactory,
-                wrapped_token_fct_txn,
-            ),
-            (
-                GenesisTransactionTags::WrappedTokenFactoryProxy,
-                wrapped_token_proxy_txn,
-            ),
-        ]))
-    }
-
-    fn setup_hyper_nova_contracts(
-        &mut self,
-        owner: Address,
-        config: &SupraNovaConfig,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        let hyper_nova_init_data = Self::load_contract_bytecode(HYPERNOVA)?;
-        let hyper_nova_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::HYPER_NOVA_IMPL_SALT,
-            hyper_nova_init_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        let hyper_nova_init_call_data = Hypernova::initializeCall {
-            owner,
-            msgId: U256::from(config.hypernova_msg_id),
-        }
-        .abi_encode();
-
-        let hyper_nova_proxy_init_data = Self::load_contract_bytecode(HYPERNOVA_PROXY)?;
-        let hyper_nova_proxy_cnstr_data = HypernovaProxy::constructorCall {
-            hypernova_impl: *hyper_nova_txn.deploy_address(),
-            init_data: hyper_nova_init_call_data.into(),
-        }
-        .abi_encode();
-        let hyper_nova_proxy_txn_data =
-            [hyper_nova_proxy_init_data, hyper_nova_proxy_cnstr_data].concat();
-        let hyper_nova_proxy_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::HYPER_NOVA_PROXY_SALT,
-            hyper_nova_proxy_txn_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::Hypernova, hyper_nova_txn),
-            (GenesisTransactionTags::HypernovaProxy, hyper_nova_proxy_txn),
-        ]))
-    }
-
-    fn setup_token_vault_contracts(
-        &mut self,
-        owner: Address,
-        config: &SupraNovaConfig,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        let token_vault_init_data = Self::load_contract_bytecode(TOKEN_VAULT)?;
-        let token_vault_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::TOKEN_VAULT_IMPL_SALT,
-            token_vault_init_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        let token_vault_init_call_data = TokenVault::initializeCall {
-            owner,
-            nativeToken: config.weth9_address,
-            brigde: owner,
-        }
-        .abi_encode();
-
-        let token_vault_proxy_init_data = Self::load_contract_bytecode(TOKEN_VAULT_PROXY)?;
-        let token_vault_proxy_cnstr_data = TokenVaultProxy::constructorCall {
-            token_vault_impl: *token_vault_txn.deploy_address(),
-            init_data: token_vault_init_call_data.into(),
-        }
-        .abi_encode();
-        let token_vault_proxy_txn_data =
-            [token_vault_proxy_init_data, token_vault_proxy_cnstr_data].concat();
-        let token_vault_proxy_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::TOKEN_VAULT_PROXY_SALT,
-            token_vault_proxy_txn_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::TokenVault, token_vault_txn),
-            (
-                GenesisTransactionTags::TokenVaultProxy,
-                token_vault_proxy_txn,
-            ),
-        ]))
-    }
-
-    fn setup_fee_operator_contracts(
-        &mut self,
-        owner: Address,
-        hyper_nova: Address,
-        config: &SupraNovaConfig,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        let fee_operator_init_data = Self::load_contract_bytecode(FEE_OPERATOR)?;
-        let fee_operator_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::FEE_OPERATOR_IMPL_SALT,
-            fee_operator_init_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        let fee_operator_init_call_data = FeeOperator::initializeCall {
-            owner,
-            hypernova: hyper_nova,
-            sValueFeed: config.dora_storage_address,
-            supraUsdtPairIndex: U256::from(config.supra_usdt_pair_idx),
-            maxStaleOraclePriceLimit: U256::from(config.max_stale_oracle_price_limit),
-        }
-        .abi_encode();
-
-        let fee_operator_proxy_init_data = Self::load_contract_bytecode(FEE_OPERATOR_PROXY)?;
-        let fee_operator_proxy_cnstr_data = FeeOperatorProxy::constructorCall {
-            fee_operator_impl: *fee_operator_txn.deploy_address(),
-            init_data: fee_operator_init_call_data.into(),
-        }
-        .abi_encode();
-        let fee_operator_proxy_txn_data =
-            [fee_operator_proxy_init_data, fee_operator_proxy_cnstr_data].concat();
-        let fee_operator_proxy_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::FEE_OPERATOR_PROXY_SALT,
-            fee_operator_proxy_txn_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::FeeOperator, fee_operator_txn),
-            (
-                GenesisTransactionTags::FeeOperatorProxy,
-                fee_operator_proxy_txn,
-            ),
-        ]))
-    }
-
-    fn setup_token_bridge_contracts(
-        &mut self,
-        owner: Address,
-        hyper_nova: Address,
-        fee_operator_address: Address,
-        token_vault_address: Address,
-        wrapped_token_proxy_address: Address,
-        config: &SupraNovaConfig,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        let token_bridge_init_data = Self::load_contract_bytecode(TOKEN_BRIDGE)?;
-        let token_bridge_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::TOKEN_BRIDGE_IMPL_SALT,
-            token_bridge_init_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        let token_bridge_init_call_data = TokenBridge::initializeCall {
-            owner,
-            nativeToken: config.weth9_address,
-            hypernova: hyper_nova,
-            feeOperator: fee_operator_address,
-            vault: token_vault_address,
-            wrappedTokenFactory: wrapped_token_proxy_address,
-        }
-        .abi_encode();
-
-        let token_bridge_proxy_init_data = Self::load_contract_bytecode(TOKEN_BRIDGE_PROXY)?;
-        let token_bridge_proxy_cnstr_data = TokenBridgeProxy::constructorCall {
-            token_bridge_impl: *token_bridge_txn.deploy_address(),
-            init_data: token_bridge_init_call_data.into(),
-        }
-        .abi_encode();
-        let token_bridge_proxy_txn_data =
-            [token_bridge_proxy_init_data, token_bridge_proxy_cnstr_data].concat();
-        let token_bridge_proxy_txn = GenesisTransaction::create2(
-            self.address,
-            SupraNovaConfig::TOKEN_BRIDGE_PROXY_SALT,
-            token_bridge_proxy_txn_data,
-            self.nonce,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::TokenBridge, token_bridge_txn),
-            (
-                GenesisTransactionTags::TokenBridgeProxy,
-                token_bridge_proxy_txn,
-            ),
-        ]))
-    }
-
     fn load_contract_bytecode(name: &str) -> Result<Vec<u8>> {
         // Bytecodes are embedded at compile time via include_bytes! macros
         CONTRACT_BYTECODES
@@ -1073,7 +754,6 @@ mod tests {
             full_set: false,
             automation_config: None,
             initial_native_token,
-            supra_nova_config: None,
         };
         let result = generator
             .prepare_genesis_transactions(config.clone())
@@ -1129,7 +809,6 @@ mod tests {
             full_set: true,
             automation_config: Some(custom_config.into()),
             initial_native_token: 1000,
-            supra_nova_config: None,
         };
         let result = generator
             .prepare_genesis_transactions(config)
@@ -1147,40 +826,4 @@ mod tests {
         println!("{result:#?}");
     }
 
-    #[test]
-    fn check_supra_nova_with_custom_config() {
-        let mut generator = GenesisTransactionGenerator::default();
-        let owners = vec![u64_to_address(1), u64_to_address(2), u64_to_address(3)];
-        let custom_config = AutomationRegistryConfigV1 {
-            task_duration_cap_secs: 7200,
-            registry_max_gas_cap: 20_000_000,
-            task_capacity: 1000,
-            ..Default::default()
-        };
-        let config = GenesisTransactionGeneratorConfig {
-            foundation_owners: owners,
-            foundation_threshold: 2,
-            full_set: true,
-            automation_config: Some(custom_config.into()),
-            initial_native_token: 1000,
-            supra_nova_config: Some(SupraNovaConfig::default()),
-        };
-        let result = generator
-            .prepare_genesis_transactions(config)
-            .expect("Successful txn generation");
-
-        // Verify all automation contracts are deployed
-        assert!(result.contains_key(&GenesisTransactionTags::WrappedToken));
-        assert!(result.contains_key(&GenesisTransactionTags::WrappedTokenFactory));
-        assert!(result.contains_key(&GenesisTransactionTags::WrappedTokenFactoryProxy));
-        assert!(result.contains_key(&GenesisTransactionTags::Hypernova));
-        assert!(result.contains_key(&GenesisTransactionTags::HypernovaProxy));
-        assert!(result.contains_key(&GenesisTransactionTags::FeeOperator));
-        assert!(result.contains_key(&GenesisTransactionTags::FeeOperatorProxy));
-        assert!(result.contains_key(&GenesisTransactionTags::TokenVault));
-        assert!(result.contains_key(&GenesisTransactionTags::TokenVaultProxy));
-        assert!(result.contains_key(&GenesisTransactionTags::TokenBridge));
-        assert!(result.contains_key(&GenesisTransactionTags::TokenBridgeProxy));
-        println!("{result:#?}");
-    }
 }

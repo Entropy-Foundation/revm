@@ -15,7 +15,7 @@
 #      TIMEOUT=360
 #
 #   - export PASSWORD variable, otherwise password will be requested during run
-#     - with value of the CLI_PROFILE_PASSWORD of the local nodes, which is currently "Blue!Tiger99@Moon.PROFILE"
+#     - with value of the CLI_PROFILE_PASSWORD of the local nodes
 #
 #   - run this script
 #
