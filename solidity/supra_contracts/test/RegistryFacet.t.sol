@@ -195,8 +195,8 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testRegisterRevertsIfTaskCapacityReached() public {
         address diamond = deployCustomRegistry();
 
-        registerUst(diamond);
-        registerUst(diamond);
+        registerUst(diamond, 2450);
+        registerUst(diamond, 2450);
         assertEq(IRegistryFacet(diamond).totalTasks(), 2);
         
         bytes[] memory auxData;
@@ -537,7 +537,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'register' reverts if a cycle transition is in progress.
     function testRegisterRevertsIfCycleTransitionInProgress() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
@@ -688,7 +688,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).disableAutomation();
 
         vm.expectRevert(IRegistryFacet.AutomationNotEnabled.selector);
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
     }
 
     /// @dev Test to ensure 'registerSystemTask' reverts if registration is disabled.
@@ -697,21 +697,21 @@ contract RegistryFacetTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).disableRegistration();
     
         vm.expectRevert(IRegistryFacet.RegistrationDisabled.selector);
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
     }
 
     /// @dev Test to ensure 'registerSystemTask' reverts if system task capacity is reached.
     function testRegisterSystemTaskRevertsIfSysTaskCapacityReached() public {
         address diamond = deployCustomRegistry();
 
-        registerGst(diamond);
-        registerGst(diamond);
+        registerGst(diamond, 2450);
+        registerGst(diamond, 2450);
         assertEq(IRegistryFacet(diamond).totalTasks(), 2);
         assertEq(IRegistryFacet(diamond).totalSystemTasks(), 2);
         
         // Third registration should revert with TaskCapacityReached
         vm.expectRevert(IRegistryFacet.TaskCapacityReached.selector);
-        registerGst(diamond);
+        registerGst(diamond, 2450);
     }
 
     /// @dev Test to ensure 'registerSystemTask' reverts if task duration is greater than system task duration cap.
@@ -1051,7 +1051,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'stopTasks' reverts when cycle transition is in progress.
     function testStopTasksRevertsIfCycleTransitionInProgress() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
@@ -1176,7 +1176,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure stopping a PENDING task refunds half the deposit.
     function testStopPendingTask() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
@@ -1194,7 +1194,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure stopping an expired task refunds the full deposit but returns 0 cycle fee.
     function testStopExpiredTask() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -1303,7 +1303,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(bob).length, 0);
         assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
         assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100000);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
@@ -1332,8 +1332,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getTaskIdList' returns correct task IDs.
     function testGetTaskIdList() public {
-        registerUst(diamondAddr);
-        registerGst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
 
         uint256[] memory taskIds = IRegistryFacet(diamondAddr).getTaskIdList();
         assertEq(taskIds.length, 2);
@@ -1343,8 +1343,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getSystemTaskIds' returns correct system task IDs.
     function testGetSystemTaskIds() public {
-        registerGst(diamondAddr);
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
 
         uint256[] memory sysTaskIds = IRegistryFacet(diamondAddr).getSystemTaskIds();
         assertEq(sysTaskIds.length, 2);
@@ -1354,7 +1354,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getTaskOwner' returns correct owner for an existing task.
     function testGetTaskOwner() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         address owner = IRegistryFacet(diamondAddr).getTaskOwner(0);
         assertEq(owner, alice);
@@ -1362,8 +1362,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getTotalActiveTasks' returns the correct count of active tasks.
     function testGetTotalActiveTasks() public {
-        registerUst(diamondAddr);
-        registerGst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
         
         uint256[] memory taskIndexes = new uint256[](2);
         taskIndexes[0] = 0;
@@ -1381,8 +1381,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getActiveTaskIds' returns correct active task IDs.
     function testGetActiveTaskIds() public {
-        registerUst(diamondAddr);
-        registerGst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](2);
         taskIndexes[0] = 0;
@@ -1403,14 +1403,14 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getTotalLockedBalance' returns the correct locked balance.
     function testGetTotalLockedBalance() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         assertEq(IRegistryFacet(diamondAddr).getTotalLockedBalance(), 60.1 ether);
     }
 
     /// @dev Test to ensure 'hasActiveUserTask' returns true for an active task.
     function testHasActiveUserTask() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -1422,7 +1422,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'hasActiveUserTask' returns false for a pending or non-existent task.
     function testHasActiveUserTaskForPendingOrNonExistent() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         assertFalse(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 0));
         assertFalse(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 99));
@@ -1430,7 +1430,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'hasActiveSystemTask' returns true for an active system task.
     function testHasActiveSystemTask() public {
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -1442,7 +1442,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'hasActiveSystemTask' returns false for a pending or non-existent system task.
     function testHasActiveSystemTaskForPendingOrNonExistent() public {
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
 
         assertFalse(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 0));
         assertFalse(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 99));
@@ -1450,8 +1450,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'hasActiveTaskOfType' returns correct values.
     function testHasActiveTaskOfType() public {
-        registerUst(diamondAddr);
-        registerGst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](2);
         taskIndexes[0] = 0;
@@ -1465,7 +1465,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'hasActiveTaskOfType' returns false for pending or non-existent task.
     function testHasActiveTaskOfTypeForPendingOrNonExistent() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         assertFalse(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST));
         assertFalse(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 99, LibCommon.TaskType.UST));
@@ -1473,8 +1473,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getTaskDetailsBulk' returns correct details for existing and non-existing tasks.
     function testGetTaskDetailsBulk() public {
-        registerUst(diamondAddr);
-        registerGst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
 
         uint64[] memory taskIndexes = new uint64[](3);
         taskIndexes[0] = 0;
@@ -1493,7 +1493,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     ///      usage is below the 50% threshold, and a higher fee when it exceeds the threshold.
     function testCalculateAutomationFeeMultiplierForCurrentCycle() public {
         // Scenario 1. Register a 100_000-gas task and process first cycle transition
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 1250);
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1511,7 +1511,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).register(
             createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)),
             createPredicate(diamondAddr),
-            uint64(block.timestamp + 1250),
+            uint64(block.timestamp) + 1250,
             uint128(10_500_000),
             uint128(4 gwei),
             uint128(400 ether),

@@ -199,7 +199,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' reverts if request amount exceeds the locked balance.
     function testWithdrawFeesRevertsIfRequestExceedsLockedBalance() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.expectRevert(IConfigFacet.RequestExceedsLockedBalance.selector);
 
@@ -217,7 +217,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' withdraws the requested amount and updates the balance.
     function testWithdrawFees() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         assertEq(erc20Supra.balanceOf(admin), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
@@ -231,7 +231,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     
     /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.
     function testWithdrawFeesEmitsEvent() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.expectEmit(true, true, false, false);
         emit IConfigFacet.RegistryFeeWithdrawn(admin, 0.002 ether);
@@ -356,7 +356,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' reverts when registryMaxGasCap is less than gas committed for next cycle.
     function testUpdateConfigBufferRevertsWhenRegistryMaxGasCapIsLessThanGasCommittedForNextCycle() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
         Config memory cfg = validConfig();
 
         vm.expectRevert(IConfigFacet.UnacceptableRegistryMaxGasCap.selector);
@@ -380,7 +380,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' reverts when sysRegistryMaxGasCap is less than system gas committed for next cycle.
     function testUpdateConfigBufferRevertsWhenSysRegistryMaxGasCapIsLessThanSysGasCommittedForNextCycle() public {
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
         Config memory cfg = validConfig();
 
         vm.expectRevert(IConfigFacet.UnacceptableSysRegistryMaxGasCap.selector);

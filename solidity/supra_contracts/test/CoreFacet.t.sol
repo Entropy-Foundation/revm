@@ -105,7 +105,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'monitorCycleEnd' moves cycle state to FINISHED if automation is enabled and tasks exist.
     function testMonitorCycleEndWhenAutomationEnabledAndTasksExist() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startBefore + durationBefore);
@@ -158,7 +158,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is FINISHED.
     function testProcessTasksWhenCycleStateFinished() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
@@ -174,14 +174,14 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getActiveTaskIds(), tasks);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100000);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForCurrentCycle(), 100000);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
     }
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is FINISHED.
     function testProcessTasksRevertsIfInvalidCycleIndexWhenCycleStateFinished() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
@@ -203,8 +203,8 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure 'processTasks' reverts if tasks are processed out of order.
     function testProcessTasksRevertsIfTasksOutOfOrder() public {
-        registerUst(diamondAddr);
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -226,7 +226,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is disabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationDisabled() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -264,7 +264,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is enabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationEnabled() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -309,7 +309,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if invalid cycle index is passed when cycle state is SUSPENDED.
     function testProcessTasksRevertsIfInvalidCycleIndexWhenCycleStateSuspended() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -405,7 +405,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'disableAutomation' moves cycle state from STARTED to SUSPENDED if automation is disabled and tasks exist.
     function testDisableAutomationStartedToSuspendedWhenTasksExist() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
         
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.STARTED));
@@ -434,7 +434,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'disableAutomation' moves cycle state from FINISHED to SUSPENDED if automation is disabled and transition is not started.
     function testDisableAutomationFinishedToSuspendedWhenTransitionNotStarted() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
@@ -471,8 +471,8 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'disableAutomation' does not change cycle state from FINISHED if automation is disabled and transition is in progress.
     function testDisableAutomationRetainsFinishedStateIfTransitionInProgress() public {
         // Register 2 USTs so transition requires processing both
-        registerUst(diamondAddr); // task index 0
-        registerUst(diamondAddr); // task index 1
+        registerUst(diamondAddr, 2450); // task index 0
+        registerUst(diamondAddr, 2450); // task index 1
 
         ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
@@ -552,74 +552,80 @@ contract CoreFacetTest is BaseDiamondTest {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'removeRegisteredTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure 'removeRegisteredTask' removes a UST when predicate validation fails.
+    /// @dev Test to ensure 'removeRegisteredTask' removes a UST when predicate validation fails and reduces the gasCommittedForNextCycle.
     function testRemoveRegisteredTasksForUST() public {
-        // Register a UST
-        registerUst(diamondAddr);
-        
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        // Register two USTs
+        registerUst(diamondAddr, 2450);
+        registerUst(diamondAddr, 2450);
 
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(1));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 2);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 200_000);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 120.2 ether);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 122.2 ether);
+        assertEq(erc20Supra.balanceOf(alice), 77.8 ether);
+
+        uint256[] memory taskIndexes = new uint256[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+        uint64[] memory tasksUint64 = new uint64[](1);
+        tasksUint64[0] = 0;
+        string memory reason = "Predicate failed";
+
+        processCycleTransition(diamondAddr, taskIndexes);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 6 ether);
+
+        // Remove only task 0 due to predicate failure, cycle index is 2
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
+
+        // Verify only task 0 is removed; task 1 remains with its gas committed
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(1));
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
-        assertEq(erc20Supra.balanceOf(alice), 38.9 ether);
-        
-        uint256[] memory taskIndexes = new uint256[](1);
-        taskIndexes[0] = 0;
-        uint64[] memory tasksUint64 = new uint64[](1);
-        tasksUint64[0] = 0;
-        string memory reason = "Predicate failed";
-
-
-        processCycleTransition(diamondAddr, taskIndexes);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
-
-        // Remove task due to predicate failure, cycle index is 2
-        vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
-        
-        // Verify task is removed
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 3.9375 ether);
-        assertEq(erc20Supra.balanceOf(alice), 96.0625 ether);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 66.6 ether);
+        assertEq(erc20Supra.balanceOf(alice), 133.4 ether);
     }
 
-    /// @dev Test to ensure 'removeRegisteredTask' removes a GST when predicate validation fails.
+    /// @dev Test to ensure 'removeRegisteredTask' removes a GST when predicate validation fails and reduces the systemGasCommittedForNextCycle.
     function testRemoveRegisteredTasksForGST() public {
-        // Register a GST
-        registerGst(diamondAddr);
-        
-        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
+        // Register two GSTs
+        registerGst(diamondAddr, 2450);
+        registerGst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
+        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(1));
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 2);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 200_000);
+
+        uint256[] memory taskIndexes = new uint256[](2);
         taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
         uint64[] memory tasksUint64 = new uint64[](1);
         tasksUint64[0] = 0;
         string memory reason = "Predicate failed";
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        // Remove task due to predicate failure
+        // Remove only task 0 due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
 
-        // Verify task is removed
+        // Verify only task 0 is removed; task 1 remains with its gas committed
         assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
+        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(1));
+        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
         assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' emits 'TaskRemovedBySystem' event.
     function testRemoveRegisteredTasksEmitsEvent() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
         
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -641,7 +647,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
     function testRemoveRegisteredTasksRevertsIfNotVmSigner() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
         
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
 
@@ -654,7 +660,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
     function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
@@ -667,7 +673,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
     function testRemoveRegisteredTasksRevertsIfCycleIndexIncorrect2() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
 
@@ -680,7 +686,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'removeRegisteredTask' does nothing when automation is disabled.
     function testRemoveRegisteredTaskDoesNothingWhenAutomationDisabled() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
@@ -695,7 +701,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure removeRegisteredTask reverts with InsufficientBalanceForRefund if registry has insufficient balance.
     function testRemoveRegisteredTaskRevertsIfInsufficientBalance() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -716,8 +722,8 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @notice Test to ensure that when automation is disabled mid-transition (FINISHED, some tasks
     /// remaining), suspension is deferred until the transition completes and the new cycle starts.
     function testDisableAutomationDefersSuspensionUntilTransitionEnds() public {
-        registerUst(diamondAddr);
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerUst(diamondAddr, 2450);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -755,7 +761,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'getCycleStateDetails' returns correct cycle details.
     function testGetCycleStateDetails() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(startBefore + durationBefore);
@@ -796,7 +802,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure config buffer is applied after monitorCycleEnd + processTasks, resulting in STARTED state with the updated cycle duration.
     function testCycleTransitionAppliesConfigBuffer() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, ) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(durationBefore, 1200);
@@ -826,7 +832,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure 'processTasks' with an empty array returns early.
     function testProcessTasksWithEmptyArrayReturnsEarly() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -847,7 +853,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure that when buffer changes cycle duration, moveToReadyState resets transition state.
     function testMoveToReadyStateResetsTransitionStateOnDurationChange() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(duration, 1200);
@@ -884,8 +890,8 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @notice Test to ensure partial task processing in FINISHED state keeps state FINISHED
     /// until the last task is processed, then transitions to STARTED.
     function testPartialTaskProcessingInFinishedState() public {
-        registerUst(diamondAddr);
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -915,8 +921,8 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @notice Test to ensure partial task processing in SUSPENDED state keeps state SUSPENDED
     /// until the last task is processed, then transitions to READY.
     function testPartialTaskProcessingInSuspendedState() public {
-        registerUst(diamondAddr);
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
+        registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -949,7 +955,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure an expired task is removed from the registry and 'RemovedTasks' is emitted during cycle transition.
     function testExpiredTaskRemovalInTransition() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -964,7 +970,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getTaskIdList().length, 1);
 
         // Move time forward past task expiration
-        vm.warp(block.timestamp + 100);
+        vm.warp(block.timestamp + 1250);
 
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
@@ -989,7 +995,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @notice Test to ensure a task is removed during transition when the owner does not have enough
     /// allowance for the automation fee. The deposit is unlocked and forfeited to the registry.
     function testInsufficientAllowanceDuringTransitionRemovesTask() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
         uint256 balanceBefore = erc20Supra.balanceOf(alice);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
 
@@ -1022,7 +1028,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure enabling automation during SUSPENDED state makes the finalised transition go to STARTED.
     function testEnableAutomationDuringSuspendedFinalizesToStarted() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -1049,10 +1055,12 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
     }
 
-    /// @dev Test to ensure refundTaskFees processes cycle and deposit refunds when processTasks runs
-    /// on an active UST while the system is in SUSPENDED state.
-    function testRefundTaskFeesOnSuspendForActiveTask() public {
-        registerUst(diamondAddr);
+    /// @dev refundTaskFees refunds the full cycle locked fee when the task's active timeframe
+    /// spans beyond the refund duration. With 2450s expiry, taskActiveTimeframe=1250s which
+    /// exceeds refundDuration=1200s, so actualFeeTimeframe is capped at 1200s (full cycle).
+    /// Result: all 3 ether locked fee is refunded
+    function testRefundTaskFeesOnSuspendForActiveTaskRefundsFullCycleFees() public {
+        registerUst(diamondAddr, 2450);
 
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -1078,14 +1086,51 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // State after refund
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(erc20Supra.balanceOf(alice), 96.125 ether);
+        assertEq(erc20Supra.balanceOf(alice), 99 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
     }
 
-    /// @notice Test to ensure safeRefund emits ErrorInsufficientBalanceToRefund when the registry's balance is insufficient to process refund.
+    /// @dev refundTaskFees refunds only a partial locked fee when the task expires early in
+    /// the cycle. With 1250s expiry, taskActiveTimeframe=50s which is less than
+    /// refundDuration=1200s, so actualFeeTimeframe=50s. Only the fee for 50s (0.125 ether) is refunded.
+    function testRefundTaskFeesOnSuspendForActiveTaskRefundsPartialCycleFees() public {
+        registerUst(diamondAddr, 1250);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
+
+        // State before refund
+        assertEq(erc20Supra.balanceOf(alice), 35.9 ether);
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index, taskIndexes);
+
+        // State after refund: only 0.125 ether of the 3 ether locked fee is refunded
+        // (50s worth out of 1200s cycle).
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(erc20Supra.balanceOf(alice), 96.125 ether);
+        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+    }
+
+    /// @notice Test to ensure safeRefund emits ErrorInsufficientBalanceToRefund when the registry's balance is insufficient
+    /// to process refund, and that the task is still removed.
     function testSafeRefundEmitsErrorInsufficientBalanceToRefundIfInsufficientBalance() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 1250);
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
 
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
@@ -1110,7 +1155,8 @@ contract CoreFacetTest is BaseDiamondTest {
         emit IRegistryFacet.ErrorInsufficientBalanceToRefund(0, alice, 0, 60.1 ether);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);
+        ICoreFacet(diamondAddr).processTasks(2, taskIndexes);        
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
 
     /// @dev Test to ensure the congestion fee uses the proportional surplus formula when
@@ -1140,7 +1186,7 @@ contract CoreFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).register(
             createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, uint128(100))),
             createPredicate(diamondAddr),
-            uint64(block.timestamp + 1250),
+            uint64(block.timestamp + 2450),
             uint128(11_000_000),
             uint128(4 gwei),
             uint128(cap),
@@ -1166,7 +1212,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint128 estimatedFee = IRegistryFacet(customRegistry).estimateAutomationFee(100_000);
         assertEq(estimatedFee, 0);
         
-        registerUst(customRegistry);
+        registerUst(customRegistry, 2450);
 
         assertTrue(IRegistryFacet(customRegistry).ifTaskExists(0));
         // Only flat reg fee(1 ether) and automation fee cap(60.1 ether) is deducted since estimated automation fee is 0
@@ -1178,7 +1224,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// no cycle fees are locked, and the task activates normally.
     function testCalculateTaskFeeReturnsZeroWhenBaseFeeIsZero() public {
         address customRegistry = deployCustomRegistry();
-        registerUst(customRegistry);
+        registerUst(customRegistry, 2450);
 
         // Perform cycle transition
         uint256[] memory tasks = new uint256[](1);

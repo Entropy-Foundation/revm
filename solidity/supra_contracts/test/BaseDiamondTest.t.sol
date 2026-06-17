@@ -77,7 +77,8 @@ abstract contract BaseDiamondTest is Test {
 
     /// @dev Helper function to register a UST.
     /// @param _diamond The address of the diamond.
-    function registerUst(address _diamond) internal {
+    /// @param _duration The duration of the UST.
+    function registerUst(address _diamond, uint64 _duration) internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(_diamond);
@@ -87,33 +88,34 @@ abstract contract BaseDiamondTest is Test {
         erc20Supra.approve(_diamond, type(uint256).max);
 
         IRegistryFacet(_diamond).register(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            uint128(4 gwei),                    // gasPriceCap
-            uint128(60.1 ether),                // automationFeeCapForCycle
-            2,                                  // priority
-            auxData                             // aux data
+            payload,                                // payload
+            predicate,                              // predicate
+            uint64(block.timestamp + _duration),    // expiryTime
+            uint128(100_000),                       // maxGasAmount
+            uint128(4 gwei),                        // gasPriceCap
+            uint128(60.1 ether),                    // automationFeeCapForCycle
+            2,                                      // priority
+            auxData                                 // aux data
         );
         vm.stopPrank();
     }
 
     /// @dev Helper function to register a GST.
     /// @param _diamond The address of the diamond.
-    function registerGst(address _diamond) internal {
+    /// @param _duration The duration of the GST.
+    function registerGst(address _diamond, uint64 _duration) internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(_diamond);
 
         vm.prank(bob);
         IRegistryFacet(_diamond).registerSystemTask(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            2,                                  // priority
-            auxData                             // aux data
+            payload,                                // payload
+            predicate,                              // predicate
+            uint64(block.timestamp + _duration),    // expiryTime
+            uint128(100_000),                       // maxGasAmount
+            2,                                      // priority
+            auxData                                 // aux data
         );
     }
     
@@ -153,20 +155,20 @@ abstract contract BaseDiamondTest is Test {
 
     /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
     function processCycleTransition(address _diamond, uint256[] memory _taskIndexes) internal {
-        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(_diamond).getCycleInfo();
-        vm.warp(startTime + duration);
+        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore, ) = ICoreFacet(_diamond).getCycleInfo();
+        vm.warp(startTimeBefore + durationBefore);
 
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(_diamond).monitorCycleEnd();
 
-        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(_diamond).getCycleInfo();
-        assertEq(index, 1);
-        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+        (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(_diamond).getCycleInfo();
+        assertEq(indexAfter, indexBefore);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
 
         vm.expectEmit(true, false, false, false);
         emit ICoreFacet.ActiveTasks(_taskIndexes);
 
-        ICoreFacet(_diamond).processTasks(index + 1, _taskIndexes);
+        ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
         vm.stopPrank();
     }
 

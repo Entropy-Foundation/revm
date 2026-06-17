@@ -319,7 +319,9 @@ library LibCore {
                 // Active GST
                 // Governance submitted tasks are not charged
 
-                result.sysGas = task.maxGasAmount;                
+                if (task.expiryTime > _currentCycleEndTime) {
+                    result.sysGas = task.maxGasAmount;
+                }
                 registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
             } else {
                 TransitionState storage transitionState = LibAppStorage.transitionState();
