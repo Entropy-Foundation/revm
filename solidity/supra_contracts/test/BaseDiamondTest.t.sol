@@ -6,9 +6,11 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {ERC20Supra} from "../src/ERC20Supra.sol";
 import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
+import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 abstract contract BaseDiamondTest is Test {
     ERC20Supra erc20Supra;                      // ERC20Supra contract
@@ -75,7 +77,8 @@ abstract contract BaseDiamondTest is Test {
 
     /// @dev Helper function to register a UST.
     /// @param _diamond The address of the diamond.
-    function registerUst(address _diamond) internal {
+    /// @param _duration The duration of the UST.
+    function registerUst(address _diamond, uint64 _duration) internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(_diamond);
@@ -85,33 +88,34 @@ abstract contract BaseDiamondTest is Test {
         erc20Supra.approve(_diamond, type(uint256).max);
 
         IRegistryFacet(_diamond).register(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            uint128(4 gwei),                    // gasPriceCap
-            uint128(60.1 ether),                // automationFeeCapForCycle
-            2,                                  // priority
-            auxData                             // aux data
+            payload,                                // payload
+            predicate,                              // predicate
+            uint64(block.timestamp + _duration),    // expiryTime
+            uint128(100_000),                       // maxGasAmount
+            uint128(4 gwei),                        // gasPriceCap
+            uint128(60.1 ether),                    // automationFeeCapForCycle
+            2,                                      // priority
+            auxData                                 // aux data
         );
         vm.stopPrank();
     }
 
     /// @dev Helper function to register a GST.
     /// @param _diamond The address of the diamond.
-    function registerGst(address _diamond) internal {
+    /// @param _duration The duration of the GST.
+    function registerGst(address _diamond, uint64 _duration) internal {
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100)); 
         bytes memory predicate = createPredicate(_diamond);
 
         vm.prank(bob);
         IRegistryFacet(_diamond).registerSystemTask(
-            payload,                            // payload
-            predicate,                          // predicate
-            uint64(block.timestamp + 1250),     // expiryTime
-            uint128(100_000),                   // maxGasAmount
-            2,                                  // priority
-            auxData                             // aux data
+            payload,                                // payload
+            predicate,                              // predicate
+            uint64(block.timestamp + _duration),    // expiryTime
+            uint128(100_000),                       // maxGasAmount
+            2,                                      // priority
+            auxData                                 // aux data
         );
     }
     
@@ -149,15 +153,36 @@ abstract contract BaseDiamondTest is Test {
         return abi.encode(_target, callData);
     }
 
-    /// @dev Helper function to deploy a custom AutomationRegistry with taskCapacity and sysTaskCapacity set to 2.
+    /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
+    function processCycleTransition(address _diamond, uint256[] memory _taskIndexes) internal {
+        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore, ) = ICoreFacet(_diamond).getCycleInfo();
+        vm.warp(startTimeBefore + durationBefore);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(_diamond).monitorCycleEnd();
+
+        (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(_diamond).getCycleInfo();
+        assertEq(indexAfter, indexBefore);
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
+
+        vm.expectEmit(true, false, false, false);
+        emit ICoreFacet.ActiveTasks(_taskIndexes);
+
+        ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
+        vm.stopPrank();
+    }
+
+    /// @dev Helper function to deploy a custom AutomationRegistry with:
+    /// - taskCapacity and sysTaskCapacity set to 2
+    /// - automation and congestion base fees set to 0
     function deployCustomRegistry() internal returns (address) {
         InitParams memory initParams = InitParams({
             taskDurationCapSecs: 3600 * 24 * 7,
             registryMaxGasCap: 20_000_000,
-            automationBaseFeeWeiPerSec: 0.5 ether,
+            automationBaseFeeWeiPerSec: 0,
             flatRegistrationFeeWei: 1 ether,
             congestionThresholdPercentage: 50,
-            congestionBaseFeeWeiPerSec: 0.5 ether,
+            congestionBaseFeeWeiPerSec: 0,
             congestionExponent: 6,
             taskCapacity: 2,
             cycleDurationSecs: 1200,
@@ -176,4 +201,11 @@ abstract contract BaseDiamondTest is Test {
 
         return diamond;
     }
+}
+
+/// @dev Mock ERC20 that returns `false` on transfer/transferFrom to test TransferFailed revert paths.
+contract FailingERC20 {
+    function balanceOf(address) external pure returns (uint256) { return 100 ether; }
+    function transfer(address, uint256) external pure returns (bool) { return false; }
+    function transferFrom(address, address, uint256) external pure returns (bool) { return false; }
 }

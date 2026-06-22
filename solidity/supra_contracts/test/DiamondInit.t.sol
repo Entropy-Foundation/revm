@@ -610,6 +610,22 @@ contract DiamondInitTest is BaseDiamondTest {
         new Diamond(admin, facets, address(erc20Supra), initParams);
         vm.stopPrank();
     }
+
+    /// @dev Test to ensure 'facets' returns all registered facets.
+    function testFacets() public view {
+        IDiamondLoupe.Facet[] memory facetList = IDiamondLoupe(diamondAddr).facets();
+        assertEq(facetList.length, 6);
+
+        for (uint256 i; i < facetList.length; i++) {
+            assertTrue(facetList[i].facetAddress != address(0));
+            assertGt(facetList[i].functionSelectors.length, 0);
+        }
+    }
+
+    /// @dev Test to ensure 'isInitialized' returns true after initialization.
+    function testIsInitialized() public view {
+        assertTrue(Diamond(diamondAddr).isInitialized());
+    }
 }
 
 interface INonExistent {

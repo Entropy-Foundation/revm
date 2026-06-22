@@ -319,7 +319,9 @@ library LibCore {
                 // Active GST
                 // Governance submitted tasks are not charged
 
-                result.sysGas = task.maxGasAmount;                
+                if (task.expiryTime > _currentCycleEndTime) {
+                    result.sysGas = task.maxGasAmount;
+                }
                 registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
             } else {
                 TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -473,8 +475,6 @@ library LibCore {
     function onCycleTransition(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        if (_taskIndexes.length == 0) { return; }
-
         if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
         
         // Check if transition state exists
@@ -502,8 +502,6 @@ library LibCore {
     /// @param _taskIndexes Array of task indexes to be processed.
     function onCycleSuspend(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
-
-        if (_taskIndexes.length == 0) { return; }
 
         if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert ICoreFacet.InvalidRegistryState(); }
         if (s.index != _cycleIndex) { revert ICoreFacet.InvalidInputCycleIndex(); }

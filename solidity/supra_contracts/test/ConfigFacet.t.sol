@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
+import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
@@ -199,7 +199,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' reverts if request amount exceeds the locked balance.
     function testWithdrawFeesRevertsIfRequestExceedsLockedBalance() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.expectRevert(IConfigFacet.RequestExceedsLockedBalance.selector);
 
@@ -217,7 +217,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'withdrawFees' withdraws the requested amount and updates the balance.
     function testWithdrawFees() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         assertEq(erc20Supra.balanceOf(admin), 0);
         assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
@@ -231,13 +231,24 @@ contract ConfigFacetTest is BaseDiamondTest {
     
     /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.
     function testWithdrawFeesEmitsEvent() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
 
         vm.expectEmit(true, true, false, false);
         emit IConfigFacet.RegistryFeeWithdrawn(admin, 0.002 ether);
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).withdrawFees(0.002 ether, admin);
+    }
+
+    /// @dev Test to ensure 'withdrawFees' reverts if ERC20 transfer fails.
+    function testWithdrawFeesRevertsIfTransferFails() public {
+        FailingERC20 failingToken = new FailingERC20();
+        vm.etch(address(erc20Supra), address(failingToken).code);
+
+        vm.expectRevert(IConfigFacet.TransferFailed.selector);
+        
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateConfigBuffer' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -345,7 +356,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' reverts when registryMaxGasCap is less than gas committed for next cycle.
     function testUpdateConfigBufferRevertsWhenRegistryMaxGasCapIsLessThanGasCommittedForNextCycle() public {
-        registerUst(diamondAddr);
+        registerUst(diamondAddr, 2450);
         Config memory cfg = validConfig();
 
         vm.expectRevert(IConfigFacet.UnacceptableRegistryMaxGasCap.selector);
@@ -369,7 +380,7 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' reverts when sysRegistryMaxGasCap is less than system gas committed for next cycle.
     function testUpdateConfigBufferRevertsWhenSysRegistryMaxGasCapIsLessThanSysGasCommittedForNextCycle() public {
-        registerGst(diamondAddr);
+        registerGst(diamondAddr, 2450);
         Config memory cfg = validConfig();
 
         vm.expectRevert(IConfigFacet.UnacceptableSysRegistryMaxGasCap.selector);

@@ -854,4 +854,13 @@ contract MultiSignatureWalletTest is Test {
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         multiSig.getTransaction(0);
     }
+
+    /// @dev Test to ensure 'getNextTransactionIndex' returns correct value.
+    function testGetNextTransactionIndex() public {
+        assertEq(multiSig.getNextTransactionIndex(), 0);
+
+        testSubmitTransactionIncrement();
+
+        assertEq(multiSig.getNextTransactionIndex(), 1);
+    }
 }
