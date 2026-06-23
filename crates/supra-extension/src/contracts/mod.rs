@@ -3,4 +3,3 @@
 pub mod configs;
 pub mod generator;
 pub mod transaction;
-pub(crate) mod supra_nova_contracts;

@@ -3,6 +3,8 @@
 
 pub mod contracts;
 pub mod errors;
+#[cfg(feature = "build-utils")]
+pub mod build_utils;
 #[allow(missing_docs, missing_debug_implementations)]
 #[allow(elided_lifetimes_in_paths)]
 mod supra_contract_bindings;

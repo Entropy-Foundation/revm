@@ -95,6 +95,28 @@ impl Debug for GenesisTransaction {
     }
 }
 
+/// Custom contract tag to be used by upper layer to configure a custom genesis contract transactions.
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Serialize, Deserialize, Constructor)]
+pub struct ContractCustomTag {
+    /// Nonce of the contract deployment.
+    pub  nonce: u64,
+    /// Contract name, used as a tag
+    pub  name: String,
+}
+
+/// Order custom contracts by the nonce.
+impl Ord for ContractCustomTag {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.nonce.cmp(&other.nonce)
+    }
+}
+
+impl Display for ContractCustomTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 /// Genesis transaction tags which also guide deployment/execution order
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[allow(missing_docs)]
@@ -122,22 +144,16 @@ pub enum GenesisTransactionTags {
     DiamondInit = 16,
     Diamond = 17,
 
-    // Supra Nova contracts
-    WrappedToken = 18, // Impl
-    WrappedTokenFactory = 19, // Beacon
-    WrappedTokenFactoryProxy = 20, // Beacon Proxy
-    Hypernova = 21,
-    HypernovaProxy = 22,
-    TokenVault = 23,
-    TokenVaultProxy = 24,
-    FeeOperator = 25,
-    FeeOperatorProxy = 26,
-    TokenBridge = 27,
-    TokenBridgeProxy = 28,
+    // Custom contracts injected by application layer
+    Custom(ContractCustomTag),
+
 }
 
 impl Display for GenesisTransactionTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            GenesisTransactionTags::Custom (custom_tag) => write!(f, "{}", custom_tag),
+            _ => write!(f, "{:?}", self),
+        }
     }
 }
