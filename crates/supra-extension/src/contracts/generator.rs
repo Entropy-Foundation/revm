@@ -162,7 +162,7 @@ impl GenesisTransactionGenerator {
             0,
             CREATE2_FACTORY_CODE.to_owned(),
             TxKind::Create,
-            CREATE2_FACTORY_ADDRESS,
+            Some(CREATE2_FACTORY_ADDRESS),
         )
     }
 
@@ -191,7 +191,8 @@ impl GenesisTransactionGenerator {
             let multisig_address = *genesis_transactions
                 .get(&GenesisTransactionTags::FoundationWallet)
                 .expect("Foundation Wallet deployment transaction")
-                .deploy_address();
+                .deploy_address().as_ref()
+                .expect("Foundation wallet deployment address should be set");
 
             // Erc20 Supra contracts
             let erc20_contracts =
@@ -199,7 +200,8 @@ impl GenesisTransactionGenerator {
             let erc20supra_address = *erc20_contracts
                 .get(&GenesisTransactionTags::Erc20Supra)
                 .expect("Erc20Supra deployment transaction exists")
-                .deploy_address();
+                .deploy_address().as_ref()
+                .expect("Erc20Supra deployment address should be set");
             genesis_transactions.extend(erc20_contracts);
 
             // BlockMetadata contract
@@ -329,7 +331,8 @@ impl GenesisTransactionGenerator {
         let gen_erc20_supra_address = *erc20_supra_txn
             .get(&GenesisTransactionTags::Erc20Supra)
             .expect("Erc20Supra should be deployed")
-            .deploy_address();
+            .deploy_address().as_ref()
+            .expect("Erc20Supra deploy address");
         assert_eq!(
             erc20_supra_address, gen_erc20_supra_address,
             "Address computed by tag and nonce should be the same"
@@ -339,8 +342,10 @@ impl GenesisTransactionGenerator {
             self.setup_erc20_supra_handler(owner, gen_erc20_supra_address, initial_native_tokens)?;
         let gen_erc20_handler_address = *erc20_handler_txn
             .get(&GenesisTransactionTags::Erc20SupraHandler)
-            .expect("Erc20Supra should be deployed")
-            .deploy_address();
+            .expect("Erc20SupraHandler should be deployed")
+            .deploy_address().as_ref()
+            .expect("Erc20SupraHandler deploy address");
+
         assert_eq!(
             erc20_handler_address, gen_erc20_handler_address,
             "Address computed by tag and nonce should be the same"
@@ -471,7 +476,7 @@ impl GenesisTransactionGenerator {
             initial_native_tokens,
             proxy_txn_data,
             TxKind::Create,
-            erc20_handler_address,
+            Some(erc20_handler_address),
         );
         self.nonce += 1;
 
