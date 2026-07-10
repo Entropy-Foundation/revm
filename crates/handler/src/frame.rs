@@ -279,7 +279,13 @@ impl EthFrame<EthInterpreter> {
         inputs: Box<CreateInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
         let spec = context.cfg().spec().into();
-        let should_update_nonce = context.cfg().execution_mode().updates_nonce();
+        if !context.cfg().execution_mode().supports_contract_creation()
+        {
+            return Err(ERROR::from_string(format!(
+                "Contract creation is not supported in the current execution mode: {:?}",
+                context.cfg().execution_mode()
+            )));
+        }
         let return_error = |e| {
             Ok(ItemOrResult::Result(FrameResult::Create(CreateOutcome {
                 result: InterpreterResult {
@@ -310,16 +316,14 @@ impl EthFrame<EthInterpreter> {
             return return_error(InstructionResult::OutOfFunds);
         }
         let old_nonce = caller_info.nonce;
-        if should_update_nonce {
-            // Increase nonce of caller and check if it overflows
-            let Some(new_nonce) = old_nonce.checked_add(1) else {
-                return return_error(InstructionResult::Return);
-            };
-            caller_info.nonce = new_nonce;
-            context
-                .journal_mut()
-                .nonce_bump_journal_entry(inputs.caller);
-        }
+        // Increase nonce of caller and check if it overflows
+        let Some(new_nonce) = old_nonce.checked_add(1) else {
+            return return_error(InstructionResult::Return);
+        };
+        caller_info.nonce = new_nonce;
+        context
+            .journal_mut()
+            .nonce_bump_journal_entry(inputs.caller);
 
         // Create address
         let mut init_code_hash = None;

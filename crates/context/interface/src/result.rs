@@ -434,6 +434,13 @@ pub enum InvalidTransaction {
     Eip7873NotSupported,
     /// EIP-7873 initcode transaction should have `to` address.
     Eip7873MissingTarget,
+    /// Unexpected transaction sender.
+    UnsupportedTransactionSender{
+        /// Sender address
+        sender: Address,
+        /// Reasoning of identified error
+        msg: String
+    }
 }
 
 impl TransactionError for InvalidTransaction {}
@@ -527,6 +534,9 @@ impl fmt::Display for InvalidTransaction {
             Self::Eip7873NotSupported => write!(f, "Eip7873 is not supported"),
             Self::Eip7873MissingTarget => {
                 write!(f, "Eip7873 initcode transaction should have `to` address")
+            }
+            InvalidTransaction::UnsupportedTransactionSender{sender, msg} => {
+                write!(f, "Unsupported transaction sender. Sender: {sender}. Reason: {msg}")
             }
         }
     }

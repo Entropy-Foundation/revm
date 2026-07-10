@@ -150,7 +150,7 @@ pub trait Handler {
         let init_and_floor_gas = self.validate(evm)?;
         let eip7702_refund = self.pre_execution(evm)? as i64;
         let mut exec_result = self.execution(evm, &init_and_floor_gas)?;
-        if  evm.ctx().cfg().execution_mode().charges_gas() {
+        if evm.ctx().cfg().execution_mode().charges_gas() {
             self.post_execution(evm, &mut exec_result, init_and_floor_gas, eip7702_refund)?;
         }
 
@@ -261,15 +261,24 @@ pub trait Handler {
         if is_supra_reserved(&caller)
             && !(execution_mode.is_system() || execution_mode.is_genesis())
         {
-            // TODO create InvalidTransaction variant to report the error instead
-            Err(Self::Error::from_string(format!(
-                "Invalid caller: supra reserved address. TxnHash {}",
-                ctx.tx().tx_hash()
-            )))
+            Err(Self::Error::from(
+                InvalidTransaction::UnsupportedTransactionSender {
+                    sender: caller,
+                    msg: format!(
+                        "Invalid caller: supra reserved address. TxnHash {}",
+                        ctx.tx().tx_hash()
+                    ),
+                },
+            ))
         } else if !is_vm_signer(&caller) && execution_mode.is_system() {
-            Err(Self::Error::from_string(String::from(
-                "Invalid caller: Expected VM_SIGNER as caller for system transactions.",
-            )))
+            Err(Self::Error::from(
+                InvalidTransaction::UnsupportedTransactionSender {
+                    sender: caller,
+                    msg: String::from(
+                        "Invalid caller: Expected VM_SIGNER as caller for system transactions.",
+                    ),
+                },
+            ))
         } else {
             Ok(())
         }

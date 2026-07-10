@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 interface IBlockMeta {
     /// @notice Thrown when the caller is not the VM signer.
