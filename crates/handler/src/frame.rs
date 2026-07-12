@@ -279,13 +279,7 @@ impl EthFrame<EthInterpreter> {
         inputs: Box<CreateInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
         let spec = context.cfg().spec().into();
-        if !context.cfg().execution_mode().supports_contract_creation()
-        {
-            return Err(ERROR::from_string(format!(
-                "Contract creation is not supported in the current execution mode: {:?}",
-                context.cfg().execution_mode()
-            )));
-        }
+
         let return_error = |e| {
             Ok(ItemOrResult::Result(FrameResult::Create(CreateOutcome {
                 result: InterpreterResult {
@@ -296,6 +290,10 @@ impl EthFrame<EthInterpreter> {
                 address: None,
             })))
         };
+
+        if !context.cfg().execution_mode().supports_contract_creation() {
+            return return_error(InstructionResult::NotActivated);
+        }
 
         // Check depth
         if depth > CALL_STACK_LIMIT as usize {

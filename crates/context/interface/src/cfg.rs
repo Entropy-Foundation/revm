@@ -56,7 +56,10 @@ impl ExecutionMode {
     }
     
     /// Contract creation is supported only in user and genesis execution modes.
-    pub  fn supports_contract_creation(&self) -> bool {
+    /// In Automation*, System mode contract deployment is not supported, as nonce update is not
+    /// expected in these 2 modes.
+    /// And ReadOnly mode is used to execute pure view transactions where *NO* state change is expected.
+    pub fn supports_contract_creation(&self) -> bool {
         matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }
 }

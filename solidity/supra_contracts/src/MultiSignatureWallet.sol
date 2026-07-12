@@ -187,7 +187,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
             return bytes("");
         }
         Transaction memory transaction = transactions[_txIndex];
-        if (!this.hasValidNumberOfConfirmations(_txIndex))
+        if (!hasValidNumberOfConfirmations(_txIndex))
             revert NotEnoughConfirmation();
 
         removeTransaction(_txIndex);
@@ -245,6 +245,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     /**
      * @dev Function to remove existing owners from the wallet.
+     * @dev It does not clean up existing confirmation from the removed owners to keep complexity low.
+     * However, the hasValidNumberOfConfirmations function counts only valid owners when checking for confirmations
+     * before executing a transaction.
      * @param _owners Array of existing owner addresses to be removed.
      */
     function removeOwners(address[] memory _owners) external {
@@ -369,7 +372,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      * @param _txIndex Index of the transaction to check for.
      * @return bool True if the transaction has a valid number of confirmations counting only valid owners, false otherwise.
      */
-    function hasValidNumberOfConfirmations(uint256 _txIndex) external view returns (bool) {
+    function hasValidNumberOfConfirmations(uint256 _txIndex) public view returns (bool) {
         txExists(_txIndex);
         Transaction storage transaction = transactions[_txIndex];
         EnumerableSet.AddressSet storage confirmation = confirmations[_txIndex];

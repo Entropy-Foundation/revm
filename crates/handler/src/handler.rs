@@ -252,6 +252,10 @@ pub trait Handler {
 
     /// Validates caller, to reject user transactions having caller address matching any of
     /// the SUPRA reserved addresses.
+    /// SUPRA reserved addresses are used by the system to initiate and execute internal transactions.
+    /// To avoid/prevent any EOA address collision with the reserved addresses, and corrupting
+    /// internal system state the user transactions ever having sender address matching any SUPRA
+    /// reserved one are rejected.
     #[inline]
     fn validate_caller(&self, evm: &Self::Evm) -> Result<(), Self::Error> {
         let ctx = evm.ctx_ref();
