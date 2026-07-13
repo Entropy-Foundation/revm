@@ -32,7 +32,7 @@ contract InitializeCycleMonitoring is Script {
 
         // Submit a foundation/gov action to register registry::monitor_cycle_event
         // to be executed for each block
-        bytes memory data = abi.encodeCall(BlockMeta.register, (registry, selector));
+        bytes memory data = abi.encodeCall(BlockMeta.register, (registry, selector, 1_000_000));
         wallet.submitTransaction(blockMetadata, 0,  timeout, data);
 
         vm.stopBroadcast();

@@ -25,12 +25,12 @@ contract DeployBlockMeta is Script {
 
 
         // Deploy BlockMeta proxy
-        bytes memory initData = abi.encodeCall(BlockMeta.initialize, owner);
+        bytes memory initData = abi.encodeCall(BlockMeta.initialize, (owner, 1_000_000));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         console.log("BlockMeta proxy deployed at: ", address(proxy));
 
         // Register the selector
-        BlockMeta(address(proxy)).register(automationController, selector);
+        BlockMeta(address(proxy)).register(automationController, selector, 100_000);
 
         vm.stopBroadcast();
     }
