@@ -335,6 +335,16 @@ contract BlockMetaTest is Test {
         blockMeta.updateExecutionOrder(executionOrder);
     }
 
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if zero gas limit is passed.
+    function testUpdateExecutionOrderRevertsIfGasLimitZero() public {
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(counterAddress, selector, 0);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidGasLimit.selector);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
     /// @dev Test to ensure 'updateExecutionOrder' reverts if duplicate selector is passed.
     function testUpdateExecutionOrderRevertsIfDuplicateSelector() public {
         uint256[] memory executionOrder = new uint256[](2);
@@ -378,14 +388,32 @@ contract BlockMetaTest is Test {
         assertEq(selectorsList[0], failSelector);
     }
 
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if total gas exceeds the block prologue gas cap.
+    function testUpdateExecutionOrderRevertsIfGasCapExceeded() public {
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(counterAddress, selector, 600_000);
+        executionOrder[1] = packExecution(counterAddress, bytes4(keccak256("foo()")), 600_000);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if passed an empty array.
+    function testUpdateExecutionOrderRevertsIfEmptyArray() public {
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidExecutionsLength.selector);
+        blockMeta.updateExecutionOrder(new uint256[](0));
+    }
+
     /// @dev Test to ensure 'blockPrologue' executes.
     function testBlockPrologue() public {
-	    assertEq(counter.counter(), 0);
+ 	    assertEq(counter.counter(), 0);
         testRegister();
 
         vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
-	    assertEq(counter.counter(), 1);
+ 	    assertEq(counter.counter(), 1);
     }
 
     /// @dev Test to ensure 'blockPrologue' reverts if caller is not VM Signer.
@@ -475,6 +503,20 @@ contract BlockMetaTest is Test {
         blockMeta.blockPrologue();
 
         assertEq(counter.counter(), 1);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' reverts if caller is not the owner.
+    function testSetBlockPrologueGasCapRevertsIfNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        blockMeta.setBlockPrologueGasCap(500_000);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' reverts if cap is zero.
+    function testSetBlockPrologueGasCapRevertsIfZero() public {
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidGasCap.selector);
+        blockMeta.setBlockPrologueGasCap(0);
     }
 
     /// @dev Test to ensure 'setBlockPrologueGasCap' reverts if new cap is below current total allocated gas.

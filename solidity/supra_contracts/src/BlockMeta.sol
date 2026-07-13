@@ -52,6 +52,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     /// @param _gasCap Total gas cap for blockPrologue execution (sum of per-entry gas limits must not exceed this).
     function initialize(address _initialOwner, uint64 _gasCap) public initializer {
         __Ownable_init(_initialOwner);
+        require(_gasCap > 0, InvalidGasCap());
         blockPrologueGasCap = _gasCap;
     }
 
@@ -106,6 +107,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     /// @param _executions An array of packed execution entries representing the new execution order.
     function updateExecutionOrder(uint256[] calldata _executions) external onlyOwner {
         uint256 inputCount = _executions.length;
+        require(inputCount > 0, InvalidExecutionsLength());
 
         // Clear existing array
         delete executions;
@@ -138,7 +140,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     /// @notice Sets the total gas cap for the block prologue.
     /// @param _cap The new total gas cap (must be >= current total allocated gas).
     function setBlockPrologueGasCap(uint64 _cap) external onlyOwner {
-        require(_cap >= totalGasAllocated, InvalidGasCap());
+        require(_cap > 0 && _cap >= totalGasAllocated, InvalidGasCap());
         blockPrologueGasCap = _cap;
         emit BlockPrologueGasCapUpdated(_cap);
     }
