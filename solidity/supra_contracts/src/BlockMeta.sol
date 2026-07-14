@@ -125,7 +125,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
             require(gasLimit > 0, InvalidGasLimit());
 
             // Check to prevent duplicate entries, reverts if already registered
-            checkDuplicate(inputExecution & KEY_MASK);
+            checkDuplicate(inputExecution);
 
             executions.push(inputExecution);
             newTotalGas += gasLimit;
@@ -192,7 +192,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     function checkDuplicate(uint256 _executionEntry) private view {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
-            if ((executions[i] & KEY_MASK) == _executionEntry) {
+            if ((executions[i] & KEY_MASK) == (_executionEntry & KEY_MASK)) {
                 revert SelectorAlreadyRegistered();
             }
         }
@@ -205,7 +205,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     function findIndex(uint256 _executionEntry) private view returns (uint256) {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
-            if ((executions[i] & KEY_MASK) == _executionEntry) { 
+            if ((executions[i] & KEY_MASK) == (_executionEntry & KEY_MASK)) { 
                 return i;
             }
         }

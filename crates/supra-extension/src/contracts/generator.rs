@@ -65,7 +65,7 @@ sol! {
 const BLOCK_META: &str = "BlockMeta";
 sol! {
     contract BlockMeta {
-         function initialize(address _initialOwner);
+         function initialize(address _initialOwner, uint64 _gasCap);
     }
 }
 
@@ -177,6 +177,7 @@ impl GenesisTransactionGenerator {
             full_set,
             automation_config,
             initial_native_token,
+            block_prologue_gas_cap,
         } = config;
         // First Create2 Factory contract deployment, which will allow later to utilize create2 API
         // if required during genesis
@@ -205,7 +206,7 @@ impl GenesisTransactionGenerator {
             genesis_transactions.extend(erc20_contracts);
 
             // BlockMetadata contract
-            genesis_transactions.extend(self.setup_block_metadata(multisig_address)?.into_iter());
+            genesis_transactions.extend(self.setup_block_metadata(multisig_address, block_prologue_gas_cap)?.into_iter());
 
             // Automation registry contracts
             if let Some(config) = automation_config {
@@ -502,6 +503,7 @@ impl GenesisTransactionGenerator {
     fn setup_block_metadata(
         &mut self,
         initial_owner: Address,
+        gas_cap: u64,
     ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
         // -------------------------------------------------------------------------
         // Pre-compute all deployment addresses
@@ -526,12 +528,13 @@ impl GenesisTransactionGenerator {
         // -------------------------------------------------------------------------
         // 2. Deploy ERC1967Proxy (BlockMetadata)
         // Constructor args: implementation address, initialization data
-        // Initialization data: initialize(initialOwner)
+        // Initialization data: initialize(initialOwner, gasCap)
         // -------------------------------------------------------------------------
         let proxy_impl_data = Self::load_contract_bytecode(ERC1967PROXY)?;
         // Encode the initialize call data for BlockMeta
         let block_metadata_initialize = BlockMeta::initializeCall {
             _initialOwner: initial_owner,
+            _gasCap: gas_cap,
         }
         .abi_encode();
         // Encode the ERC1967Proxy constructor args
@@ -759,6 +762,7 @@ mod tests {
             full_set: false,
             automation_config: None,
             initial_native_token,
+            block_prologue_gas_cap: 100000,
         };
         let result = generator
             .prepare_genesis_transactions(config.clone())
@@ -814,6 +818,7 @@ mod tests {
             full_set: true,
             automation_config: Some(custom_config.into()),
             initial_native_token: 1000,
+            block_prologue_gas_cap: 100000,
         };
         let result = generator
             .prepare_genesis_transactions(config)
@@ -831,4 +836,66 @@ mod tests {
         println!("{result:#?}");
     }
 
+    /// Verifies `block_prologue_gas_cap` from the config is actually threaded through to
+    /// the `BlockMeta::initialize(owner, gasCap)` call encoded into the BlockMetadata
+    /// proxy's deployment data, rather than e.g. being silently dropped or hardcoded.
+    #[test]
+    fn block_metadata_init_data_encodes_configured_gas_cap() {
+        let mut generator = GenesisTransactionGenerator::default();
+        let owners = vec![u64_to_address(1), u64_to_address(2), u64_to_address(3)];
+        let owner = owners[0];
+        let gas_cap = 654_321u64;
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners,
+            foundation_threshold: 2,
+            full_set: true,
+            automation_config: None,
+            initial_native_token: 0,
+            block_prologue_gas_cap: gas_cap,
+        };
+        let result = generator
+            .prepare_genesis_transactions(config)
+            .expect("Successful txn generation");
+        let block_metadata_txn = result
+            .get(&GenesisTransactionTags::BlockMetadata)
+            .expect("BlockMetadata proxy txn present");
+
+        // The multisig foundation wallet is the actual `_initialOwner` passed to
+        // `setup_block_metadata`, not `owners[0]` directly - reconstructing the exact
+        // owner here would duplicate multisig-address derivation, so instead assert on
+        // the gas cap encoding alone, which is independent of which owner was used.
+        let expected_gas_cap_word = {
+            let mut word = [0u8; 32];
+            word[24..].copy_from_slice(&gas_cap.to_be_bytes());
+            word
+        };
+        assert!(
+            block_metadata_txn
+                .data()
+                .windows(32)
+                .any(|w| w == expected_gas_cap_word),
+            "expected the 32-byte right-aligned encoding of gas_cap ({gas_cap}) to appear \
+             in the BlockMetadata proxy deployment data"
+        );
+
+        // Sanity check: a different gas cap produces different deployment data, i.e. the
+        // value is not a coincidental match against some unrelated fixed encoding.
+        let mut generator2 = GenesisTransactionGenerator::default();
+        let other_gas_cap = 111_111u64;
+        let config2 = GenesisTransactionGeneratorConfig {
+            foundation_owners: vec![owner, u64_to_address(2), u64_to_address(3)],
+            foundation_threshold: 2,
+            full_set: true,
+            automation_config: None,
+            initial_native_token: 0,
+            block_prologue_gas_cap: other_gas_cap,
+        };
+        let result2 = generator2
+            .prepare_genesis_transactions(config2)
+            .expect("Successful txn generation");
+        let block_metadata_txn2 = result2
+            .get(&GenesisTransactionTags::BlockMetadata)
+            .expect("BlockMetadata proxy txn present");
+        assert_ne!(block_metadata_txn.data(), block_metadata_txn2.data());
+    }
 }
