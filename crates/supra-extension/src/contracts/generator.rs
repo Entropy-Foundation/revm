@@ -21,7 +21,7 @@ use derive_getters::Getters;
 const CONTRACT_BYTECODES_RAW: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/supra_contracts_bytecode.bin"));
 
-const CONTRACT_BYTECODES: Lazy<BTreeMap<String, Vec<u8>>> = Lazy::new(|| {
+static CONTRACT_BYTECODES: Lazy<BTreeMap<String, Vec<u8>>> = Lazy::new(|| {
     // Deserialize the bytecodes from the raw bytes
     let (bytecodes, _) =
         bincode::serde::decode_from_slice(CONTRACT_BYTECODES_RAW, config::standard())

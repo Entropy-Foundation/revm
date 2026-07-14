@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";

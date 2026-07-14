@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.34;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
@@ -187,7 +187,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
             return bytes("");
         }
         Transaction memory transaction = transactions[_txIndex];
-        if (transaction.numConfirmations < numConfirmationsRequired)
+        if (!hasValidNumberOfConfirmations(_txIndex))
             revert NotEnoughConfirmation();
 
         removeTransaction(_txIndex);
@@ -245,6 +245,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     /**
      * @dev Function to remove existing owners from the wallet.
+     * @dev It does not clean up existing confirmation from the removed owners to keep complexity low.
+     * However, the hasValidNumberOfConfirmations function counts only valid owners when checking for confirmations
+     * before executing a transaction.
      * @param _owners Array of existing owner addresses to be removed.
      */
     function removeOwners(address[] memory _owners) external {
@@ -362,5 +365,24 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         }
         if (deployed == address(0)) { revert ContractCreationFailed(); }
         emit ContractDeployed(deployed);
+    }
+
+    /**
+     * @dev Function to check if a transaction has a valid number of confirmations.
+     * @param _txIndex Index of the transaction to check for.
+     * @return bool True if the transaction has a valid number of confirmations counting only valid owners, false otherwise.
+     */
+    function hasValidNumberOfConfirmations(uint256 _txIndex) public view returns (bool) {
+        txExists(_txIndex);
+        Transaction storage transaction = transactions[_txIndex];
+        EnumerableSet.AddressSet storage confirmation = confirmations[_txIndex];
+        uint64 valid_number_of_confirmations = 0;
+        for (uint64 i = 0; i < confirmation.length(); i++) {
+            address owner = confirmation.at(i);
+            if (owners.contains(owner)) {
+                valid_number_of_confirmations++;
+            }
+        }
+        return valid_number_of_confirmations >= numConfirmationsRequired;
     }
 }

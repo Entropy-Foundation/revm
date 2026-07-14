@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
