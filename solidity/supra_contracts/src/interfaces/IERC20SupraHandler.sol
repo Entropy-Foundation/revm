@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 interface IERC20SupraHandler {
     /// @notice Thrown when a user has insufficient ERC20Supra balance to withdraw.

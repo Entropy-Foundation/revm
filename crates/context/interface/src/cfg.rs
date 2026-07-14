@@ -51,8 +51,16 @@ impl ExecutionMode {
 
     /// Returns true if the execution context is configured for read-only execution,
     /// i.e. for execution of pure view functions.
-    pub  fn is_read_only(&self) -> bool {
+    pub fn is_read_only(&self) -> bool {
         matches!(self, ExecutionMode::ReadOnly)
+    }
+    
+    /// Contract creation is supported only in user and genesis execution modes.
+    /// In Automation*, System mode contract deployment is not supported, as nonce update is not
+    /// expected in these 2 modes.
+    /// And ReadOnly mode is used to execute pure view transactions where *NO* state change is expected.
+    pub fn supports_contract_creation(&self) -> bool {
+        matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }
 }
 
