@@ -399,6 +399,27 @@ contract BlockMetaTest is Test {
         blockMeta.updateExecutionOrder(executionOrder);
     }
 
+    /// @dev Test to ensure 'updateExecutionOrder' replaces (rather than accumulates on top of)
+    /// the previously tracked 'totalGasAllocated', even when entries already existed.
+    function testUpdateExecutionOrderReplacesTotalGasAllocated() public {
+        register(counterAddress, selector, DEFAULT_GAS);
+        register(counterAddress, bytes4(keccak256("foo()")), DEFAULT_GAS);
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS * 2);
+
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(address(failingContract), failSelector, DEFAULT_GAS);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+
+        // If the running total carried over the pre-existing allocation instead of being
+        // reset, this would read DEFAULT_GAS * 3 instead of DEFAULT_GAS.
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS);
+    }
+
     /// @dev Test to ensure 'updateExecutionOrder' reverts if passed an empty array.
     function testUpdateExecutionOrderRevertsIfEmptyArray() public {
         vm.prank(admin);
@@ -408,12 +429,12 @@ contract BlockMetaTest is Test {
 
     /// @dev Test to ensure 'blockPrologue' executes.
     function testBlockPrologue() public {
- 	    assertEq(counter.counter(), 0);
+        assertEq(counter.counter(), 0);
         testRegister();
 
         vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
- 	    assertEq(counter.counter(), 1);
+        assertEq(counter.counter(), 1);
     }
 
     /// @dev Test to ensure 'blockPrologue' reverts if caller is not VM Signer.
@@ -561,6 +582,30 @@ contract BlockMetaTest is Test {
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
         assertEq(blockMeta.totalGasAllocated(), 0);
+    }
+
+    /// @dev Test to ensure 'register' succeeds again once 'deregister' frees enough budget
+    /// under a gas cap that was fully consumed.
+    function testRegisterSucceedsAfterDeregisterFreesBudget() public {
+        vm.prank(admin);
+        blockMeta.setBlockPrologueGasCap(DEFAULT_GAS);
+
+        register(counterAddress, selector, DEFAULT_GAS);
+
+        bytes4 foo = bytes4(keccak256("foo()"));
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        register(counterAddress, foo, DEFAULT_GAS);
+
+        vm.prank(admin);
+        blockMeta.deregister(counterAddress, selector);
+
+        register(counterAddress, foo, DEFAULT_GAS);
+
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS);
+        (address[] memory targets, bytes4[] memory selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 1);
+        assertEq(targets[0], counterAddress);
+        assertEq(selectors[0], foo);
     }
 
     /// @dev Test to ensure 'getExecutions' returns the execution order.

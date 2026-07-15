@@ -71,7 +71,9 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
         require(_selector != bytes4(0), InvalidSelector());
         require(_gasLimit > 0, InvalidGasLimit());
-        require(totalGasAllocated + _gasLimit <= blockPrologueGasCap, GasCapExceeded());
+        // Widen to uint256 so a near-uint64-max totalGasAllocated can't overflow the addition
+        // and mask the intended GasCapExceeded() error behind a raw arithmetic Panic(0x11).
+        require(uint256(totalGasAllocated) + _gasLimit <= blockPrologueGasCap, GasCapExceeded());
 
         uint256 executionEntry = packExecution(_targetContract, _selector);
 
@@ -112,7 +114,9 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         // Clear existing array
         delete executions;
 
-        uint64 newTotalGas = 0;
+        // Accumulate in uint256 so a run of near-uint64-max gas limits can't overflow the
+        // running total and mask the intended GasCapExceeded() error behind Panic(0x11).
+        uint256 newTotalGas = 0;
 
         for (uint256 i = 0; i < inputCount; i++) {
             uint256 inputExecution = _executions[i];
@@ -129,10 +133,12 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
             executions.push(inputExecution);
             newTotalGas += gasLimit;
+            require(newTotalGas <= blockPrologueGasCap, GasCapExceeded());
         }
 
-        require(newTotalGas <= blockPrologueGasCap, GasCapExceeded());
-        totalGasAllocated = newTotalGas;
+        // Safe to downcast: the loop's require guarantees newTotalGas <= blockPrologueGasCap,
+        // which is itself a uint64, so it always fits.
+        totalGasAllocated = uint64(newTotalGas);
 
         emit ExecutionOrderUpdated(_executions);
     }

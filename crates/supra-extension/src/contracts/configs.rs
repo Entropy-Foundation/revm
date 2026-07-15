@@ -32,7 +32,7 @@ use primitives::Address;
 //   ├───────────┼──────────────────────────────┤
 //   │ 400       │ 18,397,227 ⚠️ exceeds budget  │
 //   └───────────┴──────────────────────────────┘
-const MAX_SUPPORTED_AUTOMATION_TASK: u16 = 200;
+const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
 
 /// Configuration parameters for Automation Registry contracts initialization
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,16 +69,16 @@ impl AutomationRegistryConfigV1 {
     /// Checks whether the config is valid to create non-failable transactions.
     pub fn is_valid(&self) -> Result<(), anyhow::Error> {
         if self.task_duration_cap_secs == 0 || self.sys_task_duration_cap_secs == 0 {
-            return Err(anyhow::anyhow!("[System]Task duration cap must be positive"));
+            return Err(anyhow::anyhow!("[System] Task duration cap must be positive"));
         }
         if self.registry_max_gas_cap == 0 || self.sys_registry_max_gas_cap == 0 {
             return Err(anyhow::anyhow!("[System] Registry max gas cap must be positive"));
         }
         if self.cycle_duration_secs > self.task_duration_cap_secs || self.cycle_duration_secs > self.sys_task_duration_cap_secs {
-            return Err(anyhow::anyhow!("[System]Task duration cap should be greater than cycle duration"));
+            return Err(anyhow::anyhow!("[System] Task duration cap should be greater than cycle duration"));
         }
         if self.congestion_threshold_percentage > 100 {
-            return Err(anyhow::anyhow!("Congestion threshold percentage should be less than 100"));
+            return Err(anyhow::anyhow!("Congestion threshold percentage should be less or equal to 100"));
         }
         if self.sys_task_capacity == 0 || self.task_capacity == 0 {
             return Err(anyhow::anyhow!("Task capacity cannot be 0"));
@@ -86,8 +86,8 @@ impl AutomationRegistryConfigV1 {
         if self.congestion_exponent == 0 {
             return Err(anyhow::anyhow!("Congestion exponent cannot be 0"));
         }
-        if  self.sys_task_capacity + self.task_capacity > MAX_SUPPORTED_AUTOMATION_TASK {
-            return Err(anyhow::anyhow!("Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASK}"));
+        if self.sys_task_capacity.saturating_add(self.task_capacity) > MAX_SUPPORTED_AUTOMATION_TASKS {
+            return Err(anyhow::anyhow!("Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASKS}"));
         }
         Ok(())
     }

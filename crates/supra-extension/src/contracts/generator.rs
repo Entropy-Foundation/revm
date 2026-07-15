@@ -171,6 +171,7 @@ impl GenesisTransactionGenerator {
         &mut self,
         config: GenesisTransactionGeneratorConfig,
     ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
+        config.is_valid()?;
         let GenesisTransactionGeneratorConfig {
             foundation_owners,
             foundation_threshold,

@@ -31,7 +31,7 @@ interface IBlockMeta {
     /// @param targetContract Address of the target contract.
     /// @param selector Deregistered function selector.
     /// @param gasLimit Gas limit that was allocated for this function.
-    event SelectorDeregistered(address indexed targetContract, bytes4 indexed selector, uint64 indexed gasLimit);
+    event SelectorDeregistered(address indexed targetContract, bytes4 indexed selector, uint64 gasLimit);
 
     /// @notice Emitted when the full execution order is replaced.
     /// @param executionOrder Updated array of packed execution entries.
