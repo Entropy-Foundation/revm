@@ -85,6 +85,20 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         if (confirmations[_txIndex].contains(msg.sender))  revert TxnAlreadyConfirmed();
     }
 
+    /// @dev Clears all pending confirmations for a set of removed owners.
+    /// @param _removedOwners Array of owner addresses that were removed.
+    function _clearOwnerConfirmations(address[] memory _removedOwners) private {
+        for (uint256 i = 0; i < _removedOwners.length; i++) {
+            address removedOwner = _removedOwners[i];
+            for (uint256 j = 0; j < txIndex; j++) {
+                if (transactions[j].to != address(0) && confirmations[j].contains(removedOwner)) {
+                    confirmations[j].remove(removedOwner);
+                    transactions[j].numConfirmations -= 1;
+                }
+            }
+        }
+    }
+
     /**
      * @dev Disables the initialization for the implementation contract.
      */
@@ -263,6 +277,8 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         if (owners.length() < numConfirmationsRequired) {
             revert InvalidNumberOfConfirmations();
         }
+
+        _clearOwnerConfirmations(ownersToUpdate);
 
         if (c > 0)
         emit OwnersRemoved(ownersToUpdate);
