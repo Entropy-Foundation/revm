@@ -189,6 +189,7 @@ impl Typed2718 for AutomationRegistryRecord {
 /// Action to be preformed automation registry record
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumKind)]
 #[enum_kind(AutomationRecordActionTag)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AutomationRecordAction {
     /// Process the tasks during cycle transition.
     Process(processTasksCall),
@@ -283,6 +284,7 @@ impl AutomationRecordAction {
 
 /// Builder for [`AutomationRegistryRecord`]
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AutomationRecordBuilder {
     to: Address,
     chain_id: Option<ChainId>,
@@ -337,6 +339,11 @@ impl AutomationRecordBuilder {
     pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
         self.chain_id = Some(chain_id);
         self
+    }
+
+    /// Returns the action set on this builder so far, if any.
+    pub fn action(&self) -> &Option<AutomationRecordAction> {
+        &self.action
     }
 
     pub fn build(self) -> Result<AutomationRegistryRecord, SupraExtensionError> {
