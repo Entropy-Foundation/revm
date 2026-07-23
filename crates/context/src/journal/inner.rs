@@ -274,8 +274,16 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         // account balance changed.
         self.journal
             .push(ENTRY::balance_changed(address, old_balance));
-        // account is touched.
-        self.journal.push(ENTRY::account_touched(address));
+        // Mark the caller touched through the guarded `touch()` helper rather than pushing an
+        // unconditional `AccountTouched` entry. `Touched` is a sticky, block-scoped flag (see
+        // `AccountStatus` docs) — once a prior transaction has committed with this account
+        // touched, a later transaction must NOT record another touch entry for it, otherwise
+        // discarding that later transaction (e.g. a `ExecutionMode::ReadOnly` predicate call)
+        // would incorrectly unmark the account as touched, dropping the earlier committed
+        // transaction's changes from the state diff at `finalize()`. The caller must not call
+        // `mark_touch()` itself before this, or the guard below would always see the account as
+        // already touched and never record the entry needed to undo a genuine first touch.
+        self.touch(address);
 
         if bump_nonce {
             // nonce changed.

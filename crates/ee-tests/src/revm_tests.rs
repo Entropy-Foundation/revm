@@ -4,6 +4,7 @@ use crate::TestdataConfig;
 use revm::{
     bytecode::opcode,
     context::{ContextTr, TxEnv},
+    context_interface::cfg::ExecutionMode,
     database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET},
     primitives::{address, b256, hardfork::SpecId, Bytes, TxKind, KECCAK_EMPTY, U256},
     state::{AccountStatus, Bytecode},
@@ -75,6 +76,103 @@ fn test_selfdestruct_multi_tx() {
     compare_or_save_revm_testdata(
         "test_selfdestruct_multi_tx.json",
         &(result1, result2, output),
+    );
+}
+
+const STOP_BYTECODE: &[u8] = &[opcode::STOP];
+
+/// Regression test for a bug where a later `ExecutionMode::ReadOnly` transaction's
+/// `discard_tx()` could erase the `Touched` status a prior, already-committed transaction had
+/// set on the same account (e.g. the caller of an automation-task predicate check that runs
+/// after the same account's own ordinary transaction earlier in the block). Because
+/// `Touched` is a sticky, block-scoped flag consumed by state-diff builders (e.g.
+/// `CacheState::apply_account_state`) to decide whether an account appears in the persisted
+/// output at all, incorrectly clearing it silently drops the prior transaction's committed
+/// nonce/balance change from the output.
+#[test]
+fn test_read_only_discard_does_not_revert_prior_committed_tx() {
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
+            STOP_BYTECODE.into(),
+        )))
+        .build_mainnet();
+
+    // T1: an ordinary user transaction from BENCH_CALLER. Bumps its nonce, deducts gas from its
+    // balance, and commits normally.
+    let result1 = evm
+        .transact_one(TxEnv::builder_for_bench().build_fill())
+        .unwrap();
+    assert!(result1.is_success());
+
+    let caller_after_t1 = evm
+        .ctx
+        .journal_mut()
+        .state
+        .get(&BENCH_CALLER)
+        .unwrap()
+        .clone();
+    assert!(caller_after_t1.is_touched());
+    assert_eq!(caller_after_t1.info.nonce, 1);
+
+    // T2: same caller, executed in ReadOnly mode (as an automation-task predicate check would
+    // be). ReadOnly mode does not charge gas or bump the nonce, and this call performs no state
+    // mutations, so it succeeds and its journal is discarded rather than erroring.
+    evm.ctx
+        .modify_cfg(|cfg| cfg.execution_mode = ExecutionMode::ReadOnly);
+    let result2 = evm
+        .transact_one(TxEnv::builder_for_bench().nonce(1).build_fill())
+        .unwrap();
+    assert!(result2.is_success());
+
+    let caller_after_t2 = evm.ctx.journal_mut().state.get(&BENCH_CALLER).unwrap();
+
+    // T2 must have been fully discarded: nonce/balance stay exactly as T1 committed them.
+    assert_eq!(caller_after_t2.info.nonce, caller_after_t1.info.nonce);
+    assert_eq!(caller_after_t2.info.balance, caller_after_t1.info.balance);
+
+    // The critical assertion: T1's committed touch must survive T2's ReadOnly discard.
+    assert!(
+        caller_after_t2.is_touched(),
+        "T1's committed AccountTouched status for the caller must survive a later ReadOnly \
+         transaction's discard_tx(); otherwise state-diff builders skip the account entirely \
+         and T1's committed nonce/balance change is lost"
+    );
+
+    // The account must still show up (with T1's values) once the batch is finalized.
+    let output = evm.finalize();
+    let caller_output = output.get(&BENCH_CALLER).unwrap();
+    assert!(caller_output.is_touched());
+    assert_eq!(caller_output.info.nonce, 1);
+}
+
+/// Regression test for the flip side of the above fix: an account whose *only* interaction in
+/// a block is itself a discarded transaction (e.g. a `ReadOnly` predicate check on an account
+/// that has not otherwise appeared in this block) must end up untouched, not spuriously touched.
+#[test]
+fn test_read_only_discard_of_first_touch_is_fully_undone() {
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| {
+            cfg.spec = SpecId::CANCUN;
+            cfg.execution_mode = ExecutionMode::ReadOnly;
+        })
+        .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
+            STOP_BYTECODE.into(),
+        )))
+        .build_mainnet();
+
+    // BENCH_CALLER has never been touched before; this ReadOnly transaction is its first-ever
+    // interaction this block, and it performs no mutations, so it is discarded.
+    let result = evm
+        .transact_one(TxEnv::builder_for_bench().build_fill())
+        .unwrap();
+    assert!(result.is_success());
+
+    let caller_after = evm.ctx.journal_mut().state.get(&BENCH_CALLER).unwrap();
+    assert!(
+        !caller_after.is_touched(),
+        "an account whose only interaction in the block was a discarded ReadOnly transaction \
+         must end up untouched, not leak a spurious touch into the state diff"
     );
 }
 

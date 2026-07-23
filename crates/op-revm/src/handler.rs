@@ -201,8 +201,9 @@ where
             new_balance = new_balance.max(tx.value());
         }
 
-        // Touch account so we know it is changed.
-        caller_account.mark_touch();
+        // Touch account so we know it is changed. Marking happens via the guarded `touch()`
+        // call inside `caller_accounting_journal_entry` below, not here — calling `mark_touch()`
+        // first would defeat that guard and break the sticky, block-scoped `Touched` invariant.
         caller_account.info.balance = new_balance;
 
         // Bump the nonce for calls. Nonce for CREATE will be bumped in `handle_create`.

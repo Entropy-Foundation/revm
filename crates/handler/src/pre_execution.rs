@@ -172,8 +172,10 @@ pub fn validate_against_state_and_deduct_caller<
     }
 
     let old_balance = caller_account.info.balance;
-    // Touch account so we know it is changed.
-    caller_account.mark_touch();
+    // Touch account so we know it is changed. Marking happens via the guarded `touch()` call
+    // inside `caller_accounting_journal_entry` below, not here — calling `mark_touch()` first
+    // would defeat that guard (see its doc comment) and break the sticky, block-scoped `Touched`
+    // invariant.
     caller_account.info.balance = new_balance;
 
     if should_update_nonce {
