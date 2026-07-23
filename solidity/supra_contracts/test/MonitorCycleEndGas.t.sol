@@ -15,11 +15,15 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 /// the number of registered tasks because `onCycleEndInternal` must:
 ///   1. Load all task IDs from storage  (SLOAD per task)
 ///   2. Sort the list                   (insertionSort — O(n) on monotone IDs)
-///   3. Write them back into the transition-state EnumerableSet (SSTORE per task)
+///   3. Write them into the transition state's `expectedTasksToBeProcessed` (SSTORE per task)
 ///
-/// Step 3 dominates: each EnumerableSet.add() that writes to a fresh (zero) slot
-/// costs two 20,000-gas SSTOREs (one for the value array element, one for the
-/// index mapping entry), totalling ~40,000–45,000 gas per task.
+/// Step 3 dominates. `expectedTasksToBeProcessed` used to be an EnumerableSet.UintSet,
+/// whose add() writes two 20,000-gas SSTOREs per task (one for the value array element,
+/// one for the O(1)-lookup index mapping entry) — ~40,000-45,000 gas/task. That mapping
+/// was never actually queried (the field is only ever read back sequentially via
+/// length/at), so the field was changed to a plain `uint256[]`: a single push() per task
+/// now costs one SSTORE instead of two, roughly halving the per-task cost to
+/// ~20,000-22,000 gas (see LibCore.updateExpectedTasks and its NatSpec).
 ///
 /// This test file answers two questions empirically:
 ///   A. What gas does monitorCycleEnd consume for a given task count?
@@ -37,7 +41,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      N200-N400 tests each deploy a diamond with a capacity matching their own N,
     ///      so they are unaffected by this constant.
     ///      uint16 matches the type of InitParams.taskCapacity.
-    uint16 constant LARGE_CAPACITY = 400;
+    uint16 constant LARGE_CAPACITY = 1000;
 
     // ────────────────────────────────────────────────────────────────────────
     // Helpers
@@ -222,6 +226,21 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         }
     }
 
+    function testMonitorCycleEndGas_N500() public {
+        address d = _deployWithCapacity(500);
+        _registerNTasks(d, 500);
+        uint256 gas = _measureMonitorCycleEnd(d);
+        console.log("monitorCycleEnd gas | N=500 |", gas);
+        // N=400 is the registry capacity ceiling; log whether it fits the budget
+        // without a hard assertion so CI does not break if it is over budget —
+        // the boundary scan test below identifies the exact safe limit.
+        if (gas >= BLOCK_PROLOGUE_GAS_LIMIT) {
+            console.log("  -> N=500 EXCEEDS budget (", BLOCK_PROLOGUE_GAS_LIMIT, ")");
+        } else {
+            console.log("  -> N=500 within budget");
+        }
+    }
+
     // ────────────────────────────────────────────────────────────────────────
     // Boundary scan
     //
@@ -274,7 +293,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
             }
         }
 
-        console.log("=== monitorCycleEnd gas boundary (insertionSort) ===");
+        console.log("=== monitorCycleEnd gas boundary (insertionSort, plain-array expectedTasksToBeProcessed) ===");
         console.log("Safe task limit (max N within 16_777_216 gas):", safeLimitN);
         console.log("First N that exceeds budget                  :", safeLimitN + 1);
 
