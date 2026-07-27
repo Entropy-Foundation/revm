@@ -16,6 +16,9 @@ import {IBlockMeta} from "./interfaces/IBlockMeta.sol";
 contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     using LibUtils for address;
 
+    /// @dev Mask to extract the (target | selector) key, zeroing out the gas limit bits.
+    uint256 private constant KEY_MASK = type(uint256).max << 64;
+
     /**
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
      *                                                                        STORAGE
@@ -24,8 +27,15 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
 
     /// @notice Ordered list of functions to be executed
-    /// @dev Layout: [target[160] | selector[32] | 0[64]]
+    /// @dev Layout: [target[160] | selector[32] | gasLimit[64]]
     uint256[] private executions;
+
+    /// @notice Total gas cap for the entire blockPrologue execution.
+    /// @dev Checked at registration time; sum of all per-entry gas limits must not exceed this.
+    uint64 public blockPrologueGasCap;
+
+    /// @notice Sum of all per-entry gas limits.
+    uint64 public totalGasAllocated;
 
     /**
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -37,9 +47,13 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         _disableInitializers();
     }
 
-    /// @notice Initializes the owner of the contract.
-    function initialize(address _initialOwner) public initializer {
+    /// @notice Initializes the owner and sets the block prologue gas cap.
+    /// @param _initialOwner Address of the contract owner.
+    /// @param _gasCap Total gas cap for blockPrologue execution (sum of per-entry gas limits must not exceed this).
+    function initialize(address _initialOwner, uint64 _gasCap) public initializer {
         __Ownable_init(_initialOwner);
+        require(_gasCap > 0, InvalidGasCap());
+        blockPrologueGasCap = _gasCap;
     }
 
     /**
@@ -51,20 +65,26 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     /// @notice Registers a function selector.
     /// @param _targetContract The target contract address.
     /// @param _selector Function selector to be called on target contract.
-    function register(address _targetContract, bytes4 _selector) external onlyOwner {
+    /// @param _gasLimit Gas limit for this function.
+    function register(address _targetContract, bytes4 _selector, uint64 _gasLimit) external onlyOwner {
         _targetContract.validateContractAddress();
 
         require(_selector != bytes4(0), InvalidSelector());
+        require(_gasLimit > 0, InvalidGasLimit());
+        // Widen to uint256 so a near-uint64-max totalGasAllocated can't overflow the addition
+        // and mask the intended GasCapExceeded() error behind a raw arithmetic Panic(0x11).
+        require(uint256(totalGasAllocated) + _gasLimit <= blockPrologueGasCap, GasCapExceeded());
 
         uint256 executionEntry = packExecution(_targetContract, _selector);
 
         // Check to prevent duplicate entries, reverts if already registered
         checkDuplicate(executionEntry);
 
-        // Add to the execution order
-        executions.push(executionEntry);
+        // Add to the execution order with gas limit packed in
+        executions.push(executionEntry | _gasLimit);
+        totalGasAllocated += _gasLimit;
 
-        emit SelectorRegistered(_targetContract, _selector);
+        emit SelectorRegistered(_targetContract, _selector, _gasLimit);
     }
     
     /// @notice Deregisters a function selector.
@@ -85,29 +105,50 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     }
 
     /// @notice Updates the entire execution order.
-    /// @dev _executions entries must be packed as [target(160) | selector(32) | 0(64)]
+    /// @dev _executions entries must be packed as [target(160) | selector(32) | gasLimit(64)]
     /// @param _executions An array of packed execution entries representing the new execution order.
     function updateExecutionOrder(uint256[] calldata _executions) external onlyOwner {
         uint256 inputCount = _executions.length;
+        require(inputCount > 0, InvalidExecutionsLength());
 
         // Clear existing array
         delete executions;
 
+        // Accumulate in uint256 so a run of near-uint64-max gas limits can't overflow the
+        // running total and mask the intended GasCapExceeded() error behind Panic(0x11).
+        uint256 newTotalGas = 0;
+
         for (uint256 i = 0; i < inputCount; i++) {
             uint256 inputExecution = _executions[i];
             (address target, bytes4 selector) = unpackExecution(inputExecution);
+            uint64 gasLimit = uint64(inputExecution);
 
             // Input validation
             target.validateContractAddress();
             require(selector != bytes4(0), InvalidSelector());
+            require(gasLimit > 0, InvalidGasLimit());
 
             // Check to prevent duplicate entries, reverts if already registered
             checkDuplicate(inputExecution);
 
             executions.push(inputExecution);
+            newTotalGas += gasLimit;
+            require(newTotalGas <= blockPrologueGasCap, GasCapExceeded());
         }
 
+        // Safe to downcast: the loop's require guarantees newTotalGas <= blockPrologueGasCap,
+        // which is itself a uint64, so it always fits.
+        totalGasAllocated = uint64(newTotalGas);
+
         emit ExecutionOrderUpdated(_executions);
+    }
+
+    /// @notice Sets the total gas cap for the block prologue.
+    /// @param _cap The new total gas cap (must be >= current total allocated gas).
+    function setBlockPrologueGasCap(uint64 _cap) external onlyOwner {
+        require(_cap > 0 && _cap >= totalGasAllocated, InvalidGasCap());
+        blockPrologueGasCap = _cap;
+        emit BlockPrologueGasCapUpdated(_cap);
     }
 
     /// @notice Calls all registered functions for the targets.
@@ -116,9 +157,9 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
-            (address target, bytes4 selector) = unpackExecution(executions[i]);
-
-            (bool ok, bytes memory data) = target.call(abi.encodePacked(selector));
+            uint256 entry = executions[i];
+            (address target, bytes4 selector) = unpackExecution(entry);
+            (bool ok, bytes memory data) = target.call{gas: uint64(entry)}(abi.encodePacked(selector));
             if (ok) {
                 emit CallSucceeded(target, selector); 
             } else {
@@ -151,24 +192,26 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         selector = bytes4(uint32(_executionEntry >> 64));
     }
 
-    /// @notice Checks whether a given execution entry is already registered.
-    /// @param _executionEntry The packed execution entry to check.
+    /// @notice Checks whether a given (target, selector) pair is already registered.
+    /// @dev Compares only the target+selector bits, ignoring the gas limit.
+    /// @param _executionEntry The packed execution entry to check (gas bits are masked out).
     function checkDuplicate(uint256 _executionEntry) private view {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
-            if (executions[i] == _executionEntry) {
+            if ((executions[i] & KEY_MASK) == (_executionEntry & KEY_MASK)) {
                 revert SelectorAlreadyRegistered();
             }
         }
     }
 
-    /// @notice Finds the index of a given execution entry in the `executions` array.
-    /// @param _executionEntry The packed execution entry to search for.
+    /// @notice Finds the index of a given (target, selector) pair in the `executions` array.
+    /// @dev Compares only the target+selector bits, ignoring the gas limit.
+    /// @param _executionEntry The packed execution entry to search for (gas bits are masked out).
     /// @return index The index of the execution entry in the `executions` array.
     function findIndex(uint256 _executionEntry) private view returns (uint256) {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
-            if (executions[i] == _executionEntry) { 
+            if ((executions[i] & KEY_MASK) == (_executionEntry & KEY_MASK)) { 
                 return i;
             }
         }
@@ -180,6 +223,8 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     function removeAt(uint256 _index) private {
         uint256 len = executions.length;
         uint256 removedEntry = executions[_index];
+        uint64 gasLimit = uint64(removedEntry);
+        totalGasAllocated -= gasLimit;
 
         for (uint256 i = _index; i < len - 1; i++) {
             executions[i] = executions[i + 1];
@@ -189,7 +234,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
         (address target, bytes4 selector) = unpackExecution(removedEntry);
 
-        emit SelectorDeregistered(target, selector);
+        emit SelectorDeregistered(target, selector, gasLimit);
     }
 
 
@@ -213,6 +258,16 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
             targets[i] = target;
             selectors[i] = selector;
         }
+    }
+
+    /// @notice Returns the gas limit for a given (target, selector) pair.
+    /// @param _targetContract The target contract address.
+    /// @param _selector The function selector.
+    /// @return gasLimit Gas limit allocated for the function.
+    function getExecutionGasLimit(address _targetContract, bytes4 _selector) external view returns (uint64 gasLimit) {
+        uint256 executionEntry = packExecution(_targetContract, _selector);
+        uint256 index = findIndex(executionEntry);
+        gasLimit = uint64(executions[index]);
     }
 
     /// @notice Returns all the registered target contracts.

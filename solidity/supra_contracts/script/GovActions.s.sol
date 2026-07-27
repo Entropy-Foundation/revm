@@ -12,6 +12,7 @@ contract InitializeCycleMonitoring is Script {
     address blockMetadata;
     address registry;
     bytes4 selector;
+    uint64 selectorGasLimit;
     uint64 timeout;
 
     function setUp() public {
@@ -19,6 +20,9 @@ contract InitializeCycleMonitoring is Script {
         blockMetadata = vm.envAddress("BLOCK_METADATA_ADDRESS");
         registry = vm.envAddress("REGISTRY");
         selector = bytes4(keccak256("monitorCycleEnd()"));
+        // if gas-selectorGasLimit is greater than the block prologue gas cap,
+        // the transaction will fail and the cycle monitoring will not be registered
+        selectorGasLimit = uint64(vm.envUint("SELECTOR_GAS_LIMIT"));
         timeout = uint64(vm.envUint("TIMEOUT"));
     }
 
@@ -32,7 +36,7 @@ contract InitializeCycleMonitoring is Script {
 
         // Submit a foundation/gov action to register registry::monitor_cycle_event
         // to be executed for each block
-        bytes memory data = abi.encodeCall(BlockMeta.register, (registry, selector));
+        bytes memory data = abi.encodeCall(BlockMeta.register, (registry, selector, selectorGasLimit));
         wallet.submitTransaction(blockMetadata, 0,  timeout, data);
 
         vm.stopBroadcast();
