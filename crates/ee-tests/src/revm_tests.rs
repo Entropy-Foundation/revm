@@ -4,7 +4,10 @@ use crate::TestdataConfig;
 use revm::{
     bytecode::opcode,
     context::{ContextTr, TxEnv},
-    context_interface::cfg::ExecutionMode,
+    context_interface::{
+        cfg::ExecutionMode,
+        transaction::{Authorization, RecoveredAuthority, RecoveredAuthorization, TransactionType},
+    },
     database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET},
     primitives::{address, b256, hardfork::SpecId, Bytes, TxKind, KECCAK_EMPTY, U256},
     state::{AccountStatus, Bytecode},
@@ -176,6 +179,70 @@ fn test_read_only_discard_of_first_touch_is_fully_undone() {
     );
 }
 
+/// Regression test: `apply_eip7702_auth_list` mutates the authority account's
+/// `info.code`/`info.code_hash`/`info.nonce` directly. In `ExecutionMode::ReadOnly`
+/// (e.g. an automation-task predicate check), these mutations must be fully
+/// journaled so that:
+///   1. `has_state_mutations()` detects the attempt (rather than silently missing
+///      it, since it only inspects journal entries), causing `transact_one` to
+///      return an error instead of succeeding.
+///   2. `discard_tx()` fully reverts the authority's code/nonce/touch, so nothing
+///      leaks into subsequent transactions sharing this journal.
+#[test]
+fn test_read_only_eip7702_auth_list_is_fully_discarded() {
+    let authority = address!("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    let delegate_to = address!("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| {
+            cfg.spec = SpecId::PRAGUE;
+            cfg.execution_mode = ExecutionMode::ReadOnly;
+        })
+        .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
+            STOP_BYTECODE.into(),
+        )))
+        .build_mainnet();
+
+    let auth = RecoveredAuthorization::new_unchecked(
+        Authorization {
+            // Zero chain_id is always accepted, regardless of the context's actual chain id.
+            chain_id: U256::ZERO,
+            address: delegate_to,
+            nonce: 0,
+        },
+        RecoveredAuthority::Valid(authority),
+    );
+
+    let tx = TxEnv::builder_for_bench()
+        .tx_type(Some(TransactionType::Eip7702 as u8))
+        .authorization_list_recovered(vec![auth])
+        .build_fill();
+
+    // Applying the authorization list mutates the authority's code/nonce - this
+    // must be detected as a ReadOnly state-mutation attempt, not allowed to
+    // silently succeed.
+    let err = evm.transact_one(tx).unwrap_err();
+    assert!(
+        err.to_string().contains("attempted state mutation"),
+        "expected a ReadOnly state-mutation error, got: {err}"
+    );
+
+    // And the authority account must show no trace of the attempted delegation:
+    // discard_tx() must have fully reverted the code/nonce/touch mutations that
+    // apply_eip7702_auth_list made before last_frame_result detected them.
+    if let Some(authority_after) = evm.ctx.journal_mut().state.get(&authority) {
+        assert_eq!(authority_after.info.nonce, 0, "nonce bump must be reverted");
+        assert_eq!(
+            authority_after.info.code_hash, KECCAK_EMPTY,
+            "code delegation must be reverted"
+        );
+        assert!(
+            !authority_after.is_touched(),
+            "the authority's touch must not leak from a discarded ReadOnly transaction"
+        );
+    }
+}
+
 /// Tests multiple transactions with contract creation.
 /// Verifies that created contracts persist correctly across transactions
 /// and that their state is properly maintained.
@@ -271,12 +338,14 @@ fn test_multi_tx_create() {
         .get_mut(&created_address)
         .unwrap();
 
+    // T3 recreated the contract at the same address without destroying it again,
+    // so the stale `SelfDestructed` flag from T2's destruction must be cleared -
+    // see the EIP-6780 recreate-after-selfdestruct fix.
     assert_eq!(
         created_acc.status,
         AccountStatus::Created
             | AccountStatus::CreatedLocal
             | AccountStatus::Touched
-            | AccountStatus::SelfDestructed
             | AccountStatus::LoadedAsNotExisting
     );
     let output = evm.finalize();
