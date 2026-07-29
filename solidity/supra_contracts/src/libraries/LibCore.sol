@@ -7,12 +7,10 @@ import {LibUtils} from "./LibUtils.sol";
 import {LibRegistry} from "./LibRegistry.sol";
 import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TransitionState} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
-import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCore {
-    using Arrays for uint256[];
     using LibUtils for address;
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -25,7 +23,7 @@ library LibCore {
 
     /// @notice Sorts a uint256 array in ascending order using insertion sort.
     /// @dev Insertion sort is chosen here because task ID lists originate from an
-    ///      EnumerableSet whose values are assigned incrementally, so the array is
+    ///      array(near-registry source) whose values are assigned incrementally, so the array is
     ///      nearly-sorted in practice.  For nearly-sorted input, insertion sort runs
     ///      in O(n) time (inner loop exits immediately when the element is already in
     ///      place), making it strictly cheaper in gas than the generic quicksort used
@@ -125,18 +123,16 @@ library LibCore {
     /// @dev A direct storage-array assignment from `_expectedTasks` both clears any
     ///      previous contents (the compiler zeroes out any leftover tail elements if
     ///      the new list is shorter) and writes the new elements in a single pass —
-    ///      one SSTORE per task, versus the two SSTOREs per task an EnumerableSet.add()
-    ///      loop would incur (see the field's declaration in LibAppStorage for why the
-    ///      set's membership-index mapping was unused overhead here).
+    ///      one SSTORE per task, field is ever read sequentially(see the declaration)
     function updateExpectedTasks(uint256[] memory _expectedTasks) private {
         LibAppStorage.transitionState().expectedTasksToBeProcessed = _expectedTasks;
     }
 
     /// @notice Transitions cycle state to the READY state. 
     function moveToReadyState() private {
-        // If the cycle duration updated has been identified during transtion, then the transition state is kept
+        // If the cycle duration updated has been identified during transition, then the transition state is kept
         // with reset values except new cycle duration to have it properly set for the next new cycle.
-        // This may happen in case if cycle was ended and feature-flag has been disbaled before any task has
+        // This may happen in case if cycle was ended and feature-flag has been disabled before any task has
         // been processed for the cycle transition.
         // Note that we want to have consistent data in ready state which says that the cycle pointed in the ready state
         // has been finished/summerized, and we are ready to start the next new cycle, and all the cycle information should
@@ -149,11 +145,7 @@ library LibCore {
         if (s.ifTransitionStateExists) {
             if (transitionState.newCycleDuration == s.durationSecs) {
                 // Delete transition state. Deleting the whole struct already recursively
-                // clears expectedTasksToBeProcessed since it is now a plain dynamic array
-                // (unlike the previous EnumerableSet, whose internal _positions mapping
-                // would NOT have been touched by this struct-level delete — mappings are
-                // never cleared by `delete`, which is why that field used to need an
-                // explicit .clear() call here).
+                // clears expectedTasksToBeProcessed since it is a plain dynamic array
                 delete s.transitionState[LibAppStorage.TRANSITION_STATE];
                 s.ifTransitionStateExists = false;
             } else {

@@ -211,33 +211,26 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         assertLt(gas, BLOCK_PROLOGUE_GAS_LIMIT, "N=350 must be within gas budget");
     }
 
-    function testMonitorCycleEndGas_N400() public {
-        address d = _deployWithCapacity(400);
-        _registerNTasks(d, 400);
+    function testMonitorCycleEndGas_N720() public {
+        address d = _deployWithCapacity(720);
+        _registerNTasks(d, 720);
         uint256 gas = _measureMonitorCycleEnd(d);
-        console.log("monitorCycleEnd gas | N=400 |", gas);
-        // N=400 is the registry capacity ceiling; log whether it fits the budget
-        // without a hard assertion so CI does not break if it is over budget —
-        // the boundary scan test below identifies the exact safe limit.
-        if (gas >= BLOCK_PROLOGUE_GAS_LIMIT) {
-            console.log("  -> N=400 EXCEEDS budget (", BLOCK_PROLOGUE_GAS_LIMIT, ")");
-        } else {
-            console.log("  -> N=400 within budget");
-        }
+        console.log("monitorCycleEnd gas | N=720 |", gas);
+        assertLt(gas, BLOCK_PROLOGUE_GAS_LIMIT, "N=720 must be within gas budget");
     }
 
-    function testMonitorCycleEndGas_N500() public {
-        address d = _deployWithCapacity(500);
-        _registerNTasks(d, 500);
+    function testMonitorCycleEndGas_N800() public {
+        address d = _deployWithCapacity(800);
+        _registerNTasks(d, 800);
         uint256 gas = _measureMonitorCycleEnd(d);
-        console.log("monitorCycleEnd gas | N=500 |", gas);
-        // N=400 is the registry capacity ceiling; log whether it fits the budget
+        console.log("monitorCycleEnd gas | N=800 |", gas);
+        // N=800 is the registry capacity ceiling; log whether it fits the budget
         // without a hard assertion so CI does not break if it is over budget —
         // the boundary scan test below identifies the exact safe limit.
         if (gas >= BLOCK_PROLOGUE_GAS_LIMIT) {
-            console.log("  -> N=500 EXCEEDS budget (", BLOCK_PROLOGUE_GAS_LIMIT, ")");
+            console.log("  -> N=800 EXCEEDS budget (", BLOCK_PROLOGUE_GAS_LIMIT, ")");
         } else {
-            console.log("  -> N=500 within budget");
+            console.log("  -> N=800 within budget");
         }
     }
 
