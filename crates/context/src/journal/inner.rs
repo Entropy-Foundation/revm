@@ -1039,7 +1039,12 @@ mod eip6780_recreate_after_selfdestruct_tests {
     ) -> Result<(), TransferError> {
         journal.load_account(db, addr).unwrap();
         journal.create_account_checkpoint(caller, addr, U256::ZERO, SPEC)?;
-        journal.state.get_mut(&addr).unwrap().info.code_hash = code_hash;
+        // Use the real, journaled code-setting path (as an actual CREATE would
+        // via set_code/set_code_with_hash) rather than poking info.code_hash
+        // directly - a direct field write wouldn't be journaled and so
+        // wouldn't be reverted by discard_tx()/checkpoint_revert(), which
+        // would be a test-harness artifact, not real behavior.
+        journal.set_code_with_hash(addr, Bytecode::default(), code_hash);
         journal.checkpoint_commit();
         journal.touch(addr);
         Ok(())
@@ -1173,6 +1178,60 @@ mod eip6780_recreate_after_selfdestruct_tests {
             target_acc.info.balance, balance,
             "the destroyed account's balance should land on the target address"
         );
+    }
+
+    /// create (T1) -> cross-tx selfdestruct where the target IS the
+    /// destroyed account itself (T2, `address == target`).
+    ///
+    /// Per EIP-6780, a cross-tx (not same-tx-created) selfdestruct only
+    /// transfers balance to `target` - but transferring a balance to itself
+    /// is a no-op, so this whole call must leave the account completely
+    /// untouched: no balance change, no `SelfDestructed` flag set (not even
+    /// the global one), no journal entry pushed at all, code/storage intact.
+    /// This is a distinct EIP-6780 corner case (the `else { None }` branch
+    /// in `selfdestruct()`), separate from the single-journal recreate bug
+    /// this module otherwise covers - added specifically to confirm that
+    /// bug's fix (clearing `SelfDestructed`/`Created` in the lazy cold-load
+    /// wipe) has no effect on this unrelated, already-a-no-op path.
+    #[test]
+    fn cross_tx_self_targeting_selfdestruct_is_a_no_op() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        // --- T1: create, fund with a balance, do NOT destroy ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        let balance = U256::from(1_000);
+        journal.balance_incr(&mut db, addr, balance).unwrap();
+        journal.commit_tx();
+
+        // --- T2: a later, unrelated tx selfdestructs it, targeting itself ---
+        journal.load_account(&mut db, addr).unwrap();
+        let journal_len_before = journal.journal.len();
+        journal.selfdestruct(&mut db, addr, addr).unwrap();
+
+        assert_eq!(
+            journal.journal.len(),
+            journal_len_before,
+            "a true no-op selfdestruct must not push any journal entry"
+        );
+
+        let acc = journal.state.get(&addr).unwrap();
+        assert!(
+            !acc.is_selfdestructed_locally(),
+            "cross-tx self-targeting selfdestruct must not take the same-tx \
+             'full delete' path"
+        );
+        assert!(
+            !acc.is_selfdestructed(),
+            "must not even mark globally selfdestructed - this is a no-op, \
+             not a destruction"
+        );
+        assert_eq!(
+            acc.info.balance, balance,
+            "balance must be completely unchanged - transferring to itself \
+             is a no-op, not a zero-out"
+        );
+        assert_eq!(acc.info.code_hash, CODE_V1, "code must survive untouched");
     }
 
     /// create (T1) -> cross-tx selfdestruct (T2) -> attempted recreate (T3).
@@ -1332,5 +1391,75 @@ mod eip6780_recreate_after_selfdestruct_tests {
             "T3's creation must ADD its value on top of T2's balance, not \
              overwrite it"
         );
+    }
+
+    /// A recreated contract's storage must read as zero (not a stale value
+    /// left over from the destroyed generation), and the first read of any
+    /// slot must be charged as a COLD access (EIP-2929) - not still-warm
+    /// from the destroyed generation's own writes in an earlier transaction.
+    #[test]
+    fn recreated_contract_storage_is_zero_and_cold() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+        let key = StorageKey::from(7);
+
+        // T1: create, write a nonzero value to `key`, destroy (same tx).
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        journal
+            .sstore(&mut db, addr, key, StorageValue::from(999))
+            .unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx();
+
+        // T2: recreate (same address), do NOT write `key` again.
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        let sload_result = journal.sload(&mut db, addr, key).unwrap();
+
+        assert_eq!(
+            sload_result.data,
+            StorageValue::ZERO,
+            "recreated contract's storage must read as zero, not leak T1's value"
+        );
+        assert!(
+            sload_result.is_cold,
+            "first read of this slot in T2 must be charged as a cold access"
+        );
+    }
+
+    /// T1 create+destroy (same tx), commits. T2 attempts to recreate the
+    /// same address but is then discarded (as a `ReadOnly`
+    /// automation-predicate call would be) rather than committed. T3, a
+    /// real (non-`ReadOnly`) transaction, then tries to recreate the same
+    /// address. T2's discarded attempt must leave no residue: it must not
+    /// block T3's recreate, and none of T2's (never-committed) contract may
+    /// leak into the final state.
+    #[test]
+    fn readonly_discarded_recreate_leaves_no_residue() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx(); // T1 done
+
+        // T2: attempts a recreate, but gets discarded (ReadOnly-style).
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        journal.discard_tx(); // T2 discarded, not committed
+
+        // T3: a real transaction, tries to recreate at the same address.
+        let t3_result = create_at(&mut journal, &mut db, caller, addr, CODE_V3);
+        assert!(
+            t3_result.is_ok(),
+            "T3 should be able to cleanly recreate where T2's discarded attempt failed"
+        );
+        journal.commit_tx();
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert_eq!(
+            final_account.info.code_hash, CODE_V3,
+            "only T3's contract should survive"
+        );
+        assert!(!final_account.is_selfdestructed());
     }
 }
