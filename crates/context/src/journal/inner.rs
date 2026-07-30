@@ -651,11 +651,17 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                         // transaction has now been fully realized (storage and
                         // info wiped above) - this account is a blank slate as
                         // of this transaction. Clear the persistent global
-                        // flag too, so that if this (or a later) transaction
+                        // flags too, so that if this (or a later) transaction
                         // recreates the account, it is not incorrectly still
                         // treated as destroyed when the block's final state is
-                        // computed. See EIP-6780.
+                        // computed (EIP-6780), and so that a standalone,
+                        // finalize-per-tx execution of the same transaction
+                        // sequence - where this account would simply be a
+                        // freshly-loaded, never-created object - produces the
+                        // same bookkeeping view of this account as this
+                        // shared-journal, multi-tx execution does.
                         account.unmark_selfdestruct();
+                        account.unmark_created();
                     }
                     // unmark locally created
                     account.unmark_created_locally();

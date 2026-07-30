@@ -450,3 +450,139 @@ fn test_disable_balance_check() {
     let expected_balance = U256::ZERO;
     assert_eq!(returned_balance, expected_balance);
 }
+
+/// Funds `addr` with a large balance in a fresh `CacheDB`.
+fn funded_cache_db(addr: revm::primitives::Address) -> revm::database::CacheDB<revm::database::EmptyDB> {
+    use revm::database::{CacheDB, EmptyDB};
+    use revm::state::AccountInfo;
+
+    let mut db = CacheDB::new(EmptyDB::new());
+    db.insert_account_info(
+        addr,
+        AccountInfo {
+            balance: U256::from(10_000_000_000_000_000_000u128),
+            ..Default::default()
+        },
+    );
+    db
+}
+
+/// T1(create->destroy) -> T2(call the destroyed contract), single shared journal
+/// (`transact_one` twice on the same `Evm`, i.e. revm's single-journal, multi-tx
+/// execution mode). T1's init code is `PUSH2 0xFFFF; SELFDESTRUCT; STOP` - the
+/// contract destroys itself in its own constructor, so it is fully deleted per
+/// EIP-6780 (same-tx create+destroy) without ever having runtime code. T2 then
+/// calls that address as if invoking a function on it.
+///
+/// Also asserts the account's *internal bookkeeping* (`AccountStatus`) ends up
+/// identical to the standalone-journal version of the same scenario below -
+/// see the fix in `load_account_optional`'s lazy cold-load wipe, which now
+/// clears the global `Created` flag alongside `SelfDestructed` so a
+/// shared-journal execution doesn't retain a stale flag that a fresh,
+/// finalize-per-tx session would never have set in the first place.
+#[test]
+fn test_call_after_create_destroy_single_journal() {
+    let db = funded_cache_db(BENCH_CALLER);
+
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .with_db(db)
+        .build_mainnet();
+
+    let result1 = evm
+        .transact_one(
+            TxEnv::builder_for_bench()
+                .kind(TxKind::Create)
+                .data(Bytes::copy_from_slice(SELFDESTRUCT_BYTECODE))
+                .build_fill(),
+        )
+        .unwrap();
+    assert!(result1.is_success());
+    let created_address = result1.created_address().unwrap();
+
+    // Sanity: the constructor genuinely selfdestructed (not just deployed empty code).
+    assert!(
+        evm.ctx
+            .journal_mut()
+            .state
+            .get(&created_address)
+            .unwrap()
+            .is_selfdestructed_locally()
+    );
+
+    let result2 = evm
+        .transact_one(
+            TxEnv::builder_for_bench()
+                .nonce(1)
+                .kind(TxKind::Call(created_address))
+                .data(Bytes::from_static(&[0xaa, 0xbb, 0xcc, 0xdd]))
+                .build_fill(),
+        )
+        .unwrap();
+
+    // Calling a destroyed contract must be a harmless no-op: no code left to run.
+    assert!(result2.is_success());
+    assert_eq!(result2.output().unwrap(), &Bytes::new());
+
+    let target_acc = evm.ctx.journal_mut().state.get(&created_address).unwrap();
+    assert_eq!(target_acc.info.code_hash, KECCAK_EMPTY);
+    assert_eq!(
+        target_acc.status,
+        AccountStatus::Touched | AccountStatus::LoadedAsNotExisting
+    );
+}
+
+/// Same scenario as above, but T1 and T2 run in separate finalize-per-tx
+/// sessions (`ExecuteEvm::transact()`'s pattern) sharing only the underlying,
+/// persistent `Database` - as opposed to one shared journal across both.
+#[test]
+fn test_call_after_create_destroy_standalone_journal() {
+    use revm::database::DatabaseCommit;
+
+    let db = funded_cache_db(BENCH_CALLER);
+
+    let mut evm1 = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .with_db(db)
+        .build_mainnet();
+
+    let result1 = evm1
+        .transact_one(
+            TxEnv::builder_for_bench()
+                .kind(TxKind::Create)
+                .data(Bytes::copy_from_slice(SELFDESTRUCT_BYTECODE))
+                .build_fill(),
+        )
+        .unwrap();
+    assert!(result1.is_success());
+    let created_address = result1.created_address().unwrap();
+
+    let state1 = evm1.finalize();
+    let mut db = evm1.ctx.journal_mut().database.clone();
+    db.commit(state1);
+
+    let mut evm2 = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .with_db(db)
+        .build_mainnet();
+
+    let result2 = evm2
+        .transact_one(
+            TxEnv::builder_for_bench()
+                .nonce(1)
+                .kind(TxKind::Call(created_address))
+                .data(Bytes::from_static(&[0xaa, 0xbb, 0xcc, 0xdd]))
+                .build_fill(),
+        )
+        .unwrap();
+
+    assert!(result2.is_success());
+    assert_eq!(result2.output().unwrap(), &Bytes::new());
+
+    let target_acc = evm2.ctx.journal_mut().state.get(&created_address).unwrap();
+    assert_eq!(target_acc.info.code_hash, KECCAK_EMPTY);
+    assert_eq!(
+        target_acc.status,
+        AccountStatus::Touched | AccountStatus::LoadedAsNotExisting
+    );
+}

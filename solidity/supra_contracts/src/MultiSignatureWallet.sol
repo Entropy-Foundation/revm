@@ -374,7 +374,6 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function hasValidNumberOfConfirmations(uint256 _txIndex) public view returns (bool) {
         txExists(_txIndex);
-        Transaction storage transaction = transactions[_txIndex];
         EnumerableSet.AddressSet storage confirmation = confirmations[_txIndex];
         uint64 valid_number_of_confirmations = 0;
         for (uint64 i = 0; i < confirmation.length(); i++) {
