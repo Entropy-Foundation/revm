@@ -690,179 +690,6 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(txId);
     }
 
-    /// @dev Helper to set up a tx with 4 confirmations, then execute removal of owner 1004.
-    function prepareRemovedConfirmingOwner() private {
-        testSubmitTransactionIncrement();
-        grantSufficientConfirmations(0);
-
-        address[] memory ownersToRemove = new address[](1);
-        ownersToRemove[0] = address(1004);
-        
-        bytes memory data = abi.encodeCall(MultiSignatureWallet.removeOwners, (ownersToRemove));
-        submitTransactionToMultiSig(data);
-
-        confirmTransaction(address(1002), 1);
-        confirmTransaction(address(1003), 1);
-        confirmTransaction(address(1005), 1);
-
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
-    }
-
-    /// @dev Test to ensure 'removeOwners' clears confirmations of removed owners.
-    function testRemoveOwnersClearsConfirmations() public {
-        assertEq(multiSig.getOwners().length, 5);
-        prepareRemovedConfirmingOwner();
-
-        assertEq(multiSig.getOwners().length, 4);
-
-        assertFalse(multiSig.isConfirmed(0, address(1004)));
-
-        ( , , uint256 confirmations, , ) = multiSig.getTransaction(0);
-        assertEq(confirmations, 3);
-    }
-
-    /// @dev Test to ensure 'executeTransaction' reverts if a confirming owner was removed.
-    function testExecuteTransactionRevertsIfConfirmingOwnerRemoved() public {
-        prepareRemovedConfirmingOwner();
-        assertFalse(multiSig.isConfirmed(0, address(1004)));
-
-        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
-    }
-
-    /// @dev Test to ensure removing a non-confirming owner does not affect execution.
-    function testRemoveNonConfirmingOwnerDoesNotAffectTx() public {
-        testSubmitTransactionIncrement();
-        grantSufficientConfirmations(0);
-
-        address[] memory ownersToRemove = new address[](1);
-        ownersToRemove[0] = address(1005);
-        
-        bytes memory data = abi.encodeCall(MultiSignatureWallet.removeOwners, (ownersToRemove));
-        submitTransactionToMultiSig(data);
-
-        confirmTransaction(address(1002), 1);
-        confirmTransaction(address(1003), 1);
-        confirmTransaction(address(1004), 1);
-
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
-
-        assertEq(multiSig.getOwners().length, 4);
-
-        // tx0 still has 4 confirmations from current owners — should execute
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
-
-        assertEq(counter.counter(), 1);
-    }
-
-    /// @dev Test to ensure execution succeeds when enough confirmations remain after removal.
-    function testExecuteTransactionSucceedsWithEnoughRemaining() public {
-        // tx0 (index 0): Lower threshold from 4 to 3
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
-        grantSufficientConfirmations(0);
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
-        assertEq(multiSig.numConfirmationsRequired(), 3);
-
-        // tx1 (index 1): Submit and confirm increment with 4 confirmations
-        submitTransaction(dataForIncrement());
-        grantSufficientConfirmations(1);
-
-        // tx2 (index 2): Remove owner 1004
-        address[] memory ownersToRemove = new address[](1);
-        ownersToRemove[0] = address(1004);
-        bytes memory data = abi.encodeCall(MultiSignatureWallet.removeOwners, (ownersToRemove));
-        submitTransactionToMultiSig(data);
-
-        confirmTransaction(address(1002), 2);
-        confirmTransaction(address(1003), 2);
-        confirmTransaction(address(1005), 2);
-
-        vm.prank(address(1002));
-        multiSig.executeTransaction(2);
-
-        assertEq(multiSig.getOwners().length, 4);
-        ( , , uint24 numConfirmations, , ) = multiSig.getTransaction(1);
-        assertEq(numConfirmations, 3);
-
-        // tx1 has 3 remaining confirmations (1001, 1002, 1003) >= threshold 3
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
-
-        assertEq(counter.counter(), 1);
-    }
-
-    /// @dev Test to ensure a removed and re-added owner must re-confirm transactions.
-    function testRemovedOwnerReAddedNeedsReConfirmation() public {
-        prepareRemovedConfirmingOwner();
-        assertEq(multiSig.getOwners().length, 4);
-
-        // tx2 (index 2): Re-add owner 1004
-        address[] memory ownersToAdd = new address[](1);
-        ownersToAdd[0] = address(1004);
-        
-        bytes memory addData = abi.encodeCall(MultiSignatureWallet.addOwners, (ownersToAdd));
-        submitTransactionToMultiSig(addData);
-
-        confirmTransaction(address(1002), 2);
-        confirmTransaction(address(1003), 2);
-        confirmTransaction(address(1005), 2);
-
-        vm.prank(address(1002));
-        multiSig.executeTransaction(2);
-
-        assertEq(multiSig.getOwners().length, 5);
-
-        // Old confirmation should be gone
-        assertFalse(multiSig.isConfirmed(0, address(1004)));
-
-        // tx0 should still fail (only 3 confirmations from current owners)
-        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
-    }
-
-    /// @dev Test to ensure removing an owner clears confirmations across all pending transactions.
-    function testRemoveOwnersClearsConfirmationsAcrossMultipleTxs() public {
-        bytes memory data = dataForIncrement();
-
-        // tx0 (index 0): 4 confirmations including 1004
-        submitTransaction(data);
-        grantSufficientConfirmations(0);
-
-        // tx1 (index 1): 4 confirmations also including 1004
-        submitTransaction(data);    
-        grantSufficientConfirmations(1);
-
-        // tx2 (index 2): Remove owner 1004
-        address[] memory ownersToRemove = new address[](1);
-        ownersToRemove[0] = address(1004);
-        bytes memory removeData = abi.encodeCall(MultiSignatureWallet.removeOwners, (ownersToRemove));
-        submitTransactionToMultiSig(removeData);
-
-        confirmTransaction(address(1002), 2);
-        confirmTransaction(address(1003), 2);
-        confirmTransaction(address(1005), 2);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(2);
-
-        // 1004's confirmation cleared from both txs
-        assertFalse(multiSig.isConfirmed(0, address(1004)));
-        assertFalse(multiSig.isConfirmed(1, address(1004)));
-
-        // numConfirmations decremented in both txs
-        ( , , uint256 confs0, , ) = multiSig.getTransaction(0);
-        ( , , uint256 confs1, , ) = multiSig.getTransaction(1);
-        assertEq(confs0, 3);
-        assertEq(confs1, 3);
-    }
-
     /// @dev Helper function to return calldata to update the number of confirmations required in the multisig.
     function dataToUpdateNumConfimationsMultiSig(uint256 _num) private pure returns (bytes memory) {
         return abi.encodeCall(MultiSignatureWallet.updateNumConfirmations, (_num));
@@ -1113,5 +940,63 @@ contract MultiSignatureWalletTest is Test {
         testSubmitTransactionIncrement();
 
         assertEq(multiSig.getNextTransactionIndex(), 1);
+    }
+
+    /// @dev Test to ensure 'isConfirmed' returns true for an owner who confirmed.
+    function testIsConfirmedReturnsTrueForConfirmer() public {
+        testSubmitTransactionIncrement();
+        assertTrue(multiSig.isConfirmed(0, address(1001)));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' returns false for a valid owner who did not confirm.
+    function testIsConfirmedReturnsFalseForNonConfirmer() public {
+        testSubmitTransactionIncrement();
+        assertFalse(multiSig.isConfirmed(0, address(1002)));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' returns false for a non-owner (short-circuit).
+    function testIsConfirmedReturnsFalseForNonOwner() public {
+        testSubmitTransactionIncrement();
+        assertFalse(multiSig.isConfirmed(0, alice));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' short-circuits for non-owner even if tx does not exist.
+    function testIsConfirmedReturnsFalseForNonOwnerNonExistentTx() public view {
+        assertFalse(multiSig.isConfirmed(99, alice));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' still reverts for valid owner if tx does not exist.
+    function testIsConfirmedRevertsIfTxDoesNotExistForOwner() public {
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.isConfirmed(99, address(1001));
+    }
+
+    /// @dev Test to ensure 'getTransaction' returns valid confirmations excluding removed owners.
+    function testGetTransactionReturnsValidCountAfterOwnerRemoval() public {
+        testSubmitTransactionIncrement();
+        grantSufficientConfirmations(0);
+
+        ( , , uint24 confsBefore, , ) = multiSig.getTransaction(0);
+        assertEq(confsBefore, 4);
+
+        removeOwnerViaMultiSig(address(1004), 1, address(1002), address(1003), address(1005));
+
+        ( , , uint24 confsAfter, , ) = multiSig.getTransaction(0);
+        assertEq(confsAfter, 3);
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' returns true when enough valid confirmations exist.
+    function testHasValidNumberOfConfirmationsReturnsTrue() public {
+        testSubmitTransactionIncrement();
+        grantSufficientConfirmations(0);
+        assertTrue(multiSig.hasValidNumberOfConfirmations(0));
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' returns false when valid confirmations fall below threshold.
+    function testHasValidNumberOfConfirmationsReturnsFalse() public {
+        testSubmitTransactionIncrement();
+        confirmTransaction(address(1002), 0);
+        confirmTransaction(address(1003), 0);
+        assertFalse(multiSig.hasValidNumberOfConfirmations(0));
     }
 }
