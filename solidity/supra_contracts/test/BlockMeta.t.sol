@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -27,7 +27,7 @@ contract BlockMetaTest is Test {
 
         // Deploy BlockMeta proxy
         BlockMeta blockMetaImpl = new BlockMeta();
-        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, admin);
+        bytes memory blockMetaInitData = abi.encodeCall(BlockMeta.initialize, (admin, 1_000_000));
         ERC1967Proxy blockMetaProxy = new ERC1967Proxy(address(blockMetaImpl), blockMetaInitData);
         blockMeta = BlockMeta(address(blockMetaProxy));
 
@@ -42,12 +42,18 @@ contract BlockMetaTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev Helper function to register a selector.
+    uint64 constant DEFAULT_GAS = 50_000;
+
+    /// @dev Helper function to register a selector with a default gas limit.
     /// @param _targetContract The target contract address.
     /// @param _selector Function selector to register.
     function register(address _targetContract, bytes4 _selector) private {
+        register(_targetContract, _selector, DEFAULT_GAS);
+    }
+
+    function register(address _targetContract, bytes4 _selector, uint64 _gasLimit) private {
         vm.prank(admin);
-        blockMeta.register(_targetContract, _selector);
+        blockMeta.register(_targetContract, _selector, _gasLimit);
     }
 
     /// @dev Test to ensure 'register' registers a selector.
@@ -57,6 +63,7 @@ contract BlockMetaTest is Test {
         (targets, selectors) = blockMeta.getExecutions();
         assertEq(targets.length, 0);
         assertEq(selectors.length, 0);
+        assertEq(blockMeta.totalGasAllocated(), 0);
 
         register(counterAddress, selector);
 
@@ -65,12 +72,13 @@ contract BlockMetaTest is Test {
         assertEq(selectors.length, 1);
         assertEq(targets[0], counterAddress);
         assertEq(selectors[0], selector);
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS);
     }
 
     /// @dev Test to ensure 'register' emits event 'SelectorRegistered'.
     function testRegisterEmitsEvent() public {
-        vm.expectEmit(true, true, false, false);
-        emit IBlockMeta.SelectorRegistered(counterAddress, selector);
+        vm.expectEmit(true, true, true, false);
+        emit IBlockMeta.SelectorRegistered(counterAddress, selector, DEFAULT_GAS);
 
         register(counterAddress, selector);
     }
@@ -80,7 +88,7 @@ contract BlockMetaTest is Test {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
 
         vm.prank(alice);
-        blockMeta.register(counterAddress, selector);
+        blockMeta.register(counterAddress, selector, DEFAULT_GAS);
     }
 
     /// @dev Test to ensure 'register' reverts if address(0) is passed.
@@ -102,6 +110,20 @@ contract BlockMetaTest is Test {
         vm.expectRevert(IBlockMeta.InvalidSelector.selector);
 
         register(counterAddress, bytes4(0));
+    }
+
+    /// @dev Test to ensure 'register' reverts if gas limit is zero.
+    function testRegisterRevertsIfGasLimitZero() public {
+        vm.expectRevert(IBlockMeta.InvalidGasLimit.selector);
+        register(counterAddress, selector, 0);
+    }
+
+    /// @dev Test to ensure 'register' reverts if total allocated gas exceeds the cap.
+    function testRegisterRevertsIfGasCapExceeded() public {
+        register(counterAddress, selector, 800_000);
+
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        register(counterAddress, bytes4(keccak256("foo()")), 200_001);
     }
 
     /// @dev Test to ensure 'register' reverts if selector already exists.
@@ -127,6 +149,7 @@ contract BlockMetaTest is Test {
         assertEq(targets[1], counterAddress);
         assertEq(selectors[0], selector);
         assertEq(selectors[1], foo);
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS * 2);
 
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
@@ -136,14 +159,15 @@ contract BlockMetaTest is Test {
         assertEq(selectors.length, 1);
         assertEq(targets[0], counterAddress);
         assertEq(selectors[0], foo);
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS);
     }
 
     /// @dev Test to ensure 'deregister' emits event 'SelectorDeregistered'.
     function testDeregisterEmitsEvent() public {
         testRegister();
 
-        vm.expectEmit(true, true, false, false);
-        emit IBlockMeta.SelectorDeregistered(counterAddress, selector);
+        vm.expectEmit(true, true, true, false);
+        emit IBlockMeta.SelectorDeregistered(counterAddress, selector, DEFAULT_GAS);
 
         vm.prank(admin);
         blockMeta.deregister(counterAddress, selector);
@@ -202,8 +226,8 @@ contract BlockMetaTest is Test {
     function testDeregisterAtEmitsEvent() public {
         testRegister();
 
-        vm.expectEmit(true, true, false, false);
-        emit IBlockMeta.SelectorDeregistered(counterAddress, selector);
+        vm.expectEmit(true, true, true, false);
+        emit IBlockMeta.SelectorDeregistered(counterAddress, selector, DEFAULT_GAS);
 
         vm.prank(admin);
         blockMeta.deregisterAt(0);
@@ -237,8 +261,8 @@ contract BlockMetaTest is Test {
         bytes4 failSelector = FailingContract.fail.selector;
 
         uint256[] memory executionOrder = new uint256[](2);
-        executionOrder[0] = packExecution(address(failingContract), failSelector);
-        executionOrder[1] = packExecution(counterAddress, selector); 
+        executionOrder[0] = packExecution(address(failingContract), failSelector, DEFAULT_GAS);
+        executionOrder[1] = packExecution(counterAddress, selector, DEFAULT_GAS);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -278,8 +302,8 @@ contract BlockMetaTest is Test {
     /// @dev Test to ensure 'updateExecutionOrder' reverts if address(0) is passed as target.
     function testUpdateExecutionOrderRevertsIfTargetAddressZero() public {
         uint256[] memory executionOrder = new uint256[](2);
-        executionOrder[0] = packExecution(counterAddress, selector); 
-        executionOrder[1] = packExecution(address(0), selector);
+        executionOrder[0] = packExecution(counterAddress, selector, DEFAULT_GAS);
+        executionOrder[1] = packExecution(address(0), selector, DEFAULT_GAS);
 
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
 
@@ -290,8 +314,8 @@ contract BlockMetaTest is Test {
     /// @dev Test to ensure 'updateExecutionOrder' reverts if EOA is passed as target.
     function testUpdateExecutionOrderRevertsIfTargetAddressEOA() public {
         uint256[] memory executionOrder = new uint256[](2);
-        executionOrder[0] = packExecution(counterAddress, selector); 
-        executionOrder[1] = packExecution(alice, selector);
+        executionOrder[0] = packExecution(counterAddress, selector, DEFAULT_GAS);
+        executionOrder[1] = packExecution(alice, selector, DEFAULT_GAS);
 
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
 
@@ -302,8 +326,8 @@ contract BlockMetaTest is Test {
     /// @dev Test to ensure 'updateExecutionOrder' reverts if empty selector is passed
     function testUpdateExecutionOrderRevertsIfEmptySelector() public {
         uint256[] memory executionOrder = new uint256[](2);
-        executionOrder[0] = packExecution(counterAddress, selector); 
-        executionOrder[1] = packExecution(counterAddress, bytes4(0));
+        executionOrder[0] = packExecution(counterAddress, selector, DEFAULT_GAS);
+        executionOrder[1] = packExecution(counterAddress, bytes4(0), DEFAULT_GAS);
 
         vm.expectRevert(IBlockMeta.InvalidSelector.selector);
 
@@ -311,11 +335,21 @@ contract BlockMetaTest is Test {
         blockMeta.updateExecutionOrder(executionOrder);
     }
 
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if zero gas limit is passed.
+    function testUpdateExecutionOrderRevertsIfGasLimitZero() public {
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(counterAddress, selector, 0);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidGasLimit.selector);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
     /// @dev Test to ensure 'updateExecutionOrder' reverts if duplicate selector is passed.
     function testUpdateExecutionOrderRevertsIfDuplicateSelector() public {
         uint256[] memory executionOrder = new uint256[](2);
-        executionOrder[0] = packExecution(counterAddress, selector); 
-        executionOrder[1] = packExecution(counterAddress, selector);
+        executionOrder[0] = packExecution(counterAddress, selector, DEFAULT_GAS);
+        executionOrder[1] = packExecution(counterAddress, selector, DEFAULT_GAS);
 
         vm.expectRevert(IBlockMeta.SelectorAlreadyRegistered.selector);
 
@@ -342,7 +376,7 @@ contract BlockMetaTest is Test {
         assertEq(selectorsList[1], failSelector);
 
         uint256[] memory executionOrder = new uint256[](1);
-        executionOrder[0] = packExecution(address(failingContract), failSelector);
+        executionOrder[0] = packExecution(address(failingContract), failSelector, DEFAULT_GAS);
 
         vm.prank(admin);
         blockMeta.updateExecutionOrder(executionOrder);
@@ -354,14 +388,53 @@ contract BlockMetaTest is Test {
         assertEq(selectorsList[0], failSelector);
     }
 
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if total gas exceeds the block prologue gas cap.
+    function testUpdateExecutionOrderRevertsIfGasCapExceeded() public {
+        uint256[] memory executionOrder = new uint256[](2);
+        executionOrder[0] = packExecution(counterAddress, selector, 600_000);
+        executionOrder[1] = packExecution(counterAddress, bytes4(keccak256("foo()")), 600_000);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' replaces (rather than accumulates on top of)
+    /// the previously tracked 'totalGasAllocated', even when entries already existed.
+    function testUpdateExecutionOrderReplacesTotalGasAllocated() public {
+        register(counterAddress, selector, DEFAULT_GAS);
+        register(counterAddress, bytes4(keccak256("foo()")), DEFAULT_GAS);
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS * 2);
+
+        FailingContract failingContract = new FailingContract();
+        bytes4 failSelector = FailingContract.fail.selector;
+
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(address(failingContract), failSelector, DEFAULT_GAS);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+
+        // If the running total carried over the pre-existing allocation instead of being
+        // reset, this would read DEFAULT_GAS * 3 instead of DEFAULT_GAS.
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts if passed an empty array.
+    function testUpdateExecutionOrderRevertsIfEmptyArray() public {
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidExecutionsLength.selector);
+        blockMeta.updateExecutionOrder(new uint256[](0));
+    }
+
     /// @dev Test to ensure 'blockPrologue' executes.
     function testBlockPrologue() public {
-	    assertEq(counter.counter(), 0);
+        assertEq(counter.counter(), 0);
         testRegister();
 
         vm.prank(LibUtils.VM_SIGNER);
         blockMeta.blockPrologue();
-	    assertEq(counter.counter(), 1);
+        assertEq(counter.counter(), 1);
     }
 
     /// @dev Test to ensure 'blockPrologue' reverts if caller is not VM Signer.
@@ -421,6 +494,118 @@ contract BlockMetaTest is Test {
 
         // Counter must still be incremented even though the first call failed
         assertEq(counter.counter(), 1);
+    }
+
+    /// @dev Verifies the per-call gas cap is enforced in blockPrologue.
+    /// Registers three entries: one with sufficient gas (succeeds),
+    /// one with starved gas (fails, OOG), and another with sufficient gas (succeeds).
+    /// Asserts that a gas-starved call does not halt execution of subsequent entries.
+    function testBlockPrologueEnforcesGasLimit() public {
+        bytes4 updateSelector = Counter.update.selector;
+        bytes4 viewSelector = Counter.isNotDivisibleBy3.selector;
+
+        // 1. Sufficient gas
+        register(counterAddress, selector, 100_000);
+        // 2. Starved gas — call fails
+        register(counterAddress, updateSelector, 200);
+        // 3. Sufficient gas — proves loop continues
+        register(counterAddress, viewSelector, 100_000);
+
+        vm.expectEmit(true, true, false, false);
+        emit IBlockMeta.CallSucceeded(counterAddress, selector);
+
+        vm.expectEmit(true, true, false, true);
+        emit IBlockMeta.CallFailed(counterAddress, updateSelector, "");
+
+        vm.expectEmit(true, true, false, false);
+        emit IBlockMeta.CallSucceeded(counterAddress, viewSelector);
+
+        vm.prank(LibUtils.VM_SIGNER);
+        blockMeta.blockPrologue();
+
+        assertEq(counter.counter(), 1);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' reverts if caller is not the owner.
+    function testSetBlockPrologueGasCapRevertsIfNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        blockMeta.setBlockPrologueGasCap(500_000);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' reverts if cap is zero.
+    function testSetBlockPrologueGasCapRevertsIfZero() public {
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidGasCap.selector);
+        blockMeta.setBlockPrologueGasCap(0);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' reverts if new cap is below current total allocated gas.
+    function testSetBlockPrologueGasCapRevertsIfBelowAllocated() public {
+        register(counterAddress, selector, 50_000);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidGasCap.selector);
+        blockMeta.setBlockPrologueGasCap(40_000);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' updates the cap.
+    function testSetBlockPrologueGasCap() public {
+        vm.prank(admin);
+        blockMeta.setBlockPrologueGasCap(500_000);
+        assertEq(blockMeta.blockPrologueGasCap(), 500_000);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' emits 'BlockPrologueGasCapUpdated'.
+    function testSetBlockPrologueGasCapEmitsEvent() public {
+        uint64 newCap = 500_000;
+
+        vm.expectEmit(true, false, false, false);
+        emit IBlockMeta.BlockPrologueGasCapUpdated(newCap);
+        
+        vm.prank(admin);
+        blockMeta.setBlockPrologueGasCap(newCap);
+    }
+
+    /// @dev Test to ensure 'blockPrologueGasCap' returns the gas cap set.
+    function testBlockPrologueGasCap() public {
+        assertEq(blockMeta.blockPrologueGasCap(), 1_000_000);
+    }
+
+    /// @dev Test to ensure 'totalGasAllocated' returns the sum of all registered gas limits.
+    function testTotalGasAllocated() public {
+        assertEq(blockMeta.totalGasAllocated(), 0);
+
+        register(counterAddress, selector, 50_000);
+        assertEq(blockMeta.totalGasAllocated(), 50_000);
+
+        vm.prank(admin);
+        blockMeta.deregister(counterAddress, selector);
+        assertEq(blockMeta.totalGasAllocated(), 0);
+    }
+
+    /// @dev Test to ensure 'register' succeeds again once 'deregister' frees enough budget
+    /// under a gas cap that was fully consumed.
+    function testRegisterSucceedsAfterDeregisterFreesBudget() public {
+        vm.prank(admin);
+        blockMeta.setBlockPrologueGasCap(DEFAULT_GAS);
+
+        register(counterAddress, selector, DEFAULT_GAS);
+
+        bytes4 foo = bytes4(keccak256("foo()"));
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        register(counterAddress, foo, DEFAULT_GAS);
+
+        vm.prank(admin);
+        blockMeta.deregister(counterAddress, selector);
+
+        register(counterAddress, foo, DEFAULT_GAS);
+
+        assertEq(blockMeta.totalGasAllocated(), DEFAULT_GAS);
+        (address[] memory targets, bytes4[] memory selectors) = blockMeta.getExecutions();
+        assertEq(targets.length, 1);
+        assertEq(targets[0], counterAddress);
+        assertEq(selectors[0], foo);
     }
 
     /// @dev Test to ensure 'getExecutions' returns the execution order.
@@ -515,6 +700,18 @@ contract BlockMetaTest is Test {
         blockMeta.getExecutionIndex(counterAddress, selector);
     }
 
+    /// @dev Test to ensure 'getExecutionGasLimit' returns the correct gas limit.
+    function testGetExecutionGasLimit() public {
+        register(counterAddress, selector, 80_000);
+        assertEq(blockMeta.getExecutionGasLimit(counterAddress, selector), 80_000);
+    }
+
+    /// @dev Test to ensure 'getExecutionGasLimit' reverts if the pair is not registered.
+    function testGetExecutionGasLimitRevertsIfNotRegistered() public {
+        vm.expectRevert(IBlockMeta.SelectorNotRegistered.selector);
+        blockMeta.getExecutionGasLimit(counterAddress, selector);
+    }
+
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'upgradeToAndCall' :::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure 'upgradeToAndCall' upgrades the proxy to a new implementation.
@@ -544,10 +741,10 @@ contract BlockMetaTest is Test {
         blockMeta.upgradeToAndCall(address(newImpl), "");
     }
 
-    /// @dev Helper function to pack a target contract address and function selector into a single uint256 execution entry.
-    function packExecution(address _targetContract, bytes4 _selector) private pure returns (uint256) {
-        // Layout: [target[160] | selector[32] | 0[64] ]
-        return (uint256(uint160(_targetContract)) << 96)  | (uint256(uint32(_selector)) << 64);
+    /// @dev Helper function to pack a target contract address, function selector, and gas limit into a single uint256 execution entry.
+    function packExecution(address _targetContract, bytes4 _selector, uint64 _gasLimit) private pure returns (uint256) {
+        // Layout: [target[160] | selector[32] | gasLimit[64]]
+        return (uint256(uint160(_targetContract)) << 96)  | (uint256(uint32(_selector)) << 64) | _gasLimit;
     }
 
     /// @dev Helper function to return an execution order.
@@ -556,8 +753,8 @@ contract BlockMetaTest is Test {
         bytes4 failSelector = FailingContract.fail.selector;
 
         uint256[] memory executionOrder = new uint256[](2);
-        executionOrder[0] = packExecution(address(failingContract), failSelector);
-        executionOrder[1] = packExecution(counterAddress, selector); 
+        executionOrder[0] = packExecution(address(failingContract), failSelector, DEFAULT_GAS);
+        executionOrder[1] = packExecution(counterAddress, selector, DEFAULT_GAS);
         
         return executionOrder;
     }

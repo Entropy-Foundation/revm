@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.27;
+pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {Counter} from "./Counter.sol";
@@ -396,6 +396,84 @@ contract MultiSignatureWalletTest is Test {
 
         vm.prank(address(1001));
         multiSig.executeTransaction(txId);
+    }
+
+    /// @dev Helper function to build calldata to remove a single owner via multisig and execute it.
+    /// @dev Submits from owner1 (implicit confirmation) then confirms with the three given confirmers before executing.
+    function removeOwnerViaMultiSig(address _ownerToRemove, uint256 _txIndex, address _confirmer1, address _confirmer2, address _confirmer3) private {
+        address[] memory ownersToRemove = new address[](1);
+        ownersToRemove[0] = _ownerToRemove;
+        bytes memory data = abi.encodeCall(MultiSignatureWallet.removeOwners, (ownersToRemove));
+        submitTransactionToMultiSig(data);
+
+        confirmTransaction(_confirmer1, _txIndex);
+        confirmTransaction(_confirmer2, _txIndex);
+        confirmTransaction(_confirmer3, _txIndex);
+
+        vm.prank(address(1001));
+        multiSig.executeTransaction(_txIndex);
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' reverts if the transaction does not exist.
+    function testHasValidNumberOfConfirmationsRevertsIfTxDoesNotExist() public {
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.hasValidNumberOfConfirmations(0);
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' stops counting confirmations from an owner once removed,
+    /// @dev even though those confirmations were valid at the time they were given.
+    function testHasValidNumberOfConfirmationsExcludesRemovedOwner() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+
+        confirmTransaction(address(1002), 0);
+        confirmTransaction(address(1003), 0);
+        confirmTransaction(address(1004), 0);
+        assertTrue(multiSig.hasValidNumberOfConfirmations(0)); // 4 confirmations, 4 required
+
+        // Remove owner(1002), one of the addresses that confirmed txId 0, via a second multisig transaction.
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+
+        // owner(1002)'s earlier confirmation of txId 0 must no longer count: 3 valid confirmations remain, 4 required.
+        assertFalse(multiSig.hasValidNumberOfConfirmations(0));
+    }
+
+    /// @dev Test to ensure 'executeTransaction' reverts if a confirming owner is removed after confirming,
+    /// @dev dropping the number of *currently valid* confirmations below the required threshold.
+    /// @dev This guards against relying on the stale 'numConfirmations' counter, which is never decremented on owner removal.
+    function testExecuteTransactionRevertsIfConfirmingOwnerRemovedAfterConfirmation() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+
+        confirmTransaction(address(1002), 0);
+        confirmTransaction(address(1003), 0);
+        confirmTransaction(address(1004), 0);
+
+        // Remove owner(1002), one of the addresses that confirmed txId 0, via a second multisig transaction.
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
+
+        vm.prank(address(1001));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'executeTransaction' still succeeds if an owner who did NOT confirm the transaction
+    /// @dev is removed, since the remaining valid confirmations still satisfy the required threshold.
+    function testExecuteTransactionSucceedsIfNonConfirmingOwnerRemoved() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+
+        confirmTransaction(address(1002), 0);
+        confirmTransaction(address(1003), 0);
+        confirmTransaction(address(1004), 0);
+        // owner(1005) never confirms txId 0.
+
+        // Remove owner(1005), which did not confirm txId 0, via a second multisig transaction.
+        removeOwnerViaMultiSig(address(1005), 1, address(1002), address(1003), address(1004));
+
+        vm.prank(address(1001));
+        multiSig.executeTransaction(0);
+
+        assertEq(multiSig.txCount(), 0);
+        assertEq(counter.counter(), 1);
     }
 
     /// @dev Helper function that returns calldata to transfer ownership.

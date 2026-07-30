@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 import {AppStorage, LibAppStorage, TransitionState} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
@@ -106,7 +106,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         details.state = s.cycleState;
         TransitionState storage transitionState = LibAppStorage.transitionState();
         details.nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
-        details.expectedTasksToBeProcessed = LibUtils.uintSetToUint64Array(transitionState.expectedTasksToBeProcessed);
+        details.expectedTasksToBeProcessed = LibUtils.uint256ArrayToUint64Array(transitionState.expectedTasksToBeProcessed);
     }
 
     /// @notice Returns if automation is enabled.

@@ -5,12 +5,19 @@ libs = ["lib"]
 via_ir = true
 optimizer = true
 evm_version = "prague"
+# Fix the solc version to avoid breaking changes in the future.  See
+solc_version = "0.8.34"
+# Do not attach cryptographic hash of compilation to contract's deployed bytecode.
+bytecode_hash = "none"
+# Prevent the creation and inclusion of this CBOR metadata block.
+cbor_metadata = false
+
 # Raise the block gas limit from Forge's default 2^30 (~1 billion) to accommodate
 # MonitorCycleEndGas_BoundaryScan, which performs ~8 binary-search iterations in a
 # single test call — each iteration registers up to LARGE_CAPACITY tasks at ~800 k gas
 # each, totalling ~1.2 billion gas across the full search.  Individual N-point tests
 # never exceed ~350 million gas, so this increase has no visible effect on them.
-block_gas_limit = 3_000_000_000
+block_gas_limit = 30_000_000_000
 # Uncomment when running agains supra chain
 
 #eth_rpc_url = "http://localhost:27000/rpc/v1/eth/wallet_integration"

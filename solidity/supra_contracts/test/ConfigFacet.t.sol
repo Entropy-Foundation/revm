@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";

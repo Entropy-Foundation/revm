@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -30,7 +30,11 @@ struct TransitionState {
     uint64 refundDuration;
     uint64 newCycleDuration;
     uint64 nextTaskIndexPosition;
-    EnumerableSet.UintSet expectedTasksToBeProcessed;
+    // Plain array rather than EnumerableSet.UintSet: this field is only ever accessed
+    // sequentially (push/length/index) and never via contains()/remove(), so the
+    // EnumerableSet's second per-element SSTORE (the _positions membership mapping)
+    // is pure overhead here — see LibCore.updateExpectedTasks.
+    uint256[] expectedTasksToBeProcessed;
 }
 
 /// @notice Task metadata for individual automation tasks.

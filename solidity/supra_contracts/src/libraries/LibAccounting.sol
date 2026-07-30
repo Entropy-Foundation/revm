@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
 import {LibCommon} from "./LibCommon.sol";
@@ -29,7 +29,7 @@ library LibAccounting {
         uint64 _taskIndex,
         address _taskOwner,
         uint256 _cycleLockedFees,
-        uint64 _refundableFee
+        uint128 _refundableFee
     ) private returns (bool, uint256) {
         bool result;
         uint256 remainingLockedFees;
@@ -167,7 +167,7 @@ library LibAccounting {
     /// @return Updated _cycleLockedFees after unlocking _refundableFee.
     function safeUnlockLockedCycleFee(
         uint256 _cycleLockedFees,
-        uint64 _refundableFee,
+        uint128 _refundableFee,
         uint64 _taskIndex
     ) private returns (bool, uint256) {
         // This check makes sure that more than locked amount of the fees will be not be refunded.
@@ -223,7 +223,7 @@ library LibAccounting {
                     _task.taskIndex,
                     _task.owner,
                     registryState.cycleLockedFees,
-                    uint64(_refundFee)
+                    _refundFee
                 );
             registryState.cycleLockedFees = remainingCycleLockedFees;
         }
@@ -400,7 +400,7 @@ library LibAccounting {
 
         if (cycleLockedFeeForTask < cycleFeeRefund) { revert IRegistryFacet.InvalidCycleRefundFee(); }
 
-        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(registryState.cycleLockedFees, uint64(cycleLockedFeeForTask), _taskIndex);
+        (bool hasLockedFee, uint256 remainingCycleLockedFees ) = safeUnlockLockedCycleFee(registryState.cycleLockedFees, cycleLockedFeeForTask, _taskIndex);
         if (!hasLockedFee) { revert IRegistryFacet.ErrorCycleFeeRefund(); }
 
         registryState.cycleLockedFees = remainingCycleLockedFees;

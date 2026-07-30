@@ -3,6 +3,37 @@
 use serde::{Deserialize, Serialize};
 use primitives::Address;
 
+/// Maximum number of automation tasks that the registry can hold.
+/// The limit is deduced by running a benchmark for `monitorCycleEnd` automation registry function
+/// which tracks automation cycle end and prepares the transaction state for graceful cycle transaction handling.
+/// It is registered to be executed as part of the `BlockMeta::blockPrologue`.
+/// The internal system `BlockMetadata` transaction generated and executed by consensus layer
+/// specifies the gas limit for it to be `TX_GAS_LIMIT_CAP`. Taking into account the fact the
+/// registered entries are limited with gas-cap in scope of `BlockMeta::blockPrologue`,
+/// the results of the benchmark and need to keep buffer for future entries of the `BlockMeta::blockPrologue`
+/// the limit of 200 tasks is specified.
+///
+//   ┌───────────┬──────────────────────────────┐
+//   │ Tasks (N) │           Gas used           │
+//   ├───────────┼──────────────────────────────┤
+//   │ 50        │ 2,351,037                    │
+//   ├───────────┼──────────────────────────────┤
+//   │ 100       │ 4,643,153                    │
+//   ├───────────┼──────────────────────────────┤
+//   │ 150       │ 6,935,279                    │
+//   ├───────────┼──────────────────────────────┤
+//   │ 200       │ 9,228,587                    │
+//   ├───────────┼──────────────────────────────┤
+//   │ 250       │ 11,520,733                   │
+//   ├───────────┼──────────────────────────────┤
+//   │ 300       │ 13,812,888                   │
+//   ├───────────┼──────────────────────────────┤
+//   │ 350       │ 16,105,052                   │
+//   ├───────────┼──────────────────────────────┤
+//   │ 400       │ 18,397,227 ⚠️ exceeds budget  │
+//   └───────────┴──────────────────────────────┘
+const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
+
 /// Configuration parameters for Automation Registry contracts initialization
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutomationRegistryConfigV1 {
@@ -34,6 +65,34 @@ pub struct AutomationRegistryConfigV1 {
     pub enable_automation_feature: bool,
 }
 
+impl AutomationRegistryConfigV1 {
+    /// Checks whether the config is valid to create non-failable transactions.
+    pub fn is_valid(&self) -> Result<(), anyhow::Error> {
+        if self.task_duration_cap_secs == 0 || self.sys_task_duration_cap_secs == 0 {
+            return Err(anyhow::anyhow!("[System] Task duration cap must be positive"));
+        }
+        if self.registry_max_gas_cap == 0 || self.sys_registry_max_gas_cap == 0 {
+            return Err(anyhow::anyhow!("[System] Registry max gas cap must be positive"));
+        }
+        if self.cycle_duration_secs > self.task_duration_cap_secs || self.cycle_duration_secs > self.sys_task_duration_cap_secs {
+            return Err(anyhow::anyhow!("[System] Task duration cap should be greater than cycle duration"));
+        }
+        if self.congestion_threshold_percentage > 100 {
+            return Err(anyhow::anyhow!("Congestion threshold percentage should be less or equal to 100"));
+        }
+        if self.sys_task_capacity == 0 || self.task_capacity == 0 {
+            return Err(anyhow::anyhow!("Task capacity cannot be 0"));
+        }
+        if self.congestion_exponent == 0 {
+            return Err(anyhow::anyhow!("Congestion exponent cannot be 0"));
+        }
+        if self.sys_task_capacity.saturating_add(self.task_capacity) > MAX_SUPPORTED_AUTOMATION_TASKS {
+            return Err(anyhow::anyhow!("Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASKS}"));
+        }
+        Ok(())
+    }
+}
+
 impl Default for AutomationRegistryConfigV1 {
     fn default() -> Self {
         Self {
@@ -48,12 +107,13 @@ impl Default for AutomationRegistryConfigV1 {
             // 0.004 SUPRA normalized based on the supra denominator between move and evm currency
             congestion_base_fee_wei_per_sec: 1_714_530_600_000,
             congestion_exponent: 6,
-            task_capacity: 400,
+            // task_capacity + sys_task_capacity must not exceed MAX_SUPPORTED_AUTOMATION_TASK
+            task_capacity: 160,
             cycle_duration_secs: 600,
             // ~1 month
             sys_task_duration_cap_secs: 2626560,
             sys_registry_max_gas_cap: 2_000_000,
-            sys_task_capacity: 100,
+            sys_task_capacity: 40,
             enable_automation_feature: true,
         }
     }
@@ -71,6 +131,12 @@ impl AutomationRegistryConfig {
     pub fn v1(&self) -> Option<&AutomationRegistryConfigV1> {
         let Self::V1(config) = self;
         Some(config)
+    }
+
+    /// Checks validity of automation registry configuration.
+    pub fn is_valid(&self) -> Result<(), anyhow::Error> {
+        let Self::V1(v1) = self;
+        v1.is_valid()
     }
 }
 
@@ -94,4 +160,297 @@ pub struct GenesisTransactionGeneratorConfig {
     pub automation_config: Option<AutomationRegistryConfig>,
     /// Initial native tokens to be minted to ERC20Supra handler contract
     pub  initial_native_token: u128,
+    /// Gas cap for block-prologue/block-metadata transaction.
+    pub block_prologue_gas_cap: u64,
+}
+
+impl GenesisTransactionGeneratorConfig {
+    /// Checks whether the config is valid to create non-failable transactions.
+    pub fn is_valid(&self) -> Result<(), anyhow::Error> {
+        if self.block_prologue_gas_cap == 0 {
+            return Err(anyhow::anyhow!("Block prologue gas cap must be positive"));
+        }
+        if self.foundation_owners.is_empty() {
+            return Err(anyhow::anyhow!("Foundation owners must be provided"));
+        }
+        if self.foundation_threshold > self.foundation_owners.len() as u64 {
+            return Err(anyhow::anyhow!("Foundation threshold must be less or equal the number of owners"));
+        }
+        if let Some(automation_config) = &self.automation_config {
+            automation_config.is_valid()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use primitives::supra_constants::u64_to_address;
+
+    fn owners(n: u64) -> Vec<Address> {
+        (1..=n).map(u64_to_address).collect()
+    }
+
+    /// A hand-picked config satisfying every `AutomationRegistryConfigV1::is_valid` rule,
+    /// including `task_capacity + sys_task_capacity <= MAX_SUPPORTED_AUTOMATION_TASK`.
+    fn valid_automation_config() -> AutomationRegistryConfigV1 {
+        AutomationRegistryConfigV1 {
+            task_capacity: 100,
+            sys_task_capacity: 50,
+            ..AutomationRegistryConfigV1::default()
+        }
+    }
+
+    fn valid_genesis_config() -> GenesisTransactionGeneratorConfig {
+        GenesisTransactionGeneratorConfig {
+            foundation_owners: owners(3),
+            foundation_threshold: 2,
+            full_set: false,
+            automation_config: None,
+            initial_native_token: 1000,
+            block_prologue_gas_cap: 100_000,
+        }
+    }
+
+    // --- AutomationRegistryConfigV1::is_valid ---
+
+    #[test]
+    fn valid_automation_config_is_accepted() {
+        assert!(valid_automation_config().is_valid().is_ok());
+    }
+
+    /// `Default` must stay within `MAX_SUPPORTED_AUTOMATION_TASK` so that
+    /// `AutomationRegistryConfigV1::default()` is always a valid config out of the box.
+    #[test]
+    fn default_automation_config_is_valid() {
+        assert!(AutomationRegistryConfigV1::default().is_valid().is_ok());
+    }
+
+    #[test]
+    fn zero_task_duration_cap_secs_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            task_duration_cap_secs: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_sys_task_duration_cap_secs_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            sys_task_duration_cap_secs: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_registry_max_gas_cap_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            registry_max_gas_cap: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_sys_registry_max_gas_cap_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            sys_registry_max_gas_cap: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn cycle_duration_exceeding_task_duration_cap_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            task_duration_cap_secs: 100,
+            cycle_duration_secs: 101,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn cycle_duration_exceeding_sys_task_duration_cap_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            sys_task_duration_cap_secs: 100,
+            cycle_duration_secs: 101,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn cycle_duration_equal_to_task_duration_cap_is_accepted() {
+        let config = AutomationRegistryConfigV1 {
+            task_duration_cap_secs: 100,
+            sys_task_duration_cap_secs: 100,
+            cycle_duration_secs: 100,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn congestion_threshold_percentage_over_100_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            congestion_threshold_percentage: 101,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn congestion_threshold_percentage_of_100_is_accepted() {
+        let config = AutomationRegistryConfigV1 {
+            congestion_threshold_percentage: 100,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn zero_task_capacity_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            task_capacity: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_sys_task_capacity_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            sys_task_capacity: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_congestion_exponent_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            congestion_exponent: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn task_capacity_sum_exceeding_max_supported_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            task_capacity: 150,
+            sys_task_capacity: 51,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn task_capacity_sum_equal_to_max_supported_is_accepted() {
+        let config = AutomationRegistryConfigV1 {
+            task_capacity: 150,
+            sys_task_capacity: 50,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    // --- AutomationRegistryConfig::is_valid (V1 wrapper delegation) ---
+
+    #[test]
+    fn config_enum_delegates_to_v1_valid_case() {
+        let config: AutomationRegistryConfig = valid_automation_config().into();
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn config_enum_delegates_to_v1_invalid_case() {
+        let v1 = AutomationRegistryConfigV1 {
+            registry_max_gas_cap: 0,
+            ..valid_automation_config()
+        };
+        let config: AutomationRegistryConfig = v1.into();
+        assert!(config.is_valid().is_err());
+    }
+
+    // --- GenesisTransactionGeneratorConfig::is_valid ---
+
+    #[test]
+    fn valid_genesis_config_without_automation_is_accepted() {
+        assert!(valid_genesis_config().is_valid().is_ok());
+    }
+
+    #[test]
+    fn zero_block_prologue_gas_cap_is_rejected() {
+        let config = GenesisTransactionGeneratorConfig {
+            block_prologue_gas_cap: 0,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn empty_foundation_owners_is_rejected() {
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: vec![],
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn foundation_threshold_above_owner_count_is_rejected() {
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners(3),
+            foundation_threshold: 4,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn foundation_threshold_equal_to_owner_count_is_accepted() {
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners(3),
+            foundation_threshold: 3,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn foundation_threshold_below_owner_count_is_accepted() {
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners(3),
+            foundation_threshold: 1,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn valid_genesis_config_with_valid_automation_is_accepted() {
+        let config = GenesisTransactionGeneratorConfig {
+            automation_config: Some(valid_automation_config().into()),
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn invalid_automation_config_propagates_error() {
+        let bad_automation = AutomationRegistryConfigV1 {
+            congestion_exponent: 0,
+            ..valid_automation_config()
+        };
+        let config = GenesisTransactionGeneratorConfig {
+            automation_config: Some(bad_automation.into()),
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.27;
+pragma solidity 0.8.34;
 
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {TaskMetadata} from "../libraries/LibAppStorage.sol";
@@ -42,7 +42,7 @@ interface IRegistryFacet {
     event TaskFeeRefund(
         uint64 indexed taskIndex,
         address indexed owner,
-        uint64 indexed amount
+        uint128 indexed amount
     );
 
     /// @notice Emitted when a deposit fee is refunded for an automation task.
@@ -52,7 +52,7 @@ interface IRegistryFacet {
     event ErrorUnlockTaskCycleFee(
         uint64 indexed taskIndex,
         uint256 indexed lockedCycleFees,
-        uint64 indexed refund
+        uint128 indexed refund
     );
 
     /// @notice Emitted during cycle transition when refunds to be paid is not possible due to insufficient contract balance.
