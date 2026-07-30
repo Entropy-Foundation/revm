@@ -7,12 +7,10 @@ import {LibUtils} from "./LibUtils.sol";
 import {LibRegistry} from "./LibRegistry.sol";
 import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TransitionState} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
-import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCore {
-    using Arrays for uint256[];
     using LibUtils for address;
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -25,7 +23,7 @@ library LibCore {
 
     /// @notice Sorts a uint256 array in ascending order using insertion sort.
     /// @dev Insertion sort is chosen here because task ID lists originate from an
-    ///      EnumerableSet whose values are assigned incrementally, so the array is
+    ///      array(near-registry source) whose values are assigned incrementally, so the array is
     ///      nearly-sorted in practice.  For nearly-sorted input, insertion sort runs
     ///      in O(n) time (inner loop exits immediately when the element is already in
     ///      place), making it strictly cheaper in gas than the generic quicksort used
@@ -122,20 +120,19 @@ library LibCore {
     }
 
     /// @notice Helper function to update the expected tasks of the transition state.
+    /// @dev A direct storage-array assignment from `_expectedTasks` both clears any
+    ///      previous contents (the compiler zeroes out any leftover tail elements if
+    ///      the new list is shorter) and writes the new elements in a single pass —
+    ///      one SSTORE per task, field is ever read sequentially(see the declaration)
     function updateExpectedTasks(uint256[] memory _expectedTasks) private {
-        TransitionState storage transitionState = LibAppStorage.transitionState();
-        transitionState.expectedTasksToBeProcessed.clear();
-
-        for (uint256 i = 0; i < _expectedTasks.length; i++) {
-            transitionState.expectedTasksToBeProcessed.add(_expectedTasks[i]);
-        }
+        LibAppStorage.transitionState().expectedTasksToBeProcessed = _expectedTasks;
     }
 
     /// @notice Transitions cycle state to the READY state. 
     function moveToReadyState() private {
-        // If the cycle duration updated has been identified during transtion, then the transition state is kept
+        // If the cycle duration updated has been identified during transition, then the transition state is kept
         // with reset values except new cycle duration to have it properly set for the next new cycle.
-        // This may happen in case if cycle was ended and feature-flag has been disbaled before any task has
+        // This may happen in case if cycle was ended and feature-flag has been disabled before any task has
         // been processed for the cycle transition.
         // Note that we want to have consistent data in ready state which says that the cycle pointed in the ready state
         // has been finished/summerized, and we are ready to start the next new cycle, and all the cycle information should
@@ -147,8 +144,8 @@ library LibCore {
         // Check if transition state exists
         if (s.ifTransitionStateExists) {
             if (transitionState.newCycleDuration == s.durationSecs) {
-                // Delete transition state
-                transitionState.expectedTasksToBeProcessed.clear();
+                // Delete transition state. Deleting the whole struct already recursively
+                // clears expectedTasksToBeProcessed since it is a plain dynamic array
                 delete s.transitionState[LibAppStorage.TRANSITION_STATE];
                 s.ifTransitionStateExists = false;
             } else {
@@ -160,7 +157,7 @@ library LibCore {
                 transitionState.sysGasCommittedForNextCycle = 0;
                 transitionState.lockedFees = 0;
                 transitionState.nextTaskIndexPosition = 0;
-                transitionState.expectedTasksToBeProcessed.clear();
+                delete transitionState.expectedTasksToBeProcessed;
             }
         }
         updateCycleStateTo(LibCommon.CycleState.READY);
@@ -205,8 +202,8 @@ library LibCore {
 
         uint64 nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
 
-        if (nextTaskIndexPosition >= transitionState.expectedTasksToBeProcessed.length()) { revert ICoreFacet.InconsistentTransitionState(); }
-        uint64 expectedTask = uint64(transitionState.expectedTasksToBeProcessed.at(nextTaskIndexPosition));
+        if (nextTaskIndexPosition >= transitionState.expectedTasksToBeProcessed.length) { revert ICoreFacet.InconsistentTransitionState(); }
+        uint64 expectedTask = uint64(transitionState.expectedTasksToBeProcessed[nextTaskIndexPosition]);
 
         if (expectedTask != _taskIndex) { revert ICoreFacet.OutOfOrderTaskProcessingRequest(); } 
         transitionState.nextTaskIndexPosition = nextTaskIndexPosition + 1;  
@@ -257,7 +254,7 @@ library LibCore {
         uint64 currentCycleEndTime = currentTime + LibAppStorage.transitionState().newCycleDuration;
 
         // Sort task indexes to charge automation fees in their chronological order
-        uint256[] memory taskIndexes = _taskIndexes.sort();
+        uint256[] memory taskIndexes = insertionSort(_taskIndexes);
 
         uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
         uint256 removedCount;
@@ -456,7 +453,7 @@ library LibCore {
     /// @return Bool representing if the cycle transition is finalized.
     function isTransitionFinalized() internal view returns (bool) {
         TransitionState storage transitionState = LibAppStorage.transitionState();
-        return transitionState.expectedTasksToBeProcessed.length() == transitionState.nextTaskIndexPosition;
+        return transitionState.expectedTasksToBeProcessed.length == transitionState.nextTaskIndexPosition;
     }
 
     /// @notice Checks if the cycle transition is in progress.
@@ -511,7 +508,7 @@ library LibCore {
         uint64 currentTime = uint64(block.timestamp);
             
         // Sort task indexes as order is important
-        uint256[] memory taskIndexes = _taskIndexes.sort();
+        uint256[] memory taskIndexes = insertionSort(_taskIndexes);
         uint64[] memory removedTasks = new uint64[](taskIndexes.length);
         
         uint64 removedCounter;
@@ -661,7 +658,7 @@ library LibCore {
             if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
 
             uint256[] memory tasksIdList = getTaskIdList();
-            uint256[] memory expectedTasksToBeProcessed = tasksIdList.sort();
+            uint256[] memory expectedTasksToBeProcessed = insertionSort(tasksIdList);
 
             transitionState.refundDuration = cycleEndTime - currentTime;
             transitionState.newCycleDuration = s.durationSecs;
