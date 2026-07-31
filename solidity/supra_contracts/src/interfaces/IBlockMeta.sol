@@ -16,7 +16,7 @@ interface IBlockMeta {
     error InvalidGasLimit();
     /// @notice Thrown when the gas cap is zero or less than the current total allocated gas.
     error InvalidGasCap();
-    /// @notice Thrown when the total allocated gas exceeds the block prologue gas cap.
+    /// @notice Thrown when the total allocated gas exceeds the block prologue gas cap taking into account 63/64 forwarding rule.
     error GasCapExceeded();
     /// @notice Thrown when an empty execution array is provided to 'updateExecutionOrder'.
     error InvalidExecutionsLength();

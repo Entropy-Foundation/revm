@@ -2,13 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 use primitives::Address;
+use crate::transactions::block_metadata::BLOCK_METADATA_GAS_LIMIT;
 
 /// Maximum number of automation tasks that the registry can hold.
 /// The limit is deduced by running a benchmark for `monitorCycleEnd` automation registry function
 /// which tracks automation cycle end and prepares the transaction state for graceful cycle transaction handling.
 /// It is registered to be executed as part of the `BlockMeta::blockPrologue`.
 /// The internal system `BlockMetadata` transaction generated and executed by consensus layer
-/// specifies the gas limit for it to be `TX_GAS_LIMIT_CAP`. Taking into account the fact the
+/// specifies the gas limit for it to be [`BLOCK_METADATA_GAS_LIMIT`]. Taking into account the fact the
 /// registered entries are limited with gas-cap in scope of `BlockMeta::blockPrologue`,
 /// the results of the benchmark and need to keep buffer for future entries of the `BlockMeta::blockPrologue`
 /// the limit of 200 tasks is specified.
@@ -16,22 +17,33 @@ use primitives::Address;
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤
-//   │ 50        │ 2,351,037                    │
+//   │ 50        │ 1,201,348                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 100       │ 4,643,153                    │
+//   │ 100       │ 2,344,564                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 150       │ 6,935,279                    │
+//   │ 150       │ 3,487,790                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 200       │ 9,228,587                    │
+//   │ 200       │ 4,632,120                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 250       │ 11,520,733                   │
+//   │ 250       │ 5,775,366                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 300       │ 13,812,888                   │
+//   │ 300       │ 6,918,621                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 350       │ 16,105,052                   │
+//   │ 350       │ 8,061,886                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 400       │ 18,397,227 ⚠️ exceeds budget  │
+//   │ 720       │ 16,522,351                   │
+//   ├───────────┼──────────────────────────────┤
+//   │ 800       │ 18,351,711 ⚠️ exceeds budget  │
 //   └───────────┴──────────────────────────────┘
+//
+// (Figures from `forge test --match-contract MonitorCycleEndGasTest -vv` in
+// solidity/supra_contracts/test/MonitorCycleEndGas.t.sol, re-run after the
+// `expectedTasksToBeProcessed` storage layout was optimized, roughly halving the per-task cost.
+// That same run's `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact
+// safe ceiling: 731 tasks stay under BLOCK_METADATA_GAS_LIMIT, 732 exceeds it.
+// 200 is kept far below that ceiling deliberately, as buffer for other future
+// `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
+// applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).
 const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
 
 /// Configuration parameters for Automation Registry contracts initialization
@@ -169,6 +181,10 @@ impl GenesisTransactionGeneratorConfig {
     pub fn is_valid(&self) -> Result<(), anyhow::Error> {
         if self.block_prologue_gas_cap == 0 {
             return Err(anyhow::anyhow!("Block prologue gas cap must be positive"));
+        }
+        // Cap the block prologue gas cap with [`BLOCK_METADATA_GAS_LIMIT`] of the initial release of SEVM.
+        if (self.block_prologue_gas_cap as u128) > BLOCK_METADATA_GAS_LIMIT as u128 {
+            return Err(anyhow::anyhow!("Block prologue gas cap must not exceed the default BlockMetadata GasLimit ({BLOCK_METADATA_GAS_LIMIT})"));
         }
         if self.foundation_owners.is_empty() {
             return Err(anyhow::anyhow!("Foundation owners must be provided"));
@@ -388,6 +404,28 @@ mod tests {
     fn zero_block_prologue_gas_cap_is_rejected() {
         let config = GenesisTransactionGeneratorConfig {
             block_prologue_gas_cap: 0,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    /// The 63/64 forwarding-rule boundary is exact for `BLOCK_METADATA_GAS_LIMIT` (a power of
+    /// two divisible by 64), so the boundary value itself must be accepted, not rejected.
+    #[test]
+    fn block_prologue_gas_cap_at_63_64_boundary_is_accepted() {
+        let upper_bound = (BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
+        let config = GenesisTransactionGeneratorConfig {
+            block_prologue_gas_cap: upper_bound as u64,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn block_prologue_gas_cap_above_63_64_boundary_is_rejected() {
+        let upper_bound = (BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
+        let config = GenesisTransactionGeneratorConfig {
+            block_prologue_gas_cap: (upper_bound + 1) as u64,
             ..valid_genesis_config()
         };
         assert!(config.is_valid().is_err());

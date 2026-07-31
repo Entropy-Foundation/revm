@@ -79,6 +79,18 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     }
 
     /// @notice Function to update the registry configuration buffer.
+    /// @dev `_taskCapacity` and `_sysTaskCapacity` bound how many tasks `CoreFacet.monitorCycleEnd()`
+    ///      iterates over each cycle, so raising them raises that function's per-call gas cost.
+    ///      `monitorCycleEnd()` is invoked once per block as a single registered entry in the
+    ///      separate `BlockMeta` contract's `blockPrologue()` dispatch loop, under the fixed
+    ///      per-entry gas limit it was registered with there (see `BlockMeta.getExecutionGasLimit`)
+    ///      and `BlockMeta`'s own `blockPrologueGasCap`. This contract has no on-chain reference to
+    ///      `BlockMeta` and intentionally does not cap `_taskCapacity`/`_sysTaskCapacity` against it,
+    ///      so task-capacity growth stays possible without an upgrade here. That means increasing
+    ///      these values is NOT automatically safe: before calling this with a higher capacity,
+    ///      verify off-chain that the resulting worst-case `monitorCycleEnd()` gas cost still fits
+    ///      under `BlockMeta`'s registered gas limit for it, or `blockPrologue()` will start
+    ///      reverting/OOG-ing on that entry every block.
     function updateConfigBuffer(
         uint64 _taskDurationCapSecs,
         uint128 _registryMaxGasCap,
