@@ -941,4 +941,64 @@ contract MultiSignatureWalletTest is Test {
 
         assertEq(multiSig.getNextTransactionIndex(), 1);
     }
+
+    /// @dev Test to ensure 'isConfirmed' returns true for an owner who confirmed.
+    function testIsConfirmedReturnsTrueForConfirmer() public {
+        testSubmitTransactionIncrement();
+        assertTrue(multiSig.isConfirmed(0, address(1001)));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' returns false for a valid owner who did not confirm.
+    function testIsConfirmedReturnsFalseForNonConfirmer() public {
+        testSubmitTransactionIncrement();
+        assertFalse(multiSig.isConfirmed(0, address(1002)));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' reverts for a non-owner.
+    function testIsConfirmedRevertsIfNotOwner() public {
+        testSubmitTransactionIncrement();
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
+        multiSig.isConfirmed(0, alice);
+    }
+
+    /// @dev Test to ensure 'isConfirmed' reverts for a non-owner before checking tx existence.
+    function testIsConfirmedRevertsIfNotOwnerNonExistentTx() public {
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
+        multiSig.isConfirmed(99, alice);
+    }
+
+    /// @dev Test to ensure 'isConfirmed' still reverts for valid owner if tx does not exist.
+    function testIsConfirmedRevertsIfTxDoesNotExistForOwner() public {
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.isConfirmed(99, address(1001));
+    }
+
+    /// @dev Test to ensure 'getTransaction' returns valid confirmations excluding removed owners.
+    function testGetTransactionReturnsValidCountAfterOwnerRemoval() public {
+        testSubmitTransactionIncrement();
+        grantSufficientConfirmations(0);
+
+        ( , , uint24 confsBefore, , ) = multiSig.getTransaction(0);
+        assertEq(confsBefore, 4);
+
+        removeOwnerViaMultiSig(address(1004), 1, address(1002), address(1003), address(1005));
+
+        ( , , uint24 confsAfter, , ) = multiSig.getTransaction(0);
+        assertEq(confsAfter, 3);
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' returns true when enough valid confirmations exist.
+    function testHasValidNumberOfConfirmationsReturnsTrue() public {
+        testSubmitTransactionIncrement();
+        grantSufficientConfirmations(0);
+        assertTrue(multiSig.hasValidNumberOfConfirmations(0));
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' returns false when valid confirmations fall below threshold.
+    function testHasValidNumberOfConfirmationsReturnsFalse() public {
+        testSubmitTransactionIncrement();
+        confirmTransaction(address(1002), 0);
+        confirmTransaction(address(1003), 0);
+        assertFalse(multiSig.hasValidNumberOfConfirmations(0));
+    }
 }

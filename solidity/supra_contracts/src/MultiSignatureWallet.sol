@@ -55,6 +55,21 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         revert InvalidTxnId();
     }
 
+    /// @dev Counts confirmations from current valid owners only.
+    /// @param _txIndex Index of the transaction to count confirmations for.
+    /// @return uint24 Number of confirmations from current valid owners.
+    function validNumberOfConfirmations(uint256 _txIndex) private view returns (uint24) {
+        EnumerableSet.AddressSet storage confirmation = confirmations[_txIndex];
+        uint24 validNumOfConfirmations = 0;
+        for (uint64 i = 0; i < confirmation.length(); i++) {
+            address owner = confirmation.at(i);
+            if (owners.contains(owner)) {
+                validNumOfConfirmations++;
+            }
+        }
+        return validNumOfConfirmations;
+    }
+
     /// @dev Helper function to remove a transaction and emit an event if it is expired.
     /// @param _txIndex Index of the transaction.
     /// @return bool True if the transaction was expired and removed.
@@ -307,6 +322,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      * @param _owner Address of the owner.
      */
     function isConfirmed(uint256 _txIndex, address _owner) external view returns (bool) {
+        onlyOwner(_owner);
         txExists(_txIndex); 
         return confirmations[_txIndex].contains(_owner);
     }
@@ -339,7 +355,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         return (
             transaction.to,
             transaction.value,
-            transaction.numConfirmations,
+            validNumberOfConfirmations(_txIndex),
             transaction.timeout,
             transaction.data
         );
@@ -374,15 +390,6 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function hasValidNumberOfConfirmations(uint256 _txIndex) public view returns (bool) {
         txExists(_txIndex);
-        Transaction storage transaction = transactions[_txIndex];
-        EnumerableSet.AddressSet storage confirmation = confirmations[_txIndex];
-        uint64 valid_number_of_confirmations = 0;
-        for (uint64 i = 0; i < confirmation.length(); i++) {
-            address owner = confirmation.at(i);
-            if (owners.contains(owner)) {
-                valid_number_of_confirmations++;
-            }
-        }
-        return valid_number_of_confirmations >= numConfirmationsRequired;
+        return validNumberOfConfirmations(_txIndex) >= numConfirmationsRequired;
     }
 }
