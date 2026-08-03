@@ -322,7 +322,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      * @param _owner Address of the owner.
      */
     function isConfirmed(uint256 _txIndex, address _owner) external view returns (bool) {
-        if (!owners.contains(_owner)) return false;
+        onlyOwner(_owner);
         txExists(_txIndex); 
         return confirmations[_txIndex].contains(_owner);
     }

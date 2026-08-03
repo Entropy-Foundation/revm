@@ -954,15 +954,17 @@ contract MultiSignatureWalletTest is Test {
         assertFalse(multiSig.isConfirmed(0, address(1002)));
     }
 
-    /// @dev Test to ensure 'isConfirmed' returns false for a non-owner (short-circuit).
-    function testIsConfirmedReturnsFalseForNonOwner() public {
+    /// @dev Test to ensure 'isConfirmed' reverts for a non-owner.
+    function testIsConfirmedRevertsIfNotOwner() public {
         testSubmitTransactionIncrement();
-        assertFalse(multiSig.isConfirmed(0, alice));
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
+        multiSig.isConfirmed(0, alice);
     }
 
-    /// @dev Test to ensure 'isConfirmed' short-circuits for non-owner even if tx does not exist.
-    function testIsConfirmedReturnsFalseForNonOwnerNonExistentTx() public view {
-        assertFalse(multiSig.isConfirmed(99, alice));
+    /// @dev Test to ensure 'isConfirmed' reverts for a non-owner before checking tx existence.
+    function testIsConfirmedRevertsIfNotOwnerNonExistentTx() public {
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
+        multiSig.isConfirmed(99, alice);
     }
 
     /// @dev Test to ensure 'isConfirmed' still reverts for valid owner if tx does not exist.
