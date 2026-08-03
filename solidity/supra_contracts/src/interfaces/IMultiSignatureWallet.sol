@@ -175,4 +175,9 @@ interface IMultiSignatureWallet {
         uint64 timeout,
         bytes memory data
     );
+
+    /// @notice Function to check if a transaction has a valid number of confirmations.
+    /// @param _txIndex Index of the transaction to check for.
+    /// @return bool True if the transaction has a valid number of confirmations counting only valid owners, false otherwise.
+    function hasValidNumberOfConfirmations(uint256 _txIndex) external view returns (bool);
 }
