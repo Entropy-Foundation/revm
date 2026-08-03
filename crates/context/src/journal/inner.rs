@@ -639,9 +639,13 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         let load = match self.state.entry(address) {
             Entry::Occupied(entry) => {
                 let account = entry.into_mut();
-                let is_cold = account.mark_warm_with_transaction_id(self.transaction_id);
+                // `is_new_tx_touch` reflects only whether *this specific
+                // account* has been touched by the current transaction yet -
+                // it drives the per-tx lazy invalidation below regardless of
+                // gas-warmth semantics.
+                let is_new_tx_touch = account.mark_warm_with_transaction_id(self.transaction_id);
                 // if it is cold loaded we need to clear local flags that can interact with selfdestruct
-                if is_cold {
+                if is_new_tx_touch {
                     // if it is cold loaded and we have selfdestructed locally it means that
                     // account was selfdestructed in previous transaction and we need to clear its information and storage.
                     if account.is_selfdestructed_locally() {
@@ -666,6 +670,17 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                     // unmark locally created
                     account.unmark_created_locally();
                 }
+                // Coinbase and precompile addresses are re-warmed at the
+                // start of every transaction (EIP-3651 / EIP-2929),
+                // independent of whether an earlier transaction sharing this
+                // journal already loaded them into `state`. The
+                // transaction_id check above only knows "has *this*
+                // transaction touched this specific account before" - it has
+                // no notion of the perpetually pre-warmed set, so an address
+                // that's supposed to always start warm would otherwise be
+                // incorrectly charged a cold access on every transaction
+                // after the first one to ever load it in this block.
+                let is_cold = is_new_tx_touch && self.warm_addresses.is_cold(&address);
                 StateLoad {
                     data: account,
                     is_cold,

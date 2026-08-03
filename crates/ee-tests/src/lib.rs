@@ -132,3 +132,9 @@ mod op_revm_tests;
 
 #[cfg(test)]
 mod revm_tests;
+
+#[cfg(test)]
+mod coinbase_scratch_test;
+
+#[cfg(test)]
+mod access_list_scratch;
