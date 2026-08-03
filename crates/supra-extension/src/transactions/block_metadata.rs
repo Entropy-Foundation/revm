@@ -15,7 +15,7 @@ use primitives::supra_constants::VM_SIGNER;
 use primitives::TxKind;
 
 /// Gas limit used for the block metadata transaction.
-pub(crate) const BLOCK_METADATA_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
+pub const BLOCK_METADATA_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 
 /// EVM system transaction generated based on the block sent for execution.
 /// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meet

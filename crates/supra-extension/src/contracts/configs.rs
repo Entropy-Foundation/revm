@@ -44,7 +44,43 @@ use crate::transactions::block_metadata::BLOCK_METADATA_GAS_LIMIT;
 // 200 is kept far below that ceiling deliberately, as buffer for other future
 // `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
 // applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).
-const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
+pub const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
+
+/// Default maximum allowable duration (in seconds) from the registration time that a user
+/// automation task can run. Set to 7 days.
+pub const DEFAULT_TASK_DURATION_CAP_SECS: u64 = 604800;
+/// Default maximum gas allocation for automation tasks per cycle.
+pub const DEFAULT_REGISTRY_MAX_GAS_CAP: u128 = 8_000_000;
+/// Default base fee per second for the full capacity of the automation registry, measured in
+/// wei/sec. Equivalent to 0.004 SUPRA normalized based on the supra denominator between move
+/// and evm currency.
+pub const DEFAULT_AUTOMATION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
+/// Default flat registration fee charged for each task. Equivalent to 0.05 SUPRA normalized
+/// based on the supra denominator between move and evm currency.
+pub const DEFAULT_FLAT_REGISTRATION_FEE_WEI: u128 = 21_431_633_000_000;
+/// Default percentage representing the acceptable upper limit of committed gas amount relative
+/// to `registry_max_gas_cap`.
+pub const DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE: u8 = 50;
+/// Default base fee per second for the full capacity of the automation registry when the
+/// congestion threshold is exceeded. Equivalent to 0.004 SUPRA normalized based on the supra
+/// denominator between move and evm currency.
+pub const DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
+/// Default exponent that the congestion fee increases by exponentially.
+pub const DEFAULT_CONGESTION_EXPONENT: u8 = 6;
+/// Default maximum number of tasks that the registry can hold.
+/// `task_capacity + sys_task_capacity` must not exceed [`MAX_SUPPORTED_AUTOMATION_TASKS`].
+pub const DEFAULT_TASK_CAPACITY: u16 = 160;
+/// Default automation cycle duration in seconds.
+pub const DEFAULT_CYCLE_DURATION_SECS: u64 = 600;
+/// Default maximum allowable duration (in seconds) from the registration time that a system
+/// automation task can run. Set to ~1 month.
+pub const DEFAULT_SYS_TASK_DURATION_CAP_SECS: u64 = 2626560;
+/// Default maximum gas allocation for system automation tasks per cycle.
+pub const DEFAULT_SYS_REGISTRY_MAX_GAS_CAP: u128 = 2_000_000;
+/// Default maximum number of system tasks that the registry can hold.
+pub const DEFAULT_SYS_TASK_CAPACITY: u16 = 40;
+/// Default flag indicating whether the automation feature is enabled at startup.
+pub const DEFAULT_ENABLE_AUTOMATION_FEATURE: bool = true;
 
 /// Configuration parameters for Automation Registry contracts initialization
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,25 +144,19 @@ impl AutomationRegistryConfigV1 {
 impl Default for AutomationRegistryConfigV1 {
     fn default() -> Self {
         Self {
-            // 7 days
-            task_duration_cap_secs: 604800,
-            registry_max_gas_cap: 8_000_000,
-            // 0.004 SUPRA normalized based on the supra denominator between move and evm currency
-            automation_base_fee_wei_per_sec: 1_714_530_600_000,
-            // 0.05 SUPRA normalized based on the supra denominator between move and evm currency
-            flat_registration_fee_wei: 21_431_633_000_000,
-            congestion_threshold_percentage: 50,
-            // 0.004 SUPRA normalized based on the supra denominator between move and evm currency
-            congestion_base_fee_wei_per_sec: 1_714_530_600_000,
-            congestion_exponent: 6,
-            // task_capacity + sys_task_capacity must not exceed MAX_SUPPORTED_AUTOMATION_TASK
-            task_capacity: 160,
-            cycle_duration_secs: 600,
-            // ~1 month
-            sys_task_duration_cap_secs: 2626560,
-            sys_registry_max_gas_cap: 2_000_000,
-            sys_task_capacity: 40,
-            enable_automation_feature: true,
+            task_duration_cap_secs: DEFAULT_TASK_DURATION_CAP_SECS,
+            registry_max_gas_cap: DEFAULT_REGISTRY_MAX_GAS_CAP,
+            automation_base_fee_wei_per_sec: DEFAULT_AUTOMATION_BASE_FEE_WEI_PER_SEC,
+            flat_registration_fee_wei: DEFAULT_FLAT_REGISTRATION_FEE_WEI,
+            congestion_threshold_percentage: DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE,
+            congestion_base_fee_wei_per_sec: DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC,
+            congestion_exponent: DEFAULT_CONGESTION_EXPONENT,
+            task_capacity: DEFAULT_TASK_CAPACITY,
+            cycle_duration_secs: DEFAULT_CYCLE_DURATION_SECS,
+            sys_task_duration_cap_secs: DEFAULT_SYS_TASK_DURATION_CAP_SECS,
+            sys_registry_max_gas_cap: DEFAULT_SYS_REGISTRY_MAX_GAS_CAP,
+            sys_task_capacity: DEFAULT_SYS_TASK_CAPACITY,
+            enable_automation_feature: DEFAULT_ENABLE_AUTOMATION_FEATURE,
         }
     }
 }
