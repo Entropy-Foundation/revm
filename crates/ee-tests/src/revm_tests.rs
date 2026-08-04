@@ -679,3 +679,91 @@ fn test_call_after_create_destroy_standalone_journal() {
         AccountStatus::Touched | AccountStatus::LoadedAsNotExisting
     );
 }
+
+const EXTCODESIZE_CALLER_BYTECODE: &[u8] = &[
+    opcode::CALLER,
+    opcode::EXTCODESIZE,
+    opcode::POP,
+    opcode::STOP,
+];
+
+/// Regression test: per EIP-2929, a transaction's own sender is always pre-warmed by that
+/// transaction's own validation, so `EXTCODESIZE(CALLER)` inside it must always cost the warm
+/// price (100 gas) - regardless of whether an earlier, unrelated transaction already committed
+/// to this shared journal (single-journal, multi-tx execution mode).
+///
+/// T0 is a wholly unrelated transaction from `decoy`, committed to the shared journal first, so
+/// that by the time T1 runs, this journal already has committed history - `caller` (T1's sender)
+/// has never appeared in it before. If `caller`'s sender-warmth from T1's own validation doesn't
+/// survive to the `EXTCODESIZE(CALLER)` a few instructions later, that opcode gets charged the
+/// cold surcharge (2600 gas) instead.
+///
+/// Root cause (fixed): `From<AccountInfo> for Account` (`crates/state/src/lib.rs`) hardcoded
+/// `transaction_id: 0` for any account loaded fresh from the database, instead of the journal's
+/// real current transaction id. That stamp only accidentally matched when the journal's very
+/// first transaction had a real id of 0; once an earlier transaction had already committed and
+/// advanced the id, the account's *second* touch within its own transaction (e.g. EXTCODESIZE
+/// after validation's own load) was misread as a new transaction touching it for the first time.
+#[test]
+fn test_sender_extcodesize_stays_warm_after_prior_committed_tx() {
+    use revm::state::AccountInfo;
+
+    let decoy = address!("0x2000000000000000000000000000000000000000");
+    let caller = address!("0x1000000000000000000000000000000000000000");
+    let probe = address!("0x4000000000000000000000000000000000000000");
+
+    let mut db = funded_cache_db(decoy);
+    db.insert_account_info(
+        caller,
+        AccountInfo {
+            balance: U256::from(10_000_000_000_000_000_000u128),
+            ..Default::default()
+        },
+    );
+    db.insert_account_info(
+        probe,
+        AccountInfo {
+            code_hash: Bytecode::new_raw(Bytes::from_static(EXTCODESIZE_CALLER_BYTECODE))
+                .hash_slow(),
+            code: Some(Bytecode::new_raw(Bytes::from_static(
+                EXTCODESIZE_CALLER_BYTECODE,
+            ))),
+            ..Default::default()
+        },
+    );
+
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .with_db(db)
+        .build_mainnet();
+
+    let result0 = evm
+        .transact_one(TxEnv {
+            caller: decoy,
+            kind: TxKind::Call(decoy),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(result0.is_success());
+    evm.ctx.journal_mut().commit_tx();
+
+    let result1 = evm
+        .transact_one(TxEnv {
+            caller,
+            kind: TxKind::Call(probe),
+            ..Default::default()
+        })
+        .unwrap();
+    evm.ctx.journal_mut().commit_tx();
+
+    assert!(result1.is_success());
+    // 21000 (intrinsic) + 2 (CALLER) + 100 (EXTCODESIZE, warm) + 2 (POP) + 0 (STOP) = 21104.
+    // Comes out 23604 if EXTCODESIZE(CALLER) is incorrectly charged cold (2600) instead.
+    assert_eq!(
+        result1.gas_used(),
+        21104,
+        "EXTCODESIZE(CALLER) must be charged the warm price (100 gas): `caller` is T1's own \
+         sender and must be pre-warmed by T1's own validation, regardless of T0 having already \
+         committed to this shared journal"
+    );
+}

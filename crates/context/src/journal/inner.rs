@@ -713,11 +713,20 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                 }
             }
             Entry::Vacant(vac) => {
-                let account = if let Some(account) = db.basic(address)? {
+                let mut account = if let Some(account) = db.basic(address)? {
                     account.into()
                 } else {
                     Account::new_not_existing(self.transaction_id)
                 };
+                // `From<AccountInfo> for Account` doesn't know about the
+                // journal's current transaction and hardcodes
+                // transaction_id to 0 - stamp the real current id here so
+                // this account's warmth is tracked correctly on its next
+                // touch within THIS transaction (mark_warm_with_transaction_id
+                // compares against this value), regardless of how many
+                // earlier, unrelated transactions have already run in this
+                // journal and advanced transaction_id past 0.
+                account.transaction_id = self.transaction_id;
 
                 // Precompiles among some other account(coinbase included) are warm loaded so we need to take that into account
                 let is_cold = self.warm_addresses.is_cold(&address);
@@ -1579,6 +1588,76 @@ mod pre_cancun_selfdestruct_tests {
             "pre-Cancun, a cross-tx destroy of a pre-existing contract must \
              stay permanently destroyed - a later transaction merely \
              touching the address must not clear the global flag"
+        );
+    }
+}
+
+#[cfg(test)]
+mod vacant_load_transaction_id_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::{CacheDB, EmptyDB};
+    use state::AccountInfo;
+
+    /// A pre-existing (DB-loaded) account's first-ever load into a shared
+    /// journal must be stamped with the journal's real current
+    /// `transaction_id`, not a hardcoded 0 (the bug: `From<AccountInfo> for
+    /// Account`, `crates/state/src/lib.rs`, hardcoded `transaction_id: 0`).
+    /// Otherwise `mark_warm_with_transaction_id` misreads this account's
+    /// very next touch, later in the SAME transaction, as a brand-new
+    /// transaction touching it for the first time, charging it cold
+    /// instead of warm. This is the general form of the bug that also
+    /// manifests as `EXTCODESIZE(CALLER)` being incorrectly charged cold -
+    /// see `test_sender_extcodesize_stays_warm_after_prior_committed_tx` in
+    /// `crates/ee-tests/src/revm_tests.rs`.
+    #[test]
+    fn pre_existing_account_first_load_stamps_real_transaction_id() {
+        let mut db = CacheDB::new(EmptyDB::new());
+        let unrelated = Address::with_last_byte(1);
+        let target = Address::with_last_byte(2);
+
+        db.insert_account_info(
+            unrelated,
+            AccountInfo {
+                balance: U256::from(1),
+                ..Default::default()
+            },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo {
+                balance: U256::from(2),
+                ..Default::default()
+            },
+        );
+
+        let mut journal = JournalInner::<JournalEntry>::new();
+
+        // T0: an unrelated transaction, never touching `target`, commits
+        // first - advancing transaction_id past 0.
+        journal.load_account(&mut db, unrelated).unwrap();
+        journal.commit_tx();
+        assert_eq!(journal.transaction_id, 1);
+
+        // T1: first-ever load of `target` in this journal - a different,
+        // non-first transaction.
+        journal.load_account(&mut db, target).unwrap();
+
+        assert_eq!(
+            journal.state.get(&target).unwrap().transaction_id,
+            journal.transaction_id,
+            "a pre-existing account's first load must be stamped with the \
+             journal's real current transaction_id, not a hardcoded 0"
+        );
+
+        // Concretely: touching it again right now, still within T1, must
+        // report warm (is_cold == false) - not misread as a new
+        // transaction's first touch.
+        let second_touch = journal.load_account(&mut db, target).unwrap();
+        assert!(
+            !second_touch.is_cold,
+            "second touch of the same account within the same transaction \
+             must be warm"
         );
     }
 }
