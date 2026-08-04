@@ -243,6 +243,98 @@ fn test_read_only_eip7702_auth_list_is_fully_discarded() {
     }
 }
 
+/// Regression test: `JournalEntry::CodeChange`'s revert previously always
+/// reset the account to `code_hash = KECCAK_EMPTY, code = None` - correct
+/// for CREATE (whose collision check requires the target to already be
+/// empty), but wrong for EIP-7702: step 5 of the spec explicitly permits
+/// re-delegating an authority that already holds a delegation, so the
+/// "previous" code being reverted-to is not necessarily empty.
+///
+/// T1 (committed) delegates `authority` to X. T2 (`ReadOnly`) attempts to
+/// re-delegate the *same* authority to Y, correctly errors as a state
+/// mutation attempt, and gets discarded. T1's delegation to X must survive
+/// - not be wiped to empty by T2's reverted `CodeChange` entry.
+#[test]
+fn test_read_only_eip7702_redelegate_restores_prior_delegation_on_discard() {
+    let authority = address!("0xcccccccccccccccccccccccccccccccccccccccc");
+    let delegate_to_x = address!("0xdddddddddddddddddddddddddddddddddddddddd");
+    let delegate_to_y = address!("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
+            STOP_BYTECODE.into(),
+        )))
+        .build_mainnet();
+
+    // T1 (normal, committed): delegate `authority` to X.
+    let auth1 = RecoveredAuthorization::new_unchecked(
+        Authorization {
+            chain_id: U256::ZERO,
+            address: delegate_to_x,
+            nonce: 0,
+        },
+        RecoveredAuthority::Valid(authority),
+    );
+    let tx1 = TxEnv::builder_for_bench()
+        .tx_type(Some(TransactionType::Eip7702 as u8))
+        .authorization_list_recovered(vec![auth1])
+        .build_fill();
+
+    let result1 = evm.transact_one(tx1).unwrap();
+    assert!(result1.is_success());
+
+    let authority_after_t1 = evm.ctx.journal_mut().state.get(&authority).unwrap().clone();
+    assert_eq!(
+        authority_after_t1.info.nonce, 1,
+        "sanity: T1's delegation bumped the authority's nonce"
+    );
+    assert_ne!(
+        authority_after_t1.info.code_hash, KECCAK_EMPTY,
+        "sanity: T1's delegation to X must be committed before T2 runs"
+    );
+
+    // T2 (ReadOnly): attempt to re-delegate the SAME authority to Y.
+    evm.ctx
+        .modify_cfg(|cfg| cfg.execution_mode = ExecutionMode::ReadOnly);
+
+    let auth2 = RecoveredAuthorization::new_unchecked(
+        Authorization {
+            chain_id: U256::ZERO,
+            address: delegate_to_y,
+            nonce: 1,
+        },
+        RecoveredAuthority::Valid(authority),
+    );
+    let tx2 = TxEnv::builder_for_bench()
+        .nonce(1)
+        .tx_type(Some(TransactionType::Eip7702 as u8))
+        .authorization_list_recovered(vec![auth2])
+        .build_fill();
+
+    let err = evm.transact_one(tx2).unwrap_err();
+    assert!(
+        err.to_string().contains("attempted state mutation"),
+        "expected a ReadOnly state-mutation error, got: {err}"
+    );
+
+    // T1's committed delegation to X must survive T2's discarded
+    // re-delegation attempt - not be wiped to empty.
+    let authority_after_t2 = evm.ctx.journal_mut().state.get(&authority).unwrap();
+    assert_eq!(
+        authority_after_t2.info.nonce, 1,
+        "T2's nonce bump must be reverted, leaving T1's committed nonce"
+    );
+    assert_eq!(
+        authority_after_t2.info.code_hash, authority_after_t1.info.code_hash,
+        "T1's committed delegation to X must be restored, not wiped to empty"
+    );
+    assert_eq!(
+        authority_after_t2.info.code, authority_after_t1.info.code,
+        "T1's committed delegation bytecode must be restored"
+    );
+}
+
 /// Tests multiple transactions with contract creation.
 /// Verifies that created contracts persist correctly across transactions
 /// and that their state is properly maintained.
@@ -452,7 +544,9 @@ fn test_disable_balance_check() {
 }
 
 /// Funds `addr` with a large balance in a fresh `CacheDB`.
-fn funded_cache_db(addr: revm::primitives::Address) -> revm::database::CacheDB<revm::database::EmptyDB> {
+fn funded_cache_db(
+    addr: revm::primitives::Address,
+) -> revm::database::CacheDB<revm::database::EmptyDB> {
     use revm::database::{CacheDB, EmptyDB};
     use revm::state::AccountInfo;
 
@@ -501,14 +595,13 @@ fn test_call_after_create_destroy_single_journal() {
     let created_address = result1.created_address().unwrap();
 
     // Sanity: the constructor genuinely selfdestructed (not just deployed empty code).
-    assert!(
-        evm.ctx
-            .journal_mut()
-            .state
-            .get(&created_address)
-            .unwrap()
-            .is_selfdestructed_locally()
-    );
+    assert!(evm
+        .ctx
+        .journal_mut()
+        .state
+        .get(&created_address)
+        .unwrap()
+        .is_selfdestructed_locally());
 
     let result2 = evm
         .transact_one(

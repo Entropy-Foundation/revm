@@ -437,9 +437,6 @@ where
             let old_balance = acc.info.balance;
 
             // decrement transaction id as it was incremented when we discarded the tx.
-            // Touch account so we know it is changed. Marking happens via the guarded `touch()`
-            // call inside `caller_accounting_journal_entry` below, not here — calling `mark_touch()`
-            // first would defeat that guard and break the sticky, block-scoped `Touched` invariant.
             acc.transaction_id -= 1;
             acc.info.nonce = acc.info.nonce.saturating_add(1);
             acc.info.balance = acc
@@ -447,6 +444,9 @@ where
                 .balance
                 .saturating_add(U256::from(mint.unwrap_or_default()));
 
+            // Touch account so we know it is changed. Marking happens via the guarded `touch()`
+            // call inside `caller_accounting_journal_entry` below, not here — calling `mark_touch()`
+            // first would defeat that guard and break the sticky, block-scoped `Touched` invariant.
             // add journal entry for accounts
             evm.ctx()
                 .journal_mut()

@@ -134,7 +134,7 @@ mod op_revm_tests;
 mod revm_tests;
 
 #[cfg(test)]
-mod coinbase_scratch_test;
+mod coinbase_warmth;
 
 #[cfg(test)]
-mod access_list_scratch;
+mod access_list_warmth;

@@ -5,7 +5,8 @@
 //! They are created when there is change to the state from loading (making it warm), changes to the balance,
 //! or removal of the storage slot. Check [`JournalEntryTr`] for more details.
 
-use primitives::{Address, StorageKey, StorageValue, KECCAK_EMPTY, PRECOMPILE3, U256};
+use bytecode::Bytecode;
+use primitives::{Address, StorageKey, StorageValue, B256, PRECOMPILE3, U256};
 use state::{EvmState, TransientStorage};
 
 /// Trait for tracking and reverting state changes in the EVM.
@@ -57,8 +58,15 @@ pub trait JournalEntryTr {
         had_value: StorageValue,
     ) -> Self;
 
-    /// Creates a journal entry for when an account's code is modified
-    fn code_changed(address: Address) -> Self;
+    /// Creates a journal entry for when an account's code is modified.
+    /// Records the previous code/hash so revert can restore it - the
+    /// previous value is not necessarily empty (e.g. EIP-7702 explicitly
+    /// permits re-delegating an authority that already holds a delegation).
+    fn code_changed(
+        address: Address,
+        previous_code_hash: B256,
+        previous_code: Option<Bytecode>,
+    ) -> Self;
 
     /// Returns `true` if this journal entry represents an operation that mutates persistent state.
     ///
@@ -225,6 +233,15 @@ pub enum JournalEntry {
     CodeChange {
         /// Address of account that had its code changed.
         address: Address,
+        /// Code hash of the account before this change.
+        ///
+        /// Not necessarily `KECCAK_EMPTY` - e.g. EIP-7702 explicitly permits
+        /// re-delegating an authority that already holds a delegation, so
+        /// the previous code can be a real, non-empty value that must be
+        /// restored on revert, not wiped to empty.
+        previous_code_hash: B256,
+        /// Code of the account before this change.
+        previous_code: Option<Bytecode>,
     },
 }
 impl JournalEntryTr for JournalEntry {
@@ -245,7 +262,10 @@ impl JournalEntryTr for JournalEntry {
             // Balance was changed.  pre_execution unconditionally pushes a BalanceChange
             // entry even for zero-fee predicate calls, so filter those out by comparing
             // the stored old_balance against the account's current balance in state.
-            JournalEntry::BalanceChange { address, old_balance } => state
+            JournalEntry::BalanceChange {
+                address,
+                old_balance,
+            } => state
                 .get(address)
                 .map(|account| account.info.balance != *old_balance)
                 .unwrap_or(true),
@@ -325,8 +345,16 @@ impl JournalEntryTr for JournalEntry {
         }
     }
 
-    fn code_changed(address: Address) -> Self {
-        JournalEntry::CodeChange { address }
+    fn code_changed(
+        address: Address,
+        previous_code_hash: B256,
+        previous_code: Option<Bytecode>,
+    ) -> Self {
+        JournalEntry::CodeChange {
+            address,
+            previous_code_hash,
+            previous_code,
+        }
     }
 
     fn revert(
@@ -442,10 +470,14 @@ impl JournalEntryTr for JournalEntry {
                     transient_storage.insert(tkey, had_value);
                 }
             }
-            JournalEntry::CodeChange { address } => {
+            JournalEntry::CodeChange {
+                address,
+                previous_code_hash,
+                previous_code,
+            } => {
                 let acc = state.get_mut(&address).unwrap();
-                acc.info.code_hash = KECCAK_EMPTY;
-                acc.info.code = None;
+                acc.info.code_hash = previous_code_hash;
+                acc.info.code = previous_code;
             }
         }
     }

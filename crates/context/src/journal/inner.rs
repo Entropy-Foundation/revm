@@ -239,7 +239,16 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         let account = self.state.get_mut(&address).unwrap();
         Self::touch_account(&mut self.journal, address, account);
 
-        self.journal.push(ENTRY::code_changed(address));
+        // Capture the previous code/hash so a revert restores it exactly -
+        // it is not necessarily empty (e.g. EIP-7702 explicitly permits
+        // re-delegating an authority that already holds a delegation).
+        let previous_code_hash = account.info.code_hash;
+        let previous_code = account.info.code.clone();
+        self.journal.push(ENTRY::code_changed(
+            address,
+            previous_code_hash,
+            previous_code,
+        ));
 
         account.info.code_hash = hash;
         account.info.code = Some(code);
@@ -651,21 +660,38 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                     if account.is_selfdestructed_locally() {
                         account.selfdestruct();
                         account.unmark_selfdestructed_locally();
-                        // The destruction from that earlier, already-committed
-                        // transaction has now been fully realized (storage and
-                        // info wiped above) - this account is a blank slate as
-                        // of this transaction. Clear the persistent global
-                        // flags too, so that if this (or a later) transaction
-                        // recreates the account, it is not incorrectly still
-                        // treated as destroyed when the block's final state is
-                        // computed (EIP-6780), and so that a standalone,
-                        // finalize-per-tx execution of the same transaction
-                        // sequence - where this account would simply be a
-                        // freshly-loaded, never-created object - produces the
-                        // same bookkeeping view of this account as this
-                        // shared-journal, multi-tx execution does.
-                        account.unmark_selfdestruct();
-                        account.unmark_created();
+                        // Only clear the persistent global flags if this
+                        // account was itself created somewhere in this
+                        // journal's own history (`is_created()`, never
+                        // cleared except here) - that's the actual invariant
+                        // that makes "blank slate" safe, not the hardfork:
+                        // an account created within this journal provably
+                        // has no pre-existing on-disk storage predating this
+                        // block, so treating it as fully fresh cannot lose
+                        // anything. This is always true post-Cancun when
+                        // this branch is reached at all (`is_selfdestructed_locally()`
+                        // there requires `is_created_locally()`, which always
+                        // sets the global `Created` flag too), and lets a
+                        // later recreate of that same account correctly show
+                        // as alive rather than still destroyed (EIP-6780),
+                        // matching what a standalone, finalize-per-tx
+                        // execution of the same sequence would show.
+                        //
+                        // Pre-Cancun, `selfdestruct()` also sets this flag
+                        // for a cross-tx destroy of a pre-existing contract
+                        // that was never created in this journal at all
+                        // (`is_created()` false) - there, destruction is
+                        // permanent per legacy semantics, and clearing the
+                        // global flags would incorrectly let
+                        // `apply_account_state`/`CacheDB::commit` skip wiping
+                        // that contract's real, possibly large pre-existing
+                        // on-disk storage (which this journal never loaded
+                        // and has no way to enumerate), resurrecting old data
+                        // if the address is ever touched again.
+                        if account.is_created() {
+                            account.unmark_selfdestruct();
+                            account.unmark_created();
+                        }
                     }
                     // unmark locally created
                     account.unmark_created_locally();
@@ -939,7 +965,11 @@ mod eip2200_original_value_tests {
         // --- Transaction 1 (of this block): slot goes 0 -> A, then commits ---
         journal.load_account(&mut db, addr).unwrap();
         let t1 = journal.sstore(&mut db, addr, key, value_a).unwrap().data;
-        assert_eq!(t1.original_value, StorageValue::ZERO, "T1 original should be pre-block DB value (0)");
+        assert_eq!(
+            t1.original_value,
+            StorageValue::ZERO,
+            "T1 original should be pre-block DB value (0)"
+        );
         assert_eq!(t1.present_value, StorageValue::ZERO);
         assert_eq!(t1.new_value, value_a);
 
@@ -947,7 +977,10 @@ mod eip2200_original_value_tests {
         journal.commit_tx();
 
         // --- Transaction 2 (same block, same journal): slot goes A -> 0 ---
-        let t2 = journal.sstore(&mut db, addr, key, StorageValue::ZERO).unwrap().data;
+        let t2 = journal
+            .sstore(&mut db, addr, key, StorageValue::ZERO)
+            .unwrap()
+            .data;
 
         // Per EIP-2200, T2's "original value" must be A: that's what the slot
         // would revert back to if *T2 alone* were reverted, since T1 already
@@ -997,7 +1030,10 @@ mod eip2200_original_value_tests {
         // --- Session 2 (transaction 2): brand new journal/session, A -> 0 ---
         let mut journal2 = JournalInner::<JournalEntry>::new();
         journal2.load_account(&mut db, addr).unwrap();
-        let t2 = journal2.sstore(&mut db, addr, key, StorageValue::ZERO).unwrap().data;
+        let t2 = journal2
+            .sstore(&mut db, addr, key, StorageValue::ZERO)
+            .unwrap()
+            .data;
 
         // Because this session's `state` map starts empty, the slot is loaded
         // fresh from `db` (which already has T1's committed value), so
@@ -1182,7 +1218,11 @@ mod eip6780_recreate_after_selfdestruct_tests {
             "cross-tx selfdestruct must not take the same-tx 'full delete' \
              path - it wasn't created in this transaction"
         );
-        assert_eq!(acc.info.balance, U256::ZERO, "balance should be transferred out");
+        assert_eq!(
+            acc.info.balance,
+            U256::ZERO,
+            "balance should be transferred out"
+        );
         assert_eq!(
             acc.info.code_hash, CODE_V1,
             "code must survive a cross-tx selfdestruct per EIP-6780"
@@ -1476,5 +1516,69 @@ mod eip6780_recreate_after_selfdestruct_tests {
             "only T3's contract should survive"
         );
         assert!(!final_account.is_selfdestructed());
+    }
+}
+
+#[cfg(test)]
+mod pre_cancun_selfdestruct_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::EmptyDB;
+    use primitives::hardfork::SpecId;
+    use state::AccountInfo;
+
+    /// Pre-Cancun, `selfdestruct()`'s `is_created_locally() ||
+    /// !is_cancun_enabled` gate takes the "full delete" branch
+    /// unconditionally - i.e. for ANY destroy, not just one in the same
+    /// transaction as creation. So a cross-tx destroy of a pre-existing
+    /// contract (never created in this journal's history at all) still
+    /// sets `is_selfdestructed_locally()`.
+    ///
+    /// A later transaction in the same block merely *touching* (not
+    /// recreating) that address must NOT resurrect it by clearing the
+    /// global `SelfDestructed` flag: pre-Cancun, destruction is permanent,
+    /// and clearing that flag would let `apply_account_state`/
+    /// `CacheDB::commit` skip wiping the account's committed storage from
+    /// the persisted state.
+    #[test]
+    fn pre_cancun_cross_tx_destroy_of_pre_existing_contract_stays_destroyed() {
+        let mut db = database::CacheDB::new(EmptyDB::new());
+        let mut journal = JournalInner::<JournalEntry>::new();
+        journal.set_spec_id(SpecId::BERLIN);
+
+        let addr = Address::with_last_byte(2);
+        let target = Address::with_last_byte(3);
+
+        // Pre-existing contract - NOT created in this journal's history,
+        // loaded straight from the DB with real code already in place.
+        db.insert_account_info(
+            addr,
+            AccountInfo {
+                code_hash: B256::from([9; 32]),
+                ..Default::default()
+            },
+        );
+
+        // T1: destroy it (cross-tx relative to its own creation, which
+        // predates this block entirely).
+        journal.load_account(&mut db, addr).unwrap();
+        journal.selfdestruct(&mut db, addr, target).unwrap();
+        journal.touch(addr);
+        journal.commit_tx();
+
+        // Sanity: pre-Cancun, this must have taken the full-delete path.
+        assert!(journal.state.get(&addr).unwrap().is_selfdestructed());
+
+        // T2: a later transaction merely touches the address (e.g. a plain
+        // call), without recreating it.
+        journal.load_account(&mut db, addr).unwrap();
+        journal.commit_tx();
+
+        assert!(
+            journal.state.get(&addr).unwrap().is_selfdestructed(),
+            "pre-Cancun, a cross-tx destroy of a pre-existing contract must \
+             stay permanently destroyed - a later transaction merely \
+             touching the address must not clear the global flag"
+        );
     }
 }

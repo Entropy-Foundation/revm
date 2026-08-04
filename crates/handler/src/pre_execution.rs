@@ -216,7 +216,7 @@ pub fn apply_eip7702_auth_list<
 
     let mut refunded_accounts = 0;
     for authorization in tx.authorization_list() {
-        let (address,bytecode, hash) = {
+        let (address, bytecode, hash) = {
             // 1. Verify the chain id is either 0 or the chain's current ID.
             let auth_chain_id = authorization.chain_id();
             if !auth_chain_id.is_zero() && auth_chain_id != U256::from(chain_id) {

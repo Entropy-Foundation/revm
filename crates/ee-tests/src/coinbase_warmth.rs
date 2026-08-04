@@ -21,7 +21,9 @@ fn setup_evm(
     caller: Address,
     contract: Address,
     balance_target: Address,
-) -> revm::MainnetEvm<Context<revm::context::BlockEnv, revm::context::TxEnv, revm::context::CfgEnv, CacheDB<EmptyDB>>> {
+) -> revm::MainnetEvm<
+    Context<revm::context::BlockEnv, revm::context::TxEnv, revm::context::CfgEnv, CacheDB<EmptyDB>>,
+> {
     let mut db = CacheDB::new(EmptyDB::default());
 
     db.insert_account_info(
