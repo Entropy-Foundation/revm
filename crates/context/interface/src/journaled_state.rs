@@ -97,7 +97,10 @@ pub trait JournalTr {
         balance: U256,
     ) -> Result<Option<TransferError>, <Self::Database as Database>::Error>;
 
-    /// Increments the balance of the account.
+    /// Marks the account as touched, creating journal entries
+    ///     - balance updated with old-balance reference
+    ///     - touched if the account was not yet touched globally in scope of execution session
+    ///     - nonce update if input bump_nonce is true
     fn caller_accounting_journal_entry(
         &mut self,
         address: Address,

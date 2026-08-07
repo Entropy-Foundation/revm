@@ -112,7 +112,7 @@
         "code_hash": "0x9125466aa9ef15459d85e7318f6d3bdc5f6978c0565bee37a8e768d7c202a67a",
         "nonce": 1
       },
-      "status": "Created | CreatedLocal | SelfDestructed | Touched | LoadedAsNotExisting",
+      "status": "Created | CreatedLocal | Touched | LoadedAsNotExisting",
       "storage": {},
       "transaction_id": 2
     },

@@ -239,7 +239,16 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         let account = self.state.get_mut(&address).unwrap();
         Self::touch_account(&mut self.journal, address, account);
 
-        self.journal.push(ENTRY::code_changed(address));
+        // Capture the previous code/hash so a revert restores it exactly -
+        // it is not necessarily empty (e.g. EIP-7702 explicitly permits
+        // re-delegating an authority that already holds a delegation).
+        let previous_code_hash = account.info.code_hash;
+        let previous_code = account.info.code.clone();
+        self.journal.push(ENTRY::code_changed(
+            address,
+            previous_code_hash,
+            previous_code,
+        ));
 
         account.info.code_hash = hash;
         account.info.code = Some(code);
@@ -274,8 +283,16 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         // account balance changed.
         self.journal
             .push(ENTRY::balance_changed(address, old_balance));
-        // account is touched.
-        self.journal.push(ENTRY::account_touched(address));
+        // Mark the caller touched through the guarded `touch()` helper rather than pushing an
+        // unconditional `AccountTouched` entry. `Touched` is a sticky, block-scoped flag (see
+        // `AccountStatus` docs) — once a prior transaction has committed with this account
+        // touched, a later transaction must NOT record another touch entry for it, otherwise
+        // discarding that later transaction (e.g. a `ExecutionMode::ReadOnly` predicate call)
+        // would incorrectly unmark the account as touched, dropping the earlier committed
+        // transaction's changes from the state diff at `finalize()`. The caller must not call
+        // `mark_touch()` itself before this, or the guard below would always see the account as
+        // already touched and never record the entry needed to undo a genuine first touch.
+        self.touch(address);
 
         if bump_nonce {
             // nonce changed.
@@ -631,29 +648,87 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         let load = match self.state.entry(address) {
             Entry::Occupied(entry) => {
                 let account = entry.into_mut();
-                let is_cold = account.mark_warm_with_transaction_id(self.transaction_id);
-                // if it is colad loaded we need to clear local flags that can interact with selfdestruct
-                if is_cold {
+                // `is_new_tx_touch` reflects only whether *this specific
+                // account* has been touched by the current transaction yet -
+                // it drives the per-tx lazy invalidation below regardless of
+                // gas-warmth semantics.
+                let is_new_tx_touch = account.mark_warm_with_transaction_id(self.transaction_id);
+                // if it is cold loaded we need to clear local flags that can interact with selfdestruct
+                if is_new_tx_touch {
                     // if it is cold loaded and we have selfdestructed locally it means that
                     // account was selfdestructed in previous transaction and we need to clear its information and storage.
                     if account.is_selfdestructed_locally() {
                         account.selfdestruct();
                         account.unmark_selfdestructed_locally();
+                        // Only clear the persistent global flags if this
+                        // account was itself created somewhere in this
+                        // journal's own history (`is_created()`, otherwise
+                        // only cleared by an `AccountCreated` revert, which
+                        // un-creates the account for the same reason) - that's
+                        // the actual invariant that makes "blank slate" safe,
+                        // not the hardfork:
+                        // an account created within this journal provably
+                        // has no pre-existing on-disk storage predating this
+                        // block, so treating it as fully fresh cannot lose
+                        // anything. This is always true post-Cancun when
+                        // this branch is reached at all (`is_selfdestructed_locally()`
+                        // there requires `is_created_locally()`, which always
+                        // sets the global `Created` flag too), and lets a
+                        // later recreate of that same account correctly show
+                        // as alive rather than still destroyed (EIP-6780),
+                        // matching what a standalone, finalize-per-tx
+                        // execution of the same sequence would show.
+                        //
+                        // Pre-Cancun, `selfdestruct()` also sets this flag
+                        // for a cross-tx destroy of a pre-existing contract
+                        // that was never created in this journal at all
+                        // (`is_created()` false) - there, destruction is
+                        // permanent per legacy semantics, and clearing the
+                        // global flags would incorrectly let
+                        // `apply_account_state`/`CacheDB::commit` skip wiping
+                        // that contract's real, possibly large pre-existing
+                        // on-disk storage (which this journal never loaded
+                        // and has no way to enumerate), resurrecting old data
+                        // if the address is ever touched again.
+                        if account.is_created() {
+                            account.unmark_selfdestruct();
+                            account.unmark_created();
+                        }
                     }
                     // unmark locally created
                     account.unmark_created_locally();
                 }
+                // Coinbase and precompile addresses are re-warmed at the
+                // start of every transaction (EIP-3651 / EIP-2929),
+                // independent of whether an earlier transaction sharing this
+                // journal already loaded them into `state`. The
+                // transaction_id check above only knows "has *this*
+                // transaction touched this specific account before" - it has
+                // no notion of the perpetually pre-warmed set, so an address
+                // that's supposed to always start warm would otherwise be
+                // incorrectly charged a cold access on every transaction
+                // after the first one to ever load it in this block.
+                let is_cold = is_new_tx_touch && self.warm_addresses.is_cold(&address);
                 StateLoad {
                     data: account,
                     is_cold,
                 }
             }
             Entry::Vacant(vac) => {
-                let account = if let Some(account) = db.basic(address)? {
+                let mut account = if let Some(account) = db.basic(address)? {
                     account.into()
                 } else {
                     Account::new_not_existing(self.transaction_id)
                 };
+                // `From<AccountInfo> for Account` doesn't know about the
+                // journal's current transaction and hardcodes
+                // transaction_id to 0 - stamp the real current id here so
+                // this account's warmth is tracked correctly on its next
+                // touch within THIS transaction (mark_warm_with_transaction_id
+                // compares against this value), regardless of how many
+                // earlier, unrelated transactions have already run in this
+                // journal and advanced transaction_id past 0.
+                account.transaction_id = self.transaction_id;
 
                 // Precompiles among some other account(coinbase included) are warm loaded so we need to take that into account
                 let is_cold = self.warm_addresses.is_cold(&address);
@@ -833,7 +908,24 @@ pub fn sload_with_account<DB: Database, ENTRY: JournalEntryTr>(
     let (value, is_cold) = match account.storage.entry(key) {
         Entry::Occupied(occ) => {
             let slot = occ.into_mut();
+            // EIP-2200/EIP-3529: "original value" must track the value at the
+            // start of the CURRENT transaction ("what the value would be if
+            // the current transaction is reverted"). If this slot was last
+            // touched by an *earlier*, already-committed transaction sharing
+            // this journal (revm's single-journal, multi-tx execution mode,
+            // e.g. `transact_many()`), its transaction_id will differ from
+            // the current one - that earlier transaction's final
+            // `present_value` is this transaction's correct origin baseline.
+            //
+            // This check is keyed off `transaction_id`, not the `is_cold`
+            // return value below, because `is_cold` can also become true
+            // from an in-transaction revert re-marking the slot cold (same
+            // transaction_id), which must NOT reset `original_value`.
+            let is_new_tx = slot.transaction_id != transaction_id;
             let is_cold = slot.mark_warm_with_transaction_id(transaction_id);
+            if is_new_tx {
+                slot.original_value = slot.present_value;
+            }
             (slot.present_value, is_cold)
         }
         Entry::Vacant(vac) => {
@@ -856,4 +948,718 @@ pub fn sload_with_account<DB: Database, ENTRY: JournalEntryTr>(
     }
 
     Ok(StateLoad::new(value, is_cold))
+}
+
+#[cfg(test)]
+mod eip2200_original_value_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::{CacheDB, EmptyDB};
+
+    /// EIP-2200 defines "original value" as "what the value would be if the
+    /// CURRENT transaction is reverted" - i.e. the slot's value at the start
+    /// of the transaction currently executing.
+    ///
+    /// This test checks that `EvmStorageSlot::original_value` is refreshed
+    /// at the transaction boundary (`commit_tx`) when a single `JournalInner`
+    /// is reused across multiple transactions in the same block (revm's
+    /// single-journal, multi-tx execution model, e.g. `transact_many()`).
+    #[test]
+    fn original_value_should_track_start_of_current_tx_not_start_of_block() {
+        let mut journal = JournalInner::<JournalEntry>::new();
+        let mut db = EmptyDB::new();
+
+        let addr = Address::with_last_byte(1);
+        let key = StorageKey::from(1);
+        let value_a = StorageValue::from(42);
+
+        // --- Transaction 1 (of this block): slot goes 0 -> A, then commits ---
+        journal.load_account(&mut db, addr).unwrap();
+        let t1 = journal.sstore(&mut db, addr, key, value_a).unwrap().data;
+        assert_eq!(
+            t1.original_value,
+            StorageValue::ZERO,
+            "T1 original should be pre-block DB value (0)"
+        );
+        assert_eq!(t1.present_value, StorageValue::ZERO);
+        assert_eq!(t1.new_value, value_a);
+
+        // Transaction boundary: T1 is done and committed, T2 begins.
+        journal.commit_tx();
+
+        // --- Transaction 2 (same block, same journal): slot goes A -> 0 ---
+        let t2 = journal
+            .sstore(&mut db, addr, key, StorageValue::ZERO)
+            .unwrap()
+            .data;
+
+        // Per EIP-2200, T2's "original value" must be A: that's what the slot
+        // would revert back to if *T2 alone* were reverted, since T1 already
+        // committed. Without the fix this was 0 (stale pre-block DB value),
+        // which would cause sstore_refund() to compute an incorrect gas
+        // refund for T2 (e.g. its is_original_eq_new() branch firing on
+        // 0 == 0, treating T2 as "restoring the original value" when it is
+        // not).
+        assert_eq!(
+            t2.original_value, value_a,
+            "T2's original_value is {:?}, expected {:?} (T1's committed value).",
+            t2.original_value, value_a
+        );
+    }
+
+    /// Same scenario, but modeling `ExecuteEvm::transact()`'s pattern: each
+    /// transaction gets its own `JournalInner` session that is finalized
+    /// (`finalize()`) and committed to a persistent outer `Database`
+    /// immediately after, rather than being reused via `commit_tx()` across
+    /// multiple transactions. This is `transact()` / `transact_commit()`
+    /// (finalize-per-tx), as opposed to `transact_many()` (one shared journal,
+    /// single finalize at the end).
+    #[test]
+    fn original_value_is_correct_when_each_tx_gets_its_own_finalized_session() {
+        use database::DatabaseCommit;
+
+        let mut db = CacheDB::new(EmptyDB::new());
+
+        let addr = Address::with_last_byte(1);
+        let key = StorageKey::from(1);
+        let value_a = StorageValue::from(42);
+
+        // --- Session 1 (transaction 1): fresh journal, 0 -> A ---
+        let mut journal1 = JournalInner::<JournalEntry>::new();
+        journal1.load_account(&mut db, addr).unwrap();
+        let t1 = journal1.sstore(&mut db, addr, key, value_a).unwrap().data;
+        assert_eq!(t1.original_value, StorageValue::ZERO);
+        // A real transaction touches every account it modifies (e.g. via
+        // deduct_caller / account-load accounting); CacheDB::commit() silently
+        // skips untouched accounts, so this is required for the diff to land.
+        journal1.touch(addr);
+
+        journal1.commit_tx(); // handler.rs commits the single tx internally
+        let state1 = journal1.finalize(); // transact() finalizes right after
+        db.commit(state1); // caller commits the diff into the persistent DB
+
+        // --- Session 2 (transaction 2): brand new journal/session, A -> 0 ---
+        let mut journal2 = JournalInner::<JournalEntry>::new();
+        journal2.load_account(&mut db, addr).unwrap();
+        let t2 = journal2
+            .sstore(&mut db, addr, key, StorageValue::ZERO)
+            .unwrap()
+            .data;
+
+        // Because this session's `state` map starts empty, the slot is loaded
+        // fresh from `db` (which already has T1's committed value), so
+        // original_value is correct here without needing any fix.
+        assert_eq!(
+            t2.original_value, value_a,
+            "original_value should be sourced fresh from the committed DB \
+             value in the finalize-per-tx pattern, independent of the \
+             commit_tx()-reuse bug."
+        );
+    }
+}
+
+#[cfg(test)]
+mod eip6780_recreate_after_selfdestruct_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use context_interface::journaled_state::TransferError;
+    use database::{CacheDB, DatabaseCommit, EmptyDB};
+    use primitives::hardfork::SpecId;
+
+    type TestJournal = JournalInner<JournalEntry>;
+    type TestDb = CacheDB<EmptyDB>;
+
+    const SPEC: SpecId = SpecId::CANCUN;
+
+    /// Sets up a journal + DB with a funded caller, ready to drive a sequence
+    /// of CREATE2/SELFDESTRUCT calls across multiple transactions sharing one
+    /// journal (revm's single-journal, multi-tx execution mode, e.g.
+    /// `transact_many()` - this is where all the bugs in this module were
+    /// found, since `transact()`'s finalize-per-tx pattern starts each
+    /// transaction with a fresh, empty `state` map).
+    fn setup() -> (TestJournal, TestDb, Address) {
+        let mut db = TestDb::new(EmptyDB::new());
+        let mut journal = TestJournal::new();
+        journal.set_spec_id(SPEC);
+
+        let caller = Address::with_last_byte(1);
+        journal.load_account(&mut db, caller).unwrap();
+        journal.state.get_mut(&caller).unwrap().info.balance = U256::from(1_000);
+
+        (journal, db, caller)
+    }
+
+    /// Creates a contract at `addr` within the current transaction, tagging
+    /// it with a distinct `code_hash` so tests can tell which "generation"
+    /// of the contract ends up surviving.
+    fn create_at(
+        journal: &mut TestJournal,
+        db: &mut TestDb,
+        caller: Address,
+        addr: Address,
+        code_hash: B256,
+    ) -> Result<(), TransferError> {
+        journal.load_account(db, addr).unwrap();
+        journal.create_account_checkpoint(caller, addr, U256::ZERO, SPEC)?;
+        // Use the real, journaled code-setting path (as an actual CREATE would
+        // via set_code/set_code_with_hash) rather than poking info.code_hash
+        // directly - a direct field write wouldn't be journaled and so
+        // wouldn't be reverted by discard_tx()/checkpoint_revert(), which
+        // would be a test-harness artifact, not real behavior.
+        journal.set_code_with_hash(addr, Bytecode::default(), code_hash);
+        journal.checkpoint_commit();
+        journal.touch(addr);
+        Ok(())
+    }
+
+    /// Selfdestructs the contract at `addr` within the current transaction.
+    fn destroy_at(journal: &mut TestJournal, db: &mut TestDb, addr: Address, target: Address) {
+        journal.selfdestruct(db, addr, target).unwrap();
+        journal.touch(addr);
+    }
+
+    const CODE_V1: B256 = B256::new([1; 32]);
+    const CODE_V2: B256 = B256::new([2; 32]);
+    const CODE_V3: B256 = B256::new([3; 32]);
+
+    /// create -> destroy (same tx) -> recreate (later tx, no destroy).
+    ///
+    /// T1 creates a contract at `addr` (e.g. via CREATE2) and selfdestructs
+    /// it in the same transaction (EIP-6780 full-delete path). T1 commits.
+    /// T2, later in the *same block* (sharing this journal), creates a
+    /// contract at the *same* `addr` (e.g. same CREATE2 caller/salt/init-code)
+    /// and does NOT selfdestruct it.
+    ///
+    /// Expected: the account is alive at the end of the block - T2's
+    /// creation should be reflected in the final state.
+    #[test]
+    fn create_destroy_then_recreate_is_alive() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        // --- T1: create at `addr`, then selfdestruct it (same tx) ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx(); // T1 done, T2 begins
+
+        // --- T2 (same block, same journal): recreate, do NOT destroy ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        journal.commit_tx(); // T2 done
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert!(final_account.is_created(), "sanity: account was created");
+        assert!(
+            !final_account.is_selfdestructed(),
+            "account is still flagged globally selfdestructed even though \
+             T2 legitimately recreated it afterward without destroying it \
+             again"
+        );
+
+        // Demonstrate the real-world consequence: commit to a persistent DB
+        // and check whether the contract survives.
+        db.commit(state);
+        let committed = db.basic(addr).unwrap().expect("account should exist in DB");
+        assert_eq!(
+            committed.code_hash, CODE_V2,
+            "T2's contract should be the one persisted, not wiped as destroyed"
+        );
+    }
+
+    /// create -> destroy -> recreate -> destroy (again, same tx as the
+    /// recreate).
+    ///
+    /// T1 creates and destroys `addr` (same tx). T2 recreates `addr` *and*
+    /// destroys it again, both within T2 (same-tx create+destroy, its own
+    /// independent EIP-6780 full-delete event).
+    ///
+    /// Expected: the account ends the block genuinely destroyed - the fix
+    /// must not make a same-tx create+destroy in T2 "stick alive" just
+    /// because an earlier transaction's destruction was un-marked.
+    #[test]
+    fn create_destroy_recreate_destroy_ends_destroyed() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        // --- T1: create then destroy (same tx) ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx();
+
+        // --- T2: recreate then destroy again, both in this same tx ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx();
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert!(
+            final_account.is_selfdestructed(),
+            "account should be destroyed: T2 created AND destroyed it in \
+             the same transaction, an independent EIP-6780 full-delete event"
+        );
+    }
+
+    /// create (T1) -> selfdestruct in a *later*, unrelated transaction (T2).
+    ///
+    /// Per EIP-6780, since the SELFDESTRUCT happens in a different
+    /// transaction than the CREATE, this must NOT take the "same-tx full
+    /// delete" path - only the balance is transferred, code/storage survive.
+    #[test]
+    fn cross_tx_selfdestruct_does_not_fully_delete() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+        let target = Address::with_last_byte(3);
+
+        // --- T1: create, do NOT destroy ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        let balance = U256::from(1_000);
+        journal.balance_incr(&mut db, addr, balance).unwrap();
+        journal.commit_tx();
+        let acc = journal.state.get(&addr).unwrap();
+        assert_eq!(acc.info.balance, balance, "balance should be non zero");
+
+        // --- T2: a later, unrelated tx selfdestructs it ---
+        journal.load_account(&mut db, addr).unwrap();
+        destroy_at(&mut journal, &mut db, addr, target);
+
+        let acc = journal.state.get(&addr).unwrap();
+        assert!(
+            !acc.is_selfdestructed_locally(),
+            "cross-tx selfdestruct must not take the same-tx 'full delete' \
+             path - it wasn't created in this transaction"
+        );
+        assert_eq!(
+            acc.info.balance,
+            U256::ZERO,
+            "balance should be transferred out"
+        );
+        assert_eq!(
+            acc.info.code_hash, CODE_V1,
+            "code must survive a cross-tx selfdestruct per EIP-6780"
+        );
+
+        let target_acc = journal.state.get(&target).unwrap();
+        assert_eq!(
+            target_acc.info.balance, balance,
+            "the destroyed account's balance should land on the target address"
+        );
+    }
+
+    /// create (T1) -> cross-tx selfdestruct where the target IS the
+    /// destroyed account itself (T2, `address == target`).
+    ///
+    /// Per EIP-6780, a cross-tx (not same-tx-created) selfdestruct only
+    /// transfers balance to `target` - but transferring a balance to itself
+    /// is a no-op, so this whole call must leave the account completely
+    /// untouched: no balance change, no `SelfDestructed` flag set (not even
+    /// the global one), no journal entry pushed at all, code/storage intact.
+    /// This is a distinct EIP-6780 corner case (the `else { None }` branch
+    /// in `selfdestruct()`), separate from the single-journal recreate bug
+    /// this module otherwise covers - added specifically to confirm that
+    /// bug's fix (clearing `SelfDestructed`/`Created` in the lazy cold-load
+    /// wipe) has no effect on this unrelated, already-a-no-op path.
+    #[test]
+    fn cross_tx_self_targeting_selfdestruct_is_a_no_op() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        // --- T1: create, fund with a balance, do NOT destroy ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        let balance = U256::from(1_000);
+        journal.balance_incr(&mut db, addr, balance).unwrap();
+        journal.commit_tx();
+
+        // --- T2: a later, unrelated tx selfdestructs it, targeting itself ---
+        journal.load_account(&mut db, addr).unwrap();
+        let journal_len_before = journal.journal.len();
+        journal.selfdestruct(&mut db, addr, addr).unwrap();
+
+        assert_eq!(
+            journal.journal.len(),
+            journal_len_before,
+            "a true no-op selfdestruct must not push any journal entry"
+        );
+
+        let acc = journal.state.get(&addr).unwrap();
+        assert!(
+            !acc.is_selfdestructed_locally(),
+            "cross-tx self-targeting selfdestruct must not take the same-tx \
+             'full delete' path"
+        );
+        assert!(
+            !acc.is_selfdestructed(),
+            "must not even mark globally selfdestructed - this is a no-op, \
+             not a destruction"
+        );
+        assert_eq!(
+            acc.info.balance, balance,
+            "balance must be completely unchanged - transferring to itself \
+             is a no-op, not a zero-out"
+        );
+        assert_eq!(acc.info.code_hash, CODE_V1, "code must survive untouched");
+    }
+
+    /// create (T1) -> cross-tx selfdestruct (T2) -> attempted recreate (T3).
+    ///
+    /// Once a contract survives past its creating transaction, EIP-6780
+    /// means it is never actually removable from the trie by SELFDESTRUCT
+    /// again - so a later CREATE2 at the same address must still collide,
+    /// since the account still has code. This guards against the fix
+    /// over-reaching and allowing recreation where it shouldn't.
+    #[test]
+    fn cross_tx_destroyed_contract_cannot_be_recreated() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+        let target = Address::with_last_byte(3);
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        journal.commit_tx();
+
+        journal.load_account(&mut db, addr).unwrap();
+        destroy_at(&mut journal, &mut db, addr, target);
+        journal.commit_tx();
+
+        let err = create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap_err();
+        assert_eq!(
+            err,
+            TransferError::CreateCollision,
+            "an address whose code survived a cross-tx selfdestruct must \
+             still be uncreatable"
+        );
+    }
+
+    /// create -> destroy (same tx) -> an intervening transaction merely
+    /// *touches* the account without recreating it -> a later transaction
+    /// recreates it.
+    ///
+    /// This specifically guards against an off-by-one timing bug: the fix
+    /// must clear the stale global `SelfDestructed` flag at the moment of
+    /// the lazy cold-load wipe itself, not deferred until whichever
+    /// transaction happens to touch the address next after a recreate.
+    #[test]
+    fn intervening_touch_then_later_recreate_is_alive() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx(); // T1 done
+
+        // --- T2: just touches the address, no create, no destroy ---
+        journal.load_account(&mut db, addr).unwrap();
+        journal.commit_tx(); // T2 done
+
+        // --- T3: recreates it ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        journal.commit_tx(); // T3 done
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert!(final_account.is_created());
+        assert!(
+            !final_account.is_selfdestructed(),
+            "an intervening transaction that only touched (didn't recreate) \
+             the address must not prevent a later recreate from being seen \
+             as alive"
+        );
+    }
+
+    /// Multiple full destroy/recreate cycles: create+destroy (T1) ->
+    /// recreate+destroy (T2, its own same-tx cycle) -> recreate only (T3).
+    ///
+    /// Stress-tests that the global flag is correctly cleared and re-set on
+    /// every cycle, not just the first one.
+    #[test]
+    fn multiple_full_destroy_recreate_cycles_end_alive() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx(); // T1: create+destroy
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx(); // T2: recreate+destroy again
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V3).unwrap();
+        journal.commit_tx(); // T3: recreate, no destroy
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert!(
+            !final_account.is_selfdestructed(),
+            "after two full destroy/recreate cycles, a third recreate with \
+             no further destroy must end up alive"
+        );
+        assert_eq!(
+            final_account.info.code_hash, CODE_V3,
+            "the surviving contract should be T3's"
+        );
+    }
+
+    /// create -> destroy (T1, same tx) -> a *middle* transaction (T2) that
+    /// neither creates nor destroys, but writes a new balance to the dead
+    /// address -> recreate (T3).
+    ///
+    /// Real Ethereum semantics: sending value to a dead address resurrects a
+    /// plain, code-less account holding that balance; a later CREATE2 there
+    /// is still allowed (only code_hash/nonce gate the collision check, not
+    /// balance) and *adds* its value on top of what's already there rather
+    /// than overwriting it. This must hold the same way whether T1/T2/T3
+    /// run as three separate finalize-per-tx sessions (each starting from a
+    /// clean slate re-read from the DB) or share one journal across
+    /// `commit_tx()` calls (where the account object, including its stale
+    /// global `Created` flag, is carried forward in memory).
+    #[test]
+    fn touch_with_new_balance_between_destroy_and_recreate_is_preserved() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+        let extra_balance = U256::from(77);
+
+        // --- T1: create then destroy (same tx) ---
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx();
+
+        // --- T2: neither creates nor destroys - just writes a new balance ---
+        journal.load_account(&mut db, addr).unwrap();
+        let acc = journal.state.get_mut(&addr).unwrap();
+        assert_eq!(
+            acc.info.code_hash, KECCAK_EMPTY,
+            "sanity: T1's destruction should already be physically wiped by \
+             T2's cold-load, before T2 does anything itself"
+        );
+        acc.info.balance += extra_balance;
+        journal.touch(addr);
+        journal.commit_tx();
+
+        // --- T3: recreates it ---
+        let create_value = U256::from(10);
+        journal.load_account(&mut db, addr).unwrap();
+        journal
+            .create_account_checkpoint(caller, addr, create_value, SPEC)
+            .unwrap();
+        journal.state.get_mut(&addr).unwrap().info.code_hash = CODE_V3;
+        journal.checkpoint_commit();
+        journal.touch(addr);
+        journal.commit_tx();
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert!(!final_account.is_selfdestructed());
+        assert!(final_account.is_created());
+        assert_eq!(final_account.info.code_hash, CODE_V3);
+        assert_eq!(
+            final_account.info.balance,
+            extra_balance + create_value,
+            "T3's creation must ADD its value on top of T2's balance, not \
+             overwrite it"
+        );
+    }
+
+    /// A recreated contract's storage must read as zero (not a stale value
+    /// left over from the destroyed generation), and the first read of any
+    /// slot must be charged as a COLD access (EIP-2929) - not still-warm
+    /// from the destroyed generation's own writes in an earlier transaction.
+    #[test]
+    fn recreated_contract_storage_is_zero_and_cold() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+        let key = StorageKey::from(7);
+
+        // T1: create, write a nonzero value to `key`, destroy (same tx).
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        journal
+            .sstore(&mut db, addr, key, StorageValue::from(999))
+            .unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx();
+
+        // T2: recreate (same address), do NOT write `key` again.
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        let sload_result = journal.sload(&mut db, addr, key).unwrap();
+
+        assert_eq!(
+            sload_result.data,
+            StorageValue::ZERO,
+            "recreated contract's storage must read as zero, not leak T1's value"
+        );
+        assert!(
+            sload_result.is_cold,
+            "first read of this slot in T2 must be charged as a cold access"
+        );
+    }
+
+    /// T1 create+destroy (same tx), commits. T2 attempts to recreate the
+    /// same address but is then discarded (as a `ReadOnly`
+    /// automation-predicate call would be) rather than committed. T3, a
+    /// real (non-`ReadOnly`) transaction, then tries to recreate the same
+    /// address. T2's discarded attempt must leave no residue: it must not
+    /// block T3's recreate, and none of T2's (never-committed) contract may
+    /// leak into the final state.
+    #[test]
+    fn readonly_discarded_recreate_leaves_no_residue() {
+        let (mut journal, mut db, caller) = setup();
+        let addr = Address::with_last_byte(2);
+
+        create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
+        destroy_at(&mut journal, &mut db, addr, caller);
+        journal.commit_tx(); // T1 done
+
+        // T2: attempts a recreate, but gets discarded (ReadOnly-style).
+        create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
+        journal.discard_tx(); // T2 discarded, not committed
+
+        // T3: a real transaction, tries to recreate at the same address.
+        let t3_result = create_at(&mut journal, &mut db, caller, addr, CODE_V3);
+        assert!(
+            t3_result.is_ok(),
+            "T3 should be able to cleanly recreate where T2's discarded attempt failed"
+        );
+        journal.commit_tx();
+
+        let state = journal.finalize();
+        let final_account = state.get(&addr).unwrap().clone();
+        assert_eq!(
+            final_account.info.code_hash, CODE_V3,
+            "only T3's contract should survive"
+        );
+        assert!(!final_account.is_selfdestructed());
+    }
+}
+
+#[cfg(test)]
+mod pre_cancun_selfdestruct_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::EmptyDB;
+    use primitives::hardfork::SpecId;
+    use state::AccountInfo;
+
+    /// Pre-Cancun, `selfdestruct()`'s `is_created_locally() ||
+    /// !is_cancun_enabled` gate takes the "full delete" branch
+    /// unconditionally - i.e. for ANY destroy, not just one in the same
+    /// transaction as creation. So a cross-tx destroy of a pre-existing
+    /// contract (never created in this journal's history at all) still
+    /// sets `is_selfdestructed_locally()`.
+    ///
+    /// A later transaction in the same block merely *touching* (not
+    /// recreating) that address must NOT resurrect it by clearing the
+    /// global `SelfDestructed` flag: pre-Cancun, destruction is permanent,
+    /// and clearing that flag would let `apply_account_state`/
+    /// `CacheDB::commit` skip wiping the account's committed storage from
+    /// the persisted state.
+    #[test]
+    fn pre_cancun_cross_tx_destroy_of_pre_existing_contract_stays_destroyed() {
+        let mut db = database::CacheDB::new(EmptyDB::new());
+        let mut journal = JournalInner::<JournalEntry>::new();
+        journal.set_spec_id(SpecId::BERLIN);
+
+        let addr = Address::with_last_byte(2);
+        let target = Address::with_last_byte(3);
+
+        // Pre-existing contract - NOT created in this journal's history,
+        // loaded straight from the DB with real code already in place.
+        db.insert_account_info(
+            addr,
+            AccountInfo {
+                code_hash: B256::from([9; 32]),
+                ..Default::default()
+            },
+        );
+
+        // T1: destroy it (cross-tx relative to its own creation, which
+        // predates this block entirely).
+        journal.load_account(&mut db, addr).unwrap();
+        journal.selfdestruct(&mut db, addr, target).unwrap();
+        journal.touch(addr);
+        journal.commit_tx();
+
+        // Sanity: pre-Cancun, this must have taken the full-delete path.
+        assert!(journal.state.get(&addr).unwrap().is_selfdestructed());
+
+        // T2: a later transaction merely touches the address (e.g. a plain
+        // call), without recreating it.
+        journal.load_account(&mut db, addr).unwrap();
+        journal.commit_tx();
+
+        assert!(
+            journal.state.get(&addr).unwrap().is_selfdestructed(),
+            "pre-Cancun, a cross-tx destroy of a pre-existing contract must \
+             stay permanently destroyed - a later transaction merely \
+             touching the address must not clear the global flag"
+        );
+    }
+}
+
+#[cfg(test)]
+mod vacant_load_transaction_id_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::{CacheDB, EmptyDB};
+    use state::AccountInfo;
+
+    /// A pre-existing (DB-loaded) account's first-ever load into a shared
+    /// journal must be stamped with the journal's real current
+    /// `transaction_id`, not a hardcoded 0 (the bug: `From<AccountInfo> for
+    /// Account`, `crates/state/src/lib.rs`, hardcoded `transaction_id: 0`).
+    /// Otherwise `mark_warm_with_transaction_id` misreads this account's
+    /// very next touch, later in the SAME transaction, as a brand-new
+    /// transaction touching it for the first time, charging it cold
+    /// instead of warm. This is the general form of the bug that also
+    /// manifests as `EXTCODESIZE(CALLER)` being incorrectly charged cold -
+    /// see `test_sender_extcodesize_stays_warm_after_prior_committed_tx` in
+    /// `crates/ee-tests/src/revm_tests.rs`.
+    #[test]
+    fn pre_existing_account_first_load_stamps_real_transaction_id() {
+        let mut db = CacheDB::new(EmptyDB::new());
+        let unrelated = Address::with_last_byte(1);
+        let target = Address::with_last_byte(2);
+
+        db.insert_account_info(
+            unrelated,
+            AccountInfo {
+                balance: U256::from(1),
+                ..Default::default()
+            },
+        );
+        db.insert_account_info(
+            target,
+            AccountInfo {
+                balance: U256::from(2),
+                ..Default::default()
+            },
+        );
+
+        let mut journal = JournalInner::<JournalEntry>::new();
+
+        // T0: an unrelated transaction, never touching `target`, commits
+        // first - advancing transaction_id past 0.
+        journal.load_account(&mut db, unrelated).unwrap();
+        journal.commit_tx();
+        assert_eq!(journal.transaction_id, 1);
+
+        // T1: first-ever load of `target` in this journal - a different,
+        // non-first transaction.
+        journal.load_account(&mut db, target).unwrap();
+
+        assert_eq!(
+            journal.state.get(&target).unwrap().transaction_id,
+            journal.transaction_id,
+            "a pre-existing account's first load must be stamped with the \
+             journal's real current transaction_id, not a hardcoded 0"
+        );
+
+        // Concretely: touching it again right now, still within T1, must
+        // report warm (is_cold == false) - not misread as a new
+        // transaction's first touch.
+        let second_touch = journal.load_account(&mut db, target).unwrap();
+        assert!(
+            !second_touch.is_cold,
+            "second touch of the same account within the same transaction \
+             must be warm"
+        );
+    }
 }
