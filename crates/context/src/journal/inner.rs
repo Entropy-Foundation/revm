@@ -662,9 +662,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                         account.unmark_selfdestructed_locally();
                         // Only clear the persistent global flags if this
                         // account was itself created somewhere in this
-                        // journal's own history (`is_created()`, never
-                        // cleared except here) - that's the actual invariant
-                        // that makes "blank slate" safe, not the hardfork:
+                        // journal's own history (`is_created()`, otherwise
+                        // only cleared by an `AccountCreated` revert, which
+                        // un-creates the account for the same reason) - that's
+                        // the actual invariant that makes "blank slate" safe,
+                        // not the hardfork:
                         // an account created within this journal provably
                         // has no pre-existing on-disk storage predating this
                         // block, so treating it as fully fresh cannot lose
