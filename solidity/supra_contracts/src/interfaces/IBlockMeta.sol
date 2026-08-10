@@ -14,7 +14,7 @@ interface IBlockMeta {
     error SelectorNotRegistered();
     /// @notice Thrown when a zero gas limit is supplied.
     error InvalidGasLimit();
-    /// @notice Thrown when the gas cap is zero or less than the current total allocated gas.
+    /// @notice Thrown when the gas cap is zero or current total allocated gas is greater than 63/64 of the gas cap.
     error InvalidGasCap();
     /// @notice Thrown when the total allocated gas exceeds the block prologue gas cap taking into account 63/64 forwarding rule.
     error GasCapExceeded();

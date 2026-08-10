@@ -1,8 +1,8 @@
 //! Configurations to generate genesis transactions
 
-use serde::{Deserialize, Serialize};
-use primitives::Address;
 use crate::transactions::block_metadata::BLOCK_METADATA_GAS_LIMIT;
+use primitives::Address;
+use serde::{Deserialize, Serialize};
 
 /// Maximum number of automation tasks that the registry can hold.
 /// The limit is deduced by running a benchmark for `monitorCycleEnd` automation registry function
@@ -117,16 +117,26 @@ impl AutomationRegistryConfigV1 {
     /// Checks whether the config is valid to create non-failable transactions.
     pub fn is_valid(&self) -> Result<(), anyhow::Error> {
         if self.task_duration_cap_secs == 0 || self.sys_task_duration_cap_secs == 0 {
-            return Err(anyhow::anyhow!("[System] Task duration cap must be positive"));
+            return Err(anyhow::anyhow!(
+                "[System] Task duration cap must be positive"
+            ));
         }
         if self.registry_max_gas_cap == 0 || self.sys_registry_max_gas_cap == 0 {
-            return Err(anyhow::anyhow!("[System] Registry max gas cap must be positive"));
+            return Err(anyhow::anyhow!(
+                "[System] Registry max gas cap must be positive"
+            ));
         }
-        if self.cycle_duration_secs > self.task_duration_cap_secs || self.cycle_duration_secs > self.sys_task_duration_cap_secs {
-            return Err(anyhow::anyhow!("[System] Task duration cap should be greater than cycle duration"));
+        if self.cycle_duration_secs > self.task_duration_cap_secs
+            || self.cycle_duration_secs > self.sys_task_duration_cap_secs
+        {
+            return Err(anyhow::anyhow!(
+                "[System] Task duration cap should be greater than cycle duration"
+            ));
         }
         if self.congestion_threshold_percentage > 100 {
-            return Err(anyhow::anyhow!("Congestion threshold percentage should be less or equal to 100"));
+            return Err(anyhow::anyhow!(
+                "Congestion threshold percentage should be less or equal to 100"
+            ));
         }
         if self.sys_task_capacity == 0 || self.task_capacity == 0 {
             return Err(anyhow::anyhow!("Task capacity cannot be 0"));
@@ -134,8 +144,12 @@ impl AutomationRegistryConfigV1 {
         if self.congestion_exponent == 0 {
             return Err(anyhow::anyhow!("Congestion exponent cannot be 0"));
         }
-        if self.sys_task_capacity.saturating_add(self.task_capacity) > MAX_SUPPORTED_AUTOMATION_TASKS {
-            return Err(anyhow::anyhow!("Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASKS}"));
+        if self.sys_task_capacity.saturating_add(self.task_capacity)
+            > MAX_SUPPORTED_AUTOMATION_TASKS
+        {
+            return Err(anyhow::anyhow!(
+                "Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASKS}"
+            ));
         }
         Ok(())
     }
@@ -201,7 +215,7 @@ pub struct GenesisTransactionGeneratorConfig {
     /// Automation configuration parameters (optional, uses defaults if None).
     pub automation_config: Option<AutomationRegistryConfig>,
     /// Initial native tokens to be minted to ERC20Supra handler contract
-    pub  initial_native_token: u128,
+    pub initial_native_token: u128,
     /// Gas cap for block-prologue/block-metadata transaction.
     pub block_prologue_gas_cap: u64,
 }
@@ -213,14 +227,16 @@ impl GenesisTransactionGeneratorConfig {
             return Err(anyhow::anyhow!("Block prologue gas cap must be positive"));
         }
         // Cap the block prologue gas cap with [`BLOCK_METADATA_GAS_LIMIT`] of the initial release of SEVM.
-        if (self.block_prologue_gas_cap as u128) > BLOCK_METADATA_GAS_LIMIT as u128 {
+        if self.block_prologue_gas_cap > BLOCK_METADATA_GAS_LIMIT {
             return Err(anyhow::anyhow!("Block prologue gas cap must not exceed the default BlockMetadata GasLimit ({BLOCK_METADATA_GAS_LIMIT})"));
         }
         if self.foundation_owners.is_empty() {
             return Err(anyhow::anyhow!("Foundation owners must be provided"));
         }
         if self.foundation_threshold > self.foundation_owners.len() as u64 {
-            return Err(anyhow::anyhow!("Foundation threshold must be less or equal the number of owners"));
+            return Err(anyhow::anyhow!(
+                "Foundation threshold must be less or equal the number of owners"
+            ));
         }
         if let Some(automation_config) = &self.automation_config {
             automation_config.is_valid()?;
@@ -439,8 +455,6 @@ mod tests {
         assert!(config.is_valid().is_err());
     }
 
-    /// The 63/64 forwarding-rule boundary is exact for `BLOCK_METADATA_GAS_LIMIT` (a power of
-    /// two divisible by 64), so the boundary value itself must be accepted, not rejected.
     #[test]
     fn block_prologue_gas_cap_at_63_64_boundary_is_accepted() {
         let upper_bound = (BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
@@ -452,8 +466,8 @@ mod tests {
     }
 
     #[test]
-    fn block_prologue_gas_cap_above_63_64_boundary_is_rejected() {
-        let upper_bound = (BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
+    fn block_prologue_gas_cap_above_block_metadata_gas_limit_is_rejected() {
+        let upper_bound = BLOCK_METADATA_GAS_LIMIT;
         let config = GenesisTransactionGeneratorConfig {
             block_prologue_gas_cap: (upper_bound + 1) as u64,
             ..valid_genesis_config()

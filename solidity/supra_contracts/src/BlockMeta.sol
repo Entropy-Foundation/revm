@@ -147,7 +147,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     }
 
     /// @notice Sets the total gas cap for the block prologue.
-    /// @param _cap The new total gas cap (must be >= current total allocated gas).
+    /// @param _cap The new total gas cap (where _cap * 63/64 >= current total allocated gas).
     /// @dev This function should be used with caution, the increase should be cross-checked with current block-metadata
     ///      transaction gas-limit value and the new value should never exceed it.
     function setBlockPrologueGasCap(uint64 _cap) external onlyOwner {
@@ -164,9 +164,9 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
             uint256 entry = executions[i];
-            uint64 gas_limit = uint64(entry);
+            uint64 gasLimit = uint64(entry);
             (address target, bytes4 selector) = unpackExecution(entry);
-            (bool ok, bytes memory data) = target.call{gas: gas_limit}(abi.encodePacked(selector));
+            (bool ok, bytes memory data) = target.call{gas: gasLimit}(abi.encodePacked(selector));
             if (ok) {
                 emit CallSucceeded(target, selector); 
             } else {
@@ -244,6 +244,10 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         emit SelectorDeregistered(target, selector, gasLimit);
     }
 
+    // Helps to calculate a loose upper bound (not an absolute mathematical identity guarantee
+    // as block-prologue intrinsic gas and execution overhead are not accounted for here)
+    // for the total gas allocated to registered entries, ensuring the 63/64 forwarding rule
+    // remains compatible with the total gas cap.
     function forwardingRuleCompatibleUpperBoundGasCap(uint64 _cap) private pure returns (uint256) {
         return uint256(_cap) * 63 / 64;
     }
