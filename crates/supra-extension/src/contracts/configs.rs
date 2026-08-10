@@ -1,6 +1,6 @@
 //! Configurations to generate genesis transactions
 
-use crate::transactions::block_metadata::BLOCK_METADATA_GAS_LIMIT;
+use crate::transactions::block_metadata::DEFAULT_BLOCK_METADATA_GAS_LIMIT;
 use primitives::Address;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// which tracks automation cycle end and prepares the transaction state for graceful cycle transaction handling.
 /// It is registered to be executed as part of the `BlockMeta::blockPrologue`.
 /// The internal system `BlockMetadata` transaction generated and executed by consensus layer
-/// specifies the gas limit for it to be [`BLOCK_METADATA_GAS_LIMIT`]. Taking into account the fact the
+/// specifies the gas limit for it to be [`DEFAULT_BLOCK_METADATA_GAS_LIMIT`]. Taking into account the fact the
 /// registered entries are limited with gas-cap in scope of `BlockMeta::blockPrologue`,
 /// the results of the benchmark and need to keep buffer for future entries of the `BlockMeta::blockPrologue`
 /// the limit of 200 tasks is specified.
@@ -227,8 +227,8 @@ impl GenesisTransactionGeneratorConfig {
             return Err(anyhow::anyhow!("Block prologue gas cap must be positive"));
         }
         // Cap the block prologue gas cap with [`BLOCK_METADATA_GAS_LIMIT`] of the initial release of SEVM.
-        if self.block_prologue_gas_cap > BLOCK_METADATA_GAS_LIMIT {
-            return Err(anyhow::anyhow!("Block prologue gas cap must not exceed the default BlockMetadata GasLimit ({BLOCK_METADATA_GAS_LIMIT})"));
+        if self.block_prologue_gas_cap > DEFAULT_BLOCK_METADATA_GAS_LIMIT {
+            return Err(anyhow::anyhow!("Block prologue gas cap must not exceed the default BlockMetadata GasLimit ({DEFAULT_BLOCK_METADATA_GAS_LIMIT})"));
         }
         if self.foundation_owners.is_empty() {
             return Err(anyhow::anyhow!("Foundation owners must be provided"));
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn block_prologue_gas_cap_at_63_64_boundary_is_accepted() {
-        let upper_bound = (BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
+        let upper_bound = (DEFAULT_BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
         let config = GenesisTransactionGeneratorConfig {
             block_prologue_gas_cap: upper_bound as u64,
             ..valid_genesis_config()
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn block_prologue_gas_cap_above_block_metadata_gas_limit_is_rejected() {
-        let upper_bound = BLOCK_METADATA_GAS_LIMIT;
+        let upper_bound = DEFAULT_BLOCK_METADATA_GAS_LIMIT;
         let config = GenesisTransactionGeneratorConfig {
             block_prologue_gas_cap: (upper_bound + 1) as u64,
             ..valid_genesis_config()

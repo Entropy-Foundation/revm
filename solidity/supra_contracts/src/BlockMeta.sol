@@ -148,7 +148,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
     /// @notice Sets the total gas cap for the block prologue.
     /// @param _cap The new total gas cap (where _cap * 63/64 >= current total allocated gas).
-    /// @dev This function should be used with caution, the increase should be cross-checked with current block-metadata
+    /// @dev This function should be used with caution, the increase should be cross-checked with downstream block-metadata
     ///      transaction gas-limit value and the new value should never exceed it.
     function setBlockPrologueGasCap(uint64 _cap) external onlyOwner {
         uint256 upperBound = forwardingRuleCompatibleUpperBoundGasCap(_cap);
