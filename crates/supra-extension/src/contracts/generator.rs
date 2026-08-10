@@ -1,8 +1,6 @@
 //! Encloses transaction data generation logic based on the genesis contracts
 
-use crate::contracts::configs::{
-    AutomationRegistryConfig, GenesisTransactionGeneratorConfig,
-};
+use crate::contracts::configs::{AutomationRegistryConfig, GenesisTransactionGeneratorConfig};
 use crate::contracts::transaction::{
     GenesisTransaction, GenesisTransactionTags, CREATE2_FACTORY_ADDRESS, CREATE2_FACTORY_CODE,
     CREATE2_FACTORY_OWNER,
@@ -11,11 +9,11 @@ use alloy::primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolConstructor};
 use anyhow::{anyhow, Result};
 use bincode::config;
+use derive_getters::Getters;
 use once_cell::sync::Lazy;
 use primitives::supra_constants::VM_SIGNER;
 use primitives::{Bytes, TxKind, U256};
 use std::collections::BTreeMap;
-use derive_getters::Getters;
 
 /// Load precompiled combined bytecode of contracts.
 const CONTRACT_BYTECODES_RAW: &[u8] =
@@ -193,7 +191,8 @@ impl GenesisTransactionGenerator {
             let multisig_address = *genesis_transactions
                 .get(&GenesisTransactionTags::FoundationWallet)
                 .expect("Foundation Wallet deployment transaction")
-                .deploy_address().as_ref()
+                .deploy_address()
+                .as_ref()
                 .expect("Foundation wallet deployment address should be set");
 
             // Erc20 Supra contracts
@@ -202,12 +201,16 @@ impl GenesisTransactionGenerator {
             let erc20supra_address = *erc20_contracts
                 .get(&GenesisTransactionTags::Erc20Supra)
                 .expect("Erc20Supra deployment transaction exists")
-                .deploy_address().as_ref()
+                .deploy_address()
+                .as_ref()
                 .expect("Erc20Supra deployment address should be set");
             genesis_transactions.extend(erc20_contracts);
 
             // BlockMetadata contract
-            genesis_transactions.extend(self.setup_block_metadata(multisig_address, block_prologue_gas_cap)?.into_iter());
+            genesis_transactions.extend(
+                self.setup_block_metadata(multisig_address, block_prologue_gas_cap)?
+                    .into_iter(),
+            );
 
             // Automation registry contracts
             if let Some(config) = automation_config {
@@ -333,7 +336,8 @@ impl GenesisTransactionGenerator {
         let gen_erc20_supra_address = *erc20_supra_txn
             .get(&GenesisTransactionTags::Erc20Supra)
             .expect("Erc20Supra should be deployed")
-            .deploy_address().as_ref()
+            .deploy_address()
+            .as_ref()
             .expect("Erc20Supra deploy address");
         assert_eq!(
             erc20_supra_address, gen_erc20_supra_address,
@@ -345,7 +349,8 @@ impl GenesisTransactionGenerator {
         let gen_erc20_handler_address = *erc20_handler_txn
             .get(&GenesisTransactionTags::Erc20SupraHandler)
             .expect("Erc20SupraHandler should be deployed")
-            .deploy_address().as_ref()
+            .deploy_address()
+            .as_ref()
             .expect("Erc20SupraHandler deploy address");
 
         assert_eq!(
@@ -810,7 +815,7 @@ mod tests {
         let custom_config = AutomationRegistryConfigV1 {
             task_duration_cap_secs: 7200,
             registry_max_gas_cap: 20_000_000,
-            task_capacity: 1000,
+            task_capacity: 100,
             ..Default::default()
         };
         let config = GenesisTransactionGeneratorConfig {
@@ -898,5 +903,36 @@ mod tests {
             .get(&GenesisTransactionTags::BlockMetadata)
             .expect("BlockMetadata proxy txn present");
         assert_ne!(block_metadata_txn.data(), block_metadata_txn2.data());
+    }
+
+    #[test]
+    fn check_generator_fails_with_invalid_config() {
+        let mut generator = GenesisTransactionGenerator::default();
+        let owners = vec![u64_to_address(1), u64_to_address(2), u64_to_address(3)];
+        let invalid_config = AutomationRegistryConfigV1 {
+            task_duration_cap_secs: 0, // Invalid value
+            ..Default::default()
+        };
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners.clone(),
+            foundation_threshold: 2,
+            full_set: true,
+            automation_config: Some(invalid_config.into()),
+            initial_native_token: 1000,
+            block_prologue_gas_cap: 100000,
+        };
+        let result = generator.prepare_genesis_transactions(config);
+        assert!(result.is_err(), "Expected error due to invalid config");
+
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners,
+            foundation_threshold: 10,
+            full_set: true,
+            automation_config: None,
+            initial_native_token: 1000,
+            block_prologue_gas_cap: 100000,
+        };
+        let result = generator.prepare_genesis_transactions(config);
+        assert!(result.is_err(), "Expected error due to invalid config");
     }
 }

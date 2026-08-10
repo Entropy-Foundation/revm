@@ -1,14 +1,15 @@
 //! Configurations to generate genesis transactions
 
-use serde::{Deserialize, Serialize};
+use crate::transactions::block_metadata::DEFAULT_BLOCK_METADATA_GAS_LIMIT;
 use primitives::Address;
+use serde::{Deserialize, Serialize};
 
 /// Maximum number of automation tasks that the registry can hold.
 /// The limit is deduced by running a benchmark for `monitorCycleEnd` automation registry function
 /// which tracks automation cycle end and prepares the transaction state for graceful cycle transaction handling.
 /// It is registered to be executed as part of the `BlockMeta::blockPrologue`.
 /// The internal system `BlockMetadata` transaction generated and executed by consensus layer
-/// specifies the gas limit for it to be `TX_GAS_LIMIT_CAP`. Taking into account the fact the
+/// specifies the gas limit for it to be [`DEFAULT_BLOCK_METADATA_GAS_LIMIT`]. Taking into account the fact the
 /// registered entries are limited with gas-cap in scope of `BlockMeta::blockPrologue`,
 /// the results of the benchmark and need to keep buffer for future entries of the `BlockMeta::blockPrologue`
 /// the limit of 200 tasks is specified.
@@ -16,23 +17,70 @@ use primitives::Address;
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤
-//   │ 50        │ 2,351,037                    │
+//   │ 50        │ 1,201,348                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 100       │ 4,643,153                    │
+//   │ 100       │ 2,344,564                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 150       │ 6,935,279                    │
+//   │ 150       │ 3,487,790                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 200       │ 9,228,587                    │
+//   │ 200       │ 4,632,120                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 250       │ 11,520,733                   │
+//   │ 250       │ 5,775,366                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 300       │ 13,812,888                   │
+//   │ 300       │ 6,918,621                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 350       │ 16,105,052                   │
+//   │ 350       │ 8,061,886                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 400       │ 18,397,227 ⚠️ exceeds budget  │
+//   │ 720       │ 16,522,351                   │
+//   ├───────────┼──────────────────────────────┤
+//   │ 800       │ 18,351,711 ⚠️ exceeds budget  │
 //   └───────────┴──────────────────────────────┘
-const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
+//
+// (Figures from `forge test --match-contract MonitorCycleEndGasTest -vv` in
+// solidity/supra_contracts/test/MonitorCycleEndGas.t.sol, re-run after the
+// `expectedTasksToBeProcessed` storage layout was optimized, roughly halving the per-task cost.
+// That same run's `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact
+// safe ceiling: 731 tasks stay under BLOCK_METADATA_GAS_LIMIT, 732 exceeds it.
+// 200 is kept far below that ceiling deliberately, as buffer for other future
+// `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
+// applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).
+pub const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
+
+/// Default maximum allowable duration (in seconds) from the registration time that a user
+/// automation task can run. Set to 7 days.
+pub const DEFAULT_TASK_DURATION_CAP_SECS: u64 = 604800;
+/// Default maximum gas allocation for automation tasks per cycle.
+pub const DEFAULT_REGISTRY_MAX_GAS_CAP: u128 = 8_000_000;
+/// Default base fee per second for the full capacity of the automation registry, measured in
+/// wei/sec. Equivalent to 0.004 SUPRA normalized based on the supra denominator between move
+/// and evm currency.
+pub const DEFAULT_AUTOMATION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
+/// Default flat registration fee charged for each task. Equivalent to 0.05 SUPRA normalized
+/// based on the supra denominator between move and evm currency.
+pub const DEFAULT_FLAT_REGISTRATION_FEE_WEI: u128 = 21_431_633_000_000;
+/// Default percentage representing the acceptable upper limit of committed gas amount relative
+/// to `registry_max_gas_cap`.
+pub const DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE: u8 = 50;
+/// Default base fee per second for the full capacity of the automation registry when the
+/// congestion threshold is exceeded. Equivalent to 0.004 SUPRA normalized based on the supra
+/// denominator between move and evm currency.
+pub const DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
+/// Default exponent that the congestion fee increases by exponentially.
+pub const DEFAULT_CONGESTION_EXPONENT: u8 = 6;
+/// Default maximum number of tasks that the registry can hold.
+/// `task_capacity + sys_task_capacity` must not exceed [`MAX_SUPPORTED_AUTOMATION_TASKS`].
+pub const DEFAULT_TASK_CAPACITY: u16 = 160;
+/// Default automation cycle duration in seconds.
+pub const DEFAULT_CYCLE_DURATION_SECS: u64 = 600;
+/// Default maximum allowable duration (in seconds) from the registration time that a system
+/// automation task can run. Set to ~1 month.
+pub const DEFAULT_SYS_TASK_DURATION_CAP_SECS: u64 = 2626560;
+/// Default maximum gas allocation for system automation tasks per cycle.
+pub const DEFAULT_SYS_REGISTRY_MAX_GAS_CAP: u128 = 2_000_000;
+/// Default maximum number of system tasks that the registry can hold.
+pub const DEFAULT_SYS_TASK_CAPACITY: u16 = 40;
+/// Default flag indicating whether the automation feature is enabled at startup.
+pub const DEFAULT_ENABLE_AUTOMATION_FEATURE: bool = true;
 
 /// Configuration parameters for Automation Registry contracts initialization
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,16 +117,26 @@ impl AutomationRegistryConfigV1 {
     /// Checks whether the config is valid to create non-failable transactions.
     pub fn is_valid(&self) -> Result<(), anyhow::Error> {
         if self.task_duration_cap_secs == 0 || self.sys_task_duration_cap_secs == 0 {
-            return Err(anyhow::anyhow!("[System] Task duration cap must be positive"));
+            return Err(anyhow::anyhow!(
+                "[System] Task duration cap must be positive"
+            ));
         }
         if self.registry_max_gas_cap == 0 || self.sys_registry_max_gas_cap == 0 {
-            return Err(anyhow::anyhow!("[System] Registry max gas cap must be positive"));
+            return Err(anyhow::anyhow!(
+                "[System] Registry max gas cap must be positive"
+            ));
         }
-        if self.cycle_duration_secs > self.task_duration_cap_secs || self.cycle_duration_secs > self.sys_task_duration_cap_secs {
-            return Err(anyhow::anyhow!("[System] Task duration cap should be greater than cycle duration"));
+        if self.cycle_duration_secs > self.task_duration_cap_secs
+            || self.cycle_duration_secs > self.sys_task_duration_cap_secs
+        {
+            return Err(anyhow::anyhow!(
+                "[System] Task duration cap should be greater than cycle duration"
+            ));
         }
         if self.congestion_threshold_percentage > 100 {
-            return Err(anyhow::anyhow!("Congestion threshold percentage should be less or equal to 100"));
+            return Err(anyhow::anyhow!(
+                "Congestion threshold percentage should be less or equal to 100"
+            ));
         }
         if self.sys_task_capacity == 0 || self.task_capacity == 0 {
             return Err(anyhow::anyhow!("Task capacity cannot be 0"));
@@ -86,8 +144,12 @@ impl AutomationRegistryConfigV1 {
         if self.congestion_exponent == 0 {
             return Err(anyhow::anyhow!("Congestion exponent cannot be 0"));
         }
-        if self.sys_task_capacity.saturating_add(self.task_capacity) > MAX_SUPPORTED_AUTOMATION_TASKS {
-            return Err(anyhow::anyhow!("Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASKS}"));
+        if self.sys_task_capacity.saturating_add(self.task_capacity)
+            > MAX_SUPPORTED_AUTOMATION_TASKS
+        {
+            return Err(anyhow::anyhow!(
+                "Total supported task capacity exceeded: {MAX_SUPPORTED_AUTOMATION_TASKS}"
+            ));
         }
         Ok(())
     }
@@ -96,25 +158,19 @@ impl AutomationRegistryConfigV1 {
 impl Default for AutomationRegistryConfigV1 {
     fn default() -> Self {
         Self {
-            // 7 days
-            task_duration_cap_secs: 604800,
-            registry_max_gas_cap: 8_000_000,
-            // 0.004 SUPRA normalized based on the supra denominator between move and evm currency
-            automation_base_fee_wei_per_sec: 1_714_530_600_000,
-            // 0.05 SUPRA normalized based on the supra denominator between move and evm currency
-            flat_registration_fee_wei: 21_431_633_000_000,
-            congestion_threshold_percentage: 50,
-            // 0.004 SUPRA normalized based on the supra denominator between move and evm currency
-            congestion_base_fee_wei_per_sec: 1_714_530_600_000,
-            congestion_exponent: 6,
-            // task_capacity + sys_task_capacity must not exceed MAX_SUPPORTED_AUTOMATION_TASK
-            task_capacity: 160,
-            cycle_duration_secs: 600,
-            // ~1 month
-            sys_task_duration_cap_secs: 2626560,
-            sys_registry_max_gas_cap: 2_000_000,
-            sys_task_capacity: 40,
-            enable_automation_feature: true,
+            task_duration_cap_secs: DEFAULT_TASK_DURATION_CAP_SECS,
+            registry_max_gas_cap: DEFAULT_REGISTRY_MAX_GAS_CAP,
+            automation_base_fee_wei_per_sec: DEFAULT_AUTOMATION_BASE_FEE_WEI_PER_SEC,
+            flat_registration_fee_wei: DEFAULT_FLAT_REGISTRATION_FEE_WEI,
+            congestion_threshold_percentage: DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE,
+            congestion_base_fee_wei_per_sec: DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC,
+            congestion_exponent: DEFAULT_CONGESTION_EXPONENT,
+            task_capacity: DEFAULT_TASK_CAPACITY,
+            cycle_duration_secs: DEFAULT_CYCLE_DURATION_SECS,
+            sys_task_duration_cap_secs: DEFAULT_SYS_TASK_DURATION_CAP_SECS,
+            sys_registry_max_gas_cap: DEFAULT_SYS_REGISTRY_MAX_GAS_CAP,
+            sys_task_capacity: DEFAULT_SYS_TASK_CAPACITY,
+            enable_automation_feature: DEFAULT_ENABLE_AUTOMATION_FEATURE,
         }
     }
 }
@@ -159,7 +215,7 @@ pub struct GenesisTransactionGeneratorConfig {
     /// Automation configuration parameters (optional, uses defaults if None).
     pub automation_config: Option<AutomationRegistryConfig>,
     /// Initial native tokens to be minted to ERC20Supra handler contract
-    pub  initial_native_token: u128,
+    pub initial_native_token: u128,
     /// Gas cap for block-prologue/block-metadata transaction.
     pub block_prologue_gas_cap: u64,
 }
@@ -170,11 +226,17 @@ impl GenesisTransactionGeneratorConfig {
         if self.block_prologue_gas_cap == 0 {
             return Err(anyhow::anyhow!("Block prologue gas cap must be positive"));
         }
+        // Cap the block prologue gas cap with [`BLOCK_METADATA_GAS_LIMIT`] of the initial release of SEVM.
+        if self.block_prologue_gas_cap > DEFAULT_BLOCK_METADATA_GAS_LIMIT {
+            return Err(anyhow::anyhow!("Block prologue gas cap must not exceed the default BlockMetadata GasLimit ({DEFAULT_BLOCK_METADATA_GAS_LIMIT})"));
+        }
         if self.foundation_owners.is_empty() {
             return Err(anyhow::anyhow!("Foundation owners must be provided"));
         }
         if self.foundation_threshold > self.foundation_owners.len() as u64 {
-            return Err(anyhow::anyhow!("Foundation threshold must be less or equal the number of owners"));
+            return Err(anyhow::anyhow!(
+                "Foundation threshold must be less or equal the number of owners"
+            ));
         }
         if let Some(automation_config) = &self.automation_config {
             automation_config.is_valid()?;
@@ -388,6 +450,26 @@ mod tests {
     fn zero_block_prologue_gas_cap_is_rejected() {
         let config = GenesisTransactionGeneratorConfig {
             block_prologue_gas_cap: 0,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn block_prologue_gas_cap_at_63_64_boundary_is_accepted() {
+        let upper_bound = (DEFAULT_BLOCK_METADATA_GAS_LIMIT as u128) * 63 / 64;
+        let config = GenesisTransactionGeneratorConfig {
+            block_prologue_gas_cap: upper_bound as u64,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn block_prologue_gas_cap_above_block_metadata_gas_limit_is_rejected() {
+        let upper_bound = DEFAULT_BLOCK_METADATA_GAS_LIMIT;
+        let config = GenesisTransactionGeneratorConfig {
+            block_prologue_gas_cap: (upper_bound + 1) as u64,
             ..valid_genesis_config()
         };
         assert!(config.is_valid().is_err());

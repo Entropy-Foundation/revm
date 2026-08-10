@@ -25,17 +25,17 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
      */
 
-
-    /// @notice Ordered list of functions to be executed
-    /// @dev Layout: [target[160] | selector[32] | gasLimit[64]]
-    uint256[] private executions;
-
     /// @notice Total gas cap for the entire blockPrologue execution.
     /// @dev Checked at registration time; sum of all per-entry gas limits must not exceed this.
     uint64 public blockPrologueGasCap;
 
     /// @notice Sum of all per-entry gas limits.
     uint64 public totalGasAllocated;
+
+
+    /// @notice Ordered list of functions to be executed
+    /// @dev Layout: [target[160] | selector[32] | gasLimit[64]]
+    uint256[] private executions;
 
     /**
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -73,7 +73,9 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         require(_gasLimit > 0, InvalidGasLimit());
         // Widen to uint256 so a near-uint64-max totalGasAllocated can't overflow the addition
         // and mask the intended GasCapExceeded() error behind a raw arithmetic Panic(0x11).
-        require(uint256(totalGasAllocated) + _gasLimit <= blockPrologueGasCap, GasCapExceeded());
+        // Make sure that 63/64 forwarding rule will be actual for totalGasAllocated for the registered entries.
+        uint256 upperBound = forwardingRuleCompatibleUpperBoundGasCap(blockPrologueGasCap);
+        require(uint256(totalGasAllocated) + _gasLimit <= upperBound, GasCapExceeded());
 
         uint256 executionEntry = packExecution(_targetContract, _selector);
 
@@ -113,6 +115,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
         // Clear existing array
         delete executions;
+        uint256 upperBound = forwardingRuleCompatibleUpperBoundGasCap(blockPrologueGasCap);
 
         // Accumulate in uint256 so a run of near-uint64-max gas limits can't overflow the
         // running total and mask the intended GasCapExceeded() error behind Panic(0x11).
@@ -133,7 +136,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
 
             executions.push(inputExecution);
             newTotalGas += gasLimit;
-            require(newTotalGas <= blockPrologueGasCap, GasCapExceeded());
+            require(newTotalGas <= upperBound, GasCapExceeded());
         }
 
         // Safe to downcast: the loop's require guarantees newTotalGas <= blockPrologueGasCap,
@@ -144,9 +147,12 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     }
 
     /// @notice Sets the total gas cap for the block prologue.
-    /// @param _cap The new total gas cap (must be >= current total allocated gas).
+    /// @param _cap The new total gas cap (where _cap * 63/64 >= current total allocated gas).
+    /// @dev This function should be used with caution, the increase should be cross-checked with downstream block-metadata
+    ///      transaction gas-limit value and the new value should never exceed it.
     function setBlockPrologueGasCap(uint64 _cap) external onlyOwner {
-        require(_cap > 0 && _cap >= totalGasAllocated, InvalidGasCap());
+        uint256 upperBound = forwardingRuleCompatibleUpperBoundGasCap(_cap);
+        require(_cap > 0 && upperBound >= totalGasAllocated, InvalidGasCap());
         blockPrologueGasCap = _cap;
         emit BlockPrologueGasCapUpdated(_cap);
     }
@@ -158,8 +164,9 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         uint256 len = executions.length;
         for (uint256 i = 0; i < len; i++) {
             uint256 entry = executions[i];
+            uint64 gasLimit = uint64(entry);
             (address target, bytes4 selector) = unpackExecution(entry);
-            (bool ok, bytes memory data) = target.call{gas: uint64(entry)}(abi.encodePacked(selector));
+            (bool ok, bytes memory data) = target.call{gas: gasLimit}(abi.encodePacked(selector));
             if (ok) {
                 emit CallSucceeded(target, selector); 
             } else {
@@ -235,6 +242,14 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         (address target, bytes4 selector) = unpackExecution(removedEntry);
 
         emit SelectorDeregistered(target, selector, gasLimit);
+    }
+
+    // Helps to calculate a loose upper bound (not an absolute mathematical identity guarantee
+    // as block-prologue intrinsic gas and execution overhead are not accounted for here)
+    // for the total gas allocated to registered entries, ensuring the 63/64 forwarding rule
+    // remains compatible with the total gas cap.
+    function forwardingRuleCompatibleUpperBoundGasCap(uint64 _cap) private pure returns (uint256) {
+        return uint256(_cap) * 63 / 64;
     }
 
 

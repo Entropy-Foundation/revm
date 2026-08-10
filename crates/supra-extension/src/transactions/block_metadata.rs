@@ -14,6 +14,9 @@ use primitives::eip7825::TX_GAS_LIMIT_CAP;
 use primitives::supra_constants::VM_SIGNER;
 use primitives::TxKind;
 
+/// Default Gas limit used for the block metadata transaction.
+pub const DEFAULT_BLOCK_METADATA_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
+
 /// EVM system transaction generated based on the block sent for execution.
 /// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meet
 /// other `supra-evm` SC checks requiring per-block execution.
@@ -39,6 +42,9 @@ pub struct BlockMetadata {
     /// An unlimited size byte array specifying the
     /// input data of the message call.
     pub input: Bytes,
+    /// Gas limit for this transaction, resolved from `BlockMeta.blockPrologueGasCap`.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
+    pub gas_limit: u64,
 }
 
 impl Transaction for BlockMetadata {
@@ -54,7 +60,7 @@ impl Transaction for BlockMetadata {
 
     #[inline]
     fn gas_limit(&self) -> u64 {
-        TX_GAS_LIMIT_CAP
+        self.gas_limit
     }
 
     #[inline]
@@ -141,6 +147,7 @@ pub struct BlockMetadataBuilder {
     block_hash: Option<B256>,
     timestamp: Option<U256>,
     chain_id: Option<ChainId>,
+    gas_limit: Option<u64>,
 }
 
 #[allow(missing_docs)]
@@ -152,8 +159,15 @@ impl BlockMetadataBuilder {
             block_hash: None,
             timestamp: None,
             chain_id: None,
+            gas_limit: None,
         }
     }
+
+    /// Address this transaction was built to target, i.e. the `BlockMeta` contract address.
+    pub fn to(&self) -> Address {
+        self.to
+    }
+
     pub fn height(mut self, height: u64) -> Self {
         self.height = Some(height);
         self
@@ -173,6 +187,11 @@ impl BlockMetadataBuilder {
         self
     }
 
+    pub fn gas_limit(mut self, gas_limit: u64) -> Self {
+        self.gas_limit = Some(gas_limit);
+        self
+    }
+
     pub fn build(self) -> Result<BlockMetadata, SupraExtensionError> {
         let Self {
             to,
@@ -180,11 +199,13 @@ impl BlockMetadataBuilder {
             block_hash,
             timestamp,
             chain_id,
+            gas_limit,
         } = self;
         let height = value_or_error!(BlockMetadataBuilder, "height", height);
         let block_hash = value_or_error!(BlockMetadataBuilder, "block_hash", block_hash);
         let timestamp = value_or_error!(BlockMetadataBuilder, "timestamp", timestamp);
         let chain_id = value_or_error!(BlockMetadataBuilder, "chain_id", chain_id);
+        let gas_limit = value_or_error!(BlockMetadataBuilder, "gas_limit", gas_limit);
 
         Ok(BlockMetadata {
             chain_id,
@@ -194,6 +215,7 @@ impl BlockMetadataBuilder {
             timestamp,
             to,
             input: Self::get_block_prologue(),
+            gas_limit,
         })
     }
 
@@ -209,7 +231,6 @@ mod tests {
     use alloy_consensus::transaction::Transaction;
     use alloy_eips::eip2718::Typed2718;
     use crate::errors::SupraExtensionError;
-    use primitives::eip7825::TX_GAS_LIMIT_CAP;
     use primitives::supra_constants::VM_SIGNER;
 
     const REGISTRY: Address = address!("1111111111111111111111111111111111111111");
@@ -217,6 +238,7 @@ mod tests {
     const HEIGHT: u64 = 42;
     const BLOCK_HASH: B256 = b256!("abababababababababababababababababababababababababababababababab");
     const TIMESTAMP: u64 = 1_700_000_000;
+    const GAS_LIMIT: u64 = 12_345_678;
 
     fn full_builder() -> BlockMetadataBuilder {
         BlockMetadataBuilder::new(REGISTRY)
@@ -224,6 +246,7 @@ mod tests {
             .block_hash(BLOCK_HASH)
             .timestamp(U256::from(TIMESTAMP))
             .chain_id(CHAIN_ID)
+            .gas_limit(GAS_LIMIT)
     }
 
     // ── Builder: successful build ─────────────────────────────────────────────
@@ -238,6 +261,12 @@ mod tests {
         assert_eq!(meta.block_hash, BLOCK_HASH);
         assert_eq!(meta.timestamp, U256::from(TIMESTAMP));
         assert_eq!(meta.to, REGISTRY);
+        assert_eq!(meta.gas_limit, GAS_LIMIT);
+    }
+
+    #[test]
+    fn builder_to_returns_target_address() {
+        assert_eq!(BlockMetadataBuilder::new(REGISTRY).to(), REGISTRY);
     }
 
     #[test]
@@ -283,6 +312,15 @@ mod tests {
             .build()
             .unwrap_err();
         assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "chain_id"));
+
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .block_hash(BLOCK_HASH)
+            .timestamp(U256::from(TIMESTAMP))
+            .chain_id(CHAIN_ID)
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "gas_limit"));
     }
 
     // ── Transaction trait impl ────────────────────────────────────────────────
@@ -293,7 +331,7 @@ mod tests {
 
         assert_eq!(meta.chain_id(), Some(CHAIN_ID));
         assert_eq!(meta.nonce(), HEIGHT);           // nonce == height
-        assert_eq!(meta.gas_limit(), TX_GAS_LIMIT_CAP);
+        assert_eq!(meta.gas_limit(), GAS_LIMIT);
         assert_eq!(meta.gas_price(), None);
         assert_eq!(meta.max_fee_per_gas(), 0);
         assert_eq!(meta.max_priority_fee_per_gas(), Some(0));
@@ -325,5 +363,6 @@ mod tests {
         assert_eq!(meta.timestamp, U256::ZERO);
         assert_eq!(meta.to, Address::ZERO);
         assert!(meta.input.is_empty());
+        assert_eq!(meta.gas_limit, 0);
     }
 }

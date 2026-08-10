@@ -126,6 +126,20 @@ contract BlockMetaTest is Test {
         register(counterAddress, bytes4(keccak256("foo()")), 200_001);
     }
 
+    /// @dev Test to ensure 'register' accepts a total exactly at the 63/64 forwarding-rule
+    /// bound of 'blockPrologueGasCap' (1_000_000 set in setUp -> bound is exactly 984_375).
+    function testRegisterAtExact63_64BoundarySucceeds() public {
+        register(counterAddress, selector, 984_375);
+        assertEq(blockMeta.totalGasAllocated(), 984_375);
+    }
+
+    /// @dev Test to ensure 'register' reverts one gas unit above the 63/64 forwarding-rule
+    /// bound, even though it is still within the raw 'blockPrologueGasCap' of 1_000_000.
+    function testRegisterOneGasAbove63_64BoundaryReverts() public {
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        register(counterAddress, selector, 984_376);
+    }
+
     /// @dev Test to ensure 'register' reverts if selector already exists.
     function testRegisterRevertsIfSelectorAlreadyExists() public {
         testRegister();
@@ -399,6 +413,30 @@ contract BlockMetaTest is Test {
         blockMeta.updateExecutionOrder(executionOrder);
     }
 
+    /// @dev Test to ensure 'updateExecutionOrder' accepts a total exactly at the 63/64
+    /// forwarding-rule bound of 'blockPrologueGasCap' (1_000_000 set in setUp -> bound is
+    /// exactly 984_375).
+    function testUpdateExecutionOrderAtExact63_64BoundarySucceeds() public {
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(counterAddress, selector, 984_375);
+
+        vm.prank(admin);
+        blockMeta.updateExecutionOrder(executionOrder);
+
+        assertEq(blockMeta.totalGasAllocated(), 984_375);
+    }
+
+    /// @dev Test to ensure 'updateExecutionOrder' reverts one gas unit above the 63/64
+    /// forwarding-rule bound, even though it is still within the raw 'blockPrologueGasCap'.
+    function testUpdateExecutionOrderOneGasAbove63_64BoundaryReverts() public {
+        uint256[] memory executionOrder = new uint256[](1);
+        executionOrder[0] = packExecution(counterAddress, selector, 984_376);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.GasCapExceeded.selector);
+        blockMeta.updateExecutionOrder(executionOrder);
+    }
+
     /// @dev Test to ensure 'updateExecutionOrder' replaces (rather than accumulates on top of)
     /// the previously tracked 'totalGasAllocated', even when entries already existed.
     function testUpdateExecutionOrderReplacesTotalGasAllocated() public {
@@ -549,6 +587,28 @@ contract BlockMetaTest is Test {
         blockMeta.setBlockPrologueGasCap(40_000);
     }
 
+    /// @dev Test to ensure 'setBlockPrologueGasCap' accepts a cap whose 63/64 forwarding-rule
+    /// bound exactly covers the already-allocated budget (50_794 -> floor(50_794*63/64) ==
+    /// 50_000 == DEFAULT_GAS).
+    function testSetBlockPrologueGasCapAtExact63_64BoundarySucceeds() public {
+        register(counterAddress, selector, DEFAULT_GAS);
+
+        vm.prank(admin);
+        blockMeta.setBlockPrologueGasCap(50_794);
+
+        assertEq(blockMeta.blockPrologueGasCap(), 50_794);
+    }
+
+    /// @dev Test to ensure 'setBlockPrologueGasCap' reverts one gas unit below the 63/64
+    /// boundary (50_793 -> floor(50_793*63/64) == 49_999 < DEFAULT_GAS == 50_000).
+    function testSetBlockPrologueGasCapJustBelow63_64BoundaryReverts() public {
+        register(counterAddress, selector, DEFAULT_GAS);
+
+        vm.prank(admin);
+        vm.expectRevert(IBlockMeta.InvalidGasCap.selector);
+        blockMeta.setBlockPrologueGasCap(50_793);
+    }
+
     /// @dev Test to ensure 'setBlockPrologueGasCap' updates the cap.
     function testSetBlockPrologueGasCap() public {
         vm.prank(admin);
@@ -587,8 +647,12 @@ contract BlockMetaTest is Test {
     /// @dev Test to ensure 'register' succeeds again once 'deregister' frees enough budget
     /// under a gas cap that was fully consumed.
     function testRegisterSucceedsAfterDeregisterFreesBudget() public {
+        // 50_794 is the smallest cap whose 63/64-forwarding-rule bound
+        // (floor(50_794 * 63 / 64) == 50_000) exactly covers a single DEFAULT_GAS entry,
+        // so it fits one but not two.
+        uint64 cap = 50_794;
         vm.prank(admin);
-        blockMeta.setBlockPrologueGasCap(DEFAULT_GAS);
+        blockMeta.setBlockPrologueGasCap(cap);
 
         register(counterAddress, selector, DEFAULT_GAS);
 
