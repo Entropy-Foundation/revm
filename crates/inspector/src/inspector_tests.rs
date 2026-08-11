@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{InspectEvm, InspectSystemCallEvm, Inspector};
-    use context::{Context, TxEnv};
-    use database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET};
+    use context::{Context, ContextTr, ExecutionMode, TxEnv};
+    use database::{BenchmarkDB, BENCH_CALLER, BENCH_CALLER_BALANCE, BENCH_TARGET};
     use handler::{MainBuilder, MainContext};
     use interpreter::{
         interpreter_types::{Jumps, MemoryTr, StackTr},
@@ -799,5 +799,61 @@ mod tests {
         assert!(result.is_success());
 
         assert!(evm.inspector.get_step_count() > 0);
+    }
+
+    #[test]
+    fn test_inspect_read_only_mode_skips_gas_accounting() {
+        let bytecode = Bytecode::new_legacy(Bytes::from(vec![opcode::STOP]));
+        let mut evm = Context::mainnet()
+            .modify_cfg_chained(|cfg| cfg.execution_mode = ExecutionMode::ReadOnly)
+            .with_db(BenchmarkDB::new_bytecode(bytecode))
+            .build_mainnet_with_inspector(TestInspector::new());
+
+        let result = evm
+            .inspect_one_tx(
+                TxEnv::builder()
+                    .caller(BENCH_CALLER)
+                    .kind(TxKind::Call(BENCH_TARGET))
+                    .gas_limit(100_000)
+                    .gas_price(20)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert!(result.is_success());
+
+        // ReadOnly mode does not charge gas, so `post_execution` (refund/reimburse/reward) must
+        // be skipped: the caller's balance and nonce stay exactly as `BenchmarkDB` seeded them,
+        // untouched by any gas deduction/reimbursement.
+        let caller_after = evm.ctx.journal_mut().state.get(&BENCH_CALLER).unwrap();
+        assert_eq!(caller_after.info.balance, BENCH_CALLER_BALANCE);
+        assert_eq!(caller_after.info.nonce, 0);
+    }
+
+    #[test]
+    fn test_inspect_user_mode_still_applies_gas_accounting() {
+        let bytecode = Bytecode::new_legacy(Bytes::from(vec![opcode::STOP]));
+        let mut evm = Context::mainnet()
+            .with_db(BenchmarkDB::new_bytecode(bytecode))
+            .build_mainnet_with_inspector(TestInspector::new());
+
+        let result = evm
+            .inspect_one_tx(
+                TxEnv::builder()
+                    .caller(BENCH_CALLER)
+                    .kind(TxKind::Call(BENCH_TARGET))
+                    .gas_limit(100_000)
+                    .gas_price(20)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert!(result.is_success());
+
+        // Default `User` mode charges gas, so `post_execution` must still run through the
+        // inspector path: the caller is charged for gas and reimbursed for the unused portion,
+        // leaving a strictly lower balance than `BenchmarkDB` seeded it with.
+        let caller_after = evm.ctx.journal_mut().state.get(&BENCH_CALLER).unwrap();
+        assert!(caller_after.info.balance < BENCH_CALLER_BALANCE);
     }
 }
