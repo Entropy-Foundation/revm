@@ -4,6 +4,7 @@ use crate::transactions::block_metadata::DEFAULT_BLOCK_METADATA_GAS_LIMIT;
 use primitives::supra_constants::is_supra_reserved;
 use primitives::Address;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Maximum number of automation tasks that the registry can hold.
 /// The limit is deduced by running a benchmark for `monitorCycleEnd` automation registry function
@@ -237,23 +238,22 @@ impl GenesisTransactionGeneratorConfig {
         if self.foundation_threshold == 0 {
             return Err(anyhow::anyhow!("Foundation threshold cannot be 0"));
         }
-        let unique_owners: std::collections::HashSet<_> = self.foundation_owners.iter().collect();
-        if unique_owners.len() != self.foundation_owners.len() {
-            return Err(anyhow::anyhow!("Foundation owners must be unique"));
-        }
         if self.foundation_threshold > self.foundation_owners.len() as u64 {
             return Err(anyhow::anyhow!(
                 "Foundation threshold must be less or equal the number of owners"
             ));
         }
-        self.foundation_owners.iter().try_for_each(|owner| {
+        let mut seen_owners = HashSet::with_capacity(self.foundation_owners.len());
+        for owner in &self.foundation_owners {
+            if !seen_owners.insert(owner) {
+                return Err(anyhow::anyhow!("Foundation owners must be unique"));
+            }
             if owner.is_zero() || is_supra_reserved(owner) {
                 return Err(anyhow::anyhow!(
                     "Foundation owner address cannot be zero or supra reserved: {owner:?}"
                 ));
             }
-            Ok(())
-        })?;
+        }
         if let Some(automation_config) = &self.automation_config {
             automation_config.is_valid()?;
         }
