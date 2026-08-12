@@ -1,8 +1,10 @@
 //! Configurations to generate genesis transactions
 
 use crate::transactions::block_metadata::DEFAULT_BLOCK_METADATA_GAS_LIMIT;
+use primitives::supra_constants::is_supra_reserved;
 use primitives::Address;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Maximum number of automation tasks that the registry can hold.
 /// The limit is deduced by running a benchmark for `monitorCycleEnd` automation registry function
@@ -233,10 +235,24 @@ impl GenesisTransactionGeneratorConfig {
         if self.foundation_owners.is_empty() {
             return Err(anyhow::anyhow!("Foundation owners must be provided"));
         }
+        if self.foundation_threshold == 0 {
+            return Err(anyhow::anyhow!("Foundation threshold cannot be 0"));
+        }
         if self.foundation_threshold > self.foundation_owners.len() as u64 {
             return Err(anyhow::anyhow!(
                 "Foundation threshold must be less or equal the number of owners"
             ));
+        }
+        let mut seen_owners = HashSet::with_capacity(self.foundation_owners.len());
+        for owner in &self.foundation_owners {
+            if !seen_owners.insert(owner) {
+                return Err(anyhow::anyhow!("Foundation owners must be unique"));
+            }
+            if owner.is_zero() || is_supra_reserved(owner) {
+                return Err(anyhow::anyhow!(
+                    "Foundation owner address cannot be zero or supra reserved: {owner:?}"
+                ));
+            }
         }
         if let Some(automation_config) = &self.automation_config {
             automation_config.is_valid()?;
@@ -509,6 +525,59 @@ mod tests {
         let config = GenesisTransactionGeneratorConfig {
             foundation_owners: owners(3),
             foundation_threshold: 1,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_ok());
+    }
+
+    #[test]
+    fn zero_foundation_threshold_is_rejected() {
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_threshold: 0,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn duplicate_foundation_owners_is_rejected() {
+        let mut duplicated_owners = owners(3);
+        duplicated_owners[1] = duplicated_owners[0];
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: duplicated_owners,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_address_foundation_owner_is_rejected() {
+        let mut owners_with_zero = owners(3);
+        owners_with_zero[1] = Address::ZERO;
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners_with_zero,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn supra_reserved_foundation_owner_is_rejected() {
+        let mut owners_with_reserved = owners(3);
+        owners_with_reserved[1] = primitives::supra_constants::VM_SIGNER;
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners_with_reserved,
+            ..valid_genesis_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn foundation_owner_just_outside_reserved_range_is_accepted() {
+        let mut owners_at_boundary = owners(3);
+        owners_at_boundary[1] = u64_to_address(0x5355_5100);
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: owners_at_boundary,
             ..valid_genesis_config()
         };
         assert!(config.is_valid().is_ok());

@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod tests {
     use crate::{InspectEvm, InspectSystemCallEvm, Inspector};
-    use context::{Context, TxEnv};
-    use database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET};
-    use handler::{MainBuilder, MainContext};
+    use context::{Context, ContextTr, ExecutionMode, TxEnv};
+    use database::{BenchmarkDB, BENCH_CALLER, BENCH_CALLER_BALANCE, BENCH_TARGET};
+    use handler::{ExecuteEvm, MainBuilder, MainContext};
     use interpreter::{
         interpreter_types::{Jumps, MemoryTr, StackTr},
         CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter, InterpreterTypes,
     };
-    use primitives::{address, Address, Bytes, Log, TxKind, U256};
+    use primitives::{address, hardfork::SpecId, Address, Bytes, Log, TxKind, U256};
     use state::{bytecode::opcode, AccountInfo, Bytecode};
 
     #[derive(Debug, Clone)]
@@ -799,5 +799,80 @@ mod tests {
         assert!(result.is_success());
 
         assert!(evm.inspector.get_step_count() > 0);
+    }
+
+    #[test]
+    fn test_inspect_read_only_gas_used_matches_non_inspector_path() {
+        // Large non-zero-byte calldata pushes the EIP-7623 floor well above what this
+        // trivial STOP-only contract actually spends executing. `Handler::run` (the plain,
+        // non-inspector path) already gates `post_execution` — and with it, the floor
+        // enforcement in `eip7623_check_gas_floor` — behind `charges_gas()`, so it never
+        // applies the floor in ReadOnly mode. If `InspectorHandler` ever loses that same
+        // gate, `inspect_one_tx` would apply the floor while `transact_one` does not,
+        // making the two paths silently report different `gas_used()` for the identical
+        // transaction — exactly the divergence that matters for a caller (e.g. an
+        // automation predicate check) that trusts `gas_used()` from either path equally.
+        let calldata = Bytes::from(vec![0xffu8; 4096]);
+        let tx = TxEnv::builder()
+            .caller(BENCH_CALLER)
+            .kind(TxKind::Call(BENCH_TARGET))
+            .gas_limit(1_000_000)
+            .data(calldata)
+            .build()
+            .unwrap();
+
+        let bytecode = Bytecode::new_legacy(Bytes::from(vec![opcode::STOP]));
+
+        let mut plain_evm = Context::mainnet()
+            .modify_cfg_chained(|cfg| {
+                cfg.spec = SpecId::PRAGUE;
+                cfg.execution_mode = ExecutionMode::ReadOnly;
+            })
+            .with_db(BenchmarkDB::new_bytecode(bytecode.clone()))
+            .build_mainnet();
+        let plain_result = plain_evm.transact_one(tx.clone()).unwrap();
+        assert!(plain_result.is_success());
+
+        let mut inspected_evm = Context::mainnet()
+            .modify_cfg_chained(|cfg| {
+                cfg.spec = SpecId::PRAGUE;
+                cfg.execution_mode = ExecutionMode::ReadOnly;
+            })
+            .with_db(BenchmarkDB::new_bytecode(bytecode))
+            .build_mainnet_with_inspector(TestInspector::new());
+        let inspected_result = inspected_evm.inspect_one_tx(tx).unwrap();
+        assert!(inspected_result.is_success());
+
+        assert_eq!(inspected_result.gas_used(), plain_result.gas_used());
+    }
+
+    #[test]
+    fn test_inspect_user_mode_still_applies_gas_accounting() {
+        let bytecode = Bytecode::new_legacy(Bytes::from(vec![opcode::STOP]));
+        let mut evm = Context::mainnet()
+            .with_db(BenchmarkDB::new_bytecode(bytecode))
+            .build_mainnet_with_inspector(TestInspector::new());
+
+        let result = evm
+            .inspect_one_tx(
+                TxEnv::builder()
+                    .caller(BENCH_CALLER)
+                    .kind(TxKind::Call(BENCH_TARGET))
+                    .gas_limit(100_000)
+                    .gas_price(20)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert!(result.is_success());
+
+        // Default `User` mode charges gas, so `post_execution` must still run through the
+        // inspector path: the caller is charged for gas and reimbursed for the unused portion,
+        // leaving a strictly lower balance than `BenchmarkDB` seeded it with.
+        let caller_after = evm.ctx.journal_mut().state.get(&BENCH_CALLER).unwrap();
+        assert_eq!(
+            caller_after.info.balance,
+            BENCH_CALLER_BALANCE - U256::from(21_000 * 20)
+        );
     }
 }
