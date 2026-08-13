@@ -90,8 +90,12 @@ interface IRegistryFacet {
     error InvalidGasPriceCap();
     error InvalidMaxGasAmount();
     error InvalidPayloadLength();
+    error PayloadTooLarge();
+    error PredicateTooLarge();
+    error AuxDataTooLarge();
     error InvalidReturnLengthOfPredicate();
     error InvalidReturnTypeOfPredicate();
+    error InvalidRegistryState();
     error InvalidTaskDuration();
     error RegistrationDisabled();
     error StaticCallToPredicateFailed();

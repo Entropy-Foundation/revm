@@ -441,6 +441,31 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
     }
 
+    /// @dev Test to ensure 'register' rejects a near-zero max gas amount via the predicate
+    /// gas-starvation mitigation (distinct from the maxGasAmount==0 case above, which is caught
+    /// by the explicit InvalidMaxGasAmount check before validatePredicate ever runs). This proves
+    /// the DoS mitigation actually works: a task can't under-fund its predicate's gas and still
+    /// register, since validatePredicate's staticcall is gas-limited to maxGasAmount.
+    function testRegisterRevertsIfMaxGasAmountTooLowForPredicate() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.expectRevert(IRegistryFacet.StaticCallToPredicateFailed.selector);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(1),                         // maxGasAmount: nonzero, but too little gas for the predicate staticcall
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            0,
+            auxData
+        );
+    }
+
     /// @dev Test to ensure 'register' reverts if 0 is passed as gas price cap.
     function testRegisterRevertsIfGasPriceCapZero() public {
         bytes[] memory auxData;
@@ -659,6 +684,171 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData
         );
         vm.stopPrank();
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateDataLengthCaps' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev payloadTx's inner callData is only length-checked (>= 4 bytes) and decoded at
+    /// registration time, never executed here — so zero-filled bytes are safe content, and this
+    /// gives exact control over `_payloadTx.length` via the abi.encode(uint128,address,bytes,
+    /// AccessListEntry[]) layout: total = 192 + ceil(callDataLen/32)*32 with an empty access list.
+    function payloadOfLength(uint256 _totalLength) internal view returns (bytes memory) {
+        LibCommon.AccessListEntry[] memory emptyAccessList;
+        bytes memory callData = new bytes(_totalLength - 192);
+        return abi.encode(uint128(0), address(erc20SupraHandler), callData, emptyAccessList);
+    }
+
+    /// @dev Unlike payloadTx, the predicate's callData IS executed (via staticcall), so it must
+    /// stay a valid call to `_target`. `isRegistrationEnabled()` takes no arguments, so trailing
+    /// zero-padding after its 4-byte selector is harmless and gives exact control over
+    /// `_predicate.length` via the abi.encode(address,bytes) layout: total = 96 + ceil(callDataLen/32)*32.
+    function paddedPredicate(address _target, uint256 _totalLength) internal pure returns (bytes memory) {
+        uint256 callDataLen = _totalLength - 96;
+        bytes memory callData = abi.encodePacked(IConfigFacet.isRegistrationEnabled.selector, new bytes(callDataLen - 4));
+        return abi.encode(_target, callData);
+    }
+
+    /// @dev Test to ensure 'updateDataLengthCaps' reverts if not called by the owner.
+    function testUpdateDataLengthCapsRevertsIfNotOwner() public {
+        vm.expectRevert();
+        vm.prank(alice);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(8192, 4096, 100, 10);
+    }
+
+    /// @dev Test to ensure 'updateDataLengthCaps' updates the caps and emits an event.
+    function testUpdateDataLengthCapsEmitsEvent() public {
+        vm.expectEmit(true, false, false, true);
+        emit IConfigFacet.DataLengthCapsUpdated(8192, 4096, 100, 10);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(8192, 4096, 100, 10);
+
+        (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        assertEq(maxPayloadLength, 8192);
+        assertEq(maxPredicateLength, 4096);
+        assertEq(maxAuxDataLength, 100);
+        assertEq(maxAuxDataEntries, 10);
+    }
+
+    /// @dev Test to ensure the default data length caps set at init match the documented defaults.
+    function testGetDataLengthCapsReturnsDefaults() public view {
+        (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        assertEq(maxPayloadLength, 4096);
+        assertEq(maxPredicateLength, 2048);
+        assertEq(maxAuxDataLength, 0);
+        assertEq(maxAuxDataEntries, 0);
+    }
+
+    /// @dev Test to ensure 'register' succeeds when payloadTx is exactly at the default cap.
+    function testRegisterSucceedsAtPayloadLengthCap() public {
+        bytes[] memory auxData;
+        bytes memory payload = payloadOfLength(4096);
+        assertEq(payload.length, 4096);
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 100 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+        vm.stopPrank();
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+    }
+
+    /// @dev Test to ensure 'register' reverts when payloadTx exceeds the default cap.
+    function testRegisterRevertsIfPayloadExceedsCap() public {
+        bytes[] memory auxData;
+        bytes memory payload = payloadOfLength(4128);
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.expectRevert(IRegistryFacet.PayloadTooLarge.selector);
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' succeeds when predicate is exactly at the default cap.
+    function testRegisterSucceedsAtPredicateLengthCap() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = paddedPredicate(diamondAddr, 2048);
+        assertEq(predicate.length, 2048);
+
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 100 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+        vm.stopPrank();
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+    }
+
+    /// @dev Test to ensure 'register' reverts when predicate exceeds the default cap.
+    function testRegisterRevertsIfPredicateExceedsCap() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = paddedPredicate(diamondAddr, 2080);
+
+        vm.expectRevert(IRegistryFacet.PredicateTooLarge.selector);
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' reverts on any non-empty auxData given the default
+    /// maxAuxDataLength of 0 — nothing consumes auxData yet, so its default contribution to
+    /// storage/copy cost is zero until an owner deliberately raises the cap.
+    function testRegisterRevertsIfAuxDataExceedsDefaultCap() public {
+        bytes[] memory auxData = new bytes[](1);
+        auxData[0] = new bytes(1);
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.expectRevert(IRegistryFacet.AuxDataTooLarge.selector);
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' bounds the number of auxData entries independently of their
+    /// combined byte length.
+    function testRegisterRevertsIfAuxDataEntryCountExceedsDefaultCap() public {
+        bytes[] memory auxData = new bytes[](1);
+        auxData[0] = new bytes(0);
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.expectRevert(IRegistryFacet.AuxDataTooLarge.selector);
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+    }
+
+    /// @dev Test to ensure a previously-rejected auxData size succeeds once the owner raises the cap.
+    function testRegisterSucceedsWithAuxDataAfterOwnerRaisesCap() public {
+        bytes[] memory auxData = new bytes[](2);
+        auxData[0] = new bytes(50);
+        auxData[1] = new bytes(50);
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2048, 100, 2);
+
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 100 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
+        );
+        vm.stopPrank();
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'registerSystemTask' :::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -935,6 +1125,49 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
     }
 
+    /// @dev Test to ensure 'cancelTasks' emits TasksCancelled containing only the tasks actually
+    /// cancelled, even when the input also contains non-existent indexes.
+    function testCancelTasksEmitsOnlyExistingTasks() public {
+        testRegister(); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        uint64[] memory taskIndexes = new uint64[](2);
+        taskIndexes[0] = 1;
+        taskIndexes[1] = 999; // does not exist
+
+        LibCommon.TaskCancelled[] memory expectedCancelledTasks = new LibCommon.TaskCancelled[](1);
+        expectedCancelledTasks[0] = LibCommon.TaskCancelled(1, LibCommon.TaskType.UST, keccak256("txHash"));
+
+        vm.expectEmit(true, true, false, false);
+        emit IRegistryFacet.TasksCancelled(expectedCancelledTasks, alice);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+    }
+
+    /// @dev Test to ensure 'cancelTasks' on an already-ACTIVE task (post cycle-transition) only
+    /// flips its state to CANCELLED and reduces the gas committed for the next cycle, rather than
+    /// removing it from storage the way cancelling a PENDING task does.
+    function testCancelTasksSetsStateToCancelledForActiveTask() public {
+        registerUst(diamondAddr, 2450);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(taskUint64);
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(uint8(IRegistryFacet(diamondAddr).getTaskDetails(0).taskState), uint8(LibCommon.TaskState.CANCELLED));
+        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+    }
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure 'cancelSystemTasks' reverts if automation is not enabled. 
@@ -1033,6 +1266,27 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.prank(bob);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
+    }
+
+    /// @dev Test to ensure 'cancelSystemTasks' on an already-ACTIVE GST (post cycle-transition)
+    /// only flips its state to CANCELLED and reduces the sys gas committed for the next cycle,
+    /// rather than removing it from storage the way cancelling a PENDING task does.
+    function testCancelSystemTasksSetsStateToCancelledForActiveTask() public {
+        registerGst(diamondAddr, 2450);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
+
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+        vm.prank(bob);
+        IRegistryFacet(diamondAddr).cancelSystemTasks(taskUint64);
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertEq(uint8(IRegistryFacet(diamondAddr).getTaskDetails(0).taskState), uint8(LibCommon.TaskState.CANCELLED));
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1174,6 +1428,28 @@ contract RegistryFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
     }
 
+    /// @dev Test to ensure 'stopTasks' emits TasksStopped containing only the tasks actually
+    /// stopped, even when the input also contains non-existent indexes.
+    function testStopTasksEmitsOnlyExistingTasks() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        uint64[] memory taskIndexes = new uint64[](2);
+        taskIndexes[0] = 1;
+        taskIndexes[1] = 999; // does not exist
+
+        LibCommon.TaskStopped[] memory expectedStoppedTasks = new LibCommon.TaskStopped[](1);
+        expectedStoppedTasks[0] = LibCommon.TaskStopped(1, 30.05 ether, 0, keccak256("txHash"));
+
+        vm.expectEmit(true, true, false, false);
+        emit IRegistryFacet.TasksStopped(expectedStoppedTasks, alice);
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+    }
+
     /// @dev Test to ensure stopping a PENDING task refunds half the deposit.
     function testStopPendingTask() public {
         registerUst(diamondAddr, 2450);
@@ -1218,6 +1494,125 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(erc20Supra.balanceOf(alice), balanceBefore + 60.1 ether);  // Cycle fee refund = 0, deposit refund = 60.1 ether
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
+    }
+
+    /// @dev Locks in cycleLockedFees's current accounting behavior for a task stopped shortly
+    /// after its first active cycle begins, left intentionally as-is.
+    function testStopTasksLeavesStuckCycleLockedFeesResidualForFirstCycleShortMarginTask() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.deal(alice, 5000 ether);
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 5000 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        // Expiry is 5 seconds past cycle 1's end (1201) -- a tiny margin into cycle 2.
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(1206), uint128(5_000_000), uint128(4 gwei), uint128(1000 ether), 0, auxData
+        );
+        vm.stopPrank();
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        // Charged a full cycle's fee at registration-to-active transition (PENDING branch).
+        uint256 cycleLockedFeesAfterCharge = IRegistryFacet(diamondAddr).getCycleLockedFees();
+        assertEq(cycleLockedFeesAfterCharge, 150 ether);
+
+        // Stop the task early in cycle 2 (t=1203), well before its actual expiry (1206).
+        vm.warp(1203);
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
+
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 149.375 ether);
+    }
+
+    /// @dev Locks in that the behavior documented above persists across an empty-registry cycle
+    /// boundary.
+    function testStuckCycleLockedFeesPersistsThroughEmptyFastPathCycle() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.deal(alice, 5000 ether);
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 5000 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(1206), uint128(5_000_000), uint128(4 gwei), uint128(1000 ether), 0, auxData
+        );
+        vm.stopPrank();
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        vm.warp(1203);
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
+
+        uint256 stuckAfterStop = IRegistryFacet(diamondAddr).getCycleLockedFees();
+        assertEq(stuckAfterStop, 149.375 ether);
+        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+
+        // Advance through the next (now-empty) cycle boundary.
+        (, uint64 start2, uint64 duration2,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start2 + duration2);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
+
+        // Residual persists unchanged -- the empty fast path never touches cycleLockedFees.
+        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), stuckAfterStop);
+    }
+
+    /// @dev Locks in cycleLockedFees's accounting behavior for a task that is already active (not
+    /// on its first cycle) and expires within the cycle in which it is stopped.
+    function testStopTasksUnlocksCloseToChargedFeeForAlreadyActiveTaskExpiringMidCycle() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.deal(alice, 5000 ether);
+        vm.startPrank(alice);
+        erc20SupraHandler.deposit{value: 5000 ether}();
+        erc20Supra.approve(diamondAddr, type(uint256).max);
+        // Expires 5 seconds into cycle 3.
+        IRegistryFacet(diamondAddr).register(
+            payload, predicate, uint64(2406), uint128(5_000_000), uint128(4 gwei), uint128(1000 ether), 0, auxData
+        );
+        vm.stopPrank();
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        // Cycle 1 -> 2: task's first transition, survives.
+        processCycleTransition(diamondAddr, taskIndexes);
+        // Cycle 2 -> 3: task is now active and charged for its final ~5 seconds.
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        uint256 cycleLockedFeesAfterCharge = IRegistryFacet(diamondAddr).getCycleLockedFees();
+        assertGt(cycleLockedFeesAfterCharge, 0);
+
+        // Stop the task early in cycle 3 (t=2403), before its actual expiry (2406).
+        vm.warp(2403);
+        uint64[] memory taskUint64 = new uint64[](1);
+        taskUint64[0] = 0;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(taskUint64);
+
+        // Charge and unlock both computed min(expiry - cycle-start, cycle-duration) = 5 from the
+        // same inputs, so the unlock is close to (here: exactly) the charged amount -- no stuck
+        // residual, unlike the first-cycle PENDING case.
+        assertApproxEqAbs(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0, 1);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::

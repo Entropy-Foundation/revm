@@ -67,6 +67,7 @@ interface ICoreFacet {
     error InsufficientBalanceForRefund();
     error InvalidArrayLength();
     error InvalidInputCycleIndex();
+    error InvalidOperationForCurrentCycleState();
     error InvalidRegistryState();
     error OutOfOrderTaskProcessingRequest();
     error RegisteredTaskInvalidType();

@@ -91,6 +91,14 @@ contract DiamondInit {
         s.registrationEnabled = _params.registrationEnabled;
         s.erc20Supra = _erc20Supra;
 
+        // Default task-registration input size caps. Generous relative to real CALL-only
+        // payloads (CREATE payloads are not supported) — see ConfigFacet.updateDataLengthCaps
+        // for the owner-only path to raise them later without a contract upgrade.
+        s.maxPayloadLength = 4096;
+        s.maxPredicateLength = 2048;
+        s.maxAuxDataLength = 0;
+        s.maxAuxDataEntries = 0;
+
         // ---------------------------------------------------------------------
         //                          Cycle initialization
         // ---------------------------------------------------------------------

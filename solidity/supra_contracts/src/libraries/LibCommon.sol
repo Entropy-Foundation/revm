@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
+import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCommon {
@@ -146,6 +146,30 @@ library LibCommon {
     function getTask(uint64 _taskIndex) internal view returns (TaskMetadata storage task) {
         if (!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
         task = LibAppStorage.registryState().tasks[_taskIndex];
+    }
+
+    /// @notice Projects a stored task into its lightweight, accounting-relevant view.
+    /// @dev Reads only the scalar fields — never touches the payloadTx/predicate/auxData
+    /// storage slots, unlike a full `TaskMetadata memory` assignment.
+    function toLW(TaskMetadata storage _task) internal view returns (TaskMetadataLW memory task) {
+        task = TaskMetadataLW({
+            maxGasAmount: _task.maxGasAmount,
+            automationFeeCapForCycle: _task.automationFeeCapForCycle,
+            depositFee: _task.depositFee,
+            txHash: _task.txHash,
+            taskIndex: _task.taskIndex,
+            expiryTime: _task.expiryTime,
+            owner: _task.owner,
+            taskType: _task.taskType,
+            taskState: _task.taskState
+        });
+    }
+
+    /// @notice Returns the lightweight details of a task. Reverts if task doesn't exist.
+    /// @param _taskIndex Task index to get details for.
+    function getTaskLW(uint64 _taskIndex) internal view returns (TaskMetadataLW memory task) {
+        if (!ifTaskExists(_taskIndex)) { revert TaskDoesNotExist(); }
+        task = toLW(LibAppStorage.registryState().tasks[_taskIndex]);
     }
 
     /// @notice Function to remove a task from the registry.
