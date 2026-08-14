@@ -25,6 +25,9 @@ interface IConfigFacet {
     /// @notice Emitted when a new config is added.
     event ConfigBufferUpdated(Config indexed pendingConfig);
 
+    /// @notice Emitted when the task registration input size caps are updated.
+    event DataLengthCapsUpdated(uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
+
 
     // =============================================================
     //                      Custom errors
@@ -47,6 +50,7 @@ interface IConfigFacet {
     function getConfig() external view returns (Config memory);
     function getConfigBuffer() external view returns (Config memory);
     function isRegistrationEnabled() external view returns (bool);
+    function getDataLengthCaps() external view returns (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
 
     // =============================================================
     //                  State update functions
@@ -69,5 +73,11 @@ interface IConfigFacet {
         uint64 _sysTaskDurationCapSecs,
         uint128 _sysRegistryMaxGasCap,
         uint16 _sysTaskCapacity
+    ) external;
+    function updateDataLengthCaps(
+        uint16 _maxPayloadLength,
+        uint16 _maxPredicateLength,
+        uint16 _maxAuxDataLength,
+        uint16 _maxAuxDataEntries
     ) external;
 }

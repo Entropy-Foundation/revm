@@ -4,7 +4,7 @@ pragma solidity 0.8.34;
 import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
-import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
+import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -34,11 +34,25 @@ library LibRegistry {
 
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
+        if (_payloadTx.length > LibAppStorage.appStorage().maxPayloadLength) revert IRegistryFacet.PayloadTooLarge();
+
         ( , address payloadTarget, bytes memory payload, ) = abi.decode(_payloadTx, (uint128, address, bytes, LibCommon.AccessListEntry[]));
         payloadTarget.validateContractAddress();
         if (payload.length < 4) revert IRegistryFacet.InvalidPayloadLength();
-        
+
         if (_maxGasAmount == 0) { revert IRegistryFacet.InvalidMaxGasAmount(); }
+    }
+
+    /// @notice Helper function to validate the combined size of a task's auxData entries.
+    function validateAuxData(bytes[] memory _auxData) private view {
+        AppStorage storage s = LibAppStorage.appStorage();
+        if (_auxData.length > s.maxAuxDataEntries) revert IRegistryFacet.AuxDataTooLarge();
+
+        uint256 totalLength;
+        for (uint256 i = 0; i < _auxData.length; i++) {
+            totalLength += _auxData[i].length;
+        }
+        if (totalLength > s.maxAuxDataLength) revert IRegistryFacet.AuxDataTooLarge();
     }
 
     /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
@@ -71,12 +85,16 @@ library LibRegistry {
 
     /// @notice Validates a predicate by calling it and checking the return value.
     /// @param _predicate Predicate to validate
-    function validatePredicate(bytes memory _predicate) private view {
+    /// @param gasAmount Gas amount to use for the static call
+    function validatePredicate(bytes memory _predicate, uint128 gasAmount) private view {
+        if (_predicate.length > LibAppStorage.appStorage().maxPredicateLength) revert IRegistryFacet.PredicateTooLarge();
+
         (address payloadTarget, bytes memory payload) = abi.decode(_predicate, (address, bytes));
         payloadTarget.validateContractAddress();
         if (payload.length < 4) revert IRegistryFacet.InvalidPayloadLength();
 
-        (bool success, bytes memory data) = payloadTarget.staticcall(payload);
+        // The predicate must succeed within the task's max-gas-amount.
+        (bool success, bytes memory data) = payloadTarget.staticcall{gas: gasAmount}(payload);
         if (!success) revert IRegistryFacet.StaticCallToPredicateFailed();
         if (data.length != 32) revert IRegistryFacet.InvalidReturnLengthOfPredicate();
 
@@ -106,8 +124,13 @@ library LibRegistry {
 
         if (!LibCommon.isCycleStarted()) { revert IRegistryFacet.CycleTransitionInProgress(); }
 
-        validatePredicate(_predicate);
-   
+        // Validate inputs (including the _maxGasAmount == 0 check) before validatePredicate,
+        // since validatePredicate's staticcall is gas-limited to _maxGasAmount: with
+        // _maxGasAmount == 0 it would fail with StaticCallToPredicateFailed and mask the more
+        // specific InvalidMaxGasAmount error.
+        validateInputs(_payloadTx, _maxGasAmount);
+        validatePredicate(_predicate, _maxGasAmount);
+
         uint64 taskDurationCap;
         uint128 gasCommittedForNextCycle;
         uint128 nextCycleRegistryMaxGasCap;
@@ -129,7 +152,6 @@ library LibRegistry {
         }
 
         validateTaskDuration(_regTime, _expiryTime, taskDurationCap, s.startTime + s.durationSecs);
-        validateInputs(_payloadTx, _maxGasAmount);
 
         uint128 gasCommitted = _maxGasAmount + gasCommittedForNextCycle;
         if (gasCommitted > nextCycleRegistryMaxGasCap) { revert IRegistryFacet.GasCommittedExceedsMaxGasCap(); }
@@ -225,8 +247,12 @@ library LibRegistry {
 
         uint64 regTime = uint64(block.timestamp);
         bool isUst = _taskType == LibCommon.TaskType.UST;
-        uint256 totalTasks = isUst ? registryState.taskIdList.length() : registryState.sysTaskIds.length();
-        
+        uint256 systemTaskCount = registryState.sysTaskIds.length();
+        uint256 registeredTasksCount = registryState.taskIdList.length();
+        require(systemTaskCount <= registeredTasksCount, IRegistryFacet.InvalidRegistryState());
+        uint256 totalTasks = isUst ? registeredTasksCount - systemTaskCount : systemTaskCount;
+
+        validateAuxData(_auxData);
         updateStateForValidRegistration(
             totalTasks,
             regTime,
@@ -260,7 +286,7 @@ library LibRegistry {
     ) internal returns (LibCommon.TaskCancelled memory cancelledTask) {
         RegistryState storage registryState = LibAppStorage.registryState();
 
-        TaskMetadata memory task = registryState.tasks[_taskIndex];
+        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskIndex]);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
         if (task.taskState == LibCommon.TaskState.CANCELLED) { revert IRegistryFacet.AlreadyCancelled(); }
@@ -301,8 +327,8 @@ library LibRegistry {
         bool _isGst
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         RegistryState storage registryState = LibAppStorage.registryState();
-        TaskMetadata memory task = registryState.tasks[_taskId];
-        
+        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
+
         validateOwnerType(task.owner, task.taskType, _isGst);
 
         (uint128 cycleFeeRefund, uint128 depositRefund) = removeTaskAndComputeRefund(

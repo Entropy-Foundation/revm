@@ -5,7 +5,7 @@ import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {LibRegistry} from "./LibRegistry.sol";
-import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TransitionState} from "./LibAppStorage.sol";
+import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW, TransitionState} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -70,8 +70,14 @@ library LibCore {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         registryState.cycleLockedFees  = _lockedFees;
+        // For this new cycle system tasks commitment is already known as _sysGasCommittedForNextCycle of the previous cycle.
+        // On suspension every task (UST+GST) has just been removed (see onCycleSuspend), so there
+        // is no carry-over commitment for the cycle about to start — force it to 0 rather than
+        // rotating in the pre-wipe accumulated value.
+        registryState.sysGasCommittedForThisCycle = _state == LibCommon.CycleState.SUSPENDED
+            ? 0
+            : registryState.sysGasCommittedForNextCycle;
         registryState.sysGasCommittedForNextCycle = _sysGasCommittedForNextCycle;
-        registryState.sysGasCommittedForThisCycle = _sysGasCommittedForNextCycle;
         registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
         registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
 
@@ -298,7 +304,7 @@ library LibCore {
         if (LibCommon.ifTaskExists(_taskIndex)) {
             markTaskProcessed(_taskIndex);
 
-            TaskMetadata memory task = LibCommon.getTask(_taskIndex);
+            TaskMetadataLW memory task = LibCommon.getTaskLW(_taskIndex);
             bool isUst = task.taskType == LibCommon.TaskType.UST;
             
             RegistryState storage registryState = LibAppStorage.registryState();
@@ -509,34 +515,42 @@ library LibCore {
             
         // Sort task indexes as order is important
         uint256[] memory taskIndexes = insertionSort(_taskIndexes);
-        uint64[] memory removedTasks = new uint64[](taskIndexes.length);
-        
+        uint64[] memory removedTasksBuffer = new uint64[](taskIndexes.length);
+
         uint64 removedCounter;
         for (uint i = 0; i < taskIndexes.length; i++) {
             uint64 taskId = uint64(taskIndexes[i]);
             if (LibCommon.ifTaskExists(taskId)) {
-                TaskMetadata memory task = LibCommon.getTask(taskId);
+                TaskMetadataLW memory task = LibCommon.getTaskLW(taskId);
 
                 LibCommon.removeTask(taskId, task.owner, false, false);
 
-                removedTasks[removedCounter++] = taskId;
+                removedTasksBuffer[removedCounter++] = taskId;
                 markTaskProcessed(taskId);
 
                 // Nothing to refund for GST tasks
                 if (task.taskType == LibCommon.TaskType.UST) {
                     TransitionState storage transitionState = LibAppStorage.transitionState();
                     LibAccounting.refundTaskFees(
-                        currentTime, 
-                        transitionState.refundDuration, 
-                        transitionState.automationFeePerSec, 
+                        currentTime,
+                        transitionState.refundDuration,
+                        transitionState.automationFeePerSec,
                         task
                     );
                 }
             }
         }
-        
+
         updateCycleTransitionStateFromSuspended();
-        emit ICoreFacet.RemovedTasks(removedTasks);
+
+        if (removedCounter > 0) {
+            // Emit only the entries actually removed.
+            uint64[] memory removedTasks = new uint64[](removedCounter);
+            for (uint256 j = 0; j < removedCounter; j++) {
+                removedTasks[j] = removedTasksBuffer[j];
+            }
+            emit ICoreFacet.RemovedTasks(removedTasks);
+        }
     }
 
     /// @notice Removes a registered task when predicate validation fails during runtime.
@@ -554,7 +568,7 @@ library LibCore {
     ) internal returns (LibCommon.RemovedTask memory removedTask) {
         RegistryState storage registryState = LibAppStorage.registryState();
             
-        TaskMetadata memory task = registryState.tasks[_taskId];
+        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
         bool isGst = task.taskType == LibCommon.TaskType.GST;
 
         (uint128 cycleFeeRefund, uint128 depositRefund) = LibRegistry.removeTaskAndComputeRefund(
@@ -696,8 +710,12 @@ library LibCore {
 
         // Check if the transition state exists
         if (s.ifTransitionStateExists) {
-            s.durationSecs = LibAppStorage.transitionState().newCycleDuration;
+            TransitionState storage transitionState = LibAppStorage.transitionState();
+            s.durationSecs = transitionState.newCycleDuration;
             s.ifTransitionStateExists = false;
+            // Deleting the whole struct already recursively clears expectedTasksToBeProcessed
+            // since it is a plain dynamic array — no separate reset needed.
+            delete s.transitionState[LibAppStorage.TRANSITION_STATE];
         }
 
         updateCycleStateTo(LibCommon.CycleState.STARTED);

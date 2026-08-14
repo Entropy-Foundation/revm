@@ -106,20 +106,25 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         uint64[] memory _taskIndexes
     ) external {
         validateInput(_taskIndexes);
-        
-        LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](_taskIndexes.length);    
+
+        LibCommon.TaskCancelled[] memory cancelledTasksBuffer = new LibCommon.TaskCancelled[](_taskIndexes.length);
         uint256 counter;
-        
+
         for (uint256 i; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
-                cancelledTasks[counter++] = LibRegistry.cancelTask(taskId, false);
+                cancelledTasksBuffer[counter++] = LibRegistry.cancelTask(taskId, false);
             }
         }
 
         if (counter > 0) {
+            // Emit only the entries actually written.
+            LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](counter);
+            for (uint256 i; i < counter; i++) {
+                cancelledTasks[i] = cancelledTasksBuffer[i];
+            }
             emit TasksCancelled(cancelledTasks, msg.sender);
-        } 
+        }
     }
 
     /// @notice Cancels the system automation tasks with specified task indexes.
@@ -135,19 +140,24 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     ) external {
         validateInput(_taskIndexes);
 
-        LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](_taskIndexes.length);    
+        LibCommon.TaskCancelled[] memory cancelledTasksBuffer = new LibCommon.TaskCancelled[](_taskIndexes.length);
         uint256 counter;
 
         for (uint256 i; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
-                cancelledTasks[counter++] = LibRegistry.cancelTask(taskId, true);
+                cancelledTasksBuffer[counter++] = LibRegistry.cancelTask(taskId, true);
             }
         }
 
         if (counter > 0) {
+            // Emit only the entries actually written.
+            LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](counter);
+            for (uint256 i; i < counter; i++) {
+                cancelledTasks[i] = cancelledTasksBuffer[i];
+            }
             emit TasksCancelled(cancelledTasks, msg.sender);
-        } 
+        }
     }
 
     /// @notice Immediately stops automation tasks for the specified `_taskIndexes`.
@@ -161,7 +171,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     ) external {
         validateInput(_taskIndexes);
 
-        LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](_taskIndexes.length);    
+        LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
         // Calculate refundable fee for this remaining time task in current cycle
@@ -175,20 +185,26 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
                 (LibCommon.TaskStopped memory ts, uint128 refund) = LibRegistry.stopTask(
-                    taskId, 
-                    cycleEndTime, 
-                    currentTime, 
-                    residualInterval, 
+                    taskId,
+                    cycleEndTime,
+                    currentTime,
+                    residualInterval,
                     false
                 );
-                stoppedTasks[counter++] = ts;
+                stoppedTasksBuffer[counter++] = ts;
                 totalRefundFee += refund;
             }
         }
 
         // Refund and emit event if any tasks were stopped
-        if (counter > 0) {  
+        if (counter > 0) {
             LibAccounting.refund(msg.sender, totalRefundFee);
+
+            // Emit only the entries actually written.
+            LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](counter);
+            for (uint256 i; i < counter; i++) {
+                stoppedTasks[i] = stoppedTasksBuffer[i];
+            }
 
             // Emit task stopped event
             emit TasksStopped(stoppedTasks, msg.sender);
@@ -205,22 +221,28 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         uint64[] memory _taskIndexes
     ) external {
         validateInput(_taskIndexes);
-        
-        LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](_taskIndexes.length);
+
+        LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
         uint256 counter;
-        
+
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
                 (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, currentTime, 0, true);
-                stoppedTasks[counter++] = ts;
+                stoppedTasksBuffer[counter++] = ts;
             }
         }
 
         if (counter > 0) {
+            // Emit only the entries actually written.
+            LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](counter);
+            for (uint256 i; i < counter; i++) {
+                stoppedTasks[i] = stoppedTasksBuffer[i];
+            }
+
             // Emit task stopped event
             emit TasksStopped(stoppedTasks, msg.sender);
         }
