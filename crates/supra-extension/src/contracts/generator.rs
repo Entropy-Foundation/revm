@@ -97,6 +97,7 @@ sol! {
         uint8 congestionThresholdPercentage;
         uint128 congestionBaseFeeWeiPerSec;
         uint8 congestionExponent;
+        uint8 maxCongestionExponent;
         uint16 taskCapacity;
         uint64 cycleDurationSecs;
         uint64 sysTaskDurationCapSecs;
@@ -709,6 +710,7 @@ impl GenesisTransactionGenerator {
             congestionThresholdPercentage: config.congestion_threshold_percentage,
             congestionBaseFeeWeiPerSec: config.congestion_base_fee_wei_per_sec,
             congestionExponent: config.congestion_exponent,
+            maxCongestionExponent: config.max_congestion_exponent,
             taskCapacity: config.task_capacity,
             cycleDurationSecs: config.cycle_duration_secs,
             sysTaskDurationCapSecs: config.sys_task_duration_cap_secs,

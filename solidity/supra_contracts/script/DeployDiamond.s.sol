@@ -21,6 +21,7 @@ contract DeployDiamond is Script {
             congestionThresholdPercentage: uint8(vm.envUint("CONGESTION_THRESHOLD_PERCENTAGE")),
             congestionBaseFeeWeiPerSec: uint128(vm.envUint("CONGESTION_BASE_FEE_PER_SEC")),
             congestionExponent: uint8(vm.envUint("CONGESTION_EXPONENT")),
+            maxCongestionExponent: uint8(vm.envUint("MAX_CONGESTION_EXPONENT")),
             taskCapacity: uint16(vm.envUint("TASK_CAPACITY")),
             cycleDurationSecs: uint64(vm.envUint("CYCLE_DURATION_SEC")),
             sysTaskDurationCapSecs: uint64(vm.envUint("SYS_TASK_DURATION_CAP_SEC")),

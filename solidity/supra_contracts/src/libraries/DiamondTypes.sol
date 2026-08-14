@@ -19,6 +19,7 @@ struct InitParams {
     uint8 congestionThresholdPercentage;
     uint128 congestionBaseFeeWeiPerSec;
     uint8 congestionExponent;
+    uint8 maxCongestionExponent;
     uint16 taskCapacity;
     uint64 cycleDurationSecs;
     uint64 sysTaskDurationCapSecs;

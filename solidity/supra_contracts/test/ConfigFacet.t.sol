@@ -6,6 +6,7 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
+import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
 
 contract ConfigFacetTest is BaseDiamondTest {
@@ -266,9 +267,10 @@ contract ConfigFacetTest is BaseDiamondTest {
             cycleDurationSecs: 2000, 
             taskCapacity: 500, 
             sysTaskCapacity: 500, 
-            congestionThresholdPercentage: 55, 
-            congestionExponent: 3
-        }); 
+            congestionThresholdPercentage: 55,
+            congestionExponent: 3,
+            maxCongestionExponent: 6
+        });
     }
 
     /// @dev Test to ensure 'updateConfigBuffer' updates the config buffer.
@@ -284,6 +286,7 @@ contract ConfigFacetTest is BaseDiamondTest {
             cfg.congestionThresholdPercentage,
             cfg.congestionBaseFeeWeiPerSec,
             cfg.congestionExponent,
+            cfg.maxCongestionExponent,
             cfg.taskCapacity,
             cfg.cycleDurationSecs,
             cfg.sysTaskDurationCapSecs,
@@ -300,6 +303,7 @@ contract ConfigFacetTest is BaseDiamondTest {
         assertEq(configBuffer.congestionThresholdPercentage, cfg.congestionThresholdPercentage);
         assertEq(configBuffer.congestionBaseFeeWeiPerSec, cfg.congestionBaseFeeWeiPerSec);
         assertEq(configBuffer.congestionExponent, cfg.congestionExponent);
+        assertEq(configBuffer.maxCongestionExponent, cfg.maxCongestionExponent);
         assertEq(configBuffer.taskCapacity, cfg.taskCapacity);
         assertEq(configBuffer.cycleDurationSecs, cfg.cycleDurationSecs);
         assertEq(configBuffer.sysTaskDurationCapSecs, cfg.sysTaskDurationCapSecs);
@@ -323,6 +327,7 @@ contract ConfigFacetTest is BaseDiamondTest {
             cfg.congestionThresholdPercentage,
             cfg.congestionBaseFeeWeiPerSec,
             cfg.congestionExponent,
+            cfg.maxCongestionExponent,
             cfg.taskCapacity,
             cfg.cycleDurationSecs,
             cfg.sysTaskDurationCapSecs,
@@ -346,6 +351,7 @@ contract ConfigFacetTest is BaseDiamondTest {
             cfg.congestionThresholdPercentage,
             cfg.congestionBaseFeeWeiPerSec,
             cfg.congestionExponent,
+            cfg.maxCongestionExponent,
             cfg.taskCapacity,
             cfg.cycleDurationSecs,
             cfg.sysTaskDurationCapSecs,
@@ -370,6 +376,7 @@ contract ConfigFacetTest is BaseDiamondTest {
             cfg.congestionThresholdPercentage,
             cfg.congestionBaseFeeWeiPerSec,
             cfg.congestionExponent,
+            cfg.maxCongestionExponent,
             cfg.taskCapacity,
             cfg.cycleDurationSecs,
             cfg.sysTaskDurationCapSecs,
@@ -394,11 +401,84 @@ contract ConfigFacetTest is BaseDiamondTest {
             cfg.congestionThresholdPercentage,
             cfg.congestionBaseFeeWeiPerSec,
             cfg.congestionExponent,
+            cfg.maxCongestionExponent,
             cfg.taskCapacity,
             cfg.cycleDurationSecs,
             cfg.sysTaskDurationCapSecs,
             99999,  // sysRegistryMaxGasCap less than system gas committed for next cycle
             cfg.sysTaskCapacity
         );
+    }
+
+    /// @dev Test to ensure 'updateConfigBuffer' reverts when congestionExponent exceeds maxCongestionExponent.
+    function testUpdateConfigBufferRevertsWhenCongestionExponentExceedsMax() public {
+        Config memory cfg = validConfig();
+
+        vm.expectRevert(LibCommon.CongestionExponentExceedsMax.selector);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            cfg.taskDurationCapSecs,
+            cfg.registryMaxGasCap,
+            cfg.automationBaseFeeWeiPerSec,
+            cfg.flatRegistrationFeeWei,
+            cfg.congestionThresholdPercentage,
+            cfg.congestionBaseFeeWeiPerSec,
+            cfg.maxCongestionExponent + 1,  // congestionExponent above the cap
+            cfg.maxCongestionExponent,
+            cfg.taskCapacity,
+            cfg.cycleDurationSecs,
+            cfg.sysTaskDurationCapSecs,
+            cfg.sysRegistryMaxGasCap,
+            cfg.sysTaskCapacity
+        );
+    }
+
+    /// @dev Test to ensure 'updateConfigBuffer' reverts when maxCongestionExponent is zero.
+    function testUpdateConfigBufferRevertsWhenMaxCongestionExponentZero() public {
+        Config memory cfg = validConfig();
+
+        vm.expectRevert(LibCommon.InvalidMaxCongestionExponent.selector);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            cfg.taskDurationCapSecs,
+            cfg.registryMaxGasCap,
+            cfg.automationBaseFeeWeiPerSec,
+            cfg.flatRegistrationFeeWei,
+            cfg.congestionThresholdPercentage,
+            cfg.congestionBaseFeeWeiPerSec,
+            cfg.congestionExponent,
+            0,  // maxCongestionExponent
+            cfg.taskCapacity,
+            cfg.cycleDurationSecs,
+            cfg.sysTaskDurationCapSecs,
+            cfg.sysRegistryMaxGasCap,
+            cfg.sysTaskCapacity
+        );
+    }
+
+    /// @dev Test to ensure 'updateConfigBuffer' succeeds when congestionExponent equals maxCongestionExponent exactly.
+    function testUpdateConfigBufferSucceedsAtCongestionExponentBoundary() public {
+        Config memory cfg = validConfig();
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            cfg.taskDurationCapSecs,
+            cfg.registryMaxGasCap,
+            cfg.automationBaseFeeWeiPerSec,
+            cfg.flatRegistrationFeeWei,
+            cfg.congestionThresholdPercentage,
+            cfg.congestionBaseFeeWeiPerSec,
+            cfg.maxCongestionExponent,  // congestionExponent == maxCongestionExponent
+            cfg.maxCongestionExponent,
+            cfg.taskCapacity,
+            cfg.cycleDurationSecs,
+            cfg.sysTaskDurationCapSecs,
+            cfg.sysRegistryMaxGasCap,
+            cfg.sysTaskCapacity
+        );
+
+        assertEq(IConfigFacet(diamondAddr).getConfigBuffer().congestionExponent, cfg.maxCongestionExponent);
     }
 }

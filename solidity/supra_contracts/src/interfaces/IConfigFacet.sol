@@ -64,6 +64,7 @@ interface IConfigFacet {
         uint8 _congestionThresholdPercentage,
         uint128 _congestionBaseFeeWeiPerSec,
         uint8 _congestionExponent,
+        uint8 _maxCongestionExponent,
         uint16 _taskCapacity,
         uint64 _cycleDurationSecs,
         uint64 _sysTaskDurationCapSecs,

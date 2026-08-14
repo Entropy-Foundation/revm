@@ -21,37 +21,58 @@ library LibCore {
         return LibAppStorage.registryState().taskIdList.length();
     }
 
-    /// @notice Sorts a uint256 array in ascending order using insertion sort.
-    /// @dev Insertion sort is chosen here because task ID lists originate from an
-    ///      array(near-registry source) whose values are assigned incrementally, so the array is
-    ///      nearly-sorted in practice.  For nearly-sorted input, insertion sort runs
-    ///      in O(n) time (inner loop exits immediately when the element is already in
-    ///      place), making it strictly cheaper in gas than the generic quicksort used
-    ///      by OpenZeppelin's Arrays.sort, which cannot exploit existing order.
-    ///      The trade-off is worst-case O(n²) on a fully-reversed list, which is
-    ///      not a realistic scenario for monotonically-assigned task IDs.
-    /// @param arr The memory array to sort in-place.
-    /// @return The same memory reference, sorted ascending.
-    function insertionSort(uint256[] memory arr) private pure returns (uint256[] memory) {
-        // A single-element (or empty) array is trivially sorted.
+    /// @notice Reverts unless `arr` is strictly ascending, with no sorting or mutation.
+    /// @dev This contract does not sort caller-submitted task batches (dropOrChargeTasks,
+    ///      onCycleSuspend) — it is the downstream caller's (the VM_SIGNER-driven
+    ///      processTasks submitter's) responsibility to supply them pre-sorted, matching
+    ///      the ascending order markTaskProcessed already requires positionally against
+    ///      expectedTasksToBeProcessed. An unordered submission is a caller bug, not
+    ///      something this contract silently corrects: it must fail loudly here rather
+    ///      than mask an upstream ordering defect or pay to fix it up itself.
+    /// @param arr The array to validate. Not modified.
+    function requireSortedAscending(uint256[] memory arr) private pure {
         for (uint256 i = 1; i < arr.length; i++) {
-            uint256 key = arr[i];
-            // Walk backwards, shifting elements one position right until we find
-            // the correct insertion point for `key`.  We use int256 for `j` to
-            // detect the j < 0 boundary without an underflow revert.
-            int256 j = int256(i) - 1;
-            while (j >= 0 && arr[uint256(j)] > key) {
-                arr[uint256(j + 1)] = arr[uint256(j)];
-                j--;
-            }
-            arr[uint256(j + 1)] = key;
+            if (arr[i - 1] >= arr[i]) revert ICoreFacet.OutOfOrderTaskProcessingRequest();
         }
-        return arr;
     }
-    
-    /// @notice Returns all the automation tasks available in the registry.
-    function getTaskIdList() private view returns (uint256[] memory) {
-        return LibAppStorage.registryState().taskIdList.values();
+
+    /// @notice Builds the ascending list of currently-alive task IDs from
+    ///         RegistryState.orderedTaskIds, compacting out tombstoned (removed) entries.
+    /// @dev orderedTaskIds is append-only (see LibRegistry.createAndStoreTask) and task IDs
+    ///      are assigned strictly monotonically, so it stays ascending by construction —
+    ///      no sort is ever needed. A removed task's slot in `tasks` is `delete`d by
+    ///      LibCommon.removeTask, which zeroes `owner`; that's reused here as a free
+    ///      tombstone flag. The write-back at the end compacts the array in storage,
+    ///      which is mandatory: without it, tombstones accumulate across the array's
+    ///      lifetime and this function's cost would grow unbounded over time instead of
+    ///      staying proportional to the current live task count.
+    ///      `alive` is allocated once at taskIdList.length() — every removal path removes
+    ///      from taskIdList and tombstones `tasks[id].owner` together (LibCommon.removeTask),
+    ///      so taskIdList's count always equals the number of non-tombstoned entries here,
+    ///      letting this write directly into the final-size array instead of filtering into
+    ///      a scratch buffer first and copying.
+    /// @return alive The ascending list of currently-alive task IDs.
+    function buildAliveOrderedTaskIds() private returns (uint256[] memory alive) {
+        RegistryState storage registryState = LibAppStorage.registryState();
+        uint256[] storage ordered = registryState.orderedTaskIds;
+        uint256 len = ordered.length;
+
+        alive = new uint256[](registryState.taskIdList.length());
+        uint256 n;
+        for (uint256 i = 0; i < len; i++) {
+            uint256 id = ordered[i];
+            if (registryState.tasks[uint64(id)].owner != address(0)) {
+                alive[n] = id;
+                n++;
+            }
+        }
+        // Invariant check, not input validation: taskIdList and orderedTaskIds' tombstone
+        // flags must agree on exactly which tasks are alive (see NatSpec above). A mismatch
+        // here means the two structures desynced elsewhere — fail loudly rather than
+        // silently return an array with trailing zero-valued entries.
+        assert(n == alive.length);
+
+        registryState.orderedTaskIds = alive;
     }
 
     /// @notice Function to update the cycle locked fees, gas committed and tasks lists.
@@ -75,13 +96,32 @@ library LibCore {
         registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
         registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
 
-        registryState.activeTaskIds.clear();
         if (_state == LibCommon.CycleState.FINISHED) {
-            uint256[] memory taskIds = registryState.taskIdList.values();
-            for (uint256 i = 0; i < taskIds.length; i++) {
-                registryState.activeTaskIds.add(taskIds[i]);
-            }
+            // transitionState.survivedTaskIds was accumulated incrementally, one
+            // processTasks batch at a time, in dropOrChargeTasks — so by the time the
+            // last batch finalizes here, the new cycle's active set is already fully
+            // determined, ascending, and tombstone-free: registration is blocked while
+            // a transition is in progress (see the CycleTransitionInProgress guard), so
+            // nothing can add to taskIdList/orderedTaskIds mid-transition, meaning
+            // survivedTaskIds ends up exactly equal to taskIdList's remaining contents.
+            uint256[] memory survivedTaskIds = LibAppStorage.transitionState().survivedTaskIds;
+            // This single assignment both clears the previous cycle's activeTaskIds (any
+            // leftover tail elements are zeroed by the compiler when the new array is
+            // shorter) and writes the new one, without re-scanning taskIdList or paying
+            // EnumerableSet's extra _positions-mapping SSTORE.
+            registryState.activeTaskIds = survivedTaskIds;
+            // Eagerly re-syncs orderedTaskIds to the same list here, for free, since we
+            // already have it computed — this bounds buildAliveOrderedTaskIds' next-cycle
+            // filter pass to just this cycle's churn (registrations/removals since this
+            // point) instead of letting tombstones accumulate across cycle boundaries.
+            registryState.orderedTaskIds = survivedTaskIds;
         } else {
+            registryState.activeTaskIds = new uint256[](0);
+            // Every task still in orderedTaskIds at this point was unconditionally
+            // removed by onCycleSuspend's loop (SUSPENDED means all tasks are dropped),
+            // so it's now 100% tombstones — clear it eagerly rather than letting the
+            // next buildAliveOrderedTaskIds call filter through dead weight.
+            registryState.orderedTaskIds = new uint256[](0);
             registryState.sysTaskIds.clear();
         }
     }
@@ -158,6 +198,7 @@ library LibCore {
                 transitionState.lockedFees = 0;
                 transitionState.nextTaskIndexPosition = 0;
                 delete transitionState.expectedTasksToBeProcessed;
+                delete transitionState.survivedTaskIds;
             }
         }
         updateCycleStateTo(LibCommon.CycleState.READY);
@@ -234,8 +275,8 @@ library LibCore {
             moveToStartedState();
 
             RegistryState storage registryState = LibAppStorage.registryState();
-            if (registryState.activeTaskIds.length() > 0 ) {
-                uint256[] memory activeTasks = registryState.activeTaskIds.values();
+            if (registryState.activeTaskIds.length > 0) {
+                uint256[] memory activeTasks = registryState.activeTaskIds;
                 emit ICoreFacet.ActiveTasks(activeTasks);
             }
             if (!s.automationEnabled) {
@@ -251,10 +292,13 @@ library LibCore {
         uint256[] memory _taskIndexes
     ) private returns (LibCommon.IntermediateStateOfCycleChange memory intermediateState) {
         uint64 currentTime = uint64(block.timestamp);
-        uint64 currentCycleEndTime = currentTime + LibAppStorage.transitionState().newCycleDuration;
+        TransitionState storage transitionState = LibAppStorage.transitionState();
+        uint64 currentCycleEndTime = currentTime + transitionState.newCycleDuration;
 
-        // Sort task indexes to charge automation fees in their chronological order
-        uint256[] memory taskIndexes = insertionSort(_taskIndexes);
+        // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
+        // NatSpec for why this contract does not sort them itself.
+        requireSortedAscending(_taskIndexes);
+        uint256[] memory taskIndexes = _taskIndexes;
 
         uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
         uint256 removedCount;
@@ -270,11 +314,16 @@ library LibCore {
 
             if (result.isRemoved) {
                 removedBuffer[removedCount] = taskId;
-                removedCount += 1; 
+                removedCount += 1;
             } else {
                 intermediateState.gasCommittedForNextCycle += result.gas;
                 intermediateState.sysGasCommittedForNextCycle += result.sysGas;
                 intermediateState.cycleLockedFees += result.fees;
+                // Accumulate survivors incrementally across every processTasks batch of this
+                // transition, so updateRegistryState can seed the new cycle's activeTaskIds
+                // by direct assignment at finalization instead of re-scanning taskIdList — see
+                // TransitionState.survivedTaskIds and LibCore.updateRegistryState.
+                transitionState.survivedTaskIds.push(taskId);
             }
         }
 
@@ -507,8 +556,10 @@ library LibCore {
 
         uint64 currentTime = uint64(block.timestamp);
             
-        // Sort task indexes as order is important
-        uint256[] memory taskIndexes = insertionSort(_taskIndexes);
+        // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
+        // NatSpec for why this contract does not sort them itself.
+        requireSortedAscending(_taskIndexes);
+        uint256[] memory taskIndexes = _taskIndexes;
         uint64[] memory removedTasks = new uint64[](taskIndexes.length);
         
         uint64 removedCounter;
@@ -589,9 +640,9 @@ library LibCore {
                 updateConfigFromBuffer();
                 moveToStartedState();
             } else {
-                // insertionSort is used here instead of Arrays.sort because task IDs are
-                // assigned incrementally and the list is nearly-sorted — see insertionSort NatSpec.
-                uint256[] memory expectedTasksToBeProcessed = insertionSort(getTaskIdList());
+                // buildAliveOrderedTaskIds is O(n) regardless of removal history — see its
+                // NatSpec for why sorting a taskIdList-derived snapshot is not safe here.
+                uint256[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
                 // Updates transition state
                 TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -603,6 +654,11 @@ library LibCore {
                 transitionState.sysGasCommittedForNextCycle = 0;
                 transitionState.lockedFees = 0;
                 transitionState.nextTaskIndexPosition = 0;
+                // Must be cleared explicitly: unlike expectedTasksToBeProcessed (a full
+                // reassignment below), survivedTaskIds is built up via .push() in
+                // dropOrChargeTasks across this transition's batches, so any leftover
+                // entries from a prior transition must not carry over.
+                delete transitionState.survivedTaskIds;
                 updateExpectedTasks(expectedTasksToBeProcessed);
 
                 s.ifTransitionStateExists = true;
@@ -657,8 +713,7 @@ library LibCore {
             if (currentTime >= cycleEndTime) { revert ICoreFacet.InvalidRegistryState(); }
             if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
 
-            uint256[] memory tasksIdList = getTaskIdList();
-            uint256[] memory expectedTasksToBeProcessed = insertionSort(tasksIdList);
+            uint256[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
             transitionState.refundDuration = cycleEndTime - currentTime;
             transitionState.newCycleDuration = s.durationSecs;
@@ -668,6 +723,11 @@ library LibCore {
             transitionState.sysGasCommittedForNextCycle = 0;
             transitionState.lockedFees = 0;
             transitionState.nextTaskIndexPosition = 0;
+            // Defensive parity with onCycleEndInternal's setup — this branch only runs
+            // when no transition is already in progress, so survivedTaskIds should
+            // already be empty, but this guarantees it regardless of how the prior
+            // transition (if any) concluded.
+            delete transitionState.survivedTaskIds;
 
             updateExpectedTasks(expectedTasksToBeProcessed);
             s.ifTransitionStateExists = true;

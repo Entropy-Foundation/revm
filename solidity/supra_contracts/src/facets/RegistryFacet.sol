@@ -319,12 +319,12 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
 
     /// @notice Returns the total number of active tasks.
     function getTotalActiveTasks() external view returns (uint256) {
-        return LibAppStorage.registryState().activeTaskIds.length();
+        return LibAppStorage.registryState().activeTaskIds.length;
     }
 
     /// @notice Returns all the active task indexes.
     function getActiveTaskIds() external view returns (uint256[] memory) {
-        return LibAppStorage.registryState().activeTaskIds.values();
+        return LibAppStorage.registryState().activeTaskIds;
     }
 
     /// @notice Checks whether there is an active task in registry with specified input task index.

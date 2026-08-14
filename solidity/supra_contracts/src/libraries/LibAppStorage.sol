@@ -18,6 +18,11 @@ struct Config {
     uint16 sysTaskCapacity;
     uint8 congestionThresholdPercentage;
     uint8 congestionExponent;
+    // Governance-set ceiling on congestionExponent, enforced by LibCommon.validateConfigParameters.
+    // Raising congestionExponent above the current default (6) requires first raising this cap in
+    // a separate governance action — deliberate friction on a parameter whose growth is exponential
+    // (see LibAccounting.calculateExponentiation).
+    uint8 maxCongestionExponent;
 }
 
 /// @notice Struct representing cycle state transition information.
@@ -35,6 +40,11 @@ struct TransitionState {
     // EnumerableSet's second per-element SSTORE (the _positions membership mapping)
     // is pure overhead here — see LibCore.updateExpectedTasks.
     uint256[] expectedTasksToBeProcessed;
+    // Task IDs confirmed to survive this transition (appended incrementally by
+    // LibCore.dropOrChargeTasks, one batch at a time), consumed directly by
+    // LibCore.updateRegistryState to seed the new cycle's activeTaskIds without
+    // re-scanning taskIdList from scratch at finalization — see LibCore.sol:63-87.
+    uint256[] survivedTaskIds;
 }
 
 /// @notice Task metadata for individual automation tasks.
@@ -68,11 +78,20 @@ struct RegistryState {
     uint128 nextCycleSysRegistryMaxGasCap;
 
     uint64 currentIndex;
-    EnumerableSet.UintSet activeTaskIds;
+    // Plain array, not EnumerableSet.UintSet: no .contains() call site needs O(1)
+    // arbitrary membership on this set anywhere in the codebase (only .add/.clear/
+    // .length/.values previously), and it is now populated wholesale from
+    // TransitionState.survivedTaskIds at cycle finalization — see LibCore.updateRegistryState.
+    uint256[] activeTaskIds;
     EnumerableSet.UintSet taskIdList;
     EnumerableSet.UintSet sysTaskIds;
-    mapping(uint64 => TaskMetadata) tasks;   
-    mapping(address => EnumerableSet.UintSet) addressToTasks; 
+    // Append-only mirror of taskIdList's insertion order (task IDs are assigned
+    // strictly monotonically, so appending keeps this ascending by construction).
+    // taskIdList's own iteration order is a separate, unrelated concern — see
+    // LibCore.buildAliveOrderedTaskIds, which compacts this array at cycle end.
+    uint256[] orderedTaskIds;
+    mapping(uint64 => TaskMetadata) tasks;
+    mapping(address => EnumerableSet.UintSet) addressToTasks;
 }
 
 /// @notice Central AppStorage layout for Diamond proxy

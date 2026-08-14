@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, stdError} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
@@ -320,5 +320,71 @@ contract AutomationFeeMultiplierTest is Test {
 
         assertEq(_calc(d.diamond, REGISTRY_MAX_GAS), 0,
             "congestionBaseFee=0: no congestion fee at any occupancy");
+    }
+
+    // ── Exponentiation overflow-guard regression (finding 4) ───────────────────
+    //
+    // Both tests below configure 0% threshold + 100% occupancy to hit the largest
+    // congestion multiplier base this code path can produce (surplusScaled = 1e8, so
+    // baseScaled starts at exactly 2*DECIMAL).
+    //
+    // At that base, exhaustive simulation of the exact fixed-point arithmetic
+    // (calculateExponentiation's loop, THEN calculateAutomationCongestionFee's
+    // subsequent `congestionBaseFeeWeiPerSec * exponentResult` multiplication,
+    // using this file's CONGESTION_BASE_FEE constant) shows the end-to-end safe
+    // exponent range is _exponent <= 119 for this specific base fee — the
+    // multiplication against congestionBaseFeeWeiPerSec can overflow even where
+    // calculateExponentiation's own result was still representable, so the exact
+    // boundary is config-dependent, not a fixed property of the exponentiation
+    // helper alone.
+    // The actual safety net in practice is the governance-configured
+    // maxCongestionExponent cap (default 6, see LibDiamondUtils.defaultInitParams
+    // and LibCommon.validateConfigParameters) — exponents anywhere near this
+    // boundary are already far outside any sane fee curve.
+
+    /// @dev _exponent = 119 (the exact end-to-end-safe boundary at this base and
+    ///      base fee, found by exhaustive simulation) must succeed and return a
+    ///      sane, nonzero fee.
+    function testFeeMultiplier_HighExponentAtNewSafeBoundary() public {
+        InitParams memory p = LibDiamondUtils.defaultInitParams();
+        p.registryMaxGasCap             = REGISTRY_MAX_GAS;
+        p.sysRegistryMaxGasCap          = REGISTRY_MAX_GAS;
+        p.congestionThresholdPercentage = 0;
+        p.congestionExponent            = 119;
+        p.maxCongestionExponent         = 119;
+        p.congestionBaseFeeWeiPerSec    = CONGESTION_BASE_FEE;
+        p.automationBaseFeeWeiPerSec    = AUTOMATION_BASE_FEE;
+
+        vm.startPrank(admin);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        vm.stopPrank();
+
+        uint128 fee = _calc(d.diamond, REGISTRY_MAX_GAS);
+        assertGt(fee, AUTOMATION_BASE_FEE, "expected a nonzero congestion component on top of the base fee");
+    }
+
+    /// @dev _exponent = type(uint8).max (255) at the same worst-case base is
+    ///      mathematically too large to fit in uint256 regardless of algorithm —
+    ///      2.0^255 scaled by DECIMAL exceeds type(uint256).max. This must still
+    ///      revert (a safe Panic, not silent corruption); it is documented here so
+    ///      the real defense — bounding congestionExponent via maxCongestionExponent
+    ///      — doesn't get silently regressed under the assumption the squaring
+    ///      guard alone made every uint8 value safe.
+    function testFeeMultiplier_ExtremeExponentStillOverflows() public {
+        InitParams memory p = LibDiamondUtils.defaultInitParams();
+        p.registryMaxGasCap             = REGISTRY_MAX_GAS;
+        p.sysRegistryMaxGasCap          = REGISTRY_MAX_GAS;
+        p.congestionThresholdPercentage = 0;
+        p.congestionExponent            = type(uint8).max;
+        p.maxCongestionExponent         = type(uint8).max;
+        p.congestionBaseFeeWeiPerSec    = CONGESTION_BASE_FEE;
+        p.automationBaseFeeWeiPerSec    = AUTOMATION_BASE_FEE;
+
+        vm.startPrank(admin);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        vm.stopPrank();
+
+        vm.expectRevert(stdError.arithmeticError);
+        _calc(d.diamond, REGISTRY_MAX_GAS);
     }
 }
