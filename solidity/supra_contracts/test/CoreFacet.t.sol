@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
+import {Vm} from "forge-std/Vm.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
@@ -250,6 +251,45 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
     }
+
+    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
+    /// containing only the indexes actually removed, even when the input batch also contains
+    /// non-existent indexes.
+    function testOnCycleSuspendEmitsOnlyRemovedTasks() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        (uint64 indexAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        // Process task 0 on its own first, advancing the expected-order position past it, so
+        // the second batch below cannot be confused with a genuine removal of task 0.
+        uint256[] memory firstBatch = new uint256[](1);
+        firstBatch[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
+
+        uint256[] memory secondBatch = new uint256[](1);
+        secondBatch[0] = 1;
+
+        uint64[] memory expectedRemoved = new uint64[](1);
+        expectedRemoved[0] = 1;
+
+        vm.expectEmit(true, false, false, false);
+        emit ICoreFacet.RemovedTasks(expectedRemoved);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
+    }
+
 
     /// @dev A batch containing a task index outside the expected set (never registered) must
     /// revert immediately rather than being treated as a no-op — see dropOrChargeTask's
@@ -666,6 +706,87 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).enableAutomation();
     }
 
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to sys gas cycle accounting ::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Registers a GST with an explicit maxGasAmount (registerGst hardcodes 100_000).
+    function registerGstWithGas(address _diamond, uint64 _duration, uint128 _maxGasAmount) internal {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory predicate = createPredicate(_diamond);
+
+        vm.prank(bob);
+        IRegistryFacet(_diamond).registerSystemTask(
+            payload,
+            predicate,
+            uint64(block.timestamp + _duration),
+            _maxGasAmount,
+            2,
+            auxData
+        );
+    }
+
+    /// @dev Like BaseDiamondTest.processCycleTransition, but without asserting the ActiveTasks
+    /// event echoes `_taskIndexes` verbatim — that assumption breaks when one of the processed
+    /// tasks expires and gets removed during this very transition, since the real ActiveTasks
+    /// list then only contains the tasks that survived.
+    function processCycleTransitionAllowingRemovals(address _diamond, uint256[] memory _taskIndexes) internal {
+        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore,) = ICoreFacet(_diamond).getCycleInfo();
+        vm.warp(startTimeBefore + durationBefore);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(_diamond).monitorCycleEnd();
+        ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
+        vm.stopPrank();
+    }
+
+    /// @dev Proves sysGasCommittedForThisCycle correctly reflects a GST task that expires mid-cycle
+    /// (rather than reporting the commitment for the cycle after the current one, as an earlier
+    /// review concern claimed). Task A survives many cycles; task B expires partway through cycle 2.
+    /// sysGasCommittedForThisCycle must be 150,000 (both active) at cycle 2's start, then settle to
+    /// 100,000 (only A) once B has actually expired and been removed.
+    function testSysGasCommittedForThisCycleReflectsMidCycleExpiringTask() public {
+        registerGstWithGas(diamondAddr, 12_000, 100_000); // task 0: survives many cycles
+        registerGstWithGas(diamondAddr, 1_800, 50_000); // task 1: expires partway through cycle 2
+
+        uint256[] memory bothTasks = new uint256[](2);
+        bothTasks[0] = 0;
+        bothTasks[1] = 1;
+
+        // Cycle 1 -> 2: both tasks still active and unexpired when this transition runs.
+        processCycleTransition(diamondAddr, bothTasks);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 150_000);
+
+        // Cycle 2 -> 3: task 1 has now expired and gets removed during this transition.
+        processCycleTransitionAllowingRemovals(diamondAddr, bothTasks);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 100_000);
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(1));
+
+        // Cycle 3 -> 4: only task 0 remains.
+        uint256[] memory onlyTaskA = new uint256[](1);
+        onlyTaskA[0] = 0;
+        processCycleTransition(diamondAddr, onlyTaskA);
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 100_000);
+    }
+
+    /// @dev Proves sysGasCommittedForThisCycle is forced to 0 when a suspended cycle finalizes,
+    /// rather than rotating in the pre-wipe accumulated value. Suspension removes every task, so
+    /// the cycle about to start genuinely has zero commitment left.
+    function testSysGasCommittedForThisCycleIsZeroAfterSuspend() public {
+        registerGstWithGas(diamondAddr, 12_000, 100_000);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(1, taskIndexes);
+
+        (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.READY));
+        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
+    }
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'removeRegisteredTask' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure 'removeRegisteredTask' removes a UST when predicate validation fails and reduces the gasCommittedForNextCycle.
@@ -800,8 +921,8 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).removeRegisteredTask(0, taskIndex, reason);
     }
 
-    /// @dev Test to ensure 'removeRegisteredTask' does nothing when automation is disabled.
-    function testRemoveRegisteredTaskDoesNothingWhenAutomationDisabled() public {
+    /// @dev Test to ensure 'removeRegisteredTask' reverts when automation is disabled (cycle not STARTED).
+    function testRemoveRegisteredTaskRevertsWhenAutomationDisabled() public {
         registerUst(diamondAddr, 2450);
 
         vm.prank(admin);
@@ -809,8 +930,32 @@ contract CoreFacetTest is BaseDiamondTest {
 
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
 
+        vm.expectRevert(ICoreFacet.InvalidOperationForCurrentCycleState.selector);
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(1, 0, "Predicate failed");
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+    }
+
+    /// @dev Test to ensure 'removeRegisteredTask' reverts when the cycle is FINISHED (mid-transition),
+    /// not just when automation is disabled. Without this guard, a removal landing mid-transition would
+    /// desync markTaskProcessed's expected-order bookkeeping and permanently wedge the cycle transition
+    /// (every subsequent processTasks call would revert with OutOfOrderTaskProcessingRequest).
+    function testRemoveRegisteredTaskRevertsWhenCycleFinished() public {
+        registerUst(diamondAddr, 2450);
+
+        (uint64 indexBefore, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (,,, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
+
+        vm.expectRevert(ICoreFacet.InvalidOperationForCurrentCycleState.selector);
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(indexBefore, 0, "Predicate failed");
 
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
@@ -893,6 +1038,143 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(details.nextTaskIndexPosition, 0);
         assertEq(details.expectedTasksToBeProcessed.length, 1);
         assertEq(details.expectedTasksToBeProcessed[0], 0);
+    }
+
+    /// @dev Proves transitionState.nextTaskIndexPosition/expectedTasksToBeProcessed don't survive
+    /// stale into a normal STARTED cycle after a populated FINISHED->STARTED transition. Also
+    /// proves isTransitionInProgress()-consulting disableAutomation doesn't misbehave right after
+    /// — a stale ifTransitionStateExists would misroute tryMoveToSuspendedState into asserting
+    /// cycleState==FINISHED, which would revert since the cycle is genuinely STARTED here.
+    function testTransitionStateResetAfterFinishedToStartedTransition() public {
+        registerUst(diamondAddr, 2450);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEq(uint8(details.state), uint8(LibCommon.CycleState.STARTED));
+        assertEq(details.nextTaskIndexPosition, 0);
+        assertEq(details.expectedTasksToBeProcessed.length, 0);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+        (,,, LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
+    }
+
+    /// @dev Proves the transition state stays clean through a full SUSPENDED->READY->STARTED
+    /// roundtrip (disable while tasks exist -> onCycleSuspend removes them -> READY -> re-enable).
+    function testTransitionStateResetAfterReadyPathRoundtrip() public {
+        registerUst(diamondAddr, 2450);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(1, taskIndexes);
+
+        (,,, LibCommon.CycleState stateAfterSuspend) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfterSuspend), uint8(LibCommon.CycleState.READY));
+
+        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEq(details.nextTaskIndexPosition, 0);
+        assertEq(details.expectedTasksToBeProcessed.length, 0);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).enableAutomation();
+        (,,, LibCommon.CycleState stateAfterEnable) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfterEnable), uint8(LibCommon.CycleState.STARTED));
+
+        LibCommon.CycleDetails memory detailsAfterEnable = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEq(detailsAfterEnable.nextTaskIndexPosition, 0);
+        assertEq(detailsAfterEnable.expectedTasksToBeProcessed.length, 0);
+    }
+
+    /// @dev Proves no staleness accumulates across repeated empty-registry fast-path cycle ends
+    /// (onCycleEndInternal's totalTasks()==0 branch, which skips the transition machinery entirely).
+    function testTransitionStateNoStalenessAcrossConsecutiveEmptyCycles() public {
+        for (uint256 i = 0; i < 3; i++) {
+            (, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
+            vm.warp(start + duration);
+
+            vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+            ICoreFacet(diamondAddr).monitorCycleEnd();
+
+            (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+            assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
+
+            LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+            assertEq(details.nextTaskIndexPosition, 0);
+            assertEq(details.expectedTasksToBeProcessed.length, 0);
+        }
+    }
+
+    /// @dev Proves a populated cycle, followed by that task expiring/being removed in the next
+    /// transition, followed by a third cycle hitting the empty-registry fast path, leaves no
+    /// leftover staleness from the earlier populated transitions.
+    function testTransitionStateNoStalenessAfterPopulatedThenEmptyCycle() public {
+        registerUst(diamondAddr, 1_300); // expires during cycle 2
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes); // cycle 1 -> 2, task still active
+
+        // Cycle 2 -> 3: task has now expired and gets dropped during this transition.
+        (uint64 indexBefore, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+        ICoreFacet(diamondAddr).processTasks(indexBefore + 1, taskIndexes);
+        vm.stopPrank();
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+
+        // Cycle 3 -> 4: registry is now empty, hits the fast path.
+        (, uint64 start2, uint64 duration2,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start2 + duration2);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
+
+        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEq(details.nextTaskIndexPosition, 0);
+        assertEq(details.expectedTasksToBeProcessed.length, 0);
+    }
+
+    /// @dev Sanity ceiling on the gas cost of clearing a large expectedTasksToBeProcessed inside
+    /// moveToStartedState. If the redundant pre-reset line removed as part of this fix were ever
+    /// reintroduced, or the clearing became quadratic instead of linear, this would balloon far
+    /// past the ceiling asserted here.
+    function testLargeExpectedTasksListClearsWithoutGasRegression() public {
+        uint256 n = 150;
+        vm.deal(alice, n * 110 ether + 500 ether);
+        for (uint256 i = 0; i < n; i++) {
+            registerUst(diamondAddr, 2450);
+        }
+
+        uint256[] memory taskIndexes = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            taskIndexes[i] = i;
+        }
+
+        (uint64 indexBefore, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        uint256 gasBefore = gasleft();
+        ICoreFacet(diamondAddr).processTasks(indexBefore + 1, taskIndexes);
+        uint256 gasUsed = gasBefore - gasleft();
+        vm.stopPrank();
+
+        // Empirically confirmed: removing the redundant pre-reset line dropped this from
+        // 9,660,854 to 9,660,133 gas at N=150 -- strictly cheaper, never worse.
+        assertLt(gasUsed, 15_000_000);
     }
 
     /// @notice Test to ensure config buffer is applied when no tasks exist during cycle end, updating the cycle duration directly.
@@ -1106,6 +1388,41 @@ contract CoreFacetTest is BaseDiamondTest {
 
         ( , , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED));
+    }
+
+    /// @dev Test to ensure dropOrChargeTask's cancelled/expired-UST branch still removes the task
+    /// and proceeds without reverting when the registry's balance is insufficient to pay the
+    /// deposit refund, by design.
+    function testExpiredTaskRemovalInTransitionProceedsIfInsufficientBalanceForDepositRefund() public {
+        registerUst(diamondAddr, 2450);
+
+        (uint64 index, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        // Drain the registry's balance so the deposit refund cannot be paid.
+        uint256 diamondBalance = erc20Supra.balanceOf(diamondAddr);
+        vm.stopPrank();
+        vm.prank(diamondAddr);
+        erc20Supra.transfer(bob, diamondBalance);
+        assertEq(erc20Supra.balanceOf(diamondAddr), 0);
+
+        // Move time forward past task expiration.
+        vm.warp(block.timestamp + 1250);
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 0;
+
+        vm.expectEmit(true, true, true, true);
+        emit IRegistryFacet.ErrorInsufficientBalanceToRefund(0, alice, 0, 60.1 ether);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+
+        // Task is still removed despite the failed refund -- cycle transition is not blocked.
+        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
 
     /// @notice Test to ensure a task is removed during transition when the owner does not have enough

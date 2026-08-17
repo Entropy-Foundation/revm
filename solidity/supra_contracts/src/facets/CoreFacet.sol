@@ -120,7 +120,10 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     function removeRegisteredTask(uint64 cycleIndex, uint64 _taskIndex, string memory _reason) external {
         msg.sender.enforceIsVmSigner();
 
-        if (!s.automationEnabled) { return; }
+        // Check if automation is enabled and cycle is started, else revert with invalid operation error.
+        // This will give clear feedback to downstream users on requested action status.
+        if (!s.automationEnabled || !LibCommon.isCycleStarted()) { revert InvalidOperationForCurrentCycleState(); }
+        // If cycle index doesn't match, revert.
         if (s.index != cycleIndex) { revert InvalidInputCycleIndex(); }
 
         uint64 cycleEndTime = LibCommon.getCycleEndTime();

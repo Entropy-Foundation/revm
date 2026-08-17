@@ -150,7 +150,31 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         emit ConfigBufferUpdated(configBuffer);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
+    /// @notice Updates the task-registration input size caps. Takes effect immediately (unlike
+    /// updateConfigBuffer) since these only gate new registrations, which are already blocked
+    /// outside cycle state STARTED, so there's no mid-cycle-fairness reason to defer them.
+    /// @param _maxPayloadLength Max length in bytes of a task's payloadTx.
+    /// @param _maxPredicateLength Max length in bytes of a task's predicate.
+    /// @param _maxAuxDataLength Max combined length in bytes across all of a task's auxData entries.
+    /// @param _maxAuxDataEntries Max number of entries in a task's auxData array, bounded
+    /// independently of _maxAuxDataLength.
+    function updateDataLengthCaps(
+        uint16 _maxPayloadLength,
+        uint16 _maxPredicateLength,
+        uint16 _maxAuxDataLength,
+        uint16 _maxAuxDataEntries
+    ) external {
+        LibDiamond.enforceIsContractOwner();
+
+        s.maxPayloadLength = _maxPayloadLength;
+        s.maxPredicateLength = _maxPredicateLength;
+        s.maxAuxDataLength = _maxAuxDataLength;
+        s.maxAuxDataEntries = _maxAuxDataEntries;
+
+        emit DataLengthCapsUpdated(_maxPayloadLength, _maxPredicateLength, _maxAuxDataLength, _maxAuxDataEntries);
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Returns the ERC20Supra address.
     function erc20Supra() external view returns (address) {
@@ -172,8 +196,16 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         return LibAppStorage.bufferConfig();
     }
 
+    /// @notice Returns the current task-registration input size caps.
+    function getDataLengthCaps() external view returns (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) {
+        maxPayloadLength = s.maxPayloadLength;
+        maxPredicateLength = s.maxPredicateLength;
+        maxAuxDataLength = s.maxAuxDataLength;
+        maxAuxDataEntries = s.maxAuxDataEntries;
+    }
+
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](10);
+        selectors = new bytes4[](12);
         selectors[0] = ConfigFacet.grantAuthorization.selector;
         selectors[1] = ConfigFacet.revokeAuthorization.selector;
         selectors[2] = ConfigFacet.enableRegistration.selector;
@@ -184,5 +216,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         selectors[7] = ConfigFacet.isRegistrationEnabled.selector;
         selectors[8] = ConfigFacet.getConfig.selector;
         selectors[9] = ConfigFacet.getConfigBuffer.selector;
+        selectors[10] = ConfigFacet.updateDataLengthCaps.selector;
+        selectors[11] = ConfigFacet.getDataLengthCaps.selector;
     }
 }

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata} from "./LibAppStorage.sol";
+import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadataLW} from "./LibAppStorage.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 library LibAccounting {
 
@@ -204,12 +205,12 @@ library LibAccounting {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Refunds the deposit fee and any autoamtion fees of the task.
+    /// @notice Refunds the deposit fee and any automation fees of the task.
     function refundTaskFees(
         uint64 _currentTime,
         uint64 _refundDuration, 
         uint128 _automationFeePerSec,
-        TaskMetadata memory _task
+        TaskMetadataLW memory _task
     ) internal {
         RegistryState storage registryState = LibAppStorage.registryState();
 
@@ -378,8 +379,11 @@ library LibAccounting {
                 activeConfig.registryMaxGasCap,
                 activeConfig.automationBaseFeeWeiPerSec
             );
-
-            uint128 taskFeeForFullCycle = calculateAutomationFeeForInterval(s.durationSecs, _maxGasAmount, automationFeePerSec, activeConfig.registryMaxGasCap);
+            uint64 chargedDuration = 0;
+            if (_expiryTime > s.startTime) {
+                chargedDuration = uint64(Math.min(_expiryTime - s.startTime, s.durationSecs));
+            }
+            uint128 taskFeeForCurrentCycle = calculateAutomationFeeForInterval(chargedDuration, _maxGasAmount, automationFeePerSec, activeConfig.registryMaxGasCap);
             uint128 taskFeeForResidualTime = calculateTaskFee(
                 _taskState,
                 _expiryTime,
@@ -390,7 +394,7 @@ library LibAccounting {
             );
 
             // Refund full deposit and half of the remaining run-time fee when a task is in active or cancelled stage
-            cycleLockedFeeForTask = taskFeeForFullCycle;
+            cycleLockedFeeForTask = taskFeeForCurrentCycle;
             cycleFeeRefund = taskFeeForResidualTime / REFUND_FACTOR; 
             depositRefund = _depositFee;
         } else {

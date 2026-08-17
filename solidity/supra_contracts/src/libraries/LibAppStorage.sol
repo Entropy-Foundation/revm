@@ -61,9 +61,24 @@ struct TaskMetadata {
     address owner;
     LibCommon.TaskType taskType;
     LibCommon.TaskState taskState;
-    bytes payloadTx;      
+    bytes payloadTx;
     bytes predicate;
     bytes[] auxData;
+}
+
+/// @notice Lightweight projection of TaskMetadata for charging/lifecycle logic that
+/// never reads payloadTx/predicate/auxData. Populating this instead of the full
+/// TaskMetadata avoids copying those dynamic byte blobs from storage to memory.
+struct TaskMetadataLW {
+    uint128 maxGasAmount;
+    uint128 automationFeeCapForCycle;
+    uint128 depositFee;
+    bytes32 txHash;
+    uint64 taskIndex;
+    uint64 expiryTime;
+    address owner;
+    LibCommon.TaskType taskType;
+    LibCommon.TaskState taskState;
 }
 
 /// @notice Tracks per-cycle Automation Registry state and tasks related information.
@@ -107,6 +122,15 @@ struct AppStorage {
     EnumerableSet.AddressSet authorizedAccounts;
     mapping(uint256 => Config) configuration;
     bool ifBufferExists;
+
+    /// @notice Owner-configurable upper bounds on task registration input sizes. Applied
+    /// immediately (no buffering) since they only gate new registrations, which are already
+    /// gated to cycle state STARTED — there's no mid-cycle-fairness reason to defer them the
+    /// way fee/gas-cap changes are deferred to the next cycle boundary.
+    uint16 maxPayloadLength;
+    uint16 maxPredicateLength;
+    uint16 maxAuxDataLength; // total across all auxData entries combined
+    uint16 maxAuxDataEntries; // bounds the array itself, independent of the byte total above
 
     // =============================================================
     //                      CYCLE MANAGEMENT
