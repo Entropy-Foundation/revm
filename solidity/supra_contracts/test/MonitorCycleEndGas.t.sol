@@ -163,6 +163,19 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      storage-layout`, not hand-computed):
     ///        AppStorage.registry              -> slot 6  (mapping(uint256 => RegistryState))
     ///        RegistryState.orderedTaskIds     -> slot 11 (offset within RegistryState, plain uint256[])
+    ///      where the contract content is:
+    ///
+    ///         // SPDX-License-Identifier: MIT
+    ///         pragma solidity 0.8.34;
+    ///
+    ///         import {AppStorage} from "./libraries/LibAppStorage.sol";
+    ///
+    ///         /// @dev Scratch contract used only to extract `forge inspect ... storage-layout`
+    ///         ///      output for AppStorage's nested struct field offsets. Not part of the
+    ///         ///      diamond or any deployment — safe to delete after use.
+    ///         contract StorageLayoutProbe {
+    ///             AppStorage internal s;
+    ///         }
     function _setOrderedTaskIdsDescending(address _diamond, uint256 _n) internal {
         uint256 registryStateBase = uint256(keccak256(abi.encode(uint256(0), uint256(6))));
         uint256 lengthSlot = registryStateBase + 11;
@@ -242,7 +255,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         assertLt(gas, BLOCK_PROLOGUE_GAS_LIMIT, "N=350 must be within gas budget");
     }
 
-    function testMonitorCycleEndGas_N720() public {
+    function observeMonitorCycleEndGas_N720() public {
         address d = _deployWithCapacity(720);
         _registerNTasks(d, 720);
         uint256 gas = _measureMonitorCycleEnd(d);

@@ -251,6 +251,31 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
     }
 
+    /// @dev A batch containing a task index outside the expected set (never registered) must
+    /// revert immediately rather than being treated as a no-op — see dropOrChargeTask's
+    /// NatSpec. Before this, a missing task fell through to LibCore.dropOrChargeTasks' survivor
+    /// branch and was recorded into TransitionState.survivedTaskIds despite never existing.
+    function testProcessTasksRevertsIfTaskDoesNotExist() public {
+        registerUst(diamondAddr, 2450);
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 99; // never registered
+
+        vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(99)));
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+    }
+
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is disabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationDisabled() public {
         registerUst(diamondAddr, 2450);
@@ -287,7 +312,71 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState newState) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(newState), uint8(LibCommon.CycleState.READY));
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(tasksUint64[0]));
-    }   
+    }
+
+    /// @dev 'processTasks' (SUSPENDED branch, onCycleSuspend) must revert, without applying
+    /// any partial effect, when the batch mixes a real task with a non-existent one.
+    function testOnCycleSuspendRevertsIfBatchContainsUnknownTaskAlongsideReal() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        (uint64 indexAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        // Process task 0 on its own first, advancing the expected-order position past it, so
+        // the second batch below cannot be confused with a genuine removal of task 0.
+        uint256[] memory firstBatch = new uint256[](1);
+        firstBatch[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
+
+        uint256[] memory secondBatch = new uint256[](2);
+        secondBatch[0] = 1;
+        secondBatch[1] = 999; // does not exist
+
+        vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(999)));
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
+
+        // The revert must undo task 1's removal too - no partial effect from the batch.
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(1));
+    }
+
+    /// @dev 'processTasks' (SUSPENDED branch, onCycleSuspend) must revert, and leave registry
+    /// state untouched, when the batch contains only a non-existent task index.
+    function testOnCycleSuspendRevertsIfBatchContainsOnlyUnknownTask() public {
+        registerUst(diamondAddr, 2450); // task 0
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        (uint64 indexAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        uint256[] memory batch = new uint256[](1);
+        batch[0] = 999; // does not exist
+
+        vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(999)));
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, batch);
+
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+    }
 
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is enabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationEnabled() public {

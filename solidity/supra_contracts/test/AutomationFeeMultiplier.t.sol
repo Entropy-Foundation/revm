@@ -322,7 +322,7 @@ contract AutomationFeeMultiplierTest is Test {
             "congestionBaseFee=0: no congestion fee at any occupancy");
     }
 
-    // ── Exponentiation overflow-guard regression (finding 4) ───────────────────
+    // ── Exponentiation overflow-guard regression  ────────────────────────────────────
     //
     // Both tests below configure 0% threshold + 100% occupancy to hit the largest
     // congestion multiplier base this code path can produce (surplusScaled = 1e8, so

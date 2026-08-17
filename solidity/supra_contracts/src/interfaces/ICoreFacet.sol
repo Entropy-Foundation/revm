@@ -72,6 +72,7 @@ interface ICoreFacet {
     error RegisteredTaskInvalidType();
     error TaskIndexNotFound();
     error TransferFailed();
+    error UnknownTaskToProcess(uint64 taskIndex);
 
     // =============================================================
     //                      View functions

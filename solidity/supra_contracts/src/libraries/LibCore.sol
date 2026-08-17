@@ -334,7 +334,12 @@ library LibCore {
         intermediateState.removedTasks = removedTasks;
     }
 
-    /// @notice Drops or charges the input task. If the task is already processed or missing from the registry then nothing is done.
+    /// @notice Drops or charges the input task.
+    /// @dev Reverts if `_taskIndex` does not currently exist in the registry: every task
+    ///      index submitted here is expected to come from the caller's own tracking of
+    ///      `expectedTasksToBeProcessed`, so a missing task means the caller has regressed
+    ///      or the registry is in an inconsistent state, and either should be surfaced
+    ///      immediately rather than silently treated as a no-op.
     /// @param _taskIndex Task index to be dropped or charged.
     /// @param _currentTime Current time.
     /// @param _currentCycleEndTime End time of the current cycle.
@@ -344,62 +349,61 @@ library LibCore {
         uint64 _currentTime,
         uint64 _currentCycleEndTime
     ) private returns (LibCommon.TransitionResult memory result) {
-        if (LibCommon.ifTaskExists(_taskIndex)) {
-            markTaskProcessed(_taskIndex);
+        require(LibCommon.ifTaskExists(_taskIndex), ICoreFacet.UnknownTaskToProcess(_taskIndex));
+        markTaskProcessed(_taskIndex);
 
-            TaskMetadata memory task = LibCommon.getTask(_taskIndex);
-            bool isUst = task.taskType == LibCommon.TaskType.UST;
-            
-            RegistryState storage registryState = LibAppStorage.registryState();
-            
-            // Task is cancelled or expired
-            if (task.taskState == LibCommon.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
-                if (isUst) {
-                    LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
-                } else {
-                    // Remove the task from registry and system registry
-                    LibCommon.removeTask(_taskIndex, task.owner, true, false);
-                }
-                result.isRemoved = true;
-            } else if (!isUst) {
-                // Active GST
-                // Governance submitted tasks are not charged
+        TaskMetadata memory task = LibCommon.getTask(_taskIndex);
+        bool isUst = task.taskType == LibCommon.TaskType.UST;
 
-                if (task.expiryTime > _currentCycleEndTime) {
-                    result.sysGas = task.maxGasAmount;
-                }
-                registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
+        RegistryState storage registryState = LibAppStorage.registryState();
+
+        // Task is cancelled or expired
+        if (task.taskState == LibCommon.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
+            if (isUst) {
+                LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
             } else {
-                TransitionState storage transitionState = LibAppStorage.transitionState();
-                // Active UST
-                uint128 fee = LibAccounting.calculateTaskFee(
-                    task.taskState,
-                    task.expiryTime,
-                    task.maxGasAmount,
-                    transitionState.newCycleDuration,
-                    _currentTime,
-                    transitionState.automationFeePerSec
-                );
-
-                // If the task reached this phase that means it is a valid active task for the new cycle.
-                // During cleanup all expired tasks has been removed from the registry but the state of the tasks is not updated.
-                // As here we need to distinguish new tasks from already existing active tasks,
-                // as the fee calculation for them will be different based on their active duration in the cycle.
-                // For more details see calculateTaskFee function.
-                
-                registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
-                (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
-                    _taskIndex,
-                    task.owner,
-                    task.maxGasAmount,
-                    task.expiryTime,
-                    task.depositFee,
-                    fee,
-                    _currentCycleEndTime,
-                    task.automationFeeCapForCycle,
-                    task.txHash
-                );
+                // Remove the task from registry and system registry
+                LibCommon.removeTask(_taskIndex, task.owner, true, false);
             }
+            result.isRemoved = true;
+        } else if (!isUst) {
+            // Active GST
+            // Governance submitted tasks are not charged
+
+            if (task.expiryTime > _currentCycleEndTime) {
+                result.sysGas = task.maxGasAmount;
+            }
+            registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
+        } else {
+            TransitionState storage transitionState = LibAppStorage.transitionState();
+            // Active UST
+            uint128 fee = LibAccounting.calculateTaskFee(
+                task.taskState,
+                task.expiryTime,
+                task.maxGasAmount,
+                transitionState.newCycleDuration,
+                _currentTime,
+                transitionState.automationFeePerSec
+            );
+
+            // If the task reached this phase that means it is a valid active task for the new cycle.
+            // During cleanup all expired tasks has been removed from the registry but the state of the tasks is not updated.
+            // As here we need to distinguish new tasks from already existing active tasks,
+            // as the fee calculation for them will be different based on their active duration in the cycle.
+            // For more details see calculateTaskFee function.
+
+            registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
+            (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
+                _taskIndex,
+                task.owner,
+                task.maxGasAmount,
+                task.expiryTime,
+                task.depositFee,
+                fee,
+                _currentCycleEndTime,
+                task.automationFeeCapForCycle,
+                task.txHash
+            );
         }
     }
 
@@ -565,24 +569,27 @@ library LibCore {
         uint64 removedCounter;
         for (uint i = 0; i < taskIndexes.length; i++) {
             uint64 taskId = uint64(taskIndexes[i]);
-            if (LibCommon.ifTaskExists(taskId)) {
-                TaskMetadata memory task = LibCommon.getTask(taskId);
+            // Every task index submitted here is expected to come from the caller's own
+            // tracking of expectedTasksToBeProcessed, so a missing task means the caller
+            // has regressed or the registry is in an inconsistent state — surface that
+            // immediately rather than silently skipping it (see dropOrChargeTask).
+            require(LibCommon.ifTaskExists(taskId), ICoreFacet.UnknownTaskToProcess(taskId));
+            TaskMetadata memory task = LibCommon.getTask(taskId);
 
-                LibCommon.removeTask(taskId, task.owner, false, false);
+            LibCommon.removeTask(taskId, task.owner, false, false);
 
-                removedTasks[removedCounter++] = taskId;
-                markTaskProcessed(taskId);
+            removedTasks[removedCounter++] = taskId;
+            markTaskProcessed(taskId);
 
-                // Nothing to refund for GST tasks
-                if (task.taskType == LibCommon.TaskType.UST) {
-                    TransitionState storage transitionState = LibAppStorage.transitionState();
-                    LibAccounting.refundTaskFees(
-                        currentTime, 
-                        transitionState.refundDuration, 
-                        transitionState.automationFeePerSec, 
-                        task
-                    );
-                }
+            // Nothing to refund for GST tasks
+            if (task.taskType == LibCommon.TaskType.UST) {
+                TransitionState storage transitionState = LibAppStorage.transitionState();
+                LibAccounting.refundTaskFees(
+                    currentTime,
+                    transitionState.refundDuration,
+                    transitionState.automationFeePerSec,
+                    task
+                );
             }
         }
         
