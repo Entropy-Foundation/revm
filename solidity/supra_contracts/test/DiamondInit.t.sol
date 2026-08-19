@@ -46,10 +46,11 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(config.taskDurationCapSecs, 3600 * 24 * 7);
         assertEq(config.sysTaskDurationCapSecs, 3600 * 24 * 180);
         assertEq(config.cycleDurationSecs, 1200);
-        assertEq(config.taskCapacity, 400);
-        assertEq(config.sysTaskCapacity, 100);
+        assertEq(config.taskCapacity, 160);
+        assertEq(config.sysTaskCapacity, 40);
         assertEq(config.congestionThresholdPercentage, 50);
         assertEq(config.congestionExponent, 6);
+        assertEq(config.maxCongestionExponent, 6);
     }
 
     /// @dev Test to ensure all interfaces are registered.
@@ -385,6 +386,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -412,6 +414,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -439,6 +442,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 101,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -466,6 +470,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 0,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -493,6 +498,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 0,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -519,6 +525,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 0,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -545,6 +552,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 1200,
@@ -571,6 +579,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
@@ -597,6 +606,7 @@ contract DiamondInitTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 400,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,

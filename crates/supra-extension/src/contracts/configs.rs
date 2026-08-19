@@ -16,33 +16,38 @@ use std::collections::HashSet;
 /// the results of the benchmark and need to keep buffer for future entries of the `BlockMeta::blockPrologue`
 /// the limit of 200 tasks is specified.
 ///
+/// `monitorCycleEnd`'s cost is O(n) in the live task count, independent of task ordering
+/// (`LibCore.buildAliveOrderedTaskIds` compacts an append-only, always-ascending task-ID
+/// list — see that function's NatSpec in `solidity/supra_contracts/src/libraries/LibCore.sol`).
+/// See issue #3445 for background.
+///
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤
-//   │ 50        │ 1,201,348                    │
+//   │ 50        │ 1,216,566                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 100       │ 2,344,564                    │
+//   │ 100       │ 2,371,532                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 150       │ 3,487,790                    │
+//   │ 150       │ 3,526,508                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 200       │ 4,632,120                    │
+//   │ 200       │ 4,682,514                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 250       │ 5,775,366                    │
+//   │ 250       │ 5,837,510                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 300       │ 6,918,621                    │
+//   │ 300       │ 6,992,515                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 350       │ 8,061,886                    │
+//   │ 350       │ 8,147,530                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 720       │ 16,522,351                   │
+//   │ 720       │ 16,694,945                   │
 //   ├───────────┼──────────────────────────────┤
-//   │ 800       │ 18,351,711 ⚠️ exceeds budget  │
+//   │ 800       │ 18,543,105 ⚠️ exceeds budget  │
 //   └───────────┴──────────────────────────────┘
 //
 // (Figures from `forge test --match-contract MonitorCycleEndGasTest -vv` in
-// solidity/supra_contracts/test/MonitorCycleEndGas.t.sol, re-run after the
-// `expectedTasksToBeProcessed` storage layout was optimized, roughly halving the per-task cost.
-// That same run's `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact
-// safe ceiling: 731 tasks stay under BLOCK_METADATA_GAS_LIMIT, 732 exceeds it.
+// solidity/supra_contracts/test/MonitorCycleEndGas.t.sol. That same run's
+// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: 723 tasks
+// stay under BLOCK_METADATA_GAS_LIMIT, 724 exceeds it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
+// confirms the same 723/724 boundary holds regardless of task ordering.
 // 200 is kept far below that ceiling deliberately, as buffer for other future
 // `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
 // applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).
@@ -69,6 +74,10 @@ pub const DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE: u8 = 50;
 pub const DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
 /// Default exponent that the congestion fee increases by exponentially.
 pub const DEFAULT_CONGESTION_EXPONENT: u8 = 6;
+/// Default governance-owned ceiling on `congestion_exponent`. Raising `congestion_exponent`
+/// above this value requires first raising this cap in a separate config update — deliberate
+/// friction on a parameter whose effect on the congestion fee is exponential.
+pub const DEFAULT_MAX_CONGESTION_EXPONENT: u8 = 6;
 /// Default maximum number of tasks that the registry can hold.
 /// `task_capacity + sys_task_capacity` must not exceed [`MAX_SUPPORTED_AUTOMATION_TASKS`].
 pub const DEFAULT_TASK_CAPACITY: u16 = 160;
@@ -101,6 +110,9 @@ pub struct AutomationRegistryConfigV1 {
     pub congestion_base_fee_wei_per_sec: u128,
     /// The congestion fee increases exponentially based on this value.
     pub congestion_exponent: u8,
+    /// Governance-owned upper bound on `congestion_exponent`. Must be non-zero and
+    /// `congestion_exponent` must not exceed it.
+    pub max_congestion_exponent: u8,
     /// Maximum number of tasks that the registry can hold.
     pub task_capacity: u16,
     /// Automation cycle duration in seconds.
@@ -146,6 +158,14 @@ impl AutomationRegistryConfigV1 {
         if self.congestion_exponent == 0 {
             return Err(anyhow::anyhow!("Congestion exponent cannot be 0"));
         }
+        if self.max_congestion_exponent == 0 {
+            return Err(anyhow::anyhow!("Max congestion exponent cannot be 0"));
+        }
+        if self.congestion_exponent > self.max_congestion_exponent {
+            return Err(anyhow::anyhow!(
+                "Congestion exponent cannot exceed max congestion exponent"
+            ));
+        }
         if self.sys_task_capacity.saturating_add(self.task_capacity)
             > MAX_SUPPORTED_AUTOMATION_TASKS
         {
@@ -167,6 +187,7 @@ impl Default for AutomationRegistryConfigV1 {
             congestion_threshold_percentage: DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE,
             congestion_base_fee_wei_per_sec: DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC,
             congestion_exponent: DEFAULT_CONGESTION_EXPONENT,
+            max_congestion_exponent: DEFAULT_MAX_CONGESTION_EXPONENT,
             task_capacity: DEFAULT_TASK_CAPACITY,
             cycle_duration_secs: DEFAULT_CYCLE_DURATION_SECS,
             sys_task_duration_cap_secs: DEFAULT_SYS_TASK_DURATION_CAP_SECS,
@@ -415,6 +436,35 @@ mod tests {
             ..valid_automation_config()
         };
         assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn zero_max_congestion_exponent_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            max_congestion_exponent: 0,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn congestion_exponent_exceeding_max_is_rejected() {
+        let config = AutomationRegistryConfigV1 {
+            congestion_exponent: 7,
+            max_congestion_exponent: 6,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_err());
+    }
+
+    #[test]
+    fn congestion_exponent_equal_to_max_is_accepted() {
+        let config = AutomationRegistryConfigV1 {
+            congestion_exponent: 6,
+            max_congestion_exponent: 6,
+            ..valid_automation_config()
+        };
+        assert!(config.is_valid().is_ok());
     }
 
     #[test]

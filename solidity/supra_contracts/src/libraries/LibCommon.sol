@@ -89,6 +89,8 @@ library LibCommon {
     error InvalidRegistryMaxGasCap();
     error InvalidCongestionThreshold();
     error InvalidCongestionExponent();
+    error InvalidMaxCongestionExponent();
+    error CongestionExponentExceedsMax();
     error InvalidTaskCapacity();
     error InvalidCycleDuration();
     error InvalidSysTaskDuration();
@@ -105,6 +107,7 @@ library LibCommon {
         uint128 _registryMaxGasCap,
         uint8 _congestionThresholdPercentage,
         uint8 _congestionExponent,
+        uint8 _maxCongestionExponent,
         uint16 _taskCapacity,
         uint64 _cycleDurationSecs,
         uint64 _sysTaskDurationCapSecs,
@@ -115,6 +118,8 @@ library LibCommon {
         if (_registryMaxGasCap == 0) { revert InvalidRegistryMaxGasCap(); }
         if (_congestionThresholdPercentage > 100) { revert InvalidCongestionThreshold(); }
         if (_congestionExponent == 0) { revert InvalidCongestionExponent(); }
+        if (_maxCongestionExponent == 0) { revert InvalidMaxCongestionExponent(); }
+        if (_congestionExponent > _maxCongestionExponent) { revert CongestionExponentExceedsMax(); }
         if (_taskCapacity == 0) { revert InvalidTaskCapacity(); }
         if (_cycleDurationSecs == 0) { revert InvalidCycleDuration(); }
         if (_sysTaskDurationCapSecs <= _cycleDurationSecs) { revert InvalidSysTaskDuration(); }
@@ -148,6 +153,28 @@ library LibCommon {
         task = LibAppStorage.registryState().tasks[_taskIndex];
     }
 
+    /// @notice Removes `_value` from a plain uint256[] by linear scan + swap-and-pop.
+    /// @dev activeTaskIds is a plain array (see LibAppStorage.RegistryState), not an
+    ///      EnumerableSet, because nothing reads it via contains() and it's rebuilt
+    ///      wholesale each cycle from TransitionState.survivedTaskIds (see
+    ///      LibCore.updateRegistryState) — so it doesn't need an O(1)-membership index.
+    ///      This makes a single removal O(k) (k = current length) instead of
+    ///      EnumerableSet's O(1); order doesn't matter here (unlike taskIdList), so
+    ///      swap-and-pop is safe. Bounded by taskCapacity+sysTaskCapacity, the
+    ///      governance-owned system-wide task cap (see ConfigFacet.updateConfigBuffer).
+    /// @return found True if `_value` was present and removed.
+    function removeFromActiveTaskIds(uint256[] storage _arr, uint256 _value) private returns (bool found) {
+        uint256 len = _arr.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_arr[i] == _value) {
+                _arr[i] = _arr[len - 1];
+                _arr.pop();
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// @notice Projects a stored task into its lightweight, accounting-relevant view.
     /// @dev Reads only the scalar fields — never touches the payloadTx/predicate/auxData
     /// storage slots, unlike a full `TaskMetadata memory` assignment.
@@ -174,7 +201,7 @@ library LibCommon {
 
     /// @notice Function to remove a task from the registry.
     /// @param _taskIndex Index of the task to remove.
-    /// @param _owner Address of the task owner.  
+    /// @param _owner Address of the task owner.
     /// @param _removeFromSysReg Wheather to remove from system task registry.
     /// @param _removeFromActive Wheather to remove from active task list.
     function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg, bool _removeFromActive) internal {
@@ -189,7 +216,7 @@ library LibCommon {
         require(registryState.addressToTasks[_owner].remove(_taskIndex), TaskIndexNotFound());
 
         if (_removeFromActive) {
-            require(registryState.activeTaskIds.remove(_taskIndex), TaskIndexNotFound());
+            require(removeFromActiveTaskIds(registryState.activeTaskIds, _taskIndex), TaskIndexNotFound());
         }
     }
 }

@@ -48,6 +48,7 @@ contract CoreFacetTest is BaseDiamondTest {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.002 ether,
             congestionExponent: 2,
+            maxCongestionExponent: 6,
             taskCapacity: 500,
             cycleDurationSecs: 2000,
             sysTaskDurationCapSecs: 3600,
@@ -225,6 +226,95 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
     }
 
+    /// @dev Sorting a caller-submitted batch is the downstream (VM_SIGNER) submitter's
+    /// responsibility, not this contract's — see LibCore.requireSortedAscending's NatSpec.
+    /// A batch submitted out of order (here, strictly descending) must revert immediately,
+    /// before any task in it is processed, rather than being silently sorted.
+    function testProcessTasksRevertsIfBatchNotPreSorted() public {
+        registerUst(diamondAddr, 2450);
+        registerUst(diamondAddr, 2450);
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        uint256[] memory tasks = new uint256[](2);
+        tasks[0] = 1;
+        tasks[1] = 0;
+
+        vm.expectRevert(ICoreFacet.OutOfOrderTaskProcessingRequest.selector);
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+    }
+
+    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
+    /// containing only the indexes actually removed, even when the input batch also contains
+    /// non-existent indexes.
+    function testOnCycleSuspendEmitsOnlyRemovedTasks() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        (uint64 indexAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        // Process task 0 on its own first, advancing the expected-order position past it, so
+        // the second batch below cannot be confused with a genuine removal of task 0.
+        uint256[] memory firstBatch = new uint256[](1);
+        firstBatch[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
+
+        uint256[] memory secondBatch = new uint256[](1);
+        secondBatch[0] = 1;
+
+        uint64[] memory expectedRemoved = new uint64[](1);
+        expectedRemoved[0] = 1;
+
+        vm.expectEmit(true, false, false, false);
+        emit ICoreFacet.RemovedTasks(expectedRemoved);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
+    }
+
+
+    /// @dev A batch containing a task index outside the expected set (never registered) must
+    /// revert immediately rather than being treated as a no-op — see dropOrChargeTask's
+    /// NatSpec.
+    function testProcessTasksRevertsIfTaskDoesNotExist() public {
+        registerUst(diamondAddr, 2450);
+
+        ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
+
+        uint256[] memory tasks = new uint256[](1);
+        tasks[0] = 99; // never registered
+
+        vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(99)));
+
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+    }
+
     /// @dev Test to ensure 'processTasks' works correctly when cycle state is SUSPENDED and automation is disabled.
     function testProcessTasksWhenCycleStateSuspendedAutomationDisabled() public {
         registerUst(diamondAddr, 2450);
@@ -263,10 +353,9 @@ contract CoreFacetTest is BaseDiamondTest {
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(tasksUint64[0]));
     }
 
-    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
-    /// containing only the indexes actually removed, even when the input batch also contains
-    /// non-existent indexes.
-    function testOnCycleSuspendEmitsOnlyRemovedTasks() public {
+    /// @dev 'processTasks' (SUSPENDED branch, onCycleSuspend) must revert, without applying
+    /// any partial effect, when the batch mixes a real task with a non-existent one.
+    function testOnCycleSuspendRevertsIfBatchContainsUnknownTaskAlongsideReal() public {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
 
@@ -292,19 +381,18 @@ contract CoreFacetTest is BaseDiamondTest {
         secondBatch[0] = 1;
         secondBatch[1] = 999; // does not exist
 
-        uint64[] memory expectedRemoved = new uint64[](1);
-        expectedRemoved[0] = 1;
-
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.RemovedTasks(expectedRemoved);
+        vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(999)));
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
+
+        // The revert must undo task 1's removal too - no partial effect from the batch.
+        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(1));
     }
 
-    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits 'RemovedTasks'
-    /// only when at least one task was actually removed.
-    function testOnCycleSuspendEmitsNothingWhenNoTasksRemoved() public {
+    /// @dev 'processTasks' (SUSPENDED branch, onCycleSuspend) must revert, and leave registry
+    /// state untouched, when the batch contains only a non-existent task index.
+    function testOnCycleSuspendRevertsIfBatchContainsOnlyUnknownTask() public {
         registerUst(diamondAddr, 2450); // task 0
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -321,13 +409,11 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory batch = new uint256[](1);
         batch[0] = 999; // does not exist
 
-        vm.recordLogs();
+        vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(999)));
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, batch);
 
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        assertEq(logs.length, 0);
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
     }
 
@@ -1097,7 +1183,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).updateConfigBuffer(
-            3600, 20_000_000, 0.5 ether, 1 ether, 50, 0.5 ether, 6, 400, 2400, 3600, 20_000_000, 100
+            3600, 20_000_000, 0.5 ether, 1 ether, 50, 0.5 ether, 6, 6, 400, 2400, 3600, 20_000_000, 100
         );
 
         vm.warp(startBefore + durationBefore);
@@ -1120,7 +1206,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).updateConfigBuffer(
-            3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2400, 3600, 5_000_000, 500
+            3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 6, 500, 2400, 3600, 5_000_000, 500
         );
         assertEq(IConfigFacet(diamondAddr).getConfigBuffer().cycleDurationSecs, 2400);
 
@@ -1171,7 +1257,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).updateConfigBuffer(
-            3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 500, 2400, 3600, 5_000_000, 500
+            3600, 10_000_000, 0.001 ether, 0.002 ether, 50, 0.002 ether, 2, 6, 500, 2400, 3600, 5_000_000, 500
         );
 
         vm.warp(start + duration);
@@ -1584,5 +1670,71 @@ contract CoreFacetTest is BaseDiamondTest {
         assertTrue(IRegistryFacet(customRegistry).ifTaskExists(0));
         assertEq(IRegistryFacet(customRegistry).getActiveTaskIds().length, 1);
         assertEq(IRegistryFacet(customRegistry).getActiveTaskIds()[0], 0);
+    }
+
+    /// @notice Correctness test for LibCore.buildAliveOrderedTaskIds: registers tasks,
+    /// cancels one (creating a tombstone in RegistryState.orderedTaskIds), registers
+    /// another after that, then asserts monitorCycleEnd's resulting
+    /// expectedTasksToBeProcessed is exactly the ascending list of survivors — proving
+    /// the tombstoned entry is filtered out and ascending order is preserved.
+    function testBuildAliveOrderedTaskIdsFiltersCancelledAndStaysAscending() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+        registerUst(diamondAddr, 2450); // task 2
+
+        uint64[] memory toCancel = new uint64[](1);
+        toCancel[0] = 1;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(toCancel);
+
+        registerUst(diamondAddr, 2450); // task 3, registered after the cancellation
+
+        (, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEq(details.expectedTasksToBeProcessed.length, 3);
+        assertEq(details.expectedTasksToBeProcessed[0], 0);
+        assertEq(details.expectedTasksToBeProcessed[1], 2);
+        assertEq(details.expectedTasksToBeProcessed[2], 3);
+    }
+
+    /// @notice Bounded-cost check for LibCommon.removeFromActiveTaskIds: RegistryState.activeTaskIds
+    /// is a plain uint256[], so removing from it is an O(k) linear-scan swap-remove
+    /// (k = current activeTaskIds length) rather than EnumerableSet's O(1). A single
+    /// stopTasks call spanning activeTaskIds' full length is therefore O(k^2), bounded by
+    /// the governance-owned taskCapacity+sysTaskCapacity cap (200 by default), not unbounded.
+    /// This registers 100 UST tasks (half the default UST cap), activates them all via a
+    /// single cycle transition, then stops them all in one call and asserts it completes
+    /// well within a realistic block gas limit — the bound is real, not just asymptotic.
+    function testStopTasksBulkRemovalFromActiveTaskIdsStaysWithinGasBudget() public {
+        uint256 n = 100;
+        uint256[] memory taskIndexes = new uint256[](n);
+        vm.deal(alice, n * 101 ether);
+        for (uint256 i = 0; i < n; i++) {
+            registerUst(diamondAddr, 2450);
+            taskIndexes[i] = i;
+        }
+
+        processCycleTransition(diamondAddr, taskIndexes);
+        assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), n);
+
+        uint64[] memory taskIndexesU64 = new uint64[](n);
+        for (uint256 i = 0; i < n; i++) {
+            taskIndexesU64[i] = uint64(i);
+        }
+
+        vm.prank(alice);
+        uint256 gasBefore = gasleft();
+        IRegistryFacet(diamondAddr).stopTasks(taskIndexesU64);
+        uint256 gasUsed = gasBefore - gasleft();
+
+        assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), 0);
+        // 30M is a representative mainnet-scale block gas limit; the worst-case O(k^2)
+        // bound at k=100 (~10,000 shift operations) sits far below it in practice.
+        assertLt(gasUsed, 30_000_000, "bulk stopTasks removal from activeTaskIds exceeded a realistic block gas limit");
     }
 }

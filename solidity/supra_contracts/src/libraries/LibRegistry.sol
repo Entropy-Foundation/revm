@@ -207,6 +207,10 @@ library LibRegistry {
     
         registryState.tasks[taskIndex] = taskMetadata;
         require(registryState.taskIdList.add(taskIndex), IRegistryFacet.TaskIndexNotUnique());
+        // taskIndex is strictly monotonically increasing (registryState.currentIndex += 1 below),
+        // so a plain append here keeps orderedTaskIds ascending by construction — see its
+        // declaration in LibAppStorage.sol and LibCore.buildAliveOrderedTaskIds.
+        registryState.orderedTaskIds.push(taskIndex);
         require(registryState.addressToTasks[msg.sender].add(taskIndex), IRegistryFacet.TaskIndexNotUnique());
     
         if (!_isUst) {

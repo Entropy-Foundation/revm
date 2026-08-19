@@ -31,11 +31,12 @@ library LibDiamondUtils {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0.5 ether,
             congestionExponent: 6,
-            taskCapacity: 400,
+            maxCongestionExponent: 6,
+            taskCapacity: 160,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
             sysRegistryMaxGasCap: 20_000_000,
-            sysTaskCapacity: 100,
+            sysTaskCapacity: 40,
             registrationEnabled: true,
             automationEnabled: true
         });

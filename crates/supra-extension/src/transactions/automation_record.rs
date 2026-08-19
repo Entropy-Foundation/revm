@@ -187,6 +187,25 @@ impl Typed2718 for AutomationRegistryRecord {
 }
 
 /// Action to be preformed automation registry record
+///
+/// Each variant wraps the `sol!`-generated call struct for one public AutomationRegistry facet
+/// function verbatim (`processTasksCall`/`removeRegisteredTaskCall`).
+///
+/// Policy: once a facet function is released, its public signature is append-only for the
+/// lifetime of that function - never change an existing parameter list, type, or ordering.
+/// Implement any future feature or behavior change as a new facet function with its own selector
+/// (and, on this Rust side, a new variant of this enum), not as an in-place edit to an existing
+/// one. This is what lets the facets be redeployed independently of every downstream integration
+/// already built against a released signature, without requiring any of them to coordinate a
+/// simultaneous upgrade to stay compatible.
+///
+/// This matters even for downstreams with no visibility into this crate at all: a consumer that
+/// persists this enum via a positional, untagged encoding (e.g. BCS) can safely observe a new
+/// variant being appended, but has no way to detect a field added to, removed from, or reordered
+/// within an *existing* variant's wrapped struct - such a change would decode to a
+/// valid-but-wrong value rather than failing loudly. Treating every released signature as
+/// immutable is what makes that kind of downstream safe by construction, without it needing to
+/// know or check anything about how the AutomationRegistry ABI evolves.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumKind)]
 #[enum_kind(AutomationRecordActionTag)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

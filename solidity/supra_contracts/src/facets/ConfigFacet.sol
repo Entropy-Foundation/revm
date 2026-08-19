@@ -99,6 +99,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         uint8 _congestionThresholdPercentage,
         uint128 _congestionBaseFeeWeiPerSec,
         uint8 _congestionExponent,
+        uint8 _maxCongestionExponent,
         uint16 _taskCapacity,
         uint64 _cycleDurationSecs,
         uint64 _sysTaskDurationCapSecs,
@@ -112,6 +113,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             _registryMaxGasCap,
             _congestionThresholdPercentage,
             _congestionExponent,
+            _maxCongestionExponent,
             _taskCapacity,
             _cycleDurationSecs,
             _sysTaskDurationCapSecs,
@@ -135,8 +137,9 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             cycleDurationSecs: _cycleDurationSecs, 
             taskCapacity: _taskCapacity, 
             sysTaskCapacity: _sysTaskCapacity, 
-            congestionThresholdPercentage: _congestionThresholdPercentage, 
-            congestionExponent: _congestionExponent
+            congestionThresholdPercentage: _congestionThresholdPercentage,
+            congestionExponent: _congestionExponent,
+            maxCongestionExponent: _maxCongestionExponent
         });
         s.configuration[LibAppStorage.BUFFER_CONFIG] = configBuffer;
         s.ifBufferExists = true;

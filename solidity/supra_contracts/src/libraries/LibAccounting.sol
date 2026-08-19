@@ -151,11 +151,15 @@ library LibAccounting {
             if ((_exponent & 1) != 0) {
                resultScaled = (resultScaled * baseScaled) / DECIMAL;
             }
-         
+
             _exponent >>= 1;
-            baseScaled = (baseScaled * baseScaled) / DECIMAL;
-        }      
-    
+            // Only square if another bit remains to consume — the value produced by
+            // squaring after the last bit is never used, so skip that computation.
+            if (_exponent > 0) {
+                baseScaled = (baseScaled * baseScaled) / DECIMAL;
+            }
+        }
+
         return resultScaled - DECIMAL;      // subtract 1
     }
 

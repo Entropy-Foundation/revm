@@ -59,6 +59,7 @@ contract DiamondInit {
             _params.registryMaxGasCap,
             _params.congestionThresholdPercentage,
             _params.congestionExponent,
+            _params.maxCongestionExponent,
             _params.taskCapacity,
             _params.cycleDurationSecs,
             _params.sysTaskDurationCapSecs,
@@ -81,8 +82,9 @@ contract DiamondInit {
             cycleDurationSecs: _params.cycleDurationSecs, 
             taskCapacity: _params.taskCapacity, 
             sysTaskCapacity: _params.sysTaskCapacity, 
-            congestionThresholdPercentage: _params.congestionThresholdPercentage, 
-            congestionExponent: _params.congestionExponent 
+            congestionThresholdPercentage: _params.congestionThresholdPercentage,
+            congestionExponent: _params.congestionExponent,
+            maxCongestionExponent: _params.maxCongestionExponent
         });
         
         s.configuration[LibAppStorage.ACTIVE_CONFIG] = activeConfig;

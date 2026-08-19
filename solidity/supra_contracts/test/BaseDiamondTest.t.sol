@@ -184,6 +184,7 @@ abstract contract BaseDiamondTest is Test {
             congestionThresholdPercentage: 50,
             congestionBaseFeeWeiPerSec: 0,
             congestionExponent: 6,
+            maxCongestionExponent: 6,
             taskCapacity: 2,
             cycleDurationSecs: 1200,
             sysTaskDurationCapSecs: 3600 * 24 * 180,
