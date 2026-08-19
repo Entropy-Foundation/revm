@@ -43,7 +43,7 @@ struct TransitionState {
     // Task IDs confirmed to survive this transition (appended incrementally by
     // LibCore.dropOrChargeTasks, one batch at a time), consumed directly by
     // LibCore.updateRegistryState to seed the new cycle's activeTaskIds without
-    // re-scanning taskIdList from scratch at finalization — see LibCore.sol:63-87.
+    // re-scanning taskIdList from scratch at finalization.
     uint256[] survivedTaskIds;
 }
 

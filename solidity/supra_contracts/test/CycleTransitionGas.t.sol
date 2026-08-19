@@ -29,10 +29,9 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 ///   3. FINISHED -> STARTED with a subset of tasks expiring mid-transition
 ///      (testCycleTransitionGas_FullFlow_SecondCycle_WithExpiredTasks)
 ///
-/// `MonitorCycleEndGas.t.sol` only measures `monitorCycleEnd`. A review of the
-/// Issue-3445 work (order-independent task-list compaction, commit dad51ccc) pointed
-/// out that the new costs it introduced actually land in `processTasks`, not
-/// `monitorCycleEnd`:
+/// `MonitorCycleEndGas.t.sol` only measures `monitorCycleEnd`. The order-independent
+/// task-list compaction work (see Issue-3445) introduced costs that actually land in
+/// `processTasks`, not `monitorCycleEnd`:
 ///   - Every surviving task pushes onto `transitionState.survivedTaskIds`
 ///     (LibCore.sol, dropOrChargeTasks) - a fresh-slot SSTORE per task, repeated in
 ///     whichever batch it falls into.

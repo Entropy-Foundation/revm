@@ -161,7 +161,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///
     ///      Slot derivation (confirmed via `forge inspect StorageLayoutProbe
     ///      storage-layout`, not hand-computed):
-    ///        AppStorage.registry              -> slot 6  (mapping(uint256 => RegistryState))
+    ///        AppStorage.registry              -> slot 7  (mapping(uint256 => RegistryState))
     ///        RegistryState.orderedTaskIds     -> slot 11 (offset within RegistryState, plain uint256[])
     ///      where the contract content is:
     ///
@@ -176,8 +176,16 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///         contract StorageLayoutProbe {
     ///             AppStorage internal s;
     ///         }
+    ///
+    ///      AppStorage's field order determines this slot number, so it must be
+    ///      re-verified against `forge inspect ... storage-layout` whenever
+    ///      AppStorage changes, rather than assumed stable across edits.
+    ///      `testMonitorCycleEndGas_BoundaryScan_ReverseSorted` additionally asserts
+    ///      the write actually landed (see its call to `_assertStrictlyDescending`),
+    ///      so a future layout shift fails the test loudly instead of leaving it
+    ///      silently vacuous.
     function _setOrderedTaskIdsDescending(address _diamond, uint256 _n) internal {
-        uint256 registryStateBase = uint256(keccak256(abi.encode(uint256(0), uint256(6))));
+        uint256 registryStateBase = uint256(keccak256(abi.encode(uint256(0), uint256(7))));
         uint256 lengthSlot = registryStateBase + 11;
         uint256 dataBase = uint256(keccak256(abi.encode(lengthSlot)));
 
@@ -187,6 +195,20 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
             // (n-1, n-2, ..., 0) so the array holds exactly the same value set,
             // just in the fully-reversed order.
             vm.store(_diamond, bytes32(dataBase + i), bytes32((_n - 1) - i));
+        }
+    }
+
+    /// @dev Asserts `_arr` is strictly descending. Used to confirm
+    ///      `_setOrderedTaskIdsDescending`'s vm.store calls actually landed on
+    ///      `orderedTaskIds`: `buildAliveOrderedTaskIds` (LibCore.sol) is a filter,
+    ///      not a sort, so it preserves input order - `expectedTasksToBeProcessed`
+    ///      can only come back descending if the storage write reached the array
+    ///      it's derived from. If a future AppStorage layout change moves the
+    ///      target slot again, this fails the test instead of letting it silently
+    ///      degrade into a duplicate of the ascending scan.
+    function _assertStrictlyDescending(uint64[] memory _arr) internal pure {
+        for (uint256 i = 1; i < _arr.length; i++) {
+            assertLt(_arr[i], _arr[i - 1], "expectedTasksToBeProcessed not descending - orderedTaskIds overwrite did not land (storage-slot drift?)");
         }
     }
 
@@ -371,6 +393,11 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
             _registerNTasks(d, mid);
             _setOrderedTaskIdsDescending(d, mid);
             uint256 gas = _measureMonitorCycleEnd(d);
+
+            // Confirms the vm.store calls above actually landed on orderedTaskIds -
+            // see _assertStrictlyDescending's NatSpec for why this is load-bearing,
+            // not decorative.
+            _assertStrictlyDescending(ICoreFacet(d).getCycleStateDetails().expectedTasksToBeProcessed);
 
             vm.revertToState(cleanSnap);
 

@@ -261,6 +261,27 @@ since a refund-and-drop is less work than a full fee-charge-and-survive path.
 
 ## Guidance for downstream `gas_limit` sizing
 
+### Where things stand today: a flat cap, not per-record sizing
+
+Every `processTasks` `AutomationRegistryRecord` is currently assigned the same flat
+`gas_limit` — `TX_GAS_LIMIT_CAP` (16,777,216, `crates/primitives/src/eip7825.rs`),
+per the node's transaction-construction code (`evm/records.rs`, outside this repo).
+There is no per-batch variable budget today, and no use of
+`ICoreFacet.getCycleStateDetails()` to detect and specially size a transition's
+final batch.
+
+Measured against that flat cap, the worst case across all three scenarios is
+**Scenario 1's final batch at 5,378,756 gas** — about **3.1x headroom**
+(16,777,216 / 5,378,756) under the current 16,777,216 flat limit. **Given that
+margin, the "an under-budget final batch cannot be fixed by splitting it further
+after the fact" hazard is not live today.** This section exists so that headroom
+has a documented, reproducible baseline: if `TX_GAS_LIMIT_CAP` is ever lowered, or
+`processTasks` sizing ever moves to a variable per-record budget (using
+`getCycleStateDetails()`'s `nextTaskIndexPosition` vs
+`expectedTasksToBeProcessed.length` to detect the final batch, as one could
+imagine doing), re-run this benchmark and re-check the margin against whatever the
+new scheme assigns non-final vs. final batches.
+
 - **Trigger call** (`monitorCycleEnd` / `disableAutomation`): size to at least
   ~4.7M gas at the 200-task cap, consistent with `configs.rs`'s existing
   `MAX_SUPPORTED_AUTOMATION_TASKS` justification. For `monitorCycleEnd`, "size"
@@ -269,23 +290,12 @@ since a refund-and-drop is less work than a full fee-charge-and-survive path.
   automatically kept in sync with `taskCapacity`/`sysTaskCapacity`, so re-check it
   specifically whenever either capacity changes. `disableAutomation` is a regular
   transaction and needs its own explicit budget of similar size.
-- **`processTasks`, non-final batch**: ~1.0M gas at a 25-task batch covers all three
-  scenarios' typical-batch figures (988k / 571k / 910k) with room to spare.
-- **`processTasks`, batch known to be the transition's final one**: this is the
-  scenario-dependent case, and the one that matters most — **an under-budget final
-  batch cannot be fixed by splitting it further after the fact**. The submitter can
-  tell in advance whether a given batch will be final via
-  `ICoreFacet.getCycleStateDetails()` (`nextTaskIndexPosition` vs
-  `expectedTasksToBeProcessed.length`), so it can size that specific record
-  accordingly:
-  - Normal transition, everything (or nearly everything) survives (Scenario 1):
-    budget for **~5.4M gas** at the 200-task cap — the most expensive final batch of
-    the three scenarios.
-  - Mid-cycle suspension (Scenario 2): the typical non-final-batch budget already
-    covers the final batch; no extra headroom needed.
-  - Normal transition with expirations (Scenario 3): the final-batch premium shrinks
-    with fewer survivors, so Scenario 1's ~5.4M figure is already the safe
-    upper bound to budget against.
-- Bottom line: **budget the final `processTasks` batch of any `FINISHED->STARTED`
-  transition at ~5.4M gas** (Scenario 1's measured worst case), and a normal ~1M gas
-  budget is sufficient for every other batch, including suspension-path finalization.
+- **`processTasks`**: comfortably covered by the current flat 16,777,216 cap at
+  every batch size measured here (typical batches ~1.0M/~571k/~910k gas; the
+  worst-case final batch at 5,378,756 gas) — see the margin above. If a future
+  change introduces a smaller or variable per-record budget instead of the flat
+  cap, use **~5.4M gas** (Scenario 1's measured worst case) as the floor for
+  whichever batch will finalize a `FINISHED->STARTED` transition, and ~1M gas for
+  every other batch, including suspension-path finalization (Scenario 2's final
+  batch is cheaper than typical, not more expensive — see Scenario 2 above for why
+  that doesn't generalize to the `FINISHED->STARTED` case).

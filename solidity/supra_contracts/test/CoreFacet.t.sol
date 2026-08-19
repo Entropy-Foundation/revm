@@ -293,8 +293,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev A batch containing a task index outside the expected set (never registered) must
     /// revert immediately rather than being treated as a no-op — see dropOrChargeTask's
-    /// NatSpec. Before this, a missing task fell through to LibCore.dropOrChargeTasks' survivor
-    /// branch and was recorded into TransitionState.survivedTaskIds despite never existing.
+    /// NatSpec.
     function testProcessTasksRevertsIfTaskDoesNotExist() public {
         registerUst(diamondAddr, 2450);
 
