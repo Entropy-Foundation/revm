@@ -186,11 +186,11 @@ The common case: automation stays enabled, no task expires mid-transition.
 | Call | Gas |
 | --- | --- |
 | `monitorCycleEnd` (trigger) | 4,682,699 |
-| `processTasks`, non-final batch (typical, batches 1–7) | ~988,337 |
-| `processTasks`, **final batch (8/8)** | **5,378,762** |
+| `processTasks`, non-final batch (typical, batches 1–7) | ~988,331 |
+| `processTasks`, **final batch (8/8)** | **5,378,756** |
 | Final-batch finalization premium (final − typical) | ~4,390,425 |
-| Total `processTasks` (8 batches) | 12,297,123 |
-| **Grand total** (trigger + all batches) | **16,979,822** |
+| Total `processTasks` (8 batches) | 12,297,075 |
+| **Grand total** (trigger + all batches) | **16,979,774** |
 
 The final batch of a `FINISHED->STARTED` transition is ~5.4x a typical batch. That
 premium comes from three things landing on whichever call happens to finalize the
@@ -214,11 +214,11 @@ none survive into a next cycle, and the cycle index does not increment.
 | Call | Gas |
 | --- | --- |
 | `disableAutomation` (trigger) | 4,683,686 |
-| `processTasks` (`onCycleSuspend`), non-final batch (typical) | ~570,654 |
-| `processTasks`, **final batch (8/8)** | **434,530** |
+| `processTasks` (`onCycleSuspend`), non-final batch (typical) | ~570,648 |
+| `processTasks`, **final batch (8/8)** | **434,524** |
 | Final-batch finalization premium | **0** (final batch is *cheaper* than typical) |
-| Total `processTasks` (8 batches) | 4,429,112 |
-| **Grand total** (trigger + all batches) | **9,112,798** |
+| Total `processTasks` (8 batches) | 4,429,064 |
+| **Grand total** (trigger + all batches) | **9,112,750** |
 
 Two things stand out relative to Scenario 1:
 - **No survivor bookkeeping**: `onCycleSuspend` never pushes to `survivedTaskIds` —
@@ -246,11 +246,11 @@ cycles: the 20 tasks are registered with an expiry inside cycle 2, survive cycle
 | Call | Gas |
 | --- | --- |
 | `monitorCycleEnd` (trigger, cycle 2) | 4,250,499 |
-| `processTasks`, non-final batch (typical) | ~910,213 |
-| `processTasks`, **final batch (8/8)** | **931,418** |
+| `processTasks`, non-final batch (typical) | ~910,207 |
+| `processTasks`, **final batch (8/8)** | **931,412** |
 | Final-batch finalization premium | ~21,205 |
-| Total `processTasks` (8 batches) | 7,302,911 |
-| **Grand total** (trigger + all batches) | **11,553,410** |
+| Total `processTasks` (8 batches) | 7,302,866 |
+| **Grand total** (trigger + all batches) | **11,553,365** |
 
 With 180 survivors instead of 200, the finalization premium collapses to ~21k gas —
 consistent with Scenario 1's premium being proportional to *survivor* count
