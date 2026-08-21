@@ -1,24 +1,13 @@
 //! Encloses data representing genesis contracts.
 
+use crate::contracts::canonical_singletons::CREATE2_FACTORY_ADDRESS;
 use derive_getters::{Dissolve, Getters};
 use derive_more::Constructor;
-use primitives::{address, hex, keccak256, Address, TxKind};
+use primitives::{keccak256, Address, TxKind};
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
 use std::fmt::{Debug, Display};
-
-/// The address that deploys the default CREATE2 deployer contract.
-pub const CREATE2_FACTORY_OWNER: Address = address!("0x3fAB184622Dc19b6109349B94811493BF2a45362");
-
-/// The default CREATE2 FACTORY contract address. Assumed deployed by [CREATE2_FACTORY_OWNER] with nonce 0
-pub const CREATE2_FACTORY_ADDRESS: Address = address!("0x4e59b44847b379578588920ca78fbf26c0b4956c");
-
-/// The init-code of the default CREATE2 FACTORY widely used in community
-/// Retrieved from https://github.com/Arachnid/deterministic-deployment-proxy
-pub const CREATE2_FACTORY_CODE: &[u8] = &hex!(
-    "604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3"
-);
 
 /// Represents data required to construct genesis contracts deployment transaction
 #[serde_as]
@@ -112,7 +101,7 @@ impl Debug for GenesisTransaction {
 }
 
 /// Custom contract tag to be used by upper layer to configure a custom genesis contract transactions.
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Serialize, Deserialize, Constructor)]
+#[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, Constructor)]
 pub struct ContractCustomTag {
     /// Nonce of the contract deployment.
     pub nonce: u64,
@@ -124,6 +113,12 @@ pub struct ContractCustomTag {
 impl Ord for ContractCustomTag {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.nonce.cmp(&other.nonce)
+    }
+}
+
+impl PartialOrd for ContractCustomTag {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -159,6 +154,18 @@ pub enum GenesisTransactionTags {
     CoreFacet = 15,
     DiamondInit = 16,
     Diamond = 17,
+
+    // Canonical EVM singleton predeploys: well-known third-party contracts the wider
+    // EVM ecosystem/tooling expects at fixed addresses. Independent of Supra's own
+    // system/application contracts above; there's no ordering dependency between these
+    // and the rest, or among themselves, so they're appended after the last named
+    // variant rather than interleaved. (Ord/serde's enum encoding key off declaration
+    // order, not the explicit `= N` discriminant, so inserting new variants in the
+    // middle would silently renumber every later variant's sort/serialization index.)
+    Multicall3 = 18,
+    SingletonFactory = 19,
+    CreateX = 20,
+    Erc1820Registry = 21,
 
     // Custom contracts injected by application layer
     Custom(ContractCustomTag),
