@@ -55,6 +55,22 @@ pub struct JournalInner<ENTRY> {
     pub spec: SpecId,
     /// Warm addresses containing both coinbase and current precompiles.
     pub warm_addresses: WarmAddresses,
+    /// Running total of native value destroyed by `SELFDESTRUCT` with the destroyed
+    /// account as its own beneficiary, which credits no account and so removes the
+    /// value from circulation.
+    ///
+    /// Supra's EVM native balance mirrors value escrowed outside the EVM and cannot be
+    /// minted, so the host has to account for every destruction of it. The total is
+    /// accumulated where the destruction decision is made and is decremented again when
+    /// the journal entry that recorded it is reverted, so a reverted frame or a
+    /// discarded transaction contributes nothing.
+    ///
+    /// Unlike the other fields this one is deliberately **not** cleared by
+    /// [`Self::commit_tx`] or [`Self::finalize`], so that it is still readable after
+    /// execution has finished. It is a running total since the last
+    /// [`Self::take_selfdestruct_burn`]; drain it once per transaction, between
+    /// transactions, to attribute the burn to that transaction.
+    pub selfdestruct_burn: U256,
 }
 
 impl<ENTRY: JournalEntryTr> Default for JournalInner<ENTRY> {
@@ -78,7 +94,16 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             depth: 0,
             spec: SpecId::default(),
             warm_addresses: WarmAddresses::new(),
+            selfdestruct_burn: U256::ZERO,
         }
+    }
+
+    /// Returns the accumulated self-destruct burn total and resets it to zero.
+    ///
+    /// See [`Self::selfdestruct_burn`] for what is counted and for its lifetime.
+    #[inline]
+    pub fn take_selfdestruct_burn(&mut self) -> U256 {
+        mem::take(&mut self.selfdestruct_burn)
     }
 
     /// Returns the logs
@@ -106,10 +131,14 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             transaction_id,
             spec,
             warm_addresses,
+            selfdestruct_burn,
         } = self;
         // Spec precompiles and state are not changed. It is always set again execution.
         let _ = spec;
         let _ = state;
+        // Preserved across the transaction boundary so the host can still read it after
+        // execution; see the field docs.
+        let _ = selfdestruct_burn;
         transient_storage.clear();
         *depth = 0;
 
@@ -135,12 +164,18 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             transaction_id,
             spec,
             warm_addresses,
+            selfdestruct_burn,
         } = self;
         let is_spurious_dragon_enabled = spec.is_enabled_in(SPURIOUS_DRAGON);
         // iterate over all journals entries and revert our global state
+        let mut reverted_burn = U256::ZERO;
         journal.drain(..).rev().for_each(|entry| {
+            reverted_burn += entry.selfdestruct_burn();
             entry.revert(state, None, is_spurious_dragon_enabled);
         });
+        // A discarded transaction destroyed nothing, so take back everything it added.
+        // Saturating for the same reason as in `checkpoint_revert`.
+        *selfdestruct_burn = selfdestruct_burn.saturating_sub(reverted_burn);
         transient_storage.clear();
         *depth = 0;
         logs.clear();
@@ -167,9 +202,13 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             transaction_id,
             spec,
             warm_addresses,
+            selfdestruct_burn,
         } = self;
         // Spec is not changed. And it is always set again in execution.
         let _ = spec;
+        // Preserved across the transaction boundary so the host can still read it after
+        // execution; see the field docs.
+        let _ = selfdestruct_burn;
         // Clear coinbase address warming for next tx
         warm_addresses.clear_coinbase();
 
@@ -484,12 +523,18 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
         // iterate over last N journals sets and revert our global state
         if checkpoint.journal_i < self.journal.len() {
+            let mut reverted_burn = U256::ZERO;
             self.journal
                 .drain(checkpoint.journal_i..)
                 .rev()
                 .for_each(|entry| {
+                    reverted_burn += entry.selfdestruct_burn();
                     entry.revert(state, Some(transient_storage), is_spurious_dragon_enabled);
                 });
+            // The destruction did not happen, so it must not be reported.
+            // Saturating because the total is only ever drained between transactions,
+            // which is when there is nothing left to revert.
+            self.selfdestruct_burn = self.selfdestruct_burn.saturating_sub(reverted_burn);
         }
     }
 
@@ -539,10 +584,18 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
         let is_cancun_enabled = spec.is_enabled_in(CANCUN);
 
+        // Value destroyed outright by this call, credited to no account.
+        let mut burned = U256::ZERO;
+
         // EIP-6780 (Cancun hard-fork): selfdestruct only if contract is created in the same tx
         let journal_entry = if acc.is_created_locally() || !is_cancun_enabled {
             acc.mark_selfdestructed_locally();
             acc.info.balance = U256::ZERO;
+            // The transfer above runs only for a distinct beneficiary, so when the
+            // account is its own beneficiary this zeroing destroys the balance.
+            if address == target {
+                burned = balance;
+            }
             Some(ENTRY::account_destroyed(
                 address,
                 target,
@@ -563,6 +616,8 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         if let Some(entry) = journal_entry {
             self.journal.push(entry);
         };
+
+        self.selfdestruct_burn += burned;
 
         Ok(StateLoad {
             data: SelfDestructResult {
@@ -1661,5 +1716,237 @@ mod vacant_load_transaction_id_tests {
             "second touch of the same account within the same transaction \
              must be warm"
         );
+    }
+}
+
+#[cfg(test)]
+mod eip6780_selfdestruct_burn_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::{CacheDB, EmptyDB};
+    use primitives::hardfork::SpecId;
+
+    type TestJournal = JournalInner<JournalEntry>;
+    type TestDb = CacheDB<EmptyDB>;
+
+    const CALLER: Address = Address::with_last_byte(1);
+    const CONTRACT: Address = Address::with_last_byte(2);
+    const BENEFICIARY: Address = Address::with_last_byte(3);
+    const ENDOWMENT: u64 = 500;
+
+    /// A journal with a funded caller, ready to create and destroy contracts.
+    fn setup(spec: SpecId) -> (TestJournal, TestDb) {
+        let mut db = TestDb::new(EmptyDB::new());
+        let mut journal = TestJournal::new();
+        journal.set_spec_id(spec);
+        journal.load_account(&mut db, CALLER).unwrap();
+        journal.state.get_mut(&CALLER).unwrap().info.balance = U256::from(1_000);
+        (journal, db)
+    }
+
+    /// Creates a contract at `CONTRACT` in the current transaction, endowed from
+    /// `CALLER`, and commits the creation checkpoint.
+    fn create_endowed_contract(journal: &mut TestJournal, db: &mut TestDb, spec: SpecId) {
+        journal.load_account(db, CONTRACT).unwrap();
+        journal
+            .create_account_checkpoint(CALLER, CONTRACT, U256::from(ENDOWMENT), spec)
+            .unwrap();
+        journal.checkpoint_commit();
+        journal.touch(CONTRACT);
+    }
+
+    /// A contract created in this transaction that names itself as beneficiary has
+    /// its balance zeroed with no credit anywhere: the value is destroyed and must
+    /// be reported.
+    #[test]
+    fn same_tx_self_targeting_selfdestruct_reports_the_balance() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::from(ENDOWMENT),
+            "a same-tx self-targeting selfdestruct destroys the whole balance"
+        );
+        assert_eq!(
+            journal.state.get(&CONTRACT).unwrap().info.balance,
+            U256::ZERO
+        );
+    }
+
+    /// Naming a different beneficiary moves the value instead of destroying it, so
+    /// nothing may be reported as burned.
+    #[test]
+    fn same_tx_selfdestruct_to_another_address_reports_nothing() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::ZERO,
+            "value credited to another account is moved, not destroyed"
+        );
+        assert_eq!(
+            journal.state.get(&BENEFICIARY).unwrap().info.balance,
+            U256::from(ENDOWMENT)
+        );
+    }
+
+    /// The reported total must follow the same revert rules as the state itself: a
+    /// frame that is reverted destroyed nothing.
+    #[test]
+    fn reverted_frame_reports_nothing() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+
+        let checkpoint = journal.checkpoint();
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
+
+        journal.checkpoint_revert(checkpoint);
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::ZERO,
+            "a reverted selfdestruct destroyed nothing and must not be reported"
+        );
+        assert_eq!(
+            journal.state.get(&CONTRACT).unwrap().info.balance,
+            U256::from(ENDOWMENT),
+            "the reverted balance is restored, so it is still in circulation"
+        );
+    }
+
+    /// An outer frame reverting a *nested* frame's burn must also unreport it, and
+    /// must leave an earlier committed burn alone.
+    #[test]
+    fn nested_revert_keeps_only_the_committed_burn() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+
+        // Committed burn: the whole endowment.
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+
+        // A second contract is created and destroyed inside a frame that reverts.
+        let outer = journal.checkpoint();
+        let second = Address::with_last_byte(4);
+        journal.load_account(&mut db, second).unwrap();
+        journal
+            .create_account_checkpoint(CALLER, second, U256::from(7), SpecId::CANCUN)
+            .unwrap();
+        journal.checkpoint_commit();
+        journal.checkpoint();
+        journal.selfdestruct(&mut db, second, second).unwrap();
+        journal.checkpoint_commit();
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT + 7));
+
+        journal.checkpoint_revert(outer);
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::from(ENDOWMENT),
+            "only the burn that survived the revert is reported"
+        );
+    }
+
+    /// A discarded transaction reverts every entry, so it reports nothing.
+    #[test]
+    fn discarded_transaction_reports_nothing() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
+
+        journal.discard_tx();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::ZERO,
+            "a discarded transaction destroyed nothing"
+        );
+    }
+
+    /// Before Cancun every selfdestruct takes the destroying branch, so a
+    /// self-targeting one burns even when the account was not created in this
+    /// transaction.
+    #[test]
+    fn pre_cancun_self_targeting_selfdestruct_reports_the_balance() {
+        let (mut journal, mut db) = setup(SpecId::SHANGHAI);
+        journal.load_account(&mut db, CONTRACT).unwrap();
+        journal.state.get_mut(&CONTRACT).unwrap().info.balance = U256::from(ENDOWMENT);
+
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::from(ENDOWMENT),
+            "pre-Cancun a self-targeting selfdestruct destroys the balance"
+        );
+    }
+
+    /// Before Cancun a selfdestruct to a different beneficiary still only moves the
+    /// value, so it is not a burn.
+    #[test]
+    fn pre_cancun_selfdestruct_to_another_address_reports_nothing() {
+        let (mut journal, mut db) = setup(SpecId::SHANGHAI);
+        journal.load_account(&mut db, CONTRACT).unwrap();
+        journal.state.get_mut(&CONTRACT).unwrap().info.balance = U256::from(ENDOWMENT);
+
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+
+        assert_eq!(journal.selfdestruct_burn, U256::ZERO);
+        assert_eq!(
+            journal.state.get(&BENEFICIARY).unwrap().info.balance,
+            U256::from(ENDOWMENT)
+        );
+    }
+
+    /// After Cancun, a contract that was not created in this transaction and names
+    /// itself as beneficiary is a no-op: no entry, no state change, no burn.
+    #[test]
+    fn cross_tx_self_targeting_selfdestruct_reports_nothing() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal.commit_tx();
+        // A cold reload in the next transaction clears the local "created" flag.
+        journal.load_account(&mut db, CONTRACT).unwrap();
+
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::ZERO,
+            "an EIP-6780 no-op selfdestruct destroys nothing"
+        );
+        assert_eq!(
+            journal.state.get(&CONTRACT).unwrap().info.balance,
+            U256::from(ENDOWMENT),
+            "the balance is untouched"
+        );
+    }
+
+    /// The total survives the transaction boundary and `finalize`, so the host can
+    /// read it after execution, and draining it resets it.
+    #[test]
+    fn total_survives_finalize_and_is_drained_by_take() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+
+        journal.commit_tx();
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
+        let _ = journal.finalize();
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
+
+        assert_eq!(journal.take_selfdestruct_burn(), U256::from(ENDOWMENT));
+        assert_eq!(journal.selfdestruct_burn, U256::ZERO);
     }
 }
