@@ -64,6 +64,10 @@ jobs:
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@nightly
+      # `Build docs` below passes `-Zunstable-options`, so this job needs nightly rather than the
+      # toolchain `rust-toolchain.toml` pins.
+      - name: Use nightly for this job
+        run: echo "RUSTUP_TOOLCHAIN=nightly" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true

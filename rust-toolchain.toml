@@ -1,0 +1,14 @@
+# The Rust version this fork builds and tests with. It matches the pin in `smr-moonshot`, the
+# consumer of these crates, rather than the workspace `rust-version` (1.88.0) that upstream `revm`
+# declares as its MSRV: this fork only ever has to compile under Supra's toolchain, and the range of
+# compilers that actually build it is narrower than the MSRV suggests.
+#
+# This file is the only functional pin: rustup prefers it over `rustup default`, so it also decides
+# the toolchain in CI, whatever channel a toolchain-install step there names. The jobs that
+# genuinely need a different compiler — the MSRV/nightly test matrix, and the book's nightly
+# rustdoc — override it with `RUSTUP_TOOLCHAIN`, which rustup ranks above this file.
+[toolchain]
+channel = "1.97.1"
+components = ["clippy", "rust-docs", "rustfmt"]
+# `check-no-std` cross-compiles to this target.
+targets = ["riscv32imac-unknown-none-elf"]

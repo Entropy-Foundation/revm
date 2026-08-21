@@ -23,6 +23,11 @@ jobs:
       matrix:
         rust: ["1.88", "stable", "nightly"]
         flags: ["--no-default-features", "", "--all-features"]
+    # This matrix is the one place that deliberately compiles on something other than the pinned
+    # toolchain, so it has to outrank `rust-toolchain.toml`. `RUSTUP_TOOLCHAIN` does; the toolchain
+    # the install step selects does not.
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
