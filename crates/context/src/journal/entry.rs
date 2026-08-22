@@ -91,7 +91,12 @@ pub trait JournalEntryTr {
     ///
     /// The value is reported from the entry rather than from a state diff so that it
     /// disappears together with the entry when a frame or a transaction is reverted.
-    fn selfdestruct_burn(&self) -> U256;
+    ///
+    /// Defaults to zero so that an entry type which has no notion of a destroyed
+    /// balance does not have to implement it.
+    fn selfdestruct_burn(&self) -> U256 {
+        U256::ZERO
+    }
 
     /// Reverts the state change recorded by this journal entry
     ///

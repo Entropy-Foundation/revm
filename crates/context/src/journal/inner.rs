@@ -68,8 +68,24 @@ pub struct JournalInner<ENTRY> {
     /// Unlike the other fields this one is deliberately **not** cleared by
     /// [`Self::commit_tx`] or [`Self::finalize`], so that it is still readable after
     /// execution has finished. It is a running total since the last
-    /// [`Self::take_selfdestruct_burn`]; drain it once per transaction, between
-    /// transactions, to attribute the burn to that transaction.
+    /// [`Self::take_selfdestruct_burn`].
+    ///
+    /// # Drain between transactions only
+    ///
+    /// [`Self::take_selfdestruct_burn`] must be called between transactions, never
+    /// part-way through one. The revert paths subtract with `saturating_sub`, so a
+    /// drain taken mid-transaction is not rejected: a later revert of an
+    /// already-drained destruction simply has nothing left to take back, and the
+    /// drained total keeps a burn that did not happen. That makes this discipline a
+    /// requirement on the caller rather than advice.
+    ///
+    /// # Scope is whatever the caller drains
+    ///
+    /// The journal has no notion of a block. Supra runs one journal per block and
+    /// drains once per transaction, which is what makes the sum of the drains a block
+    /// total. An embedder that finalizes per transaction instead gets a
+    /// per-transaction total from the same field, and those still compose, because
+    /// each drain covers exactly the destructions since the previous one.
     pub selfdestruct_burn: U256,
 }
 
@@ -100,7 +116,10 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
     /// Returns the accumulated self-destruct burn total and resets it to zero.
     ///
-    /// See [`Self::selfdestruct_burn`] for what is counted and for its lifetime.
+    /// Call this only between transactions. Draining part-way through one is quietly
+    /// tolerated rather than rejected and leaves the total wrong if the destruction is
+    /// later reverted; see [`Self::selfdestruct_burn`] for that contract, and for what
+    /// is counted and over what scope.
     #[inline]
     pub fn take_selfdestruct_burn(&mut self) -> U256 {
         mem::take(&mut self.selfdestruct_burn)
