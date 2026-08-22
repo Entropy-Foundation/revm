@@ -73,11 +73,15 @@ pub struct JournalInner<ENTRY> {
     /// # Drain between transactions only
     ///
     /// [`Self::take_selfdestruct_burn`] must be called between transactions, never
-    /// part-way through one. The revert paths subtract with `saturating_sub`, so a
-    /// drain taken mid-transaction is not rejected: a later revert of an
-    /// already-drained destruction simply has nothing left to take back, and the
-    /// drained total keeps a burn that did not happen. That makes this discipline a
-    /// requirement on the caller rather than advice.
+    /// part-way through one. A later revert of an already-drained destruction has
+    /// nothing left to take back, and the drained total keeps a burn that did not
+    /// happen. That makes this discipline a requirement on the caller rather than
+    /// advice.
+    ///
+    /// A violation is caught by a `debug_assert!` at each revert site, so it is loud in
+    /// tests and debug builds. Release builds subtract with `saturating_sub` instead:
+    /// on a consensus-critical path a broken caller should cost accounting accuracy,
+    /// not a halt.
     ///
     /// # Scope is whatever the caller drains
     ///
@@ -116,10 +120,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
     /// Returns the accumulated self-destruct burn total and resets it to zero.
     ///
-    /// Call this only between transactions. Draining part-way through one is quietly
-    /// tolerated rather than rejected and leaves the total wrong if the destruction is
-    /// later reverted; see [`Self::selfdestruct_burn`] for that contract, and for what
-    /// is counted and over what scope.
+    /// Call this only between transactions. Draining part-way through one leaves the
+    /// total wrong if the destruction is later reverted; that is caught by a
+    /// `debug_assert!` in debug builds and tolerated in release. See
+    /// [`Self::selfdestruct_burn`] for that contract, and for what is counted and over
+    /// what scope.
     #[inline]
     pub fn take_selfdestruct_burn(&mut self) -> U256 {
         mem::take(&mut self.selfdestruct_burn)
@@ -193,6 +198,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             entry.revert(state, None, is_spurious_dragon_enabled);
         });
         // A discarded transaction destroyed nothing, so take back everything it added.
+        debug_assert!(
+            *selfdestruct_burn >= reverted_burn,
+            "reverting a self-destruct burn the accumulator no longer holds: \
+             the accumulator was drained mid-transaction; drain only between transactions"
+        );
         // Saturating for the same reason as in `checkpoint_revert`.
         *selfdestruct_burn = selfdestruct_burn.saturating_sub(reverted_burn);
         transient_storage.clear();
@@ -551,8 +561,13 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                     entry.revert(state, Some(transient_storage), is_spurious_dragon_enabled);
                 });
             // The destruction did not happen, so it must not be reported.
-            // Saturating because the total is only ever drained between transactions,
-            // which is when there is nothing left to revert.
+            debug_assert!(
+                self.selfdestruct_burn >= reverted_burn,
+                "reverting a self-destruct burn the accumulator no longer holds: \
+                 the accumulator was drained mid-transaction; drain only between transactions"
+            );
+            // Saturating in release so that a caller that breaks the drain contract
+            // costs accounting accuracy rather than halting the node.
             self.selfdestruct_burn = self.selfdestruct_burn.saturating_sub(reverted_burn);
         }
     }
@@ -1950,6 +1965,26 @@ mod eip6780_selfdestruct_burn_tests {
             U256::from(ENDOWMENT),
             "the balance is untouched"
         );
+    }
+
+    /// Draining part-way through a transaction breaks the accumulator's contract,
+    /// because a later revert then has nothing left to take back. Debug builds catch
+    /// that at the revert site; release builds saturate instead, so that a broken
+    /// caller costs accounting accuracy rather than halting the node.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "drained mid-transaction")]
+    fn draining_mid_transaction_is_caught_in_debug_builds() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+
+        let checkpoint = journal.checkpoint();
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        // The contract violation: the burn is taken while its journal entry is still
+        // revertible.
+        assert_eq!(journal.take_selfdestruct_burn(), U256::from(ENDOWMENT));
+
+        journal.checkpoint_revert(checkpoint);
     }
 
     /// The total survives the transaction boundary and `finalize`, so the host can
