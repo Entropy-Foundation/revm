@@ -332,7 +332,7 @@ impl TryFrom<&[u8]> for TaskPayload {
     type Error = SupraExtensionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode(value)
+        let (value, to, input, access_list) = ExpandedPayloadTy::abi_decode_sequence(value)
             .map_err(|e| SupraExtensionError::PayloadDecode { error: e })?;
         let access_items = access_list
             .into_iter()
@@ -669,7 +669,7 @@ mod tests {
         b256!("0101010101010101010101010101010101010101010101010101010101010101");
 
     fn encode_payload(value: U256, to: Address, input: &[u8]) -> Bytes {
-        Bytes::from(ExpandedPayloadTy::abi_encode(&(
+        Bytes::from(ExpandedPayloadTy::abi_encode_sequence(&(
             value,
             to,
             Bytes::from(input.to_vec()),
