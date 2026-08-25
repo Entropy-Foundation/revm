@@ -1,8 +1,8 @@
 //! Definition of the block metadata transaction which will be executed for every block
 //! to aid block based checks to assist chain regular operations
 
-use crate::errors::SupraExtensionError;
 use crate::blockPrologueCall;
+use crate::errors::SupraExtensionError;
 use crate::value_or_error;
 use alloy::primitives::{Address, Bytes, ChainId, B256, U256};
 use alloy_consensus::transaction::Transaction;
@@ -227,16 +227,17 @@ impl BlockMetadataBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::errors::SupraExtensionError;
     use alloy::primitives::{address, b256, Address, B256, U256};
     use alloy_consensus::transaction::Transaction;
     use alloy_eips::eip2718::Typed2718;
-    use crate::errors::SupraExtensionError;
     use primitives::supra_constants::VM_SIGNER;
 
     const REGISTRY: Address = address!("1111111111111111111111111111111111111111");
     const CHAIN_ID: u64 = 6;
     const HEIGHT: u64 = 42;
-    const BLOCK_HASH: B256 = b256!("abababababababababababababababababababababababababababababababab");
+    const BLOCK_HASH: B256 =
+        b256!("abababababababababababababababababababababababababababababababab");
     const TIMESTAMP: u64 = 1_700_000_000;
     const GAS_LIMIT: u64 = 12_345_678;
 
@@ -274,7 +275,10 @@ mod tests {
         use crate::blockPrologueCall;
         use alloy_sol_types::SolCall;
         let meta = full_builder().build().unwrap();
-        assert_eq!(meta.input.as_ref(), blockPrologueCall.abi_encode().as_slice());
+        assert_eq!(
+            meta.input.as_ref(),
+            blockPrologueCall.abi_encode().as_slice()
+        );
     }
 
     // ── Builder: missing mandatory field errors ───────────────────────────────
@@ -295,7 +299,9 @@ mod tests {
             .chain_id(CHAIN_ID)
             .build()
             .unwrap_err();
-        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "block_hash"));
+        assert!(
+            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "block_hash")
+        );
 
         let err = BlockMetadataBuilder::new(REGISTRY)
             .height(HEIGHT)
@@ -303,15 +309,19 @@ mod tests {
             .chain_id(CHAIN_ID)
             .build()
             .unwrap_err();
-        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "timestamp"));
-        
+        assert!(
+            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "timestamp")
+        );
+
         let err = BlockMetadataBuilder::new(REGISTRY)
             .height(HEIGHT)
             .block_hash(BLOCK_HASH)
             .timestamp(U256::from(TIMESTAMP))
             .build()
             .unwrap_err();
-        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "chain_id"));
+        assert!(
+            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "chain_id")
+        );
 
         let err = BlockMetadataBuilder::new(REGISTRY)
             .height(HEIGHT)
@@ -320,7 +330,9 @@ mod tests {
             .chain_id(CHAIN_ID)
             .build()
             .unwrap_err();
-        assert!(matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "gas_limit"));
+        assert!(
+            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "gas_limit")
+        );
     }
 
     // ── Transaction trait impl ────────────────────────────────────────────────
@@ -330,7 +342,7 @@ mod tests {
         let meta = full_builder().build().unwrap();
 
         assert_eq!(meta.chain_id(), Some(CHAIN_ID));
-        assert_eq!(meta.nonce(), HEIGHT);           // nonce == height
+        assert_eq!(meta.nonce(), HEIGHT); // nonce == height
         assert_eq!(meta.gas_limit(), GAS_LIMIT);
         assert_eq!(meta.gas_price(), None);
         assert_eq!(meta.max_fee_per_gas(), 0);
