@@ -81,6 +81,23 @@ pub trait JournalEntryTr {
     /// `TransientStorageChange`) always return `false`.
     fn is_state_mutating(&self, state: &EvmState) -> bool;
 
+    /// Returns the amount of native value this entry destroyed outright, with no
+    /// credit to any other account.
+    ///
+    /// Only a self-destruct whose beneficiary is the self-destructing account itself
+    /// destroys value: the balance is zeroed and nothing is credited anywhere. A
+    /// self-destruct to any other address moves the balance, and every other journal
+    /// entry conserves it, so all of those return zero.
+    ///
+    /// The value is reported from the entry rather than from a state diff so that it
+    /// disappears together with the entry when a frame or a transaction is reverted.
+    ///
+    /// Defaults to zero so that an entry type which has no notion of a destroyed
+    /// balance does not have to implement it.
+    fn selfdestruct_burn(&self) -> U256 {
+        U256::ZERO
+    }
+
     /// Reverts the state change recorded by this journal entry
     ///
     /// More information on what is reverted can be found in [`JournalEntry`] enum.
@@ -245,6 +262,21 @@ pub enum JournalEntry {
     },
 }
 impl JournalEntryTr for JournalEntry {
+    fn selfdestruct_burn(&self) -> U256 {
+        match self {
+            // `JournalInner::selfdestruct` only credits the beneficiary when it is a
+            // different account, so a self-targeting destruction zeroes the balance
+            // without crediting anyone: that balance is destroyed.
+            JournalEntry::AccountDestroyed {
+                address,
+                target,
+                had_balance,
+                ..
+            } if address == target => *had_balance,
+            _ => U256::ZERO,
+        }
+    }
+
     fn is_state_mutating(&self, state: &EvmState) -> bool {
         match self {
             // SSTORE wrote a storage value.

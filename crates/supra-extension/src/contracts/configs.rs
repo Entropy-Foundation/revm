@@ -237,8 +237,6 @@ pub struct GenesisTransactionGeneratorConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Automation configuration parameters (optional, uses defaults if None).
     pub automation_config: Option<AutomationRegistryConfig>,
-    /// Initial native tokens to be minted to ERC20Supra handler contract
-    pub initial_native_token: u128,
     /// Gas cap for block-prologue/block-metadata transaction.
     pub block_prologue_gas_cap: u64,
 }
@@ -307,7 +305,6 @@ mod tests {
             foundation_threshold: 2,
             full_set: false,
             automation_config: None,
-            initial_native_token: 1000,
             block_prologue_gas_cap: 100_000,
         }
     }
