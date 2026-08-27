@@ -28,9 +28,10 @@ impl ExecutionMode {
     pub fn charges_gas(&self) -> bool {
         match self {
             ExecutionMode::User | ExecutionMode::Automated => true,
-            ExecutionMode::AutomatedGasless | ExecutionMode::System | ExecutionMode::Genesis | ExecutionMode::ReadOnly => {
-                false
-            }
+            ExecutionMode::AutomatedGasless
+            | ExecutionMode::System
+            | ExecutionMode::Genesis
+            | ExecutionMode::ReadOnly => false,
         }
     }
 
@@ -54,7 +55,7 @@ impl ExecutionMode {
     pub fn is_read_only(&self) -> bool {
         matches!(self, ExecutionMode::ReadOnly)
     }
-    
+
     /// Contract creation is supported only in user and genesis execution modes.
     /// In Automation*, System mode contract deployment is not supported, as nonce update is not
     /// expected in these 2 modes.

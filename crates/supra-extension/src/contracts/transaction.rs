@@ -1,24 +1,14 @@
 //! Encloses data representing genesis contracts.
 
+use crate::contracts::canonical_singletons::CREATE2_FACTORY_ADDRESS;
 use derive_getters::{Dissolve, Getters};
 use derive_more::Constructor;
-use primitives::{address, hex, keccak256, Address, TxKind};
+use primitives::{keccak256, Address, TxKind};
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
+use std::cmp::Ordering;
 use std::fmt::{Debug, Display};
-
-/// The address that deploys the default CREATE2 deployer contract.
-pub const CREATE2_FACTORY_OWNER: Address = address!("0x3fAB184622Dc19b6109349B94811493BF2a45362");
-
-/// The default CREATE2 FACTORY contract address. Assumed deployed by [CREATE2_FACTORY_OWNER] with nonce 0
-pub const CREATE2_FACTORY_ADDRESS: Address = address!("0x4e59b44847b379578588920ca78fbf26c0b4956c");
-
-/// The init-code of the default CREATE2 FACTORY widely used in community
-/// Retrieved from https://github.com/Arachnid/deterministic-deployment-proxy
-pub const CREATE2_FACTORY_CODE: &[u8] = &hex!(
-    "604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3"
-);
 
 /// Represents data required to construct genesis contracts deployment transaction
 #[serde_as]
@@ -112,7 +102,7 @@ impl Debug for GenesisTransaction {
 }
 
 /// Custom contract tag to be used by upper layer to configure a custom genesis contract transactions.
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Serialize, Deserialize, Constructor)]
+#[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, Constructor)]
 pub struct ContractCustomTag {
     /// Nonce of the contract deployment.
     pub nonce: u64,
@@ -123,7 +113,16 @@ pub struct ContractCustomTag {
 /// Order custom contracts by the nonce.
 impl Ord for ContractCustomTag {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.nonce.cmp(&other.nonce)
+        match self.nonce.cmp(&other.nonce) {
+            Ordering::Equal => self.name.cmp(&other.name),
+            r => r,
+        }
+    }
+}
+
+impl PartialOrd for ContractCustomTag {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -138,27 +137,47 @@ impl Display for ContractCustomTag {
 #[allow(missing_docs)]
 #[repr(u8)]
 pub enum GenesisTransactionTags {
+    // Canonical EVM singleton predeploys: well-known third-party contracts the wider
+    // EVM ecosystem/tooling expects at fixed addresses. Independent of Supra's own
+    // system/application contracts below, and of each other, but placed first since
+    // that's also their actual deployment order: this enum's derived `Ord` compares
+    // by discriminant (the explicit `= N` value), and that `Ord` governs the
+    // BTreeMap iteration order genesis transactions are executed in — while serde's
+    // encoding of this enum keys off declaration position instead, ignoring `= N`
+    // entirely. The two currently coincide only because the discriminants are dense
+    // and assigned in the same order as the declarations.
+    // NOTE: the discriminants and the declaration order must be kept in lockstep.
+    // Renumbering the `= N` values without reordering the variants (or vice versa)
+    // silently changes deployment/execution order without changing serde's index,
+    // or changes serde's index without changing deployment order — either way a
+    // silent divergence. Only ever append new variants; never renumber or reorder
+    // existing ones once this chain has live deployments depending on either.
     Create2Factory = 0,
+    Multicall3 = 1,
+    SingletonFactory = 2,
+    CreateX = 3,
+    Erc1820Registry = 4,
+
     // Main system and foundation contracts
-    MultisigWalletImpl = 1,
-    MultisigBeacon = 2,
-    FoundationWallet = 3,
-    Erc20SupraImpl = 4,
-    Erc20Supra = 5,
-    Erc20SupraHandlerImpl = 6,
-    Erc20SupraHandler = 7,
-    BlockMetadataImpl = 8,
-    BlockMetadata = 9,
+    MultisigWalletImpl = 5,
+    MultisigBeacon = 6,
+    FoundationWallet = 7,
+    Erc20SupraImpl = 8,
+    Erc20Supra = 9,
+    Erc20SupraHandlerImpl = 10,
+    Erc20SupraHandler = 11,
+    BlockMetadataImpl = 12,
+    BlockMetadata = 13,
 
     // Automation registry contracts
-    DiamondCutFacet = 10,
-    DiamondLoupeFacet = 11,
-    OwnershipFacet = 12,
-    ConfigFacet = 13,
-    RegistryFacet = 14,
-    CoreFacet = 15,
-    DiamondInit = 16,
-    Diamond = 17,
+    DiamondCutFacet = 14,
+    DiamondLoupeFacet = 15,
+    OwnershipFacet = 16,
+    ConfigFacet = 17,
+    RegistryFacet = 18,
+    CoreFacet = 19,
+    DiamondInit = 20,
+    Diamond = 21,
 
     // Custom contracts injected by application layer
     Custom(ContractCustomTag),
@@ -181,6 +200,36 @@ mod tests {
     const SENDER: Address = address!("0x0000000000000000000000000000000000000001");
     const TARGET: Address = address!("0x0000000000000000000000000000000000000002");
     const DEPLOY_ADDR: Address = address!("0x0000000000000000000000000000000000000003");
+
+    #[test]
+    fn check_tag_ordering() {
+        let tag1 = ContractCustomTag {
+            nonce: 1,
+            name: "2test".to_string(),
+        };
+        let tag11 = ContractCustomTag {
+            nonce: 1,
+            name: "1test".to_string(),
+        };
+        let tag2 = ContractCustomTag {
+            nonce: 2,
+            name: "1test".to_string(),
+        };
+        let tag2_sibling = ContractCustomTag {
+            nonce: 2,
+            name: "1test".to_string(),
+        };
+        let tag2_diff_name = ContractCustomTag {
+            nonce: 2,
+            name: "2test".to_string(),
+        };
+
+        assert!(tag1 < tag2);
+        assert!(tag11 < tag2);
+        assert_eq!(tag2, tag2_sibling);
+        assert_eq!(tag2.cmp(&tag2_sibling), Ordering::Equal);
+        assert!(tag2 < tag2_diff_name);
+    }
 
     #[test]
     fn create_sets_fields_correctly() {

@@ -1,6 +1,5 @@
 //! Prepares supra-extension by compiling smart-contracts and building rust bindings
 
-
 // Utility functions shared with the `build-utils` library feature — see src/build_utils.rs.
 // Using include! keeps a single source of truth for CompileConfig, compile_contracts,
 // load_contracts_bytecode, and dump_bytecodes without introducing a circular dependency
@@ -56,14 +55,12 @@ fn main() {
     rebuild_rust_bindings();
 
     let manifest_dir = Path::new(CURRENT_DIR);
-    let config =
-        CompileConfig::load(manifest_dir).expect("Config should always be valid");
+    let config = CompileConfig::load(manifest_dir).expect("Config should always be valid");
     // Rerun this script if the compile configuration changes (e.g. a contract name is added).
     println!("cargo:rerun-if-changed={}/compile_config.toml", CURRENT_DIR);
 
-    let supra_contracts_artifacts =
-        compile_contracts(&config.contracts_dapp_path(manifest_dir))
-            .expect("Successful supra contracts compilation");
+    let supra_contracts_artifacts = compile_contracts(&config.contracts_dapp_path(manifest_dir))
+        .expect("Successful supra contracts compilation");
 
     let mut contracts_bytecode = BTreeMap::new();
     load_contracts_bytecode(

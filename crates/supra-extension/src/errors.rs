@@ -42,7 +42,9 @@ pub enum SupraExtensionError {
     },
 
     /// Reported on failure of task state conversion to counterpart in native layer.
-    #[error("Invalid automation task state value: {0}, expected [0(PENDING), 1(ACTIVE), 2(CANCELLED)]")]
+    #[error(
+        "Invalid automation task state value: {0}, expected [0(PENDING), 1(ACTIVE), 2(CANCELLED)]"
+    )]
     InvalidAutomationTaskStateValue(u8),
 
     /// Reported on failure of task state conversion to counterpart in native layer.

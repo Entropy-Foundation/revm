@@ -1,10 +1,8 @@
 //! Encloses transaction data generation logic based on the genesis contracts
 
+use crate::contracts::canonical_singletons;
 use crate::contracts::configs::{AutomationRegistryConfig, GenesisTransactionGeneratorConfig};
-use crate::contracts::transaction::{
-    GenesisTransaction, GenesisTransactionTags, CREATE2_FACTORY_ADDRESS, CREATE2_FACTORY_CODE,
-    CREATE2_FACTORY_OWNER,
-};
+use crate::contracts::transaction::{GenesisTransaction, GenesisTransactionTags};
 use alloy::primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolConstructor};
 use anyhow::{anyhow, Result};
@@ -153,18 +151,6 @@ impl GenesisTransactionGenerator {
         Self { nonce, address }
     }
 
-    /// Generates Create2Factory contract deployment transaction.
-    fn generate_create2_factory_transaction() -> GenesisTransaction {
-        GenesisTransaction::new(
-            CREATE2_FACTORY_OWNER,
-            0,
-            0,
-            CREATE2_FACTORY_CODE.to_owned(),
-            TxKind::Create,
-            Some(CREATE2_FACTORY_ADDRESS),
-        )
-    }
-
     /// Prepares genesis transactions based on the input configuration.
     pub fn prepare_genesis_transactions(
         &mut self,
@@ -178,12 +164,33 @@ impl GenesisTransactionGenerator {
             automation_config,
             block_prologue_gas_cap,
         } = config;
-        // First Create2 Factory contract deployment, which will allow later to utilize create2 API
-        // if required during genesis
-        let mut genesis_transactions = BTreeMap::from([(
-            GenesisTransactionTags::Create2Factory,
-            Self::generate_create2_factory_transaction(),
-        )]);
+        // First, the Create2 Factory contract deployment, which will allow later to utilize
+        // create2 API if required during genesis, alongside the other canonical EVM singleton
+        // predeploys (Multicall3, ERC-2470 SingletonFactory, CreateX, ERC-1820 Registry) that
+        // the wider EVM ecosystem/tooling expects at fixed addresses. All five are unconditional,
+        // independent of `full_set`, since none relate to Supra's own application contracts below.
+        let mut genesis_transactions = BTreeMap::from([
+            (
+                GenesisTransactionTags::Create2Factory,
+                canonical_singletons::generate_create2_factory_transaction(),
+            ),
+            (
+                GenesisTransactionTags::Multicall3,
+                canonical_singletons::generate_multicall3_transaction(),
+            ),
+            (
+                GenesisTransactionTags::SingletonFactory,
+                canonical_singletons::generate_singleton_factory_transaction(),
+            ),
+            (
+                GenesisTransactionTags::CreateX,
+                canonical_singletons::generate_createx_transaction(),
+            ),
+            (
+                GenesisTransactionTags::Erc1820Registry,
+                canonical_singletons::generate_erc1820_registry_transaction(),
+            ),
+        ]);
         // Second multisig contract and foundation multisig account setup should be done
         genesis_transactions
             .extend(self.setup_multisig_wallet(foundation_owners, foundation_threshold)?);
@@ -766,11 +773,17 @@ mod tests {
         let result = generator
             .prepare_genesis_transactions(config.clone())
             .unwrap();
-        assert_eq!(result.len(), 4);
+        assert_eq!(result.len(), 8);
         assert!(result.contains_key(&GenesisTransactionTags::Create2Factory));
         assert!(result.contains_key(&GenesisTransactionTags::MultisigWalletImpl));
         assert!(result.contains_key(&GenesisTransactionTags::MultisigBeacon));
         assert!(result.contains_key(&GenesisTransactionTags::FoundationWallet));
+
+        // The canonical EVM singleton predeploys are unconditional, independent of `full_set`.
+        assert!(result.contains_key(&GenesisTransactionTags::Multicall3));
+        assert!(result.contains_key(&GenesisTransactionTags::SingletonFactory));
+        assert!(result.contains_key(&GenesisTransactionTags::CreateX));
+        assert!(result.contains_key(&GenesisTransactionTags::Erc1820Registry));
 
         // Enable full set of contract generation without automation config
         config.full_set = true;
@@ -799,6 +812,45 @@ mod tests {
         assert!(!result.contains_key(&GenesisTransactionTags::CoreFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondInit));
         println!("{result:#?}");
+    }
+
+    #[test]
+    fn canonical_singleton_predeploys_have_expected_deploy_data() {
+        let mut generator = GenesisTransactionGenerator::default();
+        let config = GenesisTransactionGeneratorConfig {
+            foundation_owners: vec![u64_to_address(1), u64_to_address(2), u64_to_address(3)],
+            foundation_threshold: 2,
+            full_set: false,
+            automation_config: None,
+            initial_native_token: 1000,
+            block_prologue_gas_cap: 100000,
+        };
+        let result = generator.prepare_genesis_transactions(config).unwrap();
+
+        let expectations = [
+            (
+                GenesisTransactionTags::Multicall3,
+                canonical_singletons::MULTICALL3_ADDRESS,
+            ),
+            (
+                GenesisTransactionTags::SingletonFactory,
+                canonical_singletons::SINGLETON_FACTORY_ADDRESS,
+            ),
+            (
+                GenesisTransactionTags::CreateX,
+                canonical_singletons::CREATEX_ADDRESS,
+            ),
+            (
+                GenesisTransactionTags::Erc1820Registry,
+                canonical_singletons::ERC1820_REGISTRY_ADDRESS,
+            ),
+        ];
+        for (tag, expected_address) in expectations {
+            let txn = result.get(&tag).expect("predeploy transaction exists");
+            assert_eq!(*txn.nonce(), 0);
+            assert_eq!(*txn.kind(), TxKind::Create);
+            assert_eq!(*txn.deploy_address(), Some(expected_address));
+        }
     }
 
     #[test]
