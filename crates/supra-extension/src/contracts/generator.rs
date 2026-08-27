@@ -162,7 +162,6 @@ impl GenesisTransactionGenerator {
             foundation_threshold,
             full_set,
             automation_config,
-            initial_native_token,
             block_prologue_gas_cap,
         } = config;
         // First, the Create2 Factory contract deployment, which will allow later to utilize
@@ -204,8 +203,7 @@ impl GenesisTransactionGenerator {
                 .expect("Foundation wallet deployment address should be set");
 
             // Erc20 Supra contracts
-            let erc20_contracts =
-                self.setup_erc20_contracts(multisig_address, initial_native_token)?;
+            let erc20_contracts = self.setup_erc20_contracts(multisig_address)?;
             let erc20supra_address = *erc20_contracts
                 .get(&GenesisTransactionTags::Erc20Supra)
                 .expect("Erc20Supra deployment transaction exists")
@@ -329,7 +327,6 @@ impl GenesisTransactionGenerator {
     fn setup_erc20_contracts(
         &mut self,
         owner: Address,
-        initial_native_tokens: u128,
     ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
         // Precomputed addresses
         // nonce + 0: ERC20Supra Impl
@@ -352,8 +349,7 @@ impl GenesisTransactionGenerator {
             "Address computed by tag and nonce should be the same"
         );
 
-        let erc20_handler_txn =
-            self.setup_erc20_supra_handler(owner, gen_erc20_supra_address, initial_native_tokens)?;
+        let erc20_handler_txn = self.setup_erc20_supra_handler(owner, gen_erc20_supra_address)?;
         let gen_erc20_handler_address = *erc20_handler_txn
             .get(&GenesisTransactionTags::Erc20SupraHandler)
             .expect("Erc20SupraHandler should be deployed")
@@ -445,7 +441,6 @@ impl GenesisTransactionGenerator {
         &mut self,
         initial_owner: Address,
         erc20supra: Address,
-        initial_native_tokens: u128,
     ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
         // -------------------------------------------------------------------------
         // Pre-compute deployment address
@@ -485,13 +480,11 @@ impl GenesisTransactionGenerator {
         .abi_encode();
         // Concatenate bytecode + constructor args for deployment
         let proxy_txn_data = [proxy_impl_data, proxy_args].concat();
-        let erc20supra_handler = GenesisTransaction::new(
+        let erc20supra_handler = GenesisTransaction::create(
             self.address,
-            self.nonce,
-            initial_native_tokens,
             proxy_txn_data,
-            TxKind::Create,
-            Some(erc20_handler_address),
+            self.nonce,
+            erc20_handler_address,
         );
         self.nonce += 1;
 
@@ -770,13 +763,11 @@ mod tests {
     fn check_multisig_setup() {
         let mut generator = GenesisTransactionGenerator::default();
         let owners = vec![u64_to_address(1), u64_to_address(2), u64_to_address(3)];
-        let initial_native_token = 1000;
         let mut config = GenesisTransactionGeneratorConfig {
             foundation_owners: owners,
             foundation_threshold: 2,
             full_set: false,
             automation_config: None,
-            initial_native_token,
             block_prologue_gas_cap: 100000,
         };
         let result = generator
@@ -809,7 +800,7 @@ mod tests {
         let erc20_supra_handler = result
             .get(&GenesisTransactionTags::Erc20SupraHandler)
             .unwrap();
-        assert_eq!(erc20_supra_handler.value(), &initial_native_token);
+        assert_eq!(erc20_supra_handler.value(), &0);
 
         // Verify automation contracts are not deployed
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondCutFacet));
@@ -877,7 +868,6 @@ mod tests {
             foundation_threshold: 2,
             full_set: true,
             automation_config: Some(custom_config.into()),
-            initial_native_token: 1000,
             block_prologue_gas_cap: 100000,
         };
         let result = generator
@@ -910,7 +900,6 @@ mod tests {
             foundation_threshold: 2,
             full_set: true,
             automation_config: None,
-            initial_native_token: 0,
             block_prologue_gas_cap: gas_cap,
         };
         let result = generator
@@ -947,7 +936,6 @@ mod tests {
             foundation_threshold: 2,
             full_set: true,
             automation_config: None,
-            initial_native_token: 0,
             block_prologue_gas_cap: other_gas_cap,
         };
         let result2 = generator2
@@ -972,7 +960,6 @@ mod tests {
             foundation_threshold: 2,
             full_set: true,
             automation_config: Some(invalid_config.into()),
-            initial_native_token: 1000,
             block_prologue_gas_cap: 100000,
         };
         let result = generator.prepare_genesis_transactions(config);
@@ -983,7 +970,6 @@ mod tests {
             foundation_threshold: 10,
             full_set: true,
             automation_config: None,
-            initial_native_token: 1000,
             block_prologue_gas_cap: 100000,
         };
         let result = generator.prepare_genesis_transactions(config);
