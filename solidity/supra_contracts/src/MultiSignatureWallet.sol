@@ -15,11 +15,17 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     EnumerableSet.AddressSet private owners;
     uint256 public numConfirmationsRequired;
 
+    /// @dev Default cap on submitTransaction's timeout duration, seeded at initialize() and
+    ///      adjustable afterwards via updateMaxTimeoutDuration.
+    uint64 private constant DEFAULT_MAX_TIMEOUT_DURATION = 30 days;
+
+    /// @notice Maximum timeout duration, in seconds, allowed for a newly submitted transaction.
+    uint64 public maxTimeoutDuration;
+
     // Structure to hold transaction details
     struct Transaction {
         address to; // Transaction target address
         uint64 timeout; // Expiry timestamp of the transaction
-        uint24 numConfirmations; // Number of confirmations received for the transaction
         uint256 value; // Amount of ether sent with the transaction
         bytes data; // Data payload of the transaction
     }
@@ -29,16 +35,41 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     // Mapping from transaction index to Transaction
     mapping(uint256 => Transaction) private transactions;
-    
+
     // Auto-incrementing transaction index
     uint256 private txIndex;
-    
+
     // Number of active transactions
     uint256 public txCount;
 
+    /// @dev Bumped whenever numConfirmationsRequired is lowered. A confirmation is only valid if
+    ///      it was stamped under the current value (see confirmationTxEpoch), so a threshold
+    ///      decrease can never retroactively satisfy a transaction that fell short of the old,
+    ///      higher threshold - every owner (including the original submitter) must re-confirm.
+    ///      Deliberately a plain counter compared live, rather than a bulk "clear all existing
+    ///      confirmations" step: Solidity's `delete` cannot clear a nested mapping (like
+    ///      EnumerableSet's internal position-tracking mapping), so a bulk clear of an
+    ///      still-in-use confirmation set would leave stale membership behind. Comparing
+    ///      per-confirmation stamps against this live counter sidesteps that entirely.
+    uint32 private currentEpoch;
+
+    /// @dev Per-owner "incarnation" counter, bumped once whenever that address is removed via
+    ///      removeOwners. A confirmation is only valid if it was stamped under the owner's
+    ///      current incarnation (see ownerConfirmationEpoch), so if a removed owner is later
+    ///      re-added, any confirmation they left behind before removal no longer counts.
+    mapping(address => uint32) private ownerEpoch;
+
+    /// @dev Records, per (txIndex, owner), the ownerEpoch value the owner's confirmation was
+    ///      stamped under. Compared against the owner's current ownerEpoch to decide validity.
+    mapping(uint256 => mapping(address => uint32)) private ownerConfirmationEpoch;
+
+    /// @dev Records, per (txIndex, owner), the currentEpoch value the owner's confirmation was
+    ///      stamped under. Compared against the live currentEpoch to decide validity.
+    mapping(uint256 => mapping(address => uint32)) private confirmationTxEpoch;
+
     // Function to ensure the caller is an owner
     function onlyOwner(address owner) private view {
-        if (!owners.contains(owner)) 
+        if (!owners.contains(owner))
         revert NotAnOwner();
     }
 
@@ -55,6 +86,25 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         revert InvalidTxnId();
     }
 
+    /// @dev Reverts as though the transaction doesn't exist if its timeout has passed but it
+    ///      hasn't been swept from storage yet. View-only: never mutates state. Actual cleanup
+    ///      happens via removeExpiredTransaction.
+    function notExpired(uint256 _txIndex) private view {
+        if (transactions[_txIndex].timeout < block.timestamp) revert TransactionAlreadyExpired();
+    }
+
+    /// @dev Whether owner's confirmation on _txIndex is still valid: they must still be a member
+    ///      of the confirmation set, their confirmation must have been stamped under their
+    ///      current owner-incarnation, AND it must have been stamped under the current
+    ///      threshold-epoch. The membership check must come first: a never-confirmed owner has
+    ///      both epoch mappings defaulting to 0, which would otherwise spuriously read as valid
+    ///      whenever ownerEpoch/currentEpoch also happen to still be 0.
+    function _isOwnerConfirmationValid(uint256 _txIndex, address owner) private view returns (bool) {
+        return confirmations[_txIndex].contains(owner) &&
+            ownerConfirmationEpoch[_txIndex][owner] == ownerEpoch[owner] &&
+            confirmationTxEpoch[_txIndex][owner] == currentEpoch;
+    }
+
     /// @dev Counts confirmations from current valid owners only.
     /// @param _txIndex Index of the transaction to count confirmations for.
     /// @return uint24 Number of confirmations from current valid owners.
@@ -63,27 +113,14 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         uint24 validNumOfConfirmations = 0;
         for (uint64 i = 0; i < confirmation.length(); i++) {
             address owner = confirmation.at(i);
-            if (owners.contains(owner)) {
+            if (owners.contains(owner) && _isOwnerConfirmationValid(_txIndex, owner)) {
                 validNumOfConfirmations++;
             }
         }
         return validNumOfConfirmations;
     }
 
-    /// @dev Helper function to remove a transaction and emit an event if it is expired.
-    /// @param _txIndex Index of the transaction.
-    /// @return bool True if the transaction was expired and removed.
-    function cleanupIfExpired(uint256 _txIndex) private returns (bool) {
-        if (transactions[_txIndex].timeout < block.timestamp) {
-            removeTransaction(_txIndex);
-            emit TransactionExpired(_txIndex);
-
-            return true;
-        }
-        return false;
-    }
-
-    /// @dev Helper function to remove a transaction from the storage.
+    /// @dev Helper function to remove a transaction from storage.
     /// @param _txIndex Index of the transaction to remove.
     function removeTransaction(uint256 _txIndex) private {
         // Remove the transaction from storage
@@ -97,7 +134,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     // Function to check if a transaction has not been confirmed by the caller
     function notConfirmed(uint256 _txIndex) private view {
-        if (confirmations[_txIndex].contains(msg.sender))  revert TxnAlreadyConfirmed();
+        if (_isOwnerConfirmationValid(_txIndex, msg.sender)) revert TxnAlreadyConfirmed();
     }
 
     /**
@@ -126,6 +163,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         }
 
         numConfirmationsRequired = _numConfirmationsRequired;
+        maxTimeoutDuration = DEFAULT_MAX_TIMEOUT_DURATION;
     }
 
     /**
@@ -150,19 +188,21 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     ) external payable {
         onlyOwner(msg.sender);
         if (_to == address(0)) revert InvalidRecipient();
+        if (_timeoutDuration > maxTimeoutDuration) revert TimeoutTooLong();
 
         uint256 currentTxIndex = txIndex;
 
         transactions[currentTxIndex]  = Transaction({
             to: _to,
             timeout: uint64(block.timestamp) + _timeoutDuration,
-           //We assume the act of submission is an implicit confirmation
-            numConfirmations: 1,
             value: _value,
             data: _data
         });
 
+        //We assume the act of submission is an implicit confirmation
         confirmations[currentTxIndex].add(msg.sender);
+        ownerConfirmationEpoch[currentTxIndex][msg.sender] = ownerEpoch[msg.sender];
+        confirmationTxEpoch[currentTxIndex][msg.sender] = currentEpoch;
         txIndex++;
         txCount++;
 
@@ -171,36 +211,32 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     /**
      * @dev Function to confirm an existing transaction.
-     * @dev If the transaction is expired, it is deleted and TransactionExpired is emitted.
+     * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @param _txIndex Index of the transaction to confirm.
      */
     function confirmTransaction(uint256 _txIndex) public {
         onlyOwner(msg.sender);
         txExists(_txIndex);
+        notExpired(_txIndex);
         notConfirmed(_txIndex);
-        if (cleanupIfExpired(_txIndex)) {
-            // Transaction expired, action is no longer applicable
-            return;
-        }
-        Transaction storage transaction = transactions[_txIndex];
-        transaction.numConfirmations += 1;
+
         confirmations[_txIndex].add(msg.sender);
+        ownerConfirmationEpoch[_txIndex][msg.sender] = ownerEpoch[msg.sender];
+        confirmationTxEpoch[_txIndex][msg.sender] = currentEpoch;
 
         emit ConfirmTransaction(msg.sender, _txIndex);
     }
 
     /**
      * @dev Function to execute a confirmed transaction.
-     * @dev If the transaction is expired, it is deleted and TransactionExpired is emitted.
+     * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @param _txIndex Index of the transaction to execute.
      */
     function executeTransaction(uint256 _txIndex) public returns (bytes memory) {
         onlyOwner(msg.sender);
         txExists(_txIndex);
-        if (cleanupIfExpired(_txIndex)) {
-            // Transaction expired, action is no longer applicable
-            return bytes("");
-        }
+        notExpired(_txIndex);
+
         Transaction memory transaction = transactions[_txIndex];
         if (!hasValidNumberOfConfirmations(_txIndex))
             revert NotEnoughConfirmation();
@@ -209,31 +245,54 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
         (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
         if (!success) { revert ExecutionFailed(); }
-            
+
         emit ExecuteTransaction(msg.sender, _txIndex, data);
         return data;
     }
 
     /**
      * @dev Function to revoke a previously given confirmation for a transaction.
-     * @dev If the transaction is expired, it is deleted and TransactionExpired is emitted.
+     * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @param _txIndex Index of the transaction to revoke confirmation.
      */
     function revokeConfirmation(uint256 _txIndex) external {
         onlyOwner(msg.sender);
         txExists(_txIndex);
-        if (cleanupIfExpired(_txIndex)) {
-            // Transaction expired, action is no longer applicable
-            return;
-        }
-        if (!confirmations[_txIndex].contains(msg.sender)) revert TransactionNotConfirmed();
+        notExpired(_txIndex);
+        if (!_isOwnerConfirmationValid(_txIndex, msg.sender)) revert TransactionNotConfirmed();
 
-        Transaction storage transaction = transactions[_txIndex];
-
-        transaction.numConfirmations -= 1;
         confirmations[_txIndex].remove(msg.sender);
+        delete ownerConfirmationEpoch[_txIndex][msg.sender];
+        delete confirmationTxEpoch[_txIndex][msg.sender];
 
         emit RevokeConfirmation(msg.sender, _txIndex);
+    }
+
+    /**
+     * @dev Permissionlessly removes a transaction whose timeout has passed. Its only effect is
+     *      discarding an already-worthless transaction, so no access control is needed - anyone
+     *      (e.g. an ops keeper) can call this to garbage-collect.
+     * @param _txIndex Index of the expired transaction to remove.
+     */
+    function removeExpiredTransaction(uint256 _txIndex) external {
+        txExists(_txIndex);
+        if (transactions[_txIndex].timeout >= block.timestamp) revert NotExpired();
+
+        removeTransaction(_txIndex);
+        emit TransactionExpired(_txIndex);
+    }
+
+    /**
+     * @dev Function to cancel a pending transaction that is stuck or no longer wanted. Reachable
+     * only through the multisig's own submit/confirm/execute flow.
+     * @param _txIndex Index of the transaction to cancel.
+     */
+    function cancelTransaction(uint256 _txIndex) external {
+        onlyMultiSig();
+        txExists(_txIndex);
+
+        removeTransaction(_txIndex);
+        emit TransactionCancelled(_txIndex);
     }
 
     /**
@@ -254,15 +313,21 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
                 ownersToUpdate[c++] = owner;
             }
         }
-        if (c > 0)
-        emit OwnersAdded(ownersToUpdate);
+        if (c > 0) {
+            // Trim the array to the addresses actually written before emitting, so the event
+            // doesn't carry trailing address(0) entries for no-op inputs.
+            assembly {
+                mstore(ownersToUpdate, c)
+            }
+            emit OwnersAdded(ownersToUpdate);
+        }
     }
 
     /**
      * @dev Function to remove existing owners from the wallet.
-     * @dev It does not clean up existing confirmation from the removed owners to keep complexity low.
-     * However, the hasValidNumberOfConfirmations function counts only valid owners when checking for confirmations
-     * before executing a transaction.
+     * @dev Bumps ownerEpoch for each removed address so that any confirmation they left behind
+     * on a still-pending transaction stops counting immediately. A later re-add via addOwners
+     * does not restore it - see ownerEpoch.
      * @param _owners Array of existing owner addresses to be removed.
      */
     function removeOwners(address[] memory _owners) external {
@@ -274,6 +339,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         for (uint256 i = 0; i < _owners.length; i++) {
             address owner = _owners[i];
             if (owners.remove(owner)) {
+                ownerEpoch[owner]++;
                 ownersToUpdate[c++] = owner;
             }
         }
@@ -282,12 +348,21 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
             revert InvalidNumberOfConfirmations();
         }
 
-        if (c > 0)
-        emit OwnersRemoved(ownersToUpdate);
+        if (c > 0) {
+            assembly {
+                mstore(ownersToUpdate, c)
+            }
+            emit OwnersRemoved(ownersToUpdate);
+        }
     }
 
     /**
      * @dev Function to update the number of required confirmations for transactions.
+     * @dev Lowering the threshold bumps currentEpoch, invalidating confirmations on every
+     * pending transaction system-wide, so a decrease can never retroactively satisfy a
+     * transaction that fell short of the old, higher threshold. Raising the threshold is
+     * self-enforcing via the live comparison in hasValidNumberOfConfirmations and does not
+     * need invalidation.
      * @param _numConfirmationsRequired New number of confirmations required for transactions.
      */
     function updateNumConfirmations(uint256 _numConfirmationsRequired) external {
@@ -296,8 +371,26 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
             _numConfirmationsRequired == 0 ||
             _numConfirmationsRequired > owners.length()
         ) revert InvalidNumberOfConfirmations();
+
+        if (_numConfirmationsRequired < numConfirmationsRequired) {
+            currentEpoch++;
+        }
+
         numConfirmationsRequired = _numConfirmationsRequired;
         emit NumConfirmationUpdated(_numConfirmationsRequired);
+    }
+
+    /**
+     * @dev Function to update the maximum timeout duration allowed for newly submitted
+     * transactions. Only affects transactions submitted after the update.
+     * @param _newMaxTimeoutDuration New maximum timeout duration, in seconds.
+     */
+    function updateMaxTimeoutDuration(uint64 _newMaxTimeoutDuration) external {
+        onlyMultiSig();
+        if (_newMaxTimeoutDuration == 0) revert InvalidMaxTimeoutDuration();
+
+        maxTimeoutDuration = _newMaxTimeoutDuration;
+        emit MaxTimeoutDurationUpdated(_newMaxTimeoutDuration);
     }
 
     /**
@@ -323,8 +416,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function isConfirmed(uint256 _txIndex, address _owner) external view returns (bool) {
         onlyOwner(_owner);
-        txExists(_txIndex); 
-        return confirmations[_txIndex].contains(_owner);
+        txExists(_txIndex);
+        notExpired(_txIndex);
+        return _isOwnerConfirmationValid(_txIndex, _owner);
     }
 
     /**
@@ -350,6 +444,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         )
     {
         txExists(_txIndex);
+        notExpired(_txIndex);
         Transaction storage transaction = transactions[_txIndex];
 
         return (
@@ -390,6 +485,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function hasValidNumberOfConfirmations(uint256 _txIndex) public view returns (bool) {
         txExists(_txIndex);
+        notExpired(_txIndex);
         return validNumberOfConfirmations(_txIndex) >= numConfirmationsRequired;
     }
 }
