@@ -8,7 +8,7 @@ import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol"
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
-import {MultisigBeacon} from "../src/MultisigBeacon.sol";
+import {MultisigBeacon, UpgradeableBeacon} from "../src/MultisigBeacon.sol";
 
 contract MultiSignatureWalletTest is Test {
     Counter counter;
@@ -326,6 +326,22 @@ contract MultiSignatureWalletTest is Test {
         revokeConfirmation(address(1002), 0);
     }
 
+    /// @dev Test to ensure an owner can still revoke a confirmation that has gone stale (owner
+    /// removed and re-added since confirming), clearing their own now-inert set entry instead of
+    /// being permanently stuck as an unrevocable member.
+    function testRevokeConfirmationClearsStaleConfirmation() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0);
+
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+        addOwnerViaMultiSig(address(1002), 2, address(1003), address(1004), address(1005));
+
+        // owner(1002)'s pre-removal confirmation is stale and already excluded from the count,
+        // but they must still be able to explicitly revoke and clean it up.
+        revokeConfirmation(address(1002), 0);
+        assertFalse(multiSig.isConfirmed(0, address(1002)));
+    }
+
     /// @dev Test to ensure 'executeTransaction' executes a transaction.
     function testExecuteTransaction() public {
         testSubmitTransactionIncrement();
@@ -587,6 +603,25 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(txId);
     }
 
+    /// @dev Test to ensure 'addOwners' emits only the addresses actually added, trimming out
+    /// no-op entries (already-owner addresses) rather than padding the event with address(0).
+    function testAddOwnersEmitsOnlyActuallyAddedOwners() public {
+        address[] memory toAdd = new address[](2);
+        toAdd[0] = address(1001); // already an owner - no-op
+        toAdd[1] = address(5001); // new
+        submitTransactionToMultiSig(abi.encodeCall(MultiSignatureWallet.addOwners, (toAdd)));
+        grantSufficientConfirmations(0);
+
+        address[] memory expected = new address[](1);
+        expected[0] = address(5001);
+
+        vm.expectEmit(false, false, false, true);
+        emit IMultiSignatureWallet.OwnersAdded(expected);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
     /// @dev Helper function to return calldata to remove an array of owners from multisig.
     function dataToRemoveOwnerFromMultiSig() private returns (bytes memory) {
         newOwners.push(address(1001));
@@ -604,6 +639,25 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(1);
 
         assertEq(multiSig.getOwners().length, 4);
+    }
+
+    /// @dev Test to ensure 'removeOwners' emits only the addresses actually removed, trimming out
+    /// no-op entries (non-owner addresses) rather than padding the event with address(0).
+    function testRemoveOwnersEmitsOnlyActuallyRemovedOwners() public {
+        address[] memory toRemove = new address[](2);
+        toRemove[0] = address(9999); // not an owner - no-op
+        toRemove[1] = address(1001); // real owner
+        submitTransactionToMultiSig(abi.encodeCall(MultiSignatureWallet.removeOwners, (toRemove)));
+        grantSufficientConfirmations(0);
+
+        address[] memory expected = new address[](1);
+        expected[0] = address(1001);
+
+        vm.expectEmit(false, false, false, true);
+        emit IMultiSignatureWallet.OwnersRemoved(expected);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if array of owners is empty.
@@ -768,7 +822,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'upgradeTo' upgrades the implementation address of the beacon.
     function testUpgradeBeacon() public {
         MultiSignatureWallet implV2 = new MultiSignatureWallet();
-        bytes memory data = abi.encodeWithSelector(MultisigBeacon.upgradeTo.selector, address(implV2));
+        bytes memory data = abi.encodeWithSelector(UpgradeableBeacon.upgradeTo.selector, address(implV2));
 
         vm.prank(address(1001));
         multiSig.submitTransaction(
@@ -1332,7 +1386,7 @@ contract MultiSignatureWalletTest is Test {
         // Ownership has NOT actually moved yet - the multisig still controls the beacon.
         assertEq(beacon.owner(), address(multiSig));
         MultiSignatureWallet implV2 = new MultiSignatureWallet();
-        bytes memory upgradeData = abi.encodeWithSelector(MultisigBeacon.upgradeTo.selector, address(implV2));
+        bytes memory upgradeData = abi.encodeWithSelector(UpgradeableBeacon.upgradeTo.selector, address(implV2));
         submitTransactionToBeacon(upgradeData);
         grantSufficientConfirmations(1);
         vm.prank(address(1002));
@@ -1345,6 +1399,19 @@ contract MultiSignatureWalletTest is Test {
         vm.prank(address(1002));
         multiSig.executeTransaction(2);
         assertEq(beacon.pendingOwner(), alice);
+        assertEq(beacon.owner(), address(multiSig));
+    }
+
+    /// @dev Test to ensure 'renounceOwnership' is disabled on the beacon, since giving up
+    /// ownership would leave 'upgradeTo' permanently unreachable.
+    function testBeaconRenounceOwnershipReverts() public {
+        submitTransactionToBeacon(abi.encodeCall(MultisigBeacon.renounceOwnership, ()));
+        grantSufficientConfirmations(0);
+
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+
         assertEq(beacon.owner(), address(multiSig));
     }
 }

@@ -86,9 +86,10 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         revert InvalidTxnId();
     }
 
-    /// @dev Reverts as though the transaction doesn't exist if its timeout has passed but it
-    ///      hasn't been swept from storage yet. View-only: never mutates state. Actual cleanup
-    ///      happens via removeExpiredTransaction.
+    /// @dev Reverts if the transaction's timeout has passed but it hasn't been swept from storage
+    ///      yet. View-only: never mutates state. Actual cleanup happens via
+    ///      removeExpiredTransaction. Uses a distinct error from txExists so callers can tell an
+    ///      expired transaction apart from one that never existed.
     function notExpired(uint256 _txIndex) private view {
         if (transactions[_txIndex].timeout < block.timestamp) revert TransactionAlreadyExpired();
     }
@@ -135,6 +136,15 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     // Function to check if a transaction has not been confirmed by the caller
     function notConfirmed(uint256 _txIndex) private view {
         if (_isOwnerConfirmationValid(_txIndex, msg.sender)) revert TxnAlreadyConfirmed();
+    }
+
+    /// @dev Records owner's confirmation of _txIndex, stamping both epochs current at the time of
+    ///      confirmation. Shared by submitTransaction's implicit self-confirmation and
+    ///      confirmTransaction so the two paths can't drift apart.
+    function _recordConfirmation(uint256 _txIndex, address owner) private {
+        confirmations[_txIndex].add(owner);
+        ownerConfirmationEpoch[_txIndex][owner] = ownerEpoch[owner];
+        confirmationTxEpoch[_txIndex][owner] = currentEpoch;
     }
 
     /**
@@ -200,9 +210,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         });
 
         //We assume the act of submission is an implicit confirmation
-        confirmations[currentTxIndex].add(msg.sender);
-        ownerConfirmationEpoch[currentTxIndex][msg.sender] = ownerEpoch[msg.sender];
-        confirmationTxEpoch[currentTxIndex][msg.sender] = currentEpoch;
+        _recordConfirmation(currentTxIndex, msg.sender);
         txIndex++;
         txCount++;
 
@@ -220,9 +228,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         notExpired(_txIndex);
         notConfirmed(_txIndex);
 
-        confirmations[_txIndex].add(msg.sender);
-        ownerConfirmationEpoch[_txIndex][msg.sender] = ownerEpoch[msg.sender];
-        confirmationTxEpoch[_txIndex][msg.sender] = currentEpoch;
+        _recordConfirmation(_txIndex, msg.sender);
 
         emit ConfirmTransaction(msg.sender, _txIndex);
     }
@@ -238,7 +244,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         notExpired(_txIndex);
 
         Transaction memory transaction = transactions[_txIndex];
-        if (!hasValidNumberOfConfirmations(_txIndex))
+        if (validNumberOfConfirmations(_txIndex) < numConfirmationsRequired)
             revert NotEnoughConfirmation();
 
         removeTransaction(_txIndex);
@@ -259,7 +265,11 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         onlyOwner(msg.sender);
         txExists(_txIndex);
         notExpired(_txIndex);
-        if (!_isOwnerConfirmationValid(_txIndex, msg.sender)) revert TransactionNotConfirmed();
+        // Gated on raw membership rather than _isOwnerConfirmationValid: an owner whose
+        // confirmation went stale (threshold lowered, or removed and re-added) is no longer
+        // counted anywhere, but should still be able to clear their own now-inert set entry
+        // instead of being permanently stuck as an unrevocable member.
+        if (!confirmations[_txIndex].contains(msg.sender)) revert TransactionNotConfirmed();
 
         confirmations[_txIndex].remove(msg.sender);
         delete ownerConfirmationEpoch[_txIndex][msg.sender];
@@ -316,7 +326,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         if (c > 0) {
             // Trim the array to the addresses actually written before emitting, so the event
             // doesn't carry trailing address(0) entries for no-op inputs.
-            assembly {
+            assembly ("memory-safe") {
                 mstore(ownersToUpdate, c)
             }
             emit OwnersAdded(ownersToUpdate);
@@ -349,7 +359,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         }
 
         if (c > 0) {
-            assembly {
+            assembly ("memory-safe") {
                 mstore(ownersToUpdate, c)
             }
             emit OwnersRemoved(ownersToUpdate);
@@ -466,7 +476,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         onlyMultiSig();
         if (_creationCode.length == 0) { revert EmptyCreationCode(); }
 
-        assembly {
+        assembly ("memory-safe") {
             // CREATE(value, offset, size)
             deployed := create(
                 _value,                         // forward ETH if any

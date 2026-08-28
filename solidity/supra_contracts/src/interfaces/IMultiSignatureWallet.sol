@@ -134,16 +134,19 @@ interface IMultiSignatureWallet {
         bytes memory _data
     ) external payable;
 
-    /// @notice Confirms a pending transaction. Removes it if already expired.
+    /// @notice Confirms a pending transaction. Reverts if it has expired; use
+    /// removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction to confirm.
     function confirmTransaction(uint256 _txIndex) external;
 
-    /// @notice Executes a transaction once enough confirmations are gathered. Removes it if expired.
+    /// @notice Executes a transaction once enough confirmations are gathered. Reverts if it has
+    /// expired; use removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction to execute.
     /// @return Data returned by the executed call.
     function executeTransaction(uint256 _txIndex) external returns (bytes memory);
 
-    /// @notice Revokes a previously given confirmation. Removes the transaction if expired.
+    /// @notice Revokes a previously given confirmation. Reverts if the transaction has expired;
+    /// use removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction.
     function revokeConfirmation(uint256 _txIndex) external;
 
