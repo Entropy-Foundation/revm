@@ -34,6 +34,14 @@ interface IMultiSignatureWallet {
     error TransactionNotConfirmed();
     /// @notice Thrown when an admin function is called by anyone other than the multisig itself.
     error OnlyMultisigAccountCanCall();
+    /// @notice Thrown when submitTransaction is given a timeout duration longer than maxTimeoutDuration.
+    error TimeoutTooLong();
+    /// @notice Thrown when confirming, executing, or revoking a transaction whose timeout has already passed.
+    error TransactionAlreadyExpired();
+    /// @notice Thrown when removeExpiredTransaction is called on a transaction that has not actually expired.
+    error NotExpired();
+    /// @notice Thrown when updateMaxTimeoutDuration is called with a zero duration.
+    error InvalidMaxTimeoutDuration();
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -93,6 +101,14 @@ interface IMultiSignatureWallet {
     /// @param newNumConfirmation The new required confirmation count.
     event NumConfirmationUpdated(uint256 newNumConfirmation);
 
+    /// @notice Emitted when a pending transaction is cancelled by the multisig.
+    /// @param txIndex Index of the cancelled transaction.
+    event TransactionCancelled(uint256 indexed txIndex);
+
+    /// @notice Emitted when the maximum allowed submission timeout duration is updated.
+    /// @param newMaxTimeoutDuration The new maximum timeout duration, in seconds.
+    event MaxTimeoutDurationUpdated(uint64 newMaxTimeoutDuration);
+
     // ── State variable getters ────────────────────────────────────────────────
 
     /// @notice Returns the number of confirmations required to execute a transaction.
@@ -100,6 +116,9 @@ interface IMultiSignatureWallet {
 
     /// @notice Returns the current number of pending (non-executed) transactions.
     function txCount() external view returns (uint256);
+
+    /// @notice Returns the maximum timeout duration, in seconds, allowed for a newly submitted transaction.
+    function maxTimeoutDuration() external view returns (uint64);
 
     // ── Core wallet functions ─────────────────────────────────────────────────
 
@@ -115,18 +134,25 @@ interface IMultiSignatureWallet {
         bytes memory _data
     ) external payable;
 
-    /// @notice Confirms a pending transaction. Removes it if already expired.
+    /// @notice Confirms a pending transaction. Reverts if it has expired; use
+    /// removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction to confirm.
     function confirmTransaction(uint256 _txIndex) external;
 
-    /// @notice Executes a transaction once enough confirmations are gathered. Removes it if expired.
+    /// @notice Executes a transaction once enough confirmations are gathered. Reverts if it has
+    /// expired; use removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction to execute.
     /// @return Data returned by the executed call.
     function executeTransaction(uint256 _txIndex) external returns (bytes memory);
 
-    /// @notice Revokes a previously given confirmation. Removes the transaction if expired.
+    /// @notice Revokes a previously given confirmation. Reverts if the transaction has expired;
+    /// use removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction.
     function revokeConfirmation(uint256 _txIndex) external;
+
+    /// @notice Removes an already-expired transaction from storage. Callable by anyone.
+    /// @param _txIndex Index of the expired transaction to remove.
+    function removeExpiredTransaction(uint256 _txIndex) external;
 
     // ── Admin functions (callable only by the multisig itself) ────────────────
 
@@ -141,6 +167,14 @@ interface IMultiSignatureWallet {
     /// @notice Updates the required confirmation count.
     /// @param _numConfirmationsRequired New confirmation threshold.
     function updateNumConfirmations(uint256 _numConfirmationsRequired) external;
+
+    /// @notice Cancels a pending transaction, removing it from storage.
+    /// @param _txIndex Index of the transaction to cancel.
+    function cancelTransaction(uint256 _txIndex) external;
+
+    /// @notice Updates the maximum timeout duration allowed for newly submitted transactions.
+    /// @param _newMaxTimeoutDuration New maximum timeout duration, in seconds.
+    function updateMaxTimeoutDuration(uint64 _newMaxTimeoutDuration) external;
 
     /// @notice Deploys a contract using the CREATE opcode.
     /// @param _creationCode Creation bytecode of the contract to deploy.

@@ -245,17 +245,16 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1001), 0);
     }
 
-    /// @dev Test to ensure 'confirmTransaction' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testConfirmTransactionRemovesTxIfExpired() public {
+    /// @dev Test to ensure 'confirmTransaction' reverts if the transaction has expired.
+    function testConfirmTransactionRevertsIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        vm.expectEmit(true, false, false, false);
-        emit IMultiSignatureWallet.TransactionExpired(0);
-        
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
         confirmTransaction(address(1005), 0);
-        assertEq(multiSig.txCount(), 0);
+
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Helper function to revoke confirmation.
@@ -307,17 +306,16 @@ contract MultiSignatureWalletTest is Test {
         revokeConfirmation(address(1001), txId);
     }
 
-    /// @dev Test to ensure 'revokeConfirmation' removes the tx and emits 'TransactionExpired' if the transaction has expired.
-    function testRevokeConfirmationRemovesTxIfExpired() public {
+    /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction has expired.
+    function testRevokeConfirmationRevertsIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        vm.expectEmit(true, false, false, false);
-        emit IMultiSignatureWallet.TransactionExpired(0);
-        
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
         revokeConfirmation(address(1001), 0);
-        assertEq(multiSig.txCount(), 0);
+
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction was not confirmed.
@@ -326,6 +324,22 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.TransactionNotConfirmed.selector);
         revokeConfirmation(address(1002), 0);
+    }
+
+    /// @dev Test to ensure an owner can still revoke a confirmation that has gone stale (owner
+    /// removed and re-added since confirming), clearing their own now-inert set entry instead of
+    /// being permanently stuck as an unrevocable member.
+    function testRevokeConfirmationClearsStaleConfirmation() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0);
+
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+        addOwnerViaMultiSig(address(1002), 2, address(1003), address(1004), address(1005));
+
+        // owner(1002)'s pre-removal confirmation is stale and already excluded from the count,
+        // but they must still be able to explicitly revoke and clean it up.
+        revokeConfirmation(address(1002), 0);
+        assertFalse(multiSig.isConfirmed(0, address(1002)));
     }
 
     /// @dev Test to ensure 'executeTransaction' executes a transaction.
@@ -370,18 +384,17 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(0);
     }
 
-    /// @dev Test to ensure 'executeTransaction' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testExecuteTransactionRemovesTxIfExpired() public {
+    /// @dev Test to ensure 'executeTransaction' reverts if transaction has expired.
+    function testExecuteTransactionRevertsIfExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        vm.expectEmit(true, false, false, false);
-        emit IMultiSignatureWallet.TransactionExpired(0);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
-        assertEq(multiSig.txCount(), 0);
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'executeTransaction' reverts if the transaction has insufficient number of confirmations.
@@ -560,21 +573,20 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(0);
     }
 
-    /// @dev Test to ensure 'addOwners' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testAddOwnersRemovesTxIfExpired() public {
+    /// @dev Test to ensure 'addOwners' transaction reverts on execute if it has expired.
+    function testAddOwnersRevertsIfExpired() public {
         vm.warp(500);
         submitTransactionToMultiSig(dataToAddOwnerInMultiSig());
         assertEq(multiSig.txCount(), 1);
-    
+
         grantSufficientConfirmations(0);
 
         vm.warp(10501);
-        vm.expectEmit(true, false, false, false);
-        emit IMultiSignatureWallet.TransactionExpired(0);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
-        assertEq(multiSig.txCount(), 0);
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'addOwners' reverts if transaction has insufficient number of confirmations.
@@ -589,6 +601,25 @@ contract MultiSignatureWalletTest is Test {
         
         vm.prank(address(1002));
         multiSig.executeTransaction(txId);
+    }
+
+    /// @dev Test to ensure 'addOwners' emits only the addresses actually added, trimming out
+    /// no-op entries (already-owner addresses) rather than padding the event with address(0).
+    function testAddOwnersEmitsOnlyActuallyAddedOwners() public {
+        address[] memory toAdd = new address[](2);
+        toAdd[0] = address(1001); // already an owner - no-op
+        toAdd[1] = address(5001); // new
+        submitTransactionToMultiSig(abi.encodeCall(MultiSignatureWallet.addOwners, (toAdd)));
+        grantSufficientConfirmations(0);
+
+        address[] memory expected = new address[](1);
+        expected[0] = address(5001);
+
+        vm.expectEmit(false, false, false, true);
+        emit IMultiSignatureWallet.OwnersAdded(expected);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
     }
 
     /// @dev Helper function to return calldata to remove an array of owners from multisig.
@@ -608,6 +639,25 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(1);
 
         assertEq(multiSig.getOwners().length, 4);
+    }
+
+    /// @dev Test to ensure 'removeOwners' emits only the addresses actually removed, trimming out
+    /// no-op entries (non-owner addresses) rather than padding the event with address(0).
+    function testRemoveOwnersEmitsOnlyActuallyRemovedOwners() public {
+        address[] memory toRemove = new address[](2);
+        toRemove[0] = address(9999); // not an owner - no-op
+        toRemove[1] = address(1001); // real owner
+        submitTransactionToMultiSig(abi.encodeCall(MultiSignatureWallet.removeOwners, (toRemove)));
+        grantSufficientConfirmations(0);
+
+        address[] memory expected = new address[](1);
+        expected[0] = address(1001);
+
+        vm.expectEmit(false, false, false, true);
+        emit IMultiSignatureWallet.OwnersRemoved(expected);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if array of owners is empty.
@@ -655,8 +705,8 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(1);
     }
 
-    /// @dev Test to ensure 'removeOwners' removes the tx and emits 'TransactionExpired' if transaction has expired.
-    function testRemoveOwnersRemovesTxIfExpired() public {
+    /// @dev Test to ensure 'removeOwners' transaction reverts on execute if it has expired.
+    function testRemoveOwnersRevertsIfExpired() public {
         testAddOwners();
 
         vm.warp(500);
@@ -666,12 +716,11 @@ contract MultiSignatureWalletTest is Test {
         grantSufficientConfirmations(1);
 
         vm.warp(10501);
-        vm.expectEmit(true, false, false, false);
-        emit IMultiSignatureWallet.TransactionExpired(1);
-        
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
+
         vm.prank(address(1002));
         multiSig.executeTransaction(1);
-        assertEq(multiSig.txCount(), 0);
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if transaction has insufficient number of confirmations.
@@ -739,8 +788,8 @@ contract MultiSignatureWalletTest is Test {
         multiSig.executeTransaction(0);
     }
 
-    /// @dev Test to ensure 'updateNumConfirmations' removes the tx and emits 'TransactionExpired' if the transaction has expired.
-    function testUpdateNumConfimationsRemovesTxIfExpired() public {
+    /// @dev Test to ensure 'updateNumConfirmations' transaction reverts on execute if it has expired.
+    function testUpdateNumConfimationsRevertsIfExpired() public {
         vm.warp(500);
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
         assertEq(multiSig.txCount(), 1);
@@ -748,12 +797,11 @@ contract MultiSignatureWalletTest is Test {
         grantSufficientConfirmations(0);
 
         vm.warp(10501);
-        vm.expectEmit(true, false, false, false);
-        emit IMultiSignatureWallet.TransactionExpired(0);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
         vm.prank(address(1002));
-        multiSig.executeTransaction(0);    
-        assertEq(multiSig.txCount(), 0);
+        multiSig.executeTransaction(0);
+        assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the transaction has insufficient number of confirmations.
@@ -920,16 +968,13 @@ contract MultiSignatureWalletTest is Test {
         multiSig.getTransaction(0);
     }
     
-    /// @dev Test to ensure expired transaction is removed and accessing it results in a revert.
-    function testGetTransactionRevertsIfTxExpiredAndCleanedUp() public {
+    /// @dev Test to ensure 'getTransaction' reverts for an expired-but-unswept transaction.
+    function testGetTransactionRevertsIfTxExpired() public {
         vm.warp(500);
         testSubmitTransactionIncrement();
 
         vm.warp(10501);
-        confirmTransaction(address(1005), 0);
-        assertEq(multiSig.txCount(), 0);
-
-        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
         multiSig.getTransaction(0);
     }
 
@@ -1000,5 +1045,373 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1002), 0);
         confirmTransaction(address(1003), 0);
         assertFalse(multiSig.hasValidNumberOfConfirmations(0));
+    }
+
+    /// @dev Test to ensure 'isConfirmed' reverts for an expired-but-unswept transaction.
+    function testIsConfirmedRevertsIfTxExpired() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
+        multiSig.isConfirmed(0, address(1001));
+    }
+
+    /// @dev Test to ensure 'hasValidNumberOfConfirmations' reverts for an expired-but-unswept transaction.
+    function testHasValidNumberOfConfirmationsRevertsIfTxExpired() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
+        multiSig.hasValidNumberOfConfirmations(0);
+    }
+
+    // ── issue #3448: owner-removal confirmation handling ────────────────────────────────────────
+
+    /// @dev Helper function to build calldata to add a single owner via multisig and execute it.
+    function addOwnerViaMultiSig(address _ownerToAdd, uint256 _txIndex, address _confirmer1, address _confirmer2, address _confirmer3) private {
+        address[] memory ownersToAdd = new address[](1);
+        ownersToAdd[0] = _ownerToAdd;
+        bytes memory data = abi.encodeCall(MultiSignatureWallet.addOwners, (ownersToAdd));
+        submitTransactionToMultiSig(data);
+
+        confirmTransaction(_confirmer1, _txIndex);
+        confirmTransaction(_confirmer2, _txIndex);
+        confirmTransaction(_confirmer3, _txIndex);
+
+        vm.prank(address(1001));
+        multiSig.executeTransaction(_txIndex);
+    }
+
+    /// @dev Test to ensure a re-added owner's earlier confirmation is not counted.
+    function testReAddedOwnerEarlierConfirmationIsNotCounted() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0); // 2 valid confirmations: 1001, 1002
+
+        // Remove owner(1002) via a second multisig transaction (txId 1).
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+        assertFalse(multiSig.hasValidNumberOfConfirmations(0)); // only 1001 remains valid, 4 required
+
+        // Re-add owner(1002) via a third multisig transaction (txId 2).
+        addOwnerViaMultiSig(address(1002), 2, address(1003), address(1004), address(1005));
+
+        // owner(1002)'s pre-removal confirmation of txId 0 must not be counted.
+        (, , uint24 confs, , ) = multiSig.getTransaction(0);
+        assertEq(confs, 1);
+        assertFalse(multiSig.isConfirmed(0, address(1002)));
+        assertFalse(multiSig.hasValidNumberOfConfirmations(0));
+    }
+
+    /// @dev Test to ensure a re-added owner is not permanently locked out - they can freely re-confirm.
+    function testReAddedOwnerCanFreshlyReConfirm() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0);
+
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+        addOwnerViaMultiSig(address(1002), 2, address(1003), address(1004), address(1005));
+
+        confirmTransaction(address(1002), 0); // fresh re-confirmation
+
+        (, , uint24 confs, , ) = multiSig.getTransaction(0);
+        assertEq(confs, 2);
+        assertTrue(multiSig.isConfirmed(0, address(1002)));
+    }
+
+    /// @dev Test to ensure repeated remove/re-add cycles for the same owner keep requiring fresh confirmation each time.
+    function testRepeatedRemoveReAddCyclesKeepRequiringFreshConfirmation() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0);
+
+        removeOwnerViaMultiSig(address(1002), 1, address(1003), address(1004), address(1005));
+        addOwnerViaMultiSig(address(1002), 2, address(1003), address(1004), address(1005));
+        confirmTransaction(address(1002), 0); // fresh confirmation, 1st cycle
+
+        removeOwnerViaMultiSig(address(1002), 3, address(1003), address(1004), address(1005));
+        addOwnerViaMultiSig(address(1002), 4, address(1003), address(1004), address(1005));
+
+        // The 1st cycle's fresh confirmation must not survive the 2nd removal either.
+        assertFalse(multiSig.isConfirmed(0, address(1002)));
+        (, , uint24 confs, , ) = multiSig.getTransaction(0);
+        assertEq(confs, 1);
+    }
+
+    // ── issue #3448: threshold-decrease confirmation handling ───────────────────────────────────
+
+    /// @dev Test to ensure execution still requires confirmations gathered under the current threshold after it is lowered.
+    function testExecutionRequiresFreshConfirmationsAfterThresholdLowered() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0); // 2 of 4 required - insufficient
+
+        // Lower the threshold to 2 via a second multisig transaction (txId 1), gathering the
+        // full original threshold's worth of confirmations to pass it.
+        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(2));
+        grantSufficientConfirmations(1);
+        vm.prank(address(1001));
+        multiSig.executeTransaction(1);
+        assertEq(multiSig.numConfirmationsRequired(), 2);
+
+        // txId 0 must still require confirmations gathered under the new threshold.
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
+        vm.prank(address(1001));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure a transaction can still execute after fresh re-confirmation following a threshold decrease.
+    function testAfterThresholdDecreaseFreshReconfirmationAllowsExecution() public {
+        testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
+        confirmTransaction(address(1002), 0);
+
+        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(2));
+        grantSufficientConfirmations(1);
+        vm.prank(address(1001));
+        multiSig.executeTransaction(1);
+
+        // Fresh re-confirmation under the new threshold (2), including the original submitter.
+        confirmTransaction(address(1001), 0);
+        confirmTransaction(address(1002), 0);
+
+        vm.prank(address(1001));
+        multiSig.executeTransaction(0);
+
+        assertEq(multiSig.txCount(), 0);
+        assertEq(counter.counter(), 1);
+    }
+
+    /// @dev Test to ensure raising the threshold does not wipe unrelated pending confirmations.
+    function testRaisingThresholdDoesNotWipeConfirmations() public {
+        // Lower the threshold first so there is room to raise it again without exceeding the owner count.
+        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(2));
+        grantSufficientConfirmations(0);
+        vm.prank(address(1001));
+        multiSig.executeTransaction(0);
+        assertEq(multiSig.numConfirmationsRequired(), 2);
+
+        // Submit and confirm a fresh, unrelated transaction (txId 1) under the new, lower threshold.
+        submitTransaction(dataForIncrement());
+        confirmTransaction(address(1002), 1); // 2 of 2 required - sufficient
+
+        // Raise the threshold back to 3 via a third multisig transaction (txId 2).
+        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+        confirmTransaction(address(1002), 2);
+        vm.prank(address(1001));
+        multiSig.executeTransaction(2);
+        assertEq(multiSig.numConfirmationsRequired(), 3);
+
+        // txId 1's confirmations must be unaffected by the threshold increase.
+        (, , uint24 confs, , ) = multiSig.getTransaction(1);
+        assertEq(confs, 2);
+    }
+
+    // ── cancelTransaction ────────────────────────────────────────────────────────────────────
+
+    /// @dev Helper function to return calldata to cancel a transaction in the multisig.
+    function dataToCancelTransaction(uint256 _txIndex) private pure returns (bytes memory) {
+        return abi.encodeCall(MultiSignatureWallet.cancelTransaction, (_txIndex));
+    }
+
+    /// @dev Test to ensure 'cancelTransaction' removes a pending transaction via multisig consensus.
+    function testCancelTransaction() public {
+        testSubmitTransactionIncrement(); // txId 0
+        confirmTransaction(address(1002), 0); // stuck at 2 of 4 required
+
+        submitTransactionToMultiSig(dataToCancelTransaction(0));
+        grantSufficientConfirmations(1);
+
+        vm.expectEmit(true, false, false, false);
+        emit IMultiSignatureWallet.TransactionCancelled(0);
+
+        vm.prank(address(1001));
+        multiSig.executeTransaction(1);
+
+        assertEq(multiSig.txCount(), 0);
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.getTransaction(0);
+    }
+
+    /// @dev Test to ensure 'cancelTransaction' reverts if caller is not the multisig itself.
+    function testCancelTransactionRevertsIfCallerNotMultiSig() public {
+        testSubmitTransactionIncrement();
+
+        vm.expectRevert(IMultiSignatureWallet.OnlyMultisigAccountCanCall.selector);
+        vm.prank(address(1001));
+        multiSig.cancelTransaction(0);
+    }
+
+    /// @dev Test to ensure a transaction cancelling itself fails harmlessly: the outer
+    /// 'executeTransaction' already deletes it before the nested self-call can run.
+    function testCancelTransactionRevertsIfCancellingItself() public {
+        submitTransactionToMultiSig(dataToCancelTransaction(0));
+        grantSufficientConfirmations(0);
+
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.prank(address(1001));
+        multiSig.executeTransaction(0);
+    }
+
+    // ── removeExpiredTransaction ─────────────────────────────────────────────────────────────
+
+    /// @dev Test to ensure 'removeExpiredTransaction' is callable by anyone once a transaction has expired.
+    function testRemoveExpiredTransaction() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        vm.expectEmit(true, false, false, false);
+        emit IMultiSignatureWallet.TransactionExpired(0);
+
+        vm.prank(alice); // not an owner - removal is permissionless
+        multiSig.removeExpiredTransaction(0);
+
+        assertEq(multiSig.txCount(), 0);
+    }
+
+    /// @dev Test to ensure 'removeExpiredTransaction' reverts if the transaction has not actually expired.
+    function testRemoveExpiredTransactionRevertsIfNotExpired() public {
+        testSubmitTransactionIncrement();
+
+        vm.expectRevert(IMultiSignatureWallet.NotExpired.selector);
+        multiSig.removeExpiredTransaction(0);
+    }
+
+    /// @dev Test to ensure 'removeExpiredTransaction' reverts if the transaction does not exist.
+    function testRemoveExpiredTransactionRevertsIfTxDoesNotExist() public {
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.removeExpiredTransaction(0);
+    }
+
+    // ── maxTimeoutDuration ───────────────────────────────────────────────────────────────────
+
+    /// @dev Test to ensure 'maxTimeoutDuration' defaults to 30 days after initialize.
+    function testMaxTimeoutDurationDefault() public view {
+        assertEq(multiSig.maxTimeoutDuration(), 30 days);
+    }
+
+    /// @dev Test to ensure 'submitTransaction' succeeds at exactly the max timeout duration.
+    function testSubmitTransactionSucceedsAtMaxTimeoutDuration() public {
+        vm.prank(address(1001));
+        multiSig.submitTransaction(address(counter), 0, uint64(30 days), dataForIncrement());
+        assertEq(multiSig.txCount(), 1);
+    }
+
+    /// @dev Test to ensure 'submitTransaction' reverts if the timeout duration exceeds the max.
+    function testSubmitTransactionRevertsIfTimeoutExceedsMax() public {
+        vm.expectRevert(IMultiSignatureWallet.TimeoutTooLong.selector);
+
+        vm.prank(address(1001));
+        multiSig.submitTransaction(address(counter), 0, uint64(30 days) + 1, dataForIncrement());
+    }
+
+    /// @dev Helper function to return calldata to update the max timeout duration in the multisig.
+    function dataToUpdateMaxTimeoutDuration(uint64 _newMax) private pure returns (bytes memory) {
+        return abi.encodeCall(MultiSignatureWallet.updateMaxTimeoutDuration, (_newMax));
+    }
+
+    /// @dev Test to ensure 'updateMaxTimeoutDuration' updates the cap via multisig consensus.
+    function testUpdateMaxTimeoutDuration() public {
+        submitTransactionToMultiSig(dataToUpdateMaxTimeoutDuration(uint64(7 days)));
+        grantSufficientConfirmations(0);
+
+        vm.expectEmit(false, false, false, true);
+        emit IMultiSignatureWallet.MaxTimeoutDurationUpdated(uint64(7 days));
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+
+        assertEq(multiSig.maxTimeoutDuration(), 7 days);
+    }
+
+    /// @dev Test to ensure 'updateMaxTimeoutDuration' reverts if given a zero duration.
+    function testUpdateMaxTimeoutDurationRevertsIfZero() public {
+        submitTransactionToMultiSig(dataToUpdateMaxTimeoutDuration(0));
+        grantSufficientConfirmations(0);
+
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'updateMaxTimeoutDuration' reverts if caller is not the multisig itself.
+    function testUpdateMaxTimeoutDurationRevertsIfCallerNotMultiSig() public {
+        vm.expectRevert(IMultiSignatureWallet.OnlyMultisigAccountCanCall.selector);
+
+        vm.prank(alice);
+        multiSig.updateMaxTimeoutDuration(uint64(7 days));
+    }
+
+    // ── MultisigBeacon two-step ownership ────────────────────────────────────────────────────
+
+    /// @dev Helper function to submit a transaction targeting the beacon itself (e.g. upgradeTo, transferOwnership).
+    function submitTransactionToBeacon(bytes memory _data) private {
+        vm.prank(address(1001));
+        multiSig.submitTransaction(
+            address(beacon),
+            0,
+            10000,
+            _data
+        );
+    }
+
+    /// @dev Test to ensure 'transferOwnership' sets a pending owner without changing the current owner.
+    function testBeaconTransferOwnershipSetsPendingOwner() public {
+        submitTransactionToBeacon(abi.encodeWithSelector(beacon.transferOwnership.selector, alice));
+        grantSufficientConfirmations(0);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+
+        assertEq(beacon.pendingOwner(), alice);
+        assertEq(beacon.owner(), address(multiSig));
+    }
+
+    /// @dev Test to ensure 'acceptOwnership' reverts if called by anyone other than the pending owner.
+    function testBeaconAcceptOwnershipRevertsIfNotPendingOwner() public {
+        testBeaconTransferOwnershipSetsPendingOwner();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        beacon.acceptOwnership();
+    }
+
+    /// @dev Test to ensure a transfer to the wrong address is recoverable: the original owner
+    /// retains control until the transfer is explicitly accepted, and can issue a corrective
+    /// transfer instead.
+    function testBeaconOwnershipTransferMistakeIsRecoverable() public {
+        address wrongAddress = address(0xBAD);
+        submitTransactionToBeacon(abi.encodeWithSelector(beacon.transferOwnership.selector, wrongAddress));
+        grantSufficientConfirmations(0);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+
+        // Ownership has NOT actually moved yet - the multisig still controls the beacon.
+        assertEq(beacon.owner(), address(multiSig));
+        MultiSignatureWallet implV2 = new MultiSignatureWallet();
+        bytes memory upgradeData = abi.encodeWithSelector(UpgradeableBeacon.upgradeTo.selector, address(implV2));
+        submitTransactionToBeacon(upgradeData);
+        grantSufficientConfirmations(1);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(1);
+        assertEq(beacon.implementation(), address(implV2));
+
+        // Issue a corrective transfer to the intended address instead.
+        submitTransactionToBeacon(abi.encodeWithSelector(beacon.transferOwnership.selector, alice));
+        grantSufficientConfirmations(2);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(2);
+        assertEq(beacon.pendingOwner(), alice);
+        assertEq(beacon.owner(), address(multiSig));
+    }
+
+    /// @dev Test to ensure 'renounceOwnership' is disabled on the beacon, since giving up
+    /// ownership would leave 'upgradeTo' permanently unreachable.
+    function testBeaconRenounceOwnershipReverts() public {
+        submitTransactionToBeacon(abi.encodeCall(MultisigBeacon.renounceOwnership, ()));
+        grantSufficientConfirmations(0);
+
+        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+
+        assertEq(beacon.owner(), address(multiSig));
     }
 }
