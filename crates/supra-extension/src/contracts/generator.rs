@@ -10,7 +10,7 @@ use bincode::config;
 use derive_getters::Getters;
 use once_cell::sync::Lazy;
 use primitives::supra_constants::VM_SIGNER;
-use primitives::{Bytes, TxKind, U256};
+use primitives::{Bytes, U256};
 use std::collections::BTreeMap;
 
 /// Load precompiled combined bytecode of contracts.
@@ -758,6 +758,7 @@ mod tests {
     use super::*;
     use crate::contracts::configs::AutomationRegistryConfigV1;
     use primitives::supra_constants::u64_to_address;
+    use primitives::TxKind;
 
     #[test]
     fn check_multisig_setup() {
@@ -822,7 +823,6 @@ mod tests {
             foundation_threshold: 2,
             full_set: false,
             automation_config: None,
-            initial_native_token: 1000,
             block_prologue_gas_cap: 100000,
         };
         let result = generator.prepare_genesis_transactions(config).unwrap();
