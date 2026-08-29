@@ -13,11 +13,16 @@ import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
 import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
+import { ICoreFacet } from "../interfaces/ICoreFacet.sol";
+import { IConfigFacet } from "../interfaces/IConfigFacet.sol";
+import { IRegistryFacet } from "../interfaces/IRegistryFacet.sol";
+import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
 import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
 import { InitParams } from "../libraries/DiamondTypes.sol";
+import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 /// @title DiamondInit
 /// @notice Initialization contract for the Automation Registry
@@ -31,13 +36,17 @@ import { InitParams } from "../libraries/DiamondTypes.sol";
 /// - This contract is NOT a facet and MUST NOT be added to the Diamond.
 /// - The `init` function selector is never registered and is therefore
 ///   not callable through the Diamond after deployment.
+/// - `init` runs via delegatecall from `LibDiamond.diamondCut`, so it executes in the
+///   Diamond's own storage; it inherits `Initializable` so a second delegatecall into it
+///   (e.g. `diamondCut([], diamondInit, initCalldata)` with an empty cut array) reverts
+///   instead of re-running initialization over live registry state.
 ///
 /// This initializer performs the following actions:
-/// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, and ERC-173.
+/// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, ERC-173,
+///   IRegistryStatus, and the registry-specific facet interfaces present at genesis.
 /// - Sets the active registry configuration, protocol feature flags and trusted addresses.
 /// - Establishes initial automation cycle state, index, and timestamp.
-contract DiamondInit {   
-    AppStorage internal s;
+contract DiamondInit is Initializable {
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
@@ -45,13 +54,21 @@ contract DiamondInit {
     function init(
         InitParams memory _params,
         address _erc20Supra
-    ) external {
-        // Adding ERC165 data
+    ) external initializer {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        // Adding ERC165 data. Registered once, at genesis, for the facet set present then;
+        // not reconciled by later diamondCut calls — a facet added, replaced or removed
+        // post-genesis does not update this mapping.
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         ds.supportedInterfaces[type(IERC165).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] = true;
         ds.supportedInterfaces[type(IERC173).interfaceId] = true;
+        ds.supportedInterfaces[type(ICoreFacet).interfaceId] = true;
+        ds.supportedInterfaces[type(IConfigFacet).interfaceId] = true;
+        ds.supportedInterfaces[type(IRegistryFacet).interfaceId] = true;
+        ds.supportedInterfaces[type(IRegistryStatus).interfaceId] = true;
 
 
         LibCommon.validateConfigParameters(

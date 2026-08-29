@@ -6,6 +6,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
+import {LibAppStorage} from "../src/libraries/LibAppStorage.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 
 /// @notice Gas-scaling tests for monitorCycleEnd / onCycleEndInternal.
@@ -159,33 +160,22 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      order (it's a filter, not a sort) — this test's result should match
     ///      testMonitorCycleEndGas_BoundaryScan's regardless of input order.
     ///
-    ///      Slot derivation (confirmed via `forge inspect StorageLayoutProbe
-    ///      storage-layout`, not hand-computed):
-    ///        AppStorage.registry              -> slot 7  (mapping(uint256 => RegistryState))
-    ///        RegistryState.orderedTaskIds     -> slot 11 (offset within RegistryState, plain uint256[])
-    ///      where the contract content is:
-    ///
-    ///         // SPDX-License-Identifier: MIT
-    ///         pragma solidity 0.8.34;
-    ///
-    ///         import {AppStorage} from "./libraries/LibAppStorage.sol";
-    ///
-    ///         /// @dev Scratch contract used only to extract `forge inspect ... storage-layout`
-    ///         ///      output for AppStorage's nested struct field offsets. Not part of the
-    ///         ///      diamond or any deployment — safe to delete after use.
-    ///         contract StorageLayoutProbe {
-    ///             AppStorage internal s;
-    ///         }
-    ///
-    ///      AppStorage's field order determines this slot number, so it must be
-    ///      re-verified against `forge inspect ... storage-layout` whenever
-    ///      AppStorage changes, rather than assumed stable across edits.
+    ///      Slot derivation (confirmed via `forge inspect <probe contract declaring
+    ///      `AppStorage internal s;`> storage-layout --json`, not hand-computed):
+    ///        AppStorage.registry              -> relative slot 7  (mapping(uint256 => RegistryState))
+    ///        RegistryState.orderedTaskIds     -> relative slot 11 (offset within RegistryState, plain uint256[])
+    ///      These are offsets *within* AppStorage/RegistryState, unaffected by where
+    ///      AppStorage itself is based (LibAppStorage.APP_STORAGE_POSITION) — only the
+    ///      base changes if AppStorage's own field order changes, not this relative math.
+    ///      Re-verify both offsets against `forge inspect ... storage-layout --json`
+    ///      whenever AppStorage or RegistryState's field order changes.
     ///      `testMonitorCycleEndGas_BoundaryScan_ReverseSorted` additionally asserts
     ///      the write actually landed (see its call to `_assertStrictlyDescending`),
     ///      so a future layout shift fails the test loudly instead of leaving it
     ///      silently vacuous.
     function _setOrderedTaskIdsDescending(address _diamond, uint256 _n) internal {
-        uint256 registryStateBase = uint256(keccak256(abi.encode(uint256(0), uint256(7))));
+        uint256 registryMappingSlot = uint256(LibAppStorage.APP_STORAGE_POSITION) + 7;
+        uint256 registryStateBase = uint256(keccak256(abi.encode(uint256(0), registryMappingSlot)));
         uint256 lengthSlot = registryStateBase + 11;
         uint256 dataBase = uint256(keccak256(abi.encode(lengthSlot)));
 

@@ -13,9 +13,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     using EnumerableSet for *;
 
-    /// @dev State variables 
-    AppStorage internal s;
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: TASKS RELATED FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Function used to register a user task for automation.
@@ -56,7 +53,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         uint128 flatRegistrationFee = LibAppStorage.activeConfig().flatRegistrationFeeWei;
         uint128 fee = flatRegistrationFee + _automationFeeCapForCycle;
 
-        bool sent = IERC20(s.erc20Supra).transferFrom(msg.sender, address(this), fee);
+        bool sent = IERC20(LibAppStorage.appStorage().erc20Supra).transferFrom(msg.sender, address(this), fee);
         if (!sent) { revert TransferFailed(); }
 
         emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFee, _automationFeeCapForCycle, registryState.tasks[taskIndex]);
@@ -250,7 +247,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
 
     /// @notice Helper function for validation.
     function validateInput(uint64[] memory _taskIndexes) private view {
-        if (!s.automationEnabled) { revert AutomationNotEnabled(); }
+        if (!LibAppStorage.appStorage().automationEnabled) { revert AutomationNotEnabled(); }
         if (!LibCommon.isCycleStarted()) revert CycleTransitionInProgress();
         if (_taskIndexes.length == 0) revert TaskIndexesCannotBeEmpty();
     }
@@ -336,7 +333,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     /// @notice Checks if the input account is an authorized submitter to submit system automation tasks.
     /// @param _account Address to check if it's authorized.
     function isAuthorizedSubmitter(address _account) public view returns (bool) {
-        return s.authorizedAccounts.contains(_account);
+        return LibAppStorage.appStorage().authorizedAccounts.contains(_account);
     }
 
     /// @notice Returns the total number of active tasks.

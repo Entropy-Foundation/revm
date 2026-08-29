@@ -11,12 +11,9 @@ pragma solidity 0.8.34;
 import {LibDiamond} from "./libraries/LibDiamond.sol";
 import {LibUtils} from "./libraries/LibUtils.sol";
 import {IDiamondCut} from "./interfaces/IDiamondCut.sol";
-import {IDiamondLoupe} from "./interfaces/IDiamondLoupe.sol";
 import {IFacetSelectors} from "./interfaces/IFacetSelectors.sol";
 import {DiamondInit} from "./upgradeInitializers/DiamondInit.sol";
 import {FacetsDeployment, InitParams} from "./libraries/DiamondTypes.sol";
-import { IERC173 } from "./interfaces/IERC173.sol";
-import { IERC165 } from "./interfaces/IERC165.sol";
 
 contract Diamond {
     using LibUtils for address;
@@ -84,15 +81,6 @@ contract Diamond {
         );
 
         LibDiamond.diamondCut(cut, _d.diamondInit, initCalldata);
-    }
-
-    /// @notice Returns true if registry has been initialized.
-    function isInitialized() external view returns (bool) {
-        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        return ds.supportedInterfaces[type(IERC165).interfaceId] &&
-        ds.supportedInterfaces[type(IDiamondCut).interfaceId] &&
-        ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] &&
-        ds.supportedInterfaces[type(IERC173).interfaceId];
     }
 
     /// @notice Find facet for function that is called and execute the

@@ -13,10 +13,12 @@ import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IDiamondCut} from "../src/interfaces/IDiamondCut.sol";
 import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
+import {IRegistryStatus} from "../src/interfaces/IRegistryStatus.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
 import {IERC165} from "../src/interfaces/IERC165.sol";
 import {DiamondInit} from "../src/upgradeInitializers/DiamondInit.sol";
 import {Diamond} from "../src//Diamond.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 contract DiamondInitTest is BaseDiamondTest {
 
@@ -59,6 +61,10 @@ contract DiamondInitTest is BaseDiamondTest {
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IDiamondCut).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IDiamondLoupe).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IERC173).interfaceId));
+        assertTrue(IERC165(diamondAddr).supportsInterface(type(ICoreFacet).interfaceId));
+        assertTrue(IERC165(diamondAddr).supportsInterface(type(IConfigFacet).interfaceId));
+        assertTrue(IERC165(diamondAddr).supportsInterface(type(IRegistryFacet).interfaceId));
+        assertTrue(IERC165(diamondAddr).supportsInterface(type(IRegistryStatus).interfaceId));
     }
     
     /// @dev Test to ensure 'init' selector is not registered.
@@ -80,6 +86,18 @@ contract DiamondInitTest is BaseDiamondTest {
         );
     }
     
+    /// @dev Test to ensure 'init' cannot be replayed via diamondCut with an empty cut array,
+    /// which would otherwise re-run initialization over live registry state.
+    function testInitCannotBeReplayedViaDiamondCut() public {
+        IDiamondCut.FacetCut[] memory emptyCut = new IDiamondCut.FacetCut[](0);
+        bytes memory initCalldata = abi.encodeCall(DiamondInit.init, (defaultParams, address(erc20Supra)));
+
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+
+        vm.prank(admin);
+        IDiamondCut(diamondAddr).diamondCut(emptyCut, deployment.facets.diamondInit, initCalldata);
+    }
+
     /// @dev Test to ensure Diamond reverts if native token is sent to it.
     function testDiamondTxFailsIfNativeTokenIsSent() public {
         vm.prank(alice);
@@ -152,6 +170,15 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.prank(alice);
         OwnershipFacet(diamondAddr).transferOwnership(bob);
+    }
+
+    /// @dev Test to ensure 'transferOwnership' reverts if the new owner is the zero address
+    /// (renouncing ownership is not supported).
+    function testTransferOwnershipRevertsIfNewOwnerIsZero() public {
+        vm.expectRevert(LibDiamond.AddressCannotBeZero.selector);
+
+        vm.prank(admin);
+        OwnershipFacet(diamondAddr).transferOwnership(address(0));
     }
 
     /// @dev Test to ensure 'diamondCut' reverts if caller is not owner.
@@ -353,8 +380,17 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
     }
 
+    /// @dev Test to ensure the constructor reverts if the genesis owner is the zero address.
+    function testInitializeRevertsIfOwnerIsZero() public {
+        vm.startPrank(admin);
+        FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
+        vm.expectRevert(LibDiamond.AddressCannotBeZero.selector);
+        new Diamond(address(0), facets, address(erc20Supra), defaultParams);
+        vm.stopPrank();
+    }
+
     /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
-    function testInitializeRevertsIfErc20SupraIsZero() public {   
+    function testInitializeRevertsIfErc20SupraIsZero() public {
         vm.startPrank(admin);
         FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
@@ -632,9 +668,20 @@ contract DiamondInitTest is BaseDiamondTest {
         }
     }
 
-    /// @dev Test to ensure 'isInitialized' returns true after initialization.
+    /// @dev Test to ensure 'isInitialized' returns true after initialization, and that it is
+    /// routed through the diamond's normal selector table (not shadowed by Diamond.sol itself).
     function testIsInitialized() public view {
-        assertTrue(Diamond(diamondAddr).isInitialized());
+        assertTrue(IRegistryStatus(diamondAddr).isInitialized());
+        assertEq(
+            IDiamondLoupe(diamondAddr).facetAddress(IRegistryStatus.isInitialized.selector),
+            deployment.facets.loupeFacet
+        );
+    }
+
+    /// @dev Test to ensure IDiamondLoupe's own interfaceId is the well-known EIP-2535 value,
+    /// unaffected by IRegistryStatus (isInitialized) being routed through the same facet.
+    function testDiamondLoupeInterfaceIdIsStandard() public pure {
+        assertEq(type(IDiamondLoupe).interfaceId, bytes4(0x48e2b093));
     }
 }
 

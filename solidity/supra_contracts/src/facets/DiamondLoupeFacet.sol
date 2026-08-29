@@ -7,13 +7,16 @@ pragma solidity 0.8.34;
 
 import { LibDiamond } from  "../libraries/LibDiamond.sol";
 import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
+import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
+import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
 import { IFacetSelectors } from "../interfaces/IFacetSelectors.sol";
+import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
 // The functions in DiamondLoupeFacet MUST be added to a diamond.
 // The EIP-2535 Diamond standard requires these functions.
 
-contract DiamondLoupeFacet is IDiamondLoupe, IERC165, IFacetSelectors {
+contract DiamondLoupeFacet is IDiamondLoupe, IERC165, IFacetSelectors, IRegistryStatus {
 
     // Diamond Loupe Functions
     ////////////////////////////////////////////////////////////////////
@@ -67,12 +70,26 @@ contract DiamondLoupeFacet is IDiamondLoupe, IERC165, IFacetSelectors {
         return ds.supportedInterfaces[_interfaceId];
     }
 
+    /// @notice Returns true if the Automation Registry has completed its DiamondInit initialization.
+    /// @dev Checks a fixed subset of the interfaces DiamondInit registers (the original four
+    /// EIP-2535 core interfaces). All interface flags are set atomically in the same init() call,
+    /// so any non-empty subset gives the same true/false answer — this does not need to check
+    /// every interface DiamondInit happens to register.
+    function isInitialized() external override view returns (bool) {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        return ds.supportedInterfaces[type(IERC165).interfaceId] &&
+        ds.supportedInterfaces[type(IDiamondCut).interfaceId] &&
+        ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] &&
+        ds.supportedInterfaces[type(IERC173).interfaceId];
+    }
+
     function getSelectors() external pure override returns (bytes4[] memory s) {
-        s = new bytes4[](5);
+        s = new bytes4[](6);
         s[0] = DiamondLoupeFacet.facets.selector;
         s[1] = DiamondLoupeFacet.facetFunctionSelectors.selector;
         s[2] = DiamondLoupeFacet.facetAddresses.selector;
         s[3] = DiamondLoupeFacet.facetAddress.selector;
         s[4] = DiamondLoupeFacet.supportsInterface.selector;
+        s[5] = DiamondLoupeFacet.isInitialized.selector;
     }
 }

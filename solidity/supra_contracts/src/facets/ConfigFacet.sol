@@ -13,26 +13,25 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 contract ConfigFacet is IConfigFacet, IFacetSelectors {
     using EnumerableSet for *;
 
-    /// @dev State variables
-    AppStorage internal s;
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Grants authorization to the input account to submit system automation tasks. 
+    /// @notice Grants authorization to the input account to submit system automation tasks.
     /// It is foundation governance responsibility to make sure that the target is and instance of `MultiSignatureWallet`
     /// @param _account Address to grant authorization to.
     function grantAuthorization(address _account) external {
         LibDiamond.enforceIsContractOwner();
 
+        AppStorage storage s = LibAppStorage.appStorage();
         require(s.authorizedAccounts.add(_account), AddressAlreadyExists());
         emit AuthorizationGranted(_account, block.timestamp);
     }
 
-    /// @notice Revokes authorization from the input account to submit system automation tasks. 
+    /// @notice Revokes authorization from the input account to submit system automation tasks.
     /// @param _account Address to revoke authorization from.
     function revokeAuthorization(address _account) external {
         LibDiamond.enforceIsContractOwner();
 
+        AppStorage storage s = LibAppStorage.appStorage();
         require(s.authorizedAccounts.remove(_account), AddressDoesNotExist());
         emit AuthorizationRevoked(_account, block.timestamp);
     }
@@ -41,6 +40,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     function enableRegistration() external {
         LibDiamond.enforceIsContractOwner();
 
+        AppStorage storage s = LibAppStorage.appStorage();
         if (s.registrationEnabled) { revert AlreadyEnabled(); }
         s.registrationEnabled = true;
 
@@ -51,10 +51,11 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     function disableRegistration() external {
         LibDiamond.enforceIsContractOwner();
 
+        AppStorage storage s = LibAppStorage.appStorage();
         if (!s.registrationEnabled) { revert AlreadyDisabled(); }
         s.registrationEnabled = false;
 
-        emit TaskRegistrationDisabled(s.registrationEnabled);   
+        emit TaskRegistrationDisabled(s.registrationEnabled);
     }
 
     /// @notice Function to withdraw the accumulated fees.
@@ -65,6 +66,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
         if (_amount == 0) { revert InvalidAmount(); }
         LibUtils.validateAddress(_recipient);
+        AppStorage storage s = LibAppStorage.appStorage();
         uint256 balance = IERC20(s.erc20Supra).balanceOf(address(this));
 
         if (balance < _amount) { revert InsufficientBalance(); }
@@ -108,6 +110,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     ) external {
         LibDiamond.enforceIsContractOwner();
 
+        AppStorage storage s = LibAppStorage.appStorage();
         LibCommon.validateConfigParameters(
             _taskDurationCapSecs,
             _registryMaxGasCap,
@@ -166,6 +169,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     ) external {
         LibDiamond.enforceIsContractOwner();
 
+        AppStorage storage s = LibAppStorage.appStorage();
         s.maxPayloadLength = _maxPayloadLength;
         s.maxPredicateLength = _maxPredicateLength;
         s.maxAuxDataLength = _maxAuxDataLength;
@@ -178,12 +182,12 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
     /// @notice Returns the ERC20Supra address.
     function erc20Supra() external view returns (address) {
-        return s.erc20Supra;
+        return LibAppStorage.appStorage().erc20Supra;
     }
 
     /// @notice Returns if task registration is enabled.
     function isRegistrationEnabled() external view returns (bool) {
-        return s.registrationEnabled;
+        return LibAppStorage.appStorage().registrationEnabled;
     }
 
     /// @notice Returns the registry configuration.
@@ -198,6 +202,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
     /// @notice Returns the current task-registration input size caps.
     function getDataLengthCaps() external view returns (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) {
+        AppStorage storage s = LibAppStorage.appStorage();
         maxPayloadLength = s.maxPayloadLength;
         maxPredicateLength = s.maxPredicateLength;
         maxAuxDataLength = s.maxAuxDataLength;

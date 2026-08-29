@@ -66,6 +66,7 @@ library LibDiamond {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     function setContractOwner(address _newOwner) internal {
+        assertNonZeroAddress(_newOwner);
         DiamondStorage storage ds = diamondStorage();
         address previousOwner = ds.contractOwner;
         ds.contractOwner = _newOwner;
@@ -100,8 +101,8 @@ library LibDiamond {
                 revert IncorrectFacetCutAction();
             }
         }
-        emit DiamondCut(_diamondCut, _init, _calldata);
         initializeDiamondCut(_init, _calldata);
+        emit DiamondCut(_diamondCut, _init, _calldata);
     }
 
     function addFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
@@ -141,10 +142,16 @@ library LibDiamond {
         }
     }
 
+    // NOTE: CoreFacet.processTasks, CoreFacet.monitorCycleEnd and
+    // CoreFacet.removeRegisteredTask are called every block/cycle by the node's
+    // off-chain VM-signer decoder, which hardcodes their selectors. Whoever
+    // operates diamondCut post-genesis must never submit a Remove action for
+    // these three selectors (Replace, to ship a fix, is fine and unaffected by
+    // this note) — see CoreFacet.sol for the selector list.
     function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();
-        // if function does not exist then do nothing and return
+        // EIP-2535 convention: a Remove action must pass the zero address as the facet.
         if (_facetAddress != address(0)) { revert AddressMustBeZero(); }
         for (uint256 selectorIndex; selectorIndex < _functionSelectors.length; selectorIndex++) {
             bytes4 selector = _functionSelectors[selectorIndex];
