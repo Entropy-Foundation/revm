@@ -144,9 +144,17 @@ library LibDiamond {
 
     // NOTE: CoreFacet.processTasks, CoreFacet.monitorCycleEnd and
     // CoreFacet.removeRegisteredTask are called every block/cycle by the node's
-    // off-chain VM-signer decoder, which hardcodes their selectors. Whoever
-    // operates diamondCut post-genesis must never submit a Remove action for
-    // these three selectors (Replace, to ship a fix, is fine and unaffected by
+    // off-chain VM-signer decoder, which hardcodes their selectors.
+    // The following functions are also utilized by the node's off-chain logic to manage automation registry at runtime
+    // And should not be removed unless node binary and automation registry runtime management is updated accordingly:
+    //    - DiamondLoupeFacet::isInitialized
+    //    - CoreFacet::getCycleStateDetails
+    //    - RegistryFacet::getTaskDetails
+    //    - RegistryFacet::getTaskIdList
+    //    - RegistryFacet::getActiveTaskIds
+    //    - CoreFacet::isAutomationEnabled
+    // Whoever operates diamondCut post-genesis must never submit a Remove action for
+    // these selectors (Replace, to ship a fix, is fine and unaffected by
     // this note) — see CoreFacet.sol for the selector list.
     function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         assertNonEmptySelectors(_functionSelectors);

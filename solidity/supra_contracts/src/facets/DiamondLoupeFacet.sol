@@ -75,6 +75,8 @@ contract DiamondLoupeFacet is IDiamondLoupe, IERC165, IFacetSelectors, IRegistry
     /// EIP-2535 core interfaces). All interface flags are set atomically in the same init() call,
     /// so any non-empty subset gives the same true/false answer — this does not need to check
     /// every interface DiamondInit happens to register.
+    /// Node's off-chain automation registry manager relies on existence of it.
+    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
     function isInitialized() external override view returns (bool) {
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         return ds.supportedInterfaces[type(IERC165).interfaceId] &&

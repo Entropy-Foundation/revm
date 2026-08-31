@@ -61,9 +61,6 @@ contract DiamondInitTest is BaseDiamondTest {
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IDiamondCut).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IDiamondLoupe).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IERC173).interfaceId));
-        assertTrue(IERC165(diamondAddr).supportsInterface(type(ICoreFacet).interfaceId));
-        assertTrue(IERC165(diamondAddr).supportsInterface(type(IConfigFacet).interfaceId));
-        assertTrue(IERC165(diamondAddr).supportsInterface(type(IRegistryFacet).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IRegistryStatus).interfaceId));
     }
     

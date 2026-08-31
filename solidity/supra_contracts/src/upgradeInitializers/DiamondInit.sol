@@ -37,15 +37,16 @@ import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable
 /// - The `init` function selector is never registered and is therefore
 ///   not callable through the Diamond after deployment.
 /// - `init` runs via delegatecall from `LibDiamond.diamondCut`, so it executes in the
-///   Diamond's own storage; it inherits `Initializable` so a second delegatecall into it
-///   (e.g. `diamondCut([], diamondInit, initCalldata)` with an empty cut array) reverts
-///   instead of re-running initialization over live registry state.
+///   Diamond's own storage.
 ///
 /// This initializer performs the following actions:
 /// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, ERC-173,
-///   IRegistryStatus, and the registry-specific facet interfaces present at genesis.
+///   IRegistryStatus.
 /// - Sets the active registry configuration, protocol feature flags and trusted addresses.
 /// - Establishes initial automation cycle state, index, and timestamp.
+///
+/// Later versions of DiamondInit re-initializing the state must use `reinitializer(N)` function tag
+/// to have a successful outcome.
 contract DiamondInit is Initializable {
 
     /// @notice Initializes Automation Registry state in Diamond storage
@@ -65,9 +66,6 @@ contract DiamondInit is Initializable {
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] = true;
         ds.supportedInterfaces[type(IERC173).interfaceId] = true;
-        ds.supportedInterfaces[type(ICoreFacet).interfaceId] = true;
-        ds.supportedInterfaces[type(IConfigFacet).interfaceId] = true;
-        ds.supportedInterfaces[type(IRegistryFacet).interfaceId] = true;
         ds.supportedInterfaces[type(IRegistryStatus).interfaceId] = true;
 
 

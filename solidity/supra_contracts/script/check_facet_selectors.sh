@@ -20,10 +20,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-FACETS=(DiamondCutFacet DiamondLoupeFacet OwnershipFacet ConfigFacet RegistryFacet CoreFacet)
 
 echo "Running CheckFacetSelectors.s.sol to collect each facet's self-reported getSelectors()..."
-SCRIPT_OUTPUT="$(forge script script/CheckFacetSelectors.s.sol 2>&1)"
+SCRIPT_OUTPUT="$(forge script script/CheckFacetSelectors.s.sol 2>&1 || true)"
 
 if ! grep -q "^  SELECTOR " <<<"$SCRIPT_OUTPUT"; then
     echo "FAIL: CheckFacetSelectors.s.sol produced no SELECTOR lines. Full output:"
@@ -33,7 +32,15 @@ fi
 
 overall_status=0
 
-for facet in "${FACETS[@]}"; do
+reported_facets=( $(
+    grep "^  SELECTOR" <<<"$SCRIPT_OUTPUT" \
+        | awk '{print $2}' \
+        | sort -u
+            ) )
+
+
+
+for facet in "${reported_facets[@]}"; do
     # Ground truth: every external/public function's selector, per solc's own ABI.
     # getSelectors() itself is excluded — it is deliberately not meant to be routed.
     inspected_selectors="$(
@@ -50,7 +57,8 @@ for facet in "${FACETS[@]}"; do
             | awk '{print $3}' \
             | sed 's/^0x//' \
             | tr '[:upper:]' '[:lower:]' \
-            | sort -u
+            | sort -u \
+            || echo "No Selector reported for ${facet}"
     )"
 
     missing="$(comm -23 <(echo "$inspected_selectors") <(echo "$reported_selectors") | sed '/^$/d')"

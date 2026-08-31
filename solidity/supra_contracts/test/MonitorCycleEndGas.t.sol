@@ -166,7 +166,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///        RegistryState.orderedTaskIds     -> relative slot 11 (offset within RegistryState, plain uint256[])
     ///      These are offsets *within* AppStorage/RegistryState, unaffected by where
     ///      AppStorage itself is based (LibAppStorage.APP_STORAGE_POSITION) — only the
-    ///      base changes if AppStorage's own field order changes, not this relative math.
+    ///      registry state base changes if AppStorage's own field order changes, not this relative math.
     ///      Re-verify both offsets against `forge inspect ... storage-layout --json`
     ///      whenever AppStorage or RegistryState's field order changes.
     ///      `testMonitorCycleEndGas_BoundaryScan_ReverseSorted` additionally asserts

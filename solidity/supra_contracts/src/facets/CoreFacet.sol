@@ -107,6 +107,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     }
 
     /// @notice Returns the index, start time, duration, state, transition details if any of the current cycle.
+    /// @dev Node's off-chain automation registry manager relies on existence of it.
+    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory details)  {
         AppStorage storage s = LibAppStorage.appStorage();
         details.index = s.index;
@@ -119,6 +121,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     }
 
     /// @notice Returns if automation is enabled.
+    /// @dev Node's off-chain automation registry manager relies on existence of it.
+    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
     function isAutomationEnabled() external view returns (bool) {
         return LibAppStorage.appStorage().automationEnabled;
     }

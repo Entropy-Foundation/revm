@@ -255,6 +255,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::  
 
     /// @notice Returns all the automation tasks available in the registry.
+    /// @dev Node's off-chain automation registry manager relies on existence of it.
+    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
     function getTaskIdList() external view returns (uint256[] memory) {
         return LibAppStorage.registryState().taskIdList.values();
     }
@@ -304,6 +306,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     }
 
     /// @notice Returns the details of a task. Reverts if task doesn't exist.
+    /// @dev Node's off-chain automation registry manager relies on existence of it.
+    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory) {
         return LibCommon.getTask(_taskIndex);
     }
@@ -342,6 +346,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     }
 
     /// @notice Returns all the active task indexes.
+    /// @dev Node's off-chain automation registry manager relies on existence of it.
+    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
     function getActiveTaskIds() external view returns (uint256[] memory) {
         return LibAppStorage.registryState().activeTaskIds;
     }
