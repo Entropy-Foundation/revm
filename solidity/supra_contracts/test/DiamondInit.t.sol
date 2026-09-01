@@ -83,8 +83,7 @@ contract DiamondInitTest is BaseDiamondTest {
         );
     }
     
-    /// @dev Test to ensure 'init' cannot be replayed via diamondCut with an empty cut array,
-    /// which would otherwise re-run initialization over live registry state.
+    /// @dev Test to ensure 'init' can only ever run once (smr-moonshot#3451).
     function testInitCannotBeReplayedViaDiamondCut() public {
         IDiamondCut.FacetCut[] memory emptyCut = new IDiamondCut.FacetCut[](0);
         bytes memory initCalldata = abi.encodeCall(DiamondInit.init, (defaultParams, address(erc20Supra)));
@@ -93,6 +92,21 @@ contract DiamondInitTest is BaseDiamondTest {
 
         vm.prank(admin);
         IDiamondCut(diamondAddr).diamondCut(emptyCut, deployment.facets.diamondInit, initCalldata);
+    }
+
+    /// @dev Test to ensure a future upgrade initializer tagged `reinitializer(2)` can still
+    /// run successfully after DiamondInit.init() has already consumed Initializable's
+    /// version 1 in the Diamond's shared storage (smr-moonshot#3451).
+    function testReinitializerCanRunAfterInitialInitialization() public {
+        MockDiamondInitV2 v2Init = new MockDiamondInitV2();
+        IDiamondCut.FacetCut[] memory emptyCut = new IDiamondCut.FacetCut[](0);
+        bytes memory initV2Calldata = abi.encodeCall(MockDiamondInitV2.initV2, ());
+
+        vm.expectEmit(false, false, false, false);
+        emit MockDiamondInitV2.ReinitializedV2();
+
+        vm.prank(admin);
+        IDiamondCut(diamondAddr).diamondCut(emptyCut, address(v2Init), initV2Calldata);
     }
 
     /// @dev Test to ensure Diamond reverts if native token is sent to it.
@@ -675,6 +689,28 @@ contract DiamondInitTest is BaseDiamondTest {
         );
     }
 
+    /// @dev Test to ensure 'isInitialized' genuinely reads live storage
+    /// (LibDiamond.DiamondStorage.initialized) rather than being permanently true by construction alone.
+    function testIsInitializedReflectsDedicatedFlagDirectly() public {
+        assertTrue(IRegistryStatus(diamondAddr).isInitialized());
+
+        // DiamondStorage.initialized packs into relative slot 4, byte offset 20, alongside
+        // contractOwner (bytes 0-19 of the same slot) -- confirmed via `forge inspect
+        // <probe contract declaring LibDiamond.DiamondStorage internal ds;> storage-layout
+        // --json`, not hand-computed. Re-verify if DiamondStorage's field order changes.
+        bytes32 slot = bytes32(uint256(LibDiamond.DIAMOND_STORAGE_POSITION) + 4);
+        bytes32 currentValue = vm.load(diamondAddr, slot);
+
+        // Clear only the `initialized` byte, leaving contractOwner's low 20 bytes untouched,
+        // to prove this is a targeted, single-field read -- not an artifact of also breaking
+        // ownership or anything else sharing the slot.
+        bytes32 clearedValue = currentValue & bytes32(~(uint256(0xff) << (20 * 8)));
+        vm.store(diamondAddr, slot, clearedValue);
+
+        assertFalse(IRegistryStatus(diamondAddr).isInitialized());
+        assertEq(OwnershipFacet(diamondAddr).owner(), admin, "contractOwner must be untouched");
+    }
+
     /// @dev Test to ensure IDiamondLoupe's own interfaceId is the well-known EIP-2535 value,
     /// unaffected by IRegistryStatus (isInitialized) being routed through the same facet.
     function testDiamondLoupeInterfaceIdIsStandard() public pure {
@@ -693,5 +729,17 @@ contract MockRegistryFacet {
 
     function counter() external pure returns (uint256) {
         return 1;
+    }
+}
+
+/// @dev Minimal stand-in for a future upgrade initializer, mirroring DiamondInit's own
+/// Initializable pattern but tagged `reinitializer(2)` instead of `initializer` -- see
+/// DiamondInit.sol's note on Initializable's version being permanently pinned to 1 by the
+/// genesis init() call.
+contract MockDiamondInitV2 is Initializable {
+    event ReinitializedV2();
+
+    function initV2() external reinitializer(2) {
+        emit ReinitializedV2();
     }
 }

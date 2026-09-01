@@ -53,6 +53,15 @@ library LibDiamond {
         mapping(bytes4 => bool) supportedInterfaces;
         // owner of the contract
         address contractOwner;
+        // Set once, at the end of DiamondInit.init(), and read by
+        // DiamondLoupeFacet.isInitialized() (IRegistryStatus). A dedicated flag rather than
+        // reusing `supportedInterfaces`: the two are unrelated concerns (ERC-165 answers "which
+        // standards does this diamond implement", not "has genesis initialization completed"),
+        // and coupling them would mean any future change to ERC-165 registration has to also
+        // reason about whether it disturbs the isInitialized() signal. A dedicated bool makes
+        // that signal read directly off its own state instead of being reconstructed from an
+        // invariant ("these interfaces are always registered together") a reader has to verify.
+        bool initialized;
     }
 
     function diamondStorage() internal pure returns (DiamondStorage storage ds) {
@@ -152,7 +161,7 @@ library LibDiamond {
     //    - RegistryFacet::getTaskDetails
     //    - RegistryFacet::getTaskIdList
     //    - RegistryFacet::getActiveTaskIds
-    //    - CoreFacet::isAutomationEnabled
+    //    - CoreFacet::isAutomationReadyEnabled
     // Whoever operates diamondCut post-genesis must never submit a Remove action for
     // these selectors (Replace, to ship a fix, is fine and unaffected by
     // this note) — see CoreFacet.sol for the selector list.

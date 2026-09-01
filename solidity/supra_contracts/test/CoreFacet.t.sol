@@ -6,6 +6,8 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
+import {IRegistryStatus} from "../src/interfaces/IRegistryStatus.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
@@ -500,6 +502,30 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).disableAutomation();
 
         assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+    }
+
+    /// @dev Test to ensure 'isAutomationReadyEnabled' reflects both isInitialized() (via the
+    /// diamond) and isAutomationEnabled() -- true only while both hold.
+    function testIsAutomationReadyEnabledTracksBothInitializedAndEnabled() public {
+        assertTrue(IRegistryStatus(diamondAddr).isInitialized());
+        assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
+        assertTrue(ICoreFacet(diamondAddr).isAutomationReadyEnabled());
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        // Still initialized, but no longer "ready" since automation is disabled.
+        assertTrue(IRegistryStatus(diamondAddr).isInitialized());
+        assertFalse(ICoreFacet(diamondAddr).isAutomationEnabled());
+        assertFalse(ICoreFacet(diamondAddr).isAutomationReadyEnabled());
+    }
+
+    /// @dev Test to ensure 'isAutomationReadyEnabled' is a normally-routed selector.
+    function testIsAutomationReadyEnabledSelectorRouting() public view {
+        assertEq(
+            IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.isAutomationReadyEnabled.selector),
+            deployment.facets.coreFacet
+        );
     }
 
     /// @dev Test to ensure 'disableAutomation' emits event 'AutomationDisabled'.

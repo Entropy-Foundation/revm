@@ -51,14 +51,19 @@ for facet in "${reported_facets[@]}"; do
     )"
 
     # What the facet's own getSelectors() (or, for DiamondCutFacet, Diamond's constructor's
-    # hardcoded IDiamondCut.diamondCut.selector) actually reports.
+    # hardcoded IDiamondCut.diamondCut.selector) actually reports. The `|| true` on the grep
+    # itself (not the whole pipeline) matters: under `pipefail`, grep matching nothing would
+    # otherwise abort the script before any FAIL is ever reported -- exactly the "this facet
+    # reported zero selectors" case this checker exists to catch. Isolating it here keeps
+    # reported_selectors a clean (possibly empty) list of hex selectors, so a genuine zero-
+    # selector facet correctly shows every one of its real selectors as "missing" below,
+    # instead of polluting the comparison with a human-readable fallback string.
     reported_selectors="$(
-        grep "^  SELECTOR $facet " <<<"$SCRIPT_OUTPUT" \
+        { grep "^  SELECTOR $facet " <<<"$SCRIPT_OUTPUT" || true; } \
             | awk '{print $3}' \
             | sed 's/^0x//' \
             | tr '[:upper:]' '[:lower:]' \
-            | sort -u \
-            || echo "No Selector reported for ${facet}"
+            | sort -u
     )"
 
     missing="$(comm -23 <(echo "$inspected_selectors") <(echo "$reported_selectors") | sed '/^$/d')"

@@ -7,6 +7,7 @@ import {LibCore} from "../libraries/LibCore.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
+import {IRegistryStatus} from "../interfaces/IRegistryStatus.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -121,10 +122,21 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     }
 
     /// @notice Returns if automation is enabled.
-    /// @dev Node's off-chain automation registry manager relies on existence of it.
-    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
-    function isAutomationEnabled() external view returns (bool) {
+    function isAutomationEnabled() public view returns (bool) {
         return LibAppStorage.appStorage().automationEnabled;
+    }
+
+    /// @notice Returns true only if the Automation Registry is both fully initialized
+    /// (see IRegistryStatus.isInitialized) and automation is currently enabled -- a single
+    /// combined readiness check for callers (e.g. node-runtime) that need both facts before
+    /// treating the registry as usable.
+    /// @dev Calls isInitialized() through the diamond (address(this)), not a private copy of
+    /// that check, so this always reflects whichever facet currently serves that selector --
+    /// it can't drift out of sync after a future diamondCut replaces the loupe facet alone.
+    /// Node's off-chain automation registry manager relies on existence of this function.
+    /// Update/Replace is acceptable, but removal should be checked against node-runtime first.
+    function isAutomationReadyEnabled() external view returns (bool) {
+        return IRegistryStatus(address(this)).isInitialized() && isAutomationEnabled();
     }
 
     /// @notice Removes registered tasks when predicate validation fails during runtime.
@@ -154,7 +166,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
 
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](10);
+        selectors = new bytes4[](11);
         selectors[0] = CoreFacet.processTasks.selector;
         selectors[1] = CoreFacet.monitorCycleEnd.selector;
         selectors[2] = CoreFacet.enableAutomation.selector;
@@ -163,7 +175,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         selectors[5] = CoreFacet.getCycleInfo.selector;
         selectors[6] = CoreFacet.getCycleDuration.selector;
         selectors[7] = CoreFacet.getTransitionInfo.selector;
-        selectors[8] = CoreFacet.isAutomationEnabled.selector;
+        selectors[8] = this.isAutomationEnabled.selector;
         selectors[9] = CoreFacet.getCycleStateDetails.selector;
+        selectors[10] = CoreFacet.isAutomationReadyEnabled.selector;
     }
 }

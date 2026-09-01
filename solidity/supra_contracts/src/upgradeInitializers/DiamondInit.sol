@@ -36,8 +36,9 @@ import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable
 /// - This contract is NOT a facet and MUST NOT be added to the Diamond.
 /// - The `init` function selector is never registered and is therefore
 ///   not callable through the Diamond after deployment.
-/// - `init` runs via delegatecall from `LibDiamond.diamondCut`, so it executes in the
-///   Diamond's own storage.
+/// - `init` runs via delegatecall from `LibDiamond.diamondCut`, executing in the
+///   Diamond's own storage, and is `initializer`-guarded so it runs at most once
+///   per Diamond (smr-moonshot#3451).
 ///
 /// This initializer performs the following actions:
 /// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, ERC-173,
@@ -137,6 +138,12 @@ contract DiamondInit is Initializable {
         RegistryState storage registryState = LibAppStorage.registryState();
         registryState.nextCycleRegistryMaxGasCap = _params.registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _params.sysRegistryMaxGasCap;
+
+        // Set last, after every other write above has succeeded: this is the single flag
+        // DiamondLoupeFacet.isInitialized() (IRegistryStatus) reads. It can never be set back
+        // to false -- the `initializer` modifier above makes this whole function unrunnable a
+        // second time -- so once true it stays true for the life of this Diamond.
+        ds.initialized = true;
     }
 
 }
