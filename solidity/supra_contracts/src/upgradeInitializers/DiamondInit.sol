@@ -13,9 +13,6 @@ import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
 import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
-import { ICoreFacet } from "../interfaces/ICoreFacet.sol";
-import { IConfigFacet } from "../interfaces/IConfigFacet.sol";
-import { IRegistryFacet } from "../interfaces/IRegistryFacet.sol";
 import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
 import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";

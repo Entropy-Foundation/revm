@@ -32,13 +32,47 @@ fi
 
 overall_status=0
 
+# Ground-truth expected facet set: every contract under src/facets/ that implements
+# IFacetSelectors, found directly in its .sol declaration -- not a hand-maintained list
+# anywhere (not this script's, not CheckFacetSelectors.s.sol's deploy list, and not this
+# run's SELECTOR output). That independence is what closes two different holes at once:
+# a facet whose getSelectors() reports zero entries no longer vanishes from both sides of
+# the comparison silently, AND a facet that implements IFacetSelectors but was never added
+# to CheckFacetSelectors.s.sol's run() in the first place is caught too, instead of the
+# checker only ever validating whatever that hand-maintained deploy list happens to include.
+# DiamondCutFacet is added explicitly: it deliberately does not implement IFacetSelectors
+# (Diamond's constructor wires its one selector directly) so it can never be found this way
+# -- see CheckFacetSelectors.s.sol's own note on that.
+expected_facets=( $(
+    { grep -hoE 'contract [A-Za-z0-9_]+ is [^{]*\bIFacetSelectors\b' src/facets/*.sol \
+        | awk '{print $2}'
+      echo "DiamondCutFacet"
+    } | sort -u
+) )
+
 reported_facets=( $(
     grep "^  SELECTOR" <<<"$SCRIPT_OUTPUT" \
         | awk '{print $2}' \
         | sort -u
             ) )
 
-
+# Check membership in both directions: a facet that implements IFacetSelectors but never
+# shows up in the run's output (missing from CheckFacetSelectors.s.sol's run(), or its
+# getSelectors() reverts/reports zero entries) is a FAIL, not a silent skip; a facet that
+# shows up in the output but doesn't implement IFacetSelectors in its own source (a typo'd
+# name, or a stale entry for a removed facet) is flagged too, since the two have drifted apart.
+for expected in "${expected_facets[@]}"; do
+    if ! printf '%s\n' "${reported_facets[@]}" | grep -qx "$expected"; then
+        overall_status=1
+        echo "FAIL: $expected — implements IFacetSelectors but reported zero selectors (missing from CheckFacetSelectors.s.sol's run(), or getSelectors() is broken)"
+    fi
+done
+for reported in "${reported_facets[@]}"; do
+    if ! printf '%s\n' "${expected_facets[@]}" | grep -qx "$reported"; then
+        overall_status=1
+        echo "FAIL: $reported — reported selectors but does not implement IFacetSelectors in src/facets/ (stale or typo'd entry in CheckFacetSelectors.s.sol)"
+    fi
+done
 
 for facet in "${reported_facets[@]}"; do
     # Ground truth: every external/public function's selector, per solc's own ABI.
