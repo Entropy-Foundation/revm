@@ -32,23 +32,29 @@ fi
 
 overall_status=0
 
-# Ground-truth expected facet set: every contract under src/facets/ that implements
-# IFacetSelectors, found directly in its .sol declaration -- not a hand-maintained list
-# anywhere (not this script's, not CheckFacetSelectors.s.sol's deploy list, and not this
-# run's SELECTOR output). That independence is what closes two different holes at once:
-# a facet whose getSelectors() reports zero entries no longer vanishes from both sides of
-# the comparison silently, AND a facet that implements IFacetSelectors but was never added
-# to CheckFacetSelectors.s.sol's run() in the first place is caught too, instead of the
-# checker only ever validating whatever that hand-maintained deploy list happens to include.
-# DiamondCutFacet is added explicitly: it deliberately does not implement IFacetSelectors
-# (Diamond's constructor wires its one selector directly) so it can never be found this way
-# -- see CheckFacetSelectors.s.sol's own note on that.
-expected_facets=( $(
-    { grep -hoE 'contract [A-Za-z0-9_]+ is [^{]*\bIFacetSelectors\b' src/facets/*.sol \
-        | awk '{print $2}'
-      echo "DiamondCutFacet"
-    } | sort -u
-) )
+# Ground-truth expected facet set: every contract under src/facets/ (recursively) whose
+# compiled ABI includes getSelectors() (i.e. implements IFacetSelectors) -- derived from
+# forge's own compiled-artifact introspection, not from this script's source text, not from
+# CheckFacetSelectors.s.sol's deploy list, and not from this run's SELECTOR output. That
+# independence closes two different holes at once: a facet whose getSelectors() reports
+# zero entries no longer vanishes from both sides of the comparison silently, AND a facet
+# that implements IFacetSelectors but was never added to CheckFacetSelectors.s.sol's run()
+# in the first place is caught too. Using the compiled ABI rather than grepping the `is`
+# clause also means this is immune to how that clause happens to be formatted (a multi-line
+# inheritance list is not a special case) and can't be fooled by a commented-out declaration.
+# DiamondCutFacet is added as one documented exception: it deliberately does not implement
+# IFacetSelectors (Diamond's constructor wires its one selector directly), so its ABI never
+# has getSelectors() and it can't be found this way -- see CheckFacetSelectors.s.sol's own
+# note on that.
+expected_facets=()
+while IFS= read -r -d '' sol_file; do
+    contract_name="$(basename "$sol_file" .sol)"
+    if forge inspect "$contract_name" methods --json 2>/dev/null | jq -e 'has("getSelectors()")' >/dev/null 2>&1; then
+        expected_facets+=("$contract_name")
+    fi
+done < <(find src/facets -name '*.sol' -print0)
+expected_facets+=("DiamondCutFacet")
+expected_facets=( $(printf '%s\n' "${expected_facets[@]}" | sort -u) )
 
 reported_facets=( $(
     grep "^  SELECTOR" <<<"$SCRIPT_OUTPUT" \
