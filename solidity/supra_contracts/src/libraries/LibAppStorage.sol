@@ -160,9 +160,22 @@ library LibAppStorage {
     uint256 constant TRANSITION_STATE = 0;
     uint256 constant REGISTRY_STATE = 0;
 
+    // ERC-7201-style namespaced storage slot, mirroring LibDiamond.DIAMOND_STORAGE_POSITION's
+    // own convention. Deliberately not slot 0: Solidity's automatic sequential storage layout
+    // starts every contract's first declared state variable at slot 0, so a plain state
+    // variable can never be made immune to a future facet's inherited storage (Ownable,
+    // Pausable, Initializable, ERC20, etc.) landing there too — the only way to make
+    // AppStorage's location independent of what any facet inherits is to pin it, via
+    // assembly, to a slot nothing else's automatic layout will ever compute.
+    //
+    // Derivation: keccak256(abi.encode(uint256(keccak256("supra.automation.registry.appstorage")) - 1))
+    //             & ~bytes32(uint256(0xff))
+    bytes32 constant APP_STORAGE_POSITION = 0x1a8caa6e7a3f48200daaf7419e3bce8b119c3099bb3b75a9b1ba416f813ed500;
+
     function appStorage() internal pure returns (AppStorage storage s) {
+        bytes32 position = APP_STORAGE_POSITION;
         assembly {
-            s.slot := 0
+            s.slot := position
         }
     }
 

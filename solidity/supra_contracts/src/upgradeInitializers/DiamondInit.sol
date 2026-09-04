@@ -13,11 +13,13 @@ import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
 import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
+import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
 import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
 import { InitParams } from "../libraries/DiamondTypes.sol";
+import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 /// @title DiamondInit
 /// @notice Initialization contract for the Automation Registry
@@ -31,13 +33,19 @@ import { InitParams } from "../libraries/DiamondTypes.sol";
 /// - This contract is NOT a facet and MUST NOT be added to the Diamond.
 /// - The `init` function selector is never registered and is therefore
 ///   not callable through the Diamond after deployment.
+/// - `init` runs via delegatecall from `LibDiamond.diamondCut`, executing in the
+///   Diamond's own storage, and is `initializer`-guarded so it runs at most once
+///   per Diamond (smr-moonshot#3451).
 ///
 /// This initializer performs the following actions:
-/// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, and ERC-173.
+/// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, ERC-173,
+///   IRegistryStatus.
 /// - Sets the active registry configuration, protocol feature flags and trusted addresses.
 /// - Establishes initial automation cycle state, index, and timestamp.
-contract DiamondInit {   
-    AppStorage internal s;
+///
+/// Later versions of DiamondInit re-initializing the state must use `reinitializer(N)` function tag
+/// to have a successful outcome.
+contract DiamondInit is Initializable {
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
@@ -45,13 +53,18 @@ contract DiamondInit {
     function init(
         InitParams memory _params,
         address _erc20Supra
-    ) external {
-        // Adding ERC165 data
+    ) external initializer {
+        AppStorage storage s = LibAppStorage.appStorage();
+
+        // Adding ERC165 data. Registered once, at genesis, for the facet set present then;
+        // not reconciled by later diamondCut calls — a facet added, replaced or removed
+        // post-genesis does not update this mapping.
         LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
         ds.supportedInterfaces[type(IERC165).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] = true;
         ds.supportedInterfaces[type(IERC173).interfaceId] = true;
+        ds.supportedInterfaces[type(IRegistryStatus).interfaceId] = true;
 
 
         LibCommon.validateConfigParameters(
@@ -122,6 +135,12 @@ contract DiamondInit {
         RegistryState storage registryState = LibAppStorage.registryState();
         registryState.nextCycleRegistryMaxGasCap = _params.registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _params.sysRegistryMaxGasCap;
+
+        // Set last, after every other write above has succeeded: this is the single flag
+        // DiamondLoupeFacet.isInitialized() (IRegistryStatus) reads. It can never be set back
+        // to false -- the `initializer` modifier above makes this whole function unrunnable a
+        // second time -- so once true it stays true for the life of this Diamond.
+        ds.initialized = true;
     }
 
 }

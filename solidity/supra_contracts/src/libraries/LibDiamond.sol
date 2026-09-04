@@ -53,6 +53,15 @@ library LibDiamond {
         mapping(bytes4 => bool) supportedInterfaces;
         // owner of the contract
         address contractOwner;
+        // Set once, at the end of DiamondInit.init(), and read by
+        // DiamondLoupeFacet.isInitialized() (IRegistryStatus). A dedicated flag rather than
+        // reusing `supportedInterfaces`: the two are unrelated concerns (ERC-165 answers "which
+        // standards does this diamond implement", not "has genesis initialization completed"),
+        // and coupling them would mean any future change to ERC-165 registration has to also
+        // reason about whether it disturbs the isInitialized() signal. A dedicated bool makes
+        // that signal read directly off its own state instead of being reconstructed from an
+        // invariant ("these interfaces are always registered together") a reader has to verify.
+        bool initialized;
     }
 
     function diamondStorage() internal pure returns (DiamondStorage storage ds) {
@@ -66,6 +75,7 @@ library LibDiamond {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     function setContractOwner(address _newOwner) internal {
+        assertNonZeroAddress(_newOwner);
         DiamondStorage storage ds = diamondStorage();
         address previousOwner = ds.contractOwner;
         ds.contractOwner = _newOwner;
@@ -100,8 +110,8 @@ library LibDiamond {
                 revert IncorrectFacetCutAction();
             }
         }
-        emit DiamondCut(_diamondCut, _init, _calldata);
         initializeDiamondCut(_init, _calldata);
+        emit DiamondCut(_diamondCut, _init, _calldata);
     }
 
     function addFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
@@ -141,10 +151,24 @@ library LibDiamond {
         }
     }
 
+    // NOTE: CoreFacet.processTasks, CoreFacet.monitorCycleEnd and
+    // CoreFacet.removeRegisteredTask are called every block/cycle by the node's
+    // off-chain VM-signer decoder, which hardcodes their selectors.
+    // The following functions are also utilized by the node's off-chain logic to manage automation registry at runtime
+    // And should not be removed unless node binary and automation registry runtime management is updated accordingly:
+    //    - DiamondLoupeFacet::isInitialized
+    //    - CoreFacet::getCycleStateDetails
+    //    - RegistryFacet::getTaskDetails
+    //    - RegistryFacet::getTaskIdList
+    //    - RegistryFacet::getActiveTaskIds
+    //    - CoreFacet::isAutomationReadyEnabled
+    // Whoever operates diamondCut post-genesis must never submit a Remove action for
+    // these selectors (Replace, to ship a fix, is fine and unaffected by
+    // this note) — see CoreFacet.sol for the selector list.
     function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();
-        // if function does not exist then do nothing and return
+        // EIP-2535 convention: a Remove action must pass the zero address as the facet.
         if (_facetAddress != address(0)) { revert AddressMustBeZero(); }
         for (uint256 selectorIndex; selectorIndex < _functionSelectors.length; selectorIndex++) {
             bytes4 selector = _functionSelectors[selectorIndex];

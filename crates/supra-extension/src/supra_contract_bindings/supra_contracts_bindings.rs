@@ -925,7 +925,7 @@ interface SupraContractsBindings {
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-    function isAutomationEnabled() external view returns (bool);
+    function isAutomationReadyEnabled() external view returns (bool);
     function isInitialized() external view returns (bool);
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
@@ -1226,7 +1226,7 @@ interface SupraContractsBindings {
   },
   {
     "type": "function",
-    "name": "isAutomationEnabled",
+    "name": "isAutomationReadyEnabled",
     "inputs": [],
     "outputs": [
       {
@@ -3112,19 +3112,19 @@ function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     };
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
-    /**Function with signature `isAutomationEnabled()` and selector `0xe48e0e98`.
+    /**Function with signature `isAutomationReadyEnabled()` and selector `0x105176ce`.
 ```solidity
-function isAutomationEnabled() external view returns (bool);
+function isAutomationReadyEnabled() external view returns (bool);
 ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
-    pub struct isAutomationEnabledCall;
+    pub struct isAutomationReadyEnabledCall;
     #[derive(serde::Serialize, serde::Deserialize)]
     #[derive(Default, Debug, PartialEq, Eq, Hash)]
-    ///Container type for the return parameters of the [`isAutomationEnabled()`](isAutomationEnabledCall) function.
+    ///Container type for the return parameters of the [`isAutomationReadyEnabled()`](isAutomationReadyEnabledCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
-    pub struct isAutomationEnabledReturn {
+    pub struct isAutomationReadyEnabledReturn {
         #[allow(missing_docs)]
         pub _0: bool,
     }
@@ -3155,16 +3155,16 @@ function isAutomationEnabled() external view returns (bool);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<isAutomationEnabledCall>
+            impl ::core::convert::From<isAutomationReadyEnabledCall>
             for UnderlyingRustTuple<'_> {
-                fn from(value: isAutomationEnabledCall) -> Self {
+                fn from(value: isAutomationReadyEnabledCall) -> Self {
                     ()
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
             impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for isAutomationEnabledCall {
+            for isAutomationReadyEnabledCall {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self
                 }
@@ -3189,23 +3189,23 @@ function isAutomationEnabled() external view returns (bool);
             }
             #[automatically_derived]
             #[doc(hidden)]
-            impl ::core::convert::From<isAutomationEnabledReturn>
+            impl ::core::convert::From<isAutomationReadyEnabledReturn>
             for UnderlyingRustTuple<'_> {
-                fn from(value: isAutomationEnabledReturn) -> Self {
+                fn from(value: isAutomationReadyEnabledReturn) -> Self {
                     (value._0,)
                 }
             }
             #[automatically_derived]
             #[doc(hidden)]
             impl ::core::convert::From<UnderlyingRustTuple<'_>>
-            for isAutomationEnabledReturn {
+            for isAutomationReadyEnabledReturn {
                 fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
                     Self { _0: tuple.0 }
                 }
             }
         }
         #[automatically_derived]
-        impl alloy_sol_types::SolCall for isAutomationEnabledCall {
+        impl alloy_sol_types::SolCall for isAutomationReadyEnabledCall {
             type Parameters<'a> = ();
             type Token<'a> = <Self::Parameters<
                 'a,
@@ -3215,8 +3215,8 @@ function isAutomationEnabled() external view returns (bool);
             type ReturnToken<'a> = <Self::ReturnTuple<
                 'a,
             > as alloy_sol_types::SolType>::Token<'a>;
-            const SIGNATURE: &'static str = "isAutomationEnabled()";
-            const SELECTOR: [u8; 4] = [228u8, 142u8, 14u8, 152u8];
+            const SIGNATURE: &'static str = "isAutomationReadyEnabled()";
+            const SELECTOR: [u8; 4] = [16u8, 81u8, 118u8, 206u8];
             #[inline]
             fn new<'a>(
                 tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
@@ -3241,7 +3241,7 @@ function isAutomationEnabled() external view returns (bool);
                     '_,
                 > as alloy_sol_types::SolType>::abi_decode_sequence(data)
                     .map(|r| {
-                        let r: isAutomationEnabledReturn = r.into();
+                        let r: isAutomationReadyEnabledReturn = r.into();
                         r._0
                     })
             }
@@ -3253,7 +3253,7 @@ function isAutomationEnabled() external view returns (bool);
                     '_,
                 > as alloy_sol_types::SolType>::abi_decode_sequence_validate(data)
                     .map(|r| {
-                        let r: isAutomationEnabledReturn = r.into();
+                        let r: isAutomationReadyEnabledReturn = r.into();
                         r._0
                     })
             }
@@ -3761,7 +3761,7 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
         #[allow(missing_docs)]
         ifTaskExists(ifTaskExistsCall),
         #[allow(missing_docs)]
-        isAutomationEnabled(isAutomationEnabledCall),
+        isAutomationReadyEnabled(isAutomationReadyEnabledCall),
         #[allow(missing_docs)]
         isInitialized(isInitializedCall),
         #[allow(missing_docs)]
@@ -3777,6 +3777,7 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
         ///
         /// Prefer using `SolInterface` methods instead.
         pub const SELECTORS: &'static [[u8; 4usize]] = &[
+            [16u8, 81u8, 118u8, 206u8],
             [18u8, 247u8, 44u8, 244u8],
             [35u8, 33u8, 204u8, 163u8],
             [49u8, 63u8, 197u8, 229u8],
@@ -3786,11 +3787,11 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             [125u8, 237u8, 9u8, 27u8],
             [138u8, 170u8, 64u8, 78u8],
             [178u8, 239u8, 104u8, 150u8],
-            [228u8, 142u8, 14u8, 152u8],
             [236u8, 130u8, 180u8, 41u8],
         ];
         /// The names of the variants in the same order as `SELECTORS`.
         pub const VARIANT_NAMES: &'static [&'static str] = &[
+            ::core::stringify!(isAutomationReadyEnabled),
             ::core::stringify!(getTaskDetailsBulk),
             ::core::stringify!(getActiveTaskIds),
             ::core::stringify!(removeRegisteredTask),
@@ -3800,11 +3801,11 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             ::core::stringify!(blockPrologue),
             ::core::stringify!(ifTaskExists),
             ::core::stringify!(getTaskDetails),
-            ::core::stringify!(isAutomationEnabled),
             ::core::stringify!(getTaskIdList),
         ];
         /// The signatures in the same order as `SELECTORS`.
         pub const SIGNATURES: &'static [&'static str] = &[
+            <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <removeRegisteredTaskCall as alloy_sol_types::SolCall>::SIGNATURE,
@@ -3814,7 +3815,6 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
             <ifTaskExistsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
-            <isAutomationEnabledCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskIdListCall as alloy_sol_types::SolCall>::SIGNATURE,
         ];
         /// Returns the signature for the given selector, if known.
@@ -3867,8 +3867,8 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                 Self::ifTaskExists(_) => {
                     <ifTaskExistsCall as alloy_sol_types::SolCall>::SELECTOR
                 }
-                Self::isAutomationEnabled(_) => {
-                    <isAutomationEnabledCall as alloy_sol_types::SolCall>::SELECTOR
+                Self::isAutomationReadyEnabled(_) => {
+                    <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::isInitialized(_) => {
                     <isInitializedCall as alloy_sol_types::SolCall>::SELECTOR
@@ -3898,6 +3898,17 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             static DECODE_SHIMS: &[fn(
                 &[u8],
             ) -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
+                {
+                    fn isAutomationReadyEnabled(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::isAutomationReadyEnabled)
+                    }
+                    isAutomationReadyEnabled
+                },
                 {
                     fn getTaskDetailsBulk(
                         data: &[u8],
@@ -3998,17 +4009,6 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                     getTaskDetails
                 },
                 {
-                    fn isAutomationEnabled(
-                        data: &[u8],
-                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_decode_raw(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::isAutomationEnabled)
-                    }
-                    isAutomationEnabled
-                },
-                {
                     fn getTaskIdList(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -4039,6 +4039,17 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
             static DECODE_VALIDATE_SHIMS: &[fn(
                 &[u8],
             ) -> alloy_sol_types::Result<SupraContractsBindingsCalls>] = &[
+                {
+                    fn isAutomationReadyEnabled(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::isAutomationReadyEnabled)
+                    }
+                    isAutomationReadyEnabled
+                },
                 {
                     fn getTaskDetailsBulk(
                         data: &[u8],
@@ -4139,17 +4150,6 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                     getTaskDetails
                 },
                 {
-                    fn isAutomationEnabled(
-                        data: &[u8],
-                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                                data,
-                            )
-                            .map(SupraContractsBindingsCalls::isAutomationEnabled)
-                    }
-                    isAutomationEnabled
-                },
-                {
                     fn getTaskIdList(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -4209,8 +4209,8 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                         inner,
                     )
                 }
-                Self::isAutomationEnabled(inner) => {
-                    <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_encoded_size(
+                Self::isAutomationReadyEnabled(inner) => {
+                    <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::abi_encoded_size(
                         inner,
                     )
                 }
@@ -4276,8 +4276,8 @@ function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memo
                         out,
                     )
                 }
-                Self::isAutomationEnabled(inner) => {
-                    <isAutomationEnabledCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                Self::isAutomationReadyEnabled(inner) => {
+                    <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::abi_encode_raw(
                         inner,
                         out,
                     )
@@ -4609,11 +4609,11 @@ the bytecode concatenated with the constructor's ABI-encoded arguments.*/
         ) -> alloy_contract::SolCallBuilder<&P, ifTaskExistsCall, N> {
             self.call_builder(&ifTaskExistsCall { _taskIndex })
         }
-        ///Creates a new call builder for the [`isAutomationEnabled`] function.
-        pub fn isAutomationEnabled(
+        ///Creates a new call builder for the [`isAutomationReadyEnabled`] function.
+        pub fn isAutomationReadyEnabled(
             &self,
-        ) -> alloy_contract::SolCallBuilder<&P, isAutomationEnabledCall, N> {
-            self.call_builder(&isAutomationEnabledCall)
+        ) -> alloy_contract::SolCallBuilder<&P, isAutomationReadyEnabledCall, N> {
+            self.call_builder(&isAutomationReadyEnabledCall)
         }
         ///Creates a new call builder for the [`isInitialized`] function.
         pub fn isInitialized(

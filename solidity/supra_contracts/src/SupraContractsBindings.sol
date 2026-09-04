@@ -17,7 +17,7 @@ interface SupraContractsBindings {
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
 
     // View functions of CoreFacet
-    function isAutomationEnabled() external view returns (bool);
+    function isAutomationReadyEnabled() external view returns (bool);
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
 
     // Entry function to be called by node runtime for bookkeeping

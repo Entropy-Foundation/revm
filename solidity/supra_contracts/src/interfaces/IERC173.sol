@@ -13,7 +13,8 @@ interface IERC173 {
     function owner() external view returns (address owner_);
 
     /// @notice Set the address of the new owner of the contract
-    /// @dev Set _newOwner to address(0) to renounce any ownership.
+    /// @dev Reverts with LibDiamond.AddressCannotBeZero if `_newOwner` is the zero address.
+    ///      Renouncing ownership is intentionally not supported.
     /// @param _newOwner The address of the new owner of the contract
     function transferOwnership(address _newOwner) external;
 }
