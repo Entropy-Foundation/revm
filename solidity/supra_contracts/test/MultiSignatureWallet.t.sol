@@ -543,7 +543,22 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'executeTransaction' forwards the exact failure data from the target call.
+    function testExecuteTransactionForwardsExactFailureData() public {
+        address[] memory emptyOwners;
+        bytes memory data = abi.encodeCall(MultiSignatureWallet.addOwners, (emptyOwners));
+        submitTransactionToMultiSig(data);
+
+        grantSufficientConfirmations(0);
+
+        bytes memory expectedInnerRevert = abi.encodeWithSelector(IMultiSignatureWallet.OwnersRequired.selector);
+        vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -556,7 +571,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -668,7 +683,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -685,7 +700,7 @@ contract MultiSignatureWalletTest is Test {
 
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
         
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -760,7 +775,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(0));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -771,7 +786,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(6));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -903,7 +918,7 @@ contract MultiSignatureWalletTest is Test {
         // Deploy implementation
         submitToDeploy("", 0, 0);   // Empty creation code
         
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -925,7 +940,7 @@ contract MultiSignatureWalletTest is Test {
         bytes memory creationCode = proxyCreationCode(impl);        
         submitToDeploy(creationCode, 1 ether, 1);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(1);
@@ -936,7 +951,7 @@ contract MultiSignatureWalletTest is Test {
         // Deploy implementation
         submitToDeploy(hex"f1", 0, 0);  // Invalid creation code
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -1244,7 +1259,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToCancelTransaction(0));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
         vm.prank(address(1001));
         multiSig.executeTransaction(0);
     }
@@ -1326,7 +1341,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateMaxTimeoutDuration(0));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -1408,7 +1423,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToBeacon(abi.encodeCall(MultisigBeacon.renounceOwnership, ()));
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.ExecutionFailed.selector);
+        vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
 

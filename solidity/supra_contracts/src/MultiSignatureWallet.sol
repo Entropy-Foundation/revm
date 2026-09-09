@@ -236,6 +236,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     /**
      * @dev Function to execute a confirmed transaction.
      * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
+     * @dev Reverts with ExecutionFailed(bytes data), where data is the target call's raw returndata, if the low-level call fails.
      * @param _txIndex Index of the transaction to execute.
      */
     function executeTransaction(uint256 _txIndex) public returns (bytes memory) {
@@ -250,7 +251,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         removeTransaction(_txIndex);
 
         (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
-        if (!success) { revert ExecutionFailed(); }
+        if (!success) { revert ExecutionFailed(data); }
 
         emit ExecuteTransaction(msg.sender, _txIndex, data);
         return data;
