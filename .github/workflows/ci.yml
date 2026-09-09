@@ -6,9 +6,9 @@ concurrency:
 
 on:
   push:
-    branches: [main, "release/**"]
+    branches: [main, "release/**", "feature/**"]
   pull_request:
-    branches: [main, "release/**"]
+    branches: [main, "release/**", "feature/**"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -115,6 +115,24 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+
+  forge-tests:
+    name: forge-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install forge
+        uses: foundry-rs/foundry-actions@v1.
+      - name: Build forge project
+        working-directory: ./solidity/supra-contracts
+        run: forge build
+      - name: Run forge tests
+        working-directory: ./solidity/supra-contracts
+        run: forge test --vvv
 
   feature-propagation:
     runs-on: ubuntu-latest

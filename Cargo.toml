@@ -169,10 +169,6 @@ rust.unreachable_pub = "warn"
 rust.unused_must_use = "deny"
 rustdoc.all = "warn"
 
-[patch.crates-io]
-gmp-mpfr-sys = { git = "ssh://git@github.com/Entropy-Foundation/gmp-mpfr-sys", branch="master" }
-
-
 [workspace.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
