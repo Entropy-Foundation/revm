@@ -9,6 +9,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
 import {MultisigBeacon, UpgradeableBeacon} from "../src/MultisigBeacon.sol";
+import {RevertingTarget, RevertingConstructor} from "./RevertMocks.sol";
 
 contract MultiSignatureWalletTest is Test {
     Counter counter;
@@ -511,15 +512,20 @@ contract MultiSignatureWalletTest is Test {
         return abi.encodeCall(MultiSignatureWallet.addOwners, (newOwners));
     }
 
-    /// @dev Helper function to submit a transaction to perform an action in the MultiSignatureWallet.
-    function submitTransactionToMultiSig(bytes memory _data) private {
+    /// @dev Helper function to submit a transaction targeting an arbitrary contract.
+    function submitTransactionToTarget(address _to, bytes memory _data) private {
         vm.prank(address(1001));
         multiSig.submitTransaction(
-            address(multiSig),
+            _to,
             0,
             10000,
             _data
         );
+    }
+
+    /// @dev Helper function to submit a transaction to perform an action in the MultiSignatureWallet.
+    function submitTransactionToMultiSig(bytes memory _data) private {
+        submitTransactionToTarget(address(multiSig), _data);
     }
 
     /// @dev Test to ensure 'addOwners' adds an array of owners in multisig.
@@ -559,6 +565,74 @@ contract MultiSignatureWalletTest is Test {
 
         bytes memory expectedInnerRevert = abi.encodeWithSelector(IMultiSignatureWallet.OwnersRequired.selector);
         vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'executeTransaction' forwards a plain revert-string reason (Error(string)) unchanged.
+    function testExecuteTransactionForwardsRevertStringReason() public {
+        RevertingTarget target = new RevertingTarget();
+        string memory reason = "a reason string long enough to exceed one word";
+        bytes memory data = abi.encodeCall(RevertingTarget.revertWithString, (reason));
+        submitTransactionToTarget(address(target), data);
+
+        grantSufficientConfirmations(0);
+
+        bytes memory expectedInnerRevert = abi.encodeWithSignature("Error(string)", reason);
+        vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'executeTransaction' forwards a custom error with mixed dynamic and static args unchanged.
+    function testExecuteTransactionForwardsDynamicErrorArgs() public {
+        RevertingTarget target = new RevertingTarget();
+        bytes memory blob = new bytes(1000);
+        for (uint256 i = 0; i < blob.length; i++) {
+            blob[i] = bytes1(uint8(i));
+        }
+        bytes memory data = abi.encodeCall(RevertingTarget.revertWithDynamicError, (blob, 42));
+        submitTransactionToTarget(address(target), data);
+
+        grantSufficientConfirmations(0);
+
+        bytes memory expectedInnerRevert = abi.encodeWithSelector(RevertingTarget.BigError.selector, blob, uint256(42));
+        vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'executeTransaction' forwards empty returndata (e.g. a bare 'revert(0, 0)')
+    ///      as ExecutionFailed(""), rather than reverting the wrapping itself.
+    function testExecuteTransactionForwardsEmptyReturndata() public {
+        RevertingTarget target = new RevertingTarget();
+        bytes memory data = abi.encodeCall(RevertingTarget.revertWithNoData, ());
+        submitTransactionToTarget(address(target), data);
+
+        grantSufficientConfirmations(0);
+
+        vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, bytes("")));
+
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0);
+    }
+
+    /// @dev Test to ensure 'deployContract' forwards the failed constructor's exact revert data through
+    ///      ContractCreationFailed, and that executeTransaction wraps that in turn through ExecutionFailed
+    ///      since deployContract is itself invoked as a self-call transaction - the same double-wrap that
+    ///      any other admin function executed through the wallet goes through.
+    function testDeployContractForwardsConstructorFailureData() public {
+        bytes memory creationCode = abi.encodePacked(type(RevertingConstructor).creationCode, abi.encode(uint256(7)));
+        submitToDeploy(creationCode, 0, 0);
+
+        bytes memory expectedConstructorRevert =
+            abi.encodeWithSelector(RevertingConstructor.ConstructorBlew.selector, uint256(7));
+        bytes memory expectedDeployRevert =
+            abi.encodeWithSelector(IMultiSignatureWallet.ContractCreationFailed.selector, expectedConstructorRevert);
+        vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedDeployRevert));
 
         vm.prank(address(1002));
         multiSig.executeTransaction(0);
@@ -1359,13 +1433,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Helper function to submit a transaction targeting the beacon itself (e.g. upgradeTo, transferOwnership).
     function submitTransactionToBeacon(bytes memory _data) private {
-        vm.prank(address(1001));
-        multiSig.submitTransaction(
-            address(beacon),
-            0,
-            10000,
-            _data
-        );
+        submitTransactionToTarget(address(beacon), _data);
     }
 
     /// @dev Test to ensure 'transferOwnership' sets a pending owner without changing the current owner.
