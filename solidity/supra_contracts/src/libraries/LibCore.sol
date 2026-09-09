@@ -212,7 +212,7 @@ library LibCore {
 
     /// @notice Updates the cycle state if the transition is identified to be finalized.
     /// As transition happens from suspended state and while transition was in progress
-    ///    - if the feature was enabled back, then the transition will happen direclty to STARTED state,
+    ///    - if the feature was enabled back, then the transition will happen directly to STARTED state,
     ///    - otherwise the transition will be done to the READY state.
     ///
     /// In both cases config will be updated. In this case we will make sure to keep the consistency of state
@@ -472,7 +472,7 @@ library LibCore {
 
                 isRemoved = true;
 
-                emit ICoreFacet.TaskCancelledInsufficentBalanceAllowance(
+                emit ICoreFacet.TaskCancelledInsufficientBalanceAllowance(
                     _taskIndex,
                     _owner,
                     _fee,
@@ -521,11 +521,11 @@ library LibCore {
         return LibAppStorage.transitionState().nextTaskIndexPosition != 0;
     }
 
-    /// @notice Traverses the list of the tasks and based on the task state and expiry information either charges or drops the task after refunding eligable fees.
+    /// @notice Traverses the list of the tasks and based on the task state and expiry information either charges or drops the task after refunding eligible fees.
     /// Tasks are checked not to be processed more than once.
     /// This function should be called only if registry is in FINISHED state, meaning a normal cycle transition is happening.
     /// After processing all input tasks, intermediate transition state is updated and transition end is checked (whether all expected tasks has been processed already).
-    /// In case if transition end is detected a start of the new cycle is given (if during trasition period suspention is not requested) and corresponding event is emitted.
+    /// In case if transition end is detected a start of the new cycle is given (if during transition period suspension is not requested) and corresponding event is emitted.
     /// @param _cycleIndex Cycle index of the new cycle to which the transition is being done.
     /// @param _taskIndexes Array of task indexes to be processed.
     function onCycleTransition(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
@@ -552,7 +552,7 @@ library LibCore {
 
     /// @notice Traverses the list of the tasks and refunds automation(if not PENDING) and deposit fees for all tasks and removes from registry.
     /// This function is called only if automation feature is disabled, i.e. cycle is in SUSPENDED state.
-    /// After processing input set of tasks the end of suspention process is checked(i.e. all expected tasks have been processed).
+    /// After processing input set of tasks the end of suspension process is checked(i.e. all expected tasks have been processed).
     /// In case if end is identified, the registry state is update to READY and corresponding event is emitted.
     /// @param _cycleIndex Input cycle index of the cycle being suspended.
     /// @param _taskIndexes Array of task indexes to be processed.
@@ -696,11 +696,11 @@ library LibCore {
     ///   a) when cycle is active and in progress
     ///     - here we simply move to suspended state so native layer can start requesting tasks processing
     ///       which will end up in refunds and cleanup. Note that refund will be done based on total gas-committed
-    ///       for the current cycle defined at the begining for the cycle, and using current automation fee parameters
+    ///       for the current cycle defined at the beginning for the cycle, and using current automation fee parameters
     ///   b) when cycle has just finished and there was another transaction causing feature suspension
     ///     - as this both events happen in scope of the same block, then we will simply update the state to suspended
     ///       and the native layer should identify the transition and request processing of the all available tasks.
-    ///       Note that in this case automation fee refund will not be expected and suspention and cycle end matched and
+    ///       Note that in this case automation fee refund will not be expected and suspension and cycle end matched and
     ///       no fee was yet charged to be refunded.
     ///       So the duration for refund and automation-fee-per-second for refund will be 0
     ///   c) when cycle transition was in progress and there was a feature suspension, but it could not be applied,
@@ -714,13 +714,13 @@ library LibCore {
             // Registry is empty move to ready state directly
             updateCycleStateTo(LibCommon.CycleState.READY);
         } else if (!s.ifTransitionStateExists) {
-            // Indicates that cycle was in STARTED state when suspention has been identified.
+            // Indicates that cycle was in STARTED state when suspension has been identified.
             // It is safe to assert that cycleEndTime will always be greater than current chain time as
             // the cycle end is check in the block metadata txn execution which proceeds any other transaction in the block.
             // Including the transaction which caused transition to suspended state.
             // So in case if cycleEndTime < currentTime then cycle end would have been identified
             // and we would have enterend else branch instead.
-            // This holds true even if we identified suspention when moving from FINALIZED->STARTED state.
+            // This holds true even if we identified suspension when moving from FINALIZED->STARTED state.
             // As in this case we will first transition to the STARTED state and only then to SUSPENDED.
             // And when transition to STARTED state we update the cycle start-time to be the current-chain-time.
             uint64 currentTime = uint64(block.timestamp); 

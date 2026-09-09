@@ -73,6 +73,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-hack
       - uses: Swatinem/rust-cache@v2
@@ -98,6 +100,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rust-docs
@@ -128,10 +132,10 @@ jobs:
       - name: Install forge
         uses: foundry-rs/foundry-toolchain@v1
       - name: Build forge project
-        working-directory: ./solidity/supra-contracts
+        working-directory: ./solidity/supra_contracts
         run: forge build
       - name: Run forge tests
-        working-directory: ./solidity/supra-contracts
+        working-directory: ./solidity/supra_contracts
         run: forge test --vvv
 
   feature-propagation:
@@ -151,3 +155,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: crate-ci/typos@v1
+        with:
+          ex

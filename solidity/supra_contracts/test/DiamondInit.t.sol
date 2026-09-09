@@ -297,7 +297,7 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
     }
 
-    /// @dev Test to ensure removing a selector works correclty.
+    /// @dev Test to ensure removing a selector works correctly.
     function testRemoveSelector() public {
         uint256 numSelectorsBefore =  IDiamondLoupe(diamondAddr).facetFunctionSelectors(deployment.facets.registryFacet).length;
 
@@ -347,7 +347,7 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
     }
 
-    /// @dev Test to ensure replacing a selector works correclty.
+    /// @dev Test to ensure replacing a selector works correctly.
     function testReplaceSelector() public {
         // Deploy mock facet
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();

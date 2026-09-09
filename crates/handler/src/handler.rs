@@ -504,7 +504,7 @@ pub trait Handler {
 
             if has_mutations {
                 return Err(Self::Error::from_string(format!(
-                    "Execution in ReadOnly mode attempted state mutation: transcation_nonce={txn_nonce}"
+                    "Execution in ReadOnly mode attempted state mutation: transaction_nonce={txn_nonce}"
                 )));
             }
             return Ok(exec_result);
