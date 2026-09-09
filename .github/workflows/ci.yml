@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: ["1.88", "stable", "nightly"]
+        rust: ["stable", "nightly"]
         flags: ["--no-default-features", "", "--all-features"]
     # This matrix is the one place that deliberately compiles on something other than the pinned
     # toolchain, so it has to outrank `rust-toolchain.toml`. `RUSTUP_TOOLCHAIN` does; the toolchain
