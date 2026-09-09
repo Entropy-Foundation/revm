@@ -371,6 +371,6 @@ impl BundleAccount {
             }
         };
 
-        account_revert.filter(|acc| ! acc.is_empty())
+        account_revert.filter(|acc| !acc.is_empty())
     }
 }
