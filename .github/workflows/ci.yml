@@ -126,7 +126,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install forge
-        uses: foundry-rs/foundry-actions@v1.
+        uses: foundry-rs/foundry-toolchain@v1
       - name: Build forge project
         working-directory: ./solidity/supra-contracts
         run: forge build
