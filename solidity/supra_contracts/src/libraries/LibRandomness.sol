@@ -12,9 +12,11 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// through this library. In particular, repeating the note on {ISupraRandomness-next} because it
 /// is the one thing the VM cannot enforce for you:
 ///
-/// > After reading randomness, either make no external call whose failure you do not catch, or
-/// > persist the outcome to storage before making any. A callee controlled by the transaction
-/// > sender can otherwise revert the transaction after observing the outcome.
+/// > After reading randomness, no external call you make may be able to revert your frame. Either
+/// > catch the failure of every such call, or finalise the outcome in a different transaction from
+/// > the one that makes the call. A callee controlled by the transaction sender can otherwise
+/// > revert the transaction after observing the outcome. Persisting the outcome to storage first
+/// > does not help: a revert unwinds the frame, storage writes included.
 ///
 /// And: a transaction that reads and then fails is charged its whole gas limit.
 library LibRandomness {

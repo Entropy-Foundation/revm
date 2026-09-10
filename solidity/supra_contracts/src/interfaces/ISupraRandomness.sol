@@ -77,8 +77,9 @@ interface ISupraRandomness {
     /// Move has no dynamic dispatch, so private entry closes test-and-abort completely. The EVM
     /// does have it, and this is the gap it leaves:
     ///
-    /// > **After reading randomness, either make no external call whose failure you do not catch,
-    /// > or persist the outcome to storage before making any.** A callee controlled by the
+    /// > **After reading randomness, no external call you make may be able to revert your
+    /// > frame.** Either catch the failure of every such call, or finalise the outcome in a
+    /// > different transaction from the one that makes the call. A callee controlled by the
     /// > transaction sender can otherwise revert the transaction after observing the outcome.
     ///
     /// The callee does not have to look dangerous. An ERC-20 transfer hook, a bare `receive()`, an
@@ -86,6 +87,11 @@ interface ISupraRandomness {
     /// sender may control, and any of them can revert. No VM rule can prevent this, because the
     /// callee is code the reading contract chose to call; the full-gas charge above makes each
     /// attempt expensive, which is a tax rather than a prevention.
+    ///
+    /// Note that persisting the outcome to storage before the call does **not** protect it. A
+    /// revert unwinds the entire frame, storage writes included, so the persisted outcome is undone
+    /// with everything else. A low-level call whose boolean result you handle, or `try`/`catch`
+    /// around a high-level one, is what keeps your frame alive.
     ///
     /// `STATICCALL` to this function is permitted.
     ///
