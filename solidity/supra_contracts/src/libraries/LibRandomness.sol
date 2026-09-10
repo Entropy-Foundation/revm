@@ -9,8 +9,8 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 ///
 /// @dev **These helpers carry no safety semantics.** Every guarantee comes from the precompile's
 /// own rules, and every requirement it places on a consumer applies unchanged to code that goes
-/// through this library. In particular, repeating the note on {ISupraRandomness-next} because it
-/// is the one thing the VM cannot enforce for you:
+/// through this library. In particular, repeating the two notes on {ISupraRandomness-next},
+/// because they are what the VM cannot enforce for you:
 ///
 /// > After reading randomness, no external call you make may be able to revert your frame. Either
 /// > catch the failure of every such call, or finalise the outcome in a different transaction from
@@ -18,13 +18,21 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// > revert the transaction after observing the outcome. Persisting the outcome to storage first
 /// > does not help: a revert unwinds the frame, storage writes included.
 ///
+/// > After a read, the gas you spend must not depend on the value in a way that makes an outcome
+/// > the sender would reject the more expensive one. The sender chooses the transaction's gas
+/// > limit, and running out of gas unwinds the frame just as a revert does, so a limit set to the
+/// > cheap branch's cost completes only the outcomes that fit it. This needs no external call, so
+/// > a contract that never calls out is still exposed.
+///
+/// Recording the outcome and settling in a later transaction satisfies both.
+///
 /// And: a transaction that reads and then fails is charged its whole gas limit - except an
 /// automation task's predicate, which is executed free of charge. See {ISupraRandomness-next} for
 /// what protects a predicate's action instead.
 ///
 /// {seedAt} carries a different obligation, and one that applies to every kind of transaction: the
 /// value is public, so anyone can compute what your contract will derive from it. A design that
-/// settles against a seed must commit before that seed exists, and must not let the party a
+/// settles against a seed must commit before that seed exists, and must not let the party an
 /// outcome is bad for decide whether the settlement happens. See {ISupraRandomness-seedAt}.
 library LibRandomness {
     /// @notice The randomness precompile. Frozen.

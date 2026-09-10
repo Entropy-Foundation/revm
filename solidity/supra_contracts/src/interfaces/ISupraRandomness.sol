@@ -61,18 +61,20 @@ interface ISupraRandomness {
     ///    task's action, an automation task's predicate, or a simulated call (`eth_call`,
     ///    `eth_estimateGas`). The chain's own internal transactions may not read.
     ///
-    /// Rule 2 is the analogue of Move's private-entry requirement. It guarantees that the only
-    /// code between the transaction boundary and the read is code the reading contract's own
-    /// author chose to run, so no wrapper can observe the outcome and revert on it.
+    /// Rule 2 is the one that does the work. It guarantees that the only code between the
+    /// transaction boundary and the read is code the reading contract's own author chose to run,
+    /// so nothing can wrap the reader, observe the outcome and revert on it.
     ///
     /// # Cost of failure
     ///
     /// **A transaction that reads a value and then fails is charged its whole gas limit**, not the
-    /// gas it used. This is the analogue of the gas deposit Move requires. Reverting after seeing
-    /// the outcome cannot be prevented - the reading contract can always revert - so instead it is
-    /// made to cost what the sender was willing to spend, which removes the cheap retry that would
-    /// otherwise make grinding an outcome free. `eth_estimateGas` estimates the success path and
-    /// is unaffected.
+    /// gas it used. Reverting after seeing the outcome cannot be prevented - the reading contract
+    /// can always revert - so instead it is made to cost what the sender was willing to spend,
+    /// which removes the cheap retry that would otherwise make grinding an outcome free.
+    /// `eth_estimateGas` estimates the success path and is unaffected.
+    ///
+    /// It is a tax rather than a prevention, and the sender sets the amount. What that leaves open
+    /// is the second item under "What the rules do not cover" below.
     ///
     /// **This charge does not reach an automation task's predicate**, which is executed free of
     /// charge. A predicate that reads and then *reverts* pays no gas, but its task is removed from
@@ -86,8 +88,8 @@ interface ISupraRandomness {
     ///
     /// # What the rules do not cover
     ///
-    /// Move has no dynamic dispatch, so private entry closes test-and-abort completely. The EVM
-    /// does have it, and this is the gap it leaves:
+    /// Two ways to undo a read remain, and both are yours to close in your contract. The first
+    /// comes from dynamic dispatch - any address you call is code that may revert you:
     ///
     /// > **After reading randomness, no external call you make may be able to revert your
     /// > frame.** Either catch the failure of every such call, or finalise the outcome in a
@@ -104,6 +106,25 @@ interface ISupraRandomness {
     /// revert unwinds the entire frame, storage writes included, so the persisted outcome is undone
     /// with everything else. A low-level call whose boolean result you handle, or `try`/`catch`
     /// around a high-level one, is what keeps your frame alive.
+    ///
+    /// The second needs no external call at all, so a contract that never calls out is still
+    /// exposed to it: **the sender chooses the transaction's gas limit**, and running out of gas
+    /// unwinds the frame exactly as a revert does.
+    ///
+    /// > **After a read, the gas you spend must not depend on the value in a way that makes an
+    /// > outcome the sender would reject the more expensive one.** The simplest way to satisfy
+    /// > that is not to depend on the value at all: equalise the branches, or record the outcome
+    /// > and let a later transaction spend the outcome-dependent gas.
+    ///
+    /// If one outcome costs more than another, a sender can set a limit that completes the outcome
+    /// they want and exhausts the one they do not. The full-gas charge applies to the exhausted
+    /// attempt, but it charges that same chosen limit - so each attempt costs one favourable run
+    /// and an unfavourable outcome is never completed, while each resubmission is served a fresh
+    /// value. It selects in one direction only: a limit can favour a cheap outcome over an
+    /// expensive one, never the reverse.
+    ///
+    /// Recording the outcome and settling later closes both of these, which is why it is the shape
+    /// to reach for by default.
     ///
     /// `STATICCALL` to this function is permitted.
     ///
