@@ -61,9 +61,9 @@ interface ISupraRandomness {
     ///    task's action, an automation task's predicate, or a simulated call (`eth_call`,
     ///    `eth_estimateGas`). The chain's own internal transactions may not read.
     ///
-    /// Rule 2 is the one that does the work. It guarantees that the only code between the
-    /// transaction boundary and the read is code the reading contract's own author chose to run,
-    /// so nothing can wrap the reader, observe the outcome and revert on it.
+    /// Rule 2 guarantees that the only code between the transaction boundary and the read is code
+    /// the reading contract's own author chose to run, so nothing can wrap the reader, observe the
+    /// outcome and revert on it.
     ///
     /// # Cost of failure
     ///
@@ -73,8 +73,9 @@ interface ISupraRandomness {
     /// which removes the cheap retry that would otherwise make grinding an outcome free.
     /// `eth_estimateGas` estimates the success path and is unaffected.
     ///
-    /// It is a tax rather than a prevention, and the sender sets the amount. What that leaves open
-    /// is the second item under "What the rules do not cover" below.
+    /// The charge raises the price of an abort without preventing it, and the price is the limit
+    /// the sender chose. That is what leaves the second item under "What the rules do not cover"
+    /// below.
     ///
     /// **This charge does not reach an automation task's predicate**, which is executed free of
     /// charge. A predicate that reads and then *reverts* pays no gas, but its task is removed from
@@ -88,33 +89,31 @@ interface ISupraRandomness {
     ///
     /// # What the rules do not cover
     ///
-    /// Two ways to undo a read remain, and both are yours to close in your contract. The first
-    /// comes from dynamic dispatch - any address you call is code that may revert you:
+    /// Two ways to undo a read remain, and a consumer must close both. The first comes from
+    /// dynamic dispatch: any address you call is code that may revert you.
     ///
     /// > **After reading randomness, no external call you make may be able to revert your
     /// > frame.** Either catch the failure of every such call, or finalise the outcome in a
     /// > different transaction from the one that makes the call. A callee controlled by the
     /// > transaction sender can otherwise revert the transaction after observing the outcome.
     ///
-    /// The callee does not have to look dangerous. An ERC-20 transfer hook, a bare `receive()`, an
-    /// ERC-721 `onERC721Received` or an ERC-1155 acceptance check are all calls into an address the
-    /// sender may control, and any of them can revert. No VM rule can prevent this, because the
-    /// callee is code the reading contract chose to call; the full-gas charge above makes each
-    /// attempt expensive, which is a tax rather than a prevention.
+    /// An ERC-20 transfer hook, a bare `receive()`, an ERC-721 `onERC721Received` and an ERC-1155
+    /// acceptance check are all calls into an address the sender may control, and any of them can
+    /// revert. No VM rule can prevent this, because the callee is code the reading contract chose
+    /// to call. The full-gas charge above applies to each attempt.
     ///
-    /// Note that persisting the outcome to storage before the call does **not** protect it. A
-    /// revert unwinds the entire frame, storage writes included, so the persisted outcome is undone
-    /// with everything else. A low-level call whose boolean result you handle, or `try`/`catch`
-    /// around a high-level one, is what keeps your frame alive.
+    /// Persisting the outcome to storage before the call does **not** protect it: a revert unwinds
+    /// the entire frame, storage writes included, so the persisted outcome is undone with
+    /// everything else. A low-level call whose boolean result you handle, or `try`/`catch` around a
+    /// high-level one, keeps the frame alive.
     ///
-    /// The second needs no external call at all, so a contract that never calls out is still
-    /// exposed to it: **the sender chooses the transaction's gas limit**, and running out of gas
-    /// unwinds the frame exactly as a revert does.
+    /// The second needs no external call, so a contract that never calls out is exposed to it too:
+    /// **the sender chooses the transaction's gas limit**, and running out of gas unwinds the frame
+    /// exactly as a revert does.
     ///
     /// > **After a read, the gas you spend must not depend on the value in a way that makes an
-    /// > outcome the sender would reject the more expensive one.** The simplest way to satisfy
-    /// > that is not to depend on the value at all: equalise the branches, or record the outcome
-    /// > and let a later transaction spend the outcome-dependent gas.
+    /// > outcome the sender would reject the more expensive one.** Equalise the branches, or record
+    /// > the outcome and let a later transaction spend the outcome-dependent gas.
     ///
     /// If one outcome costs more than another, a sender can set a limit that completes the outcome
     /// they want and exhausts the one they do not. The full-gas charge applies to the exhausted
@@ -123,8 +122,7 @@ interface ISupraRandomness {
     /// value. It selects in one direction only: a limit can favour a cheap outcome over an
     /// expensive one, never the reverse.
     ///
-    /// Recording the outcome and settling later closes both of these, which is why it is the shape
-    /// to reach for by default.
+    /// Recording the outcome and settling in a later transaction closes both.
     ///
     /// `STATICCALL` to this function is permitted.
     ///
@@ -147,14 +145,14 @@ interface ISupraRandomness {
     /// caller reading it has nothing left to bias. The hazard note on {next} still applies to
     /// whatever the settlement does with the value.
     ///
-    /// # This value is public, and that is the whole hazard
+    /// # This value is public
     ///
     /// Anyone can read any served height with `eth_call`, at any time, for free, without sending a
-    /// transaction. So the moment block `height` is committed, **everybody** can compute whatever
+    /// transaction. From the moment block `height` is committed, **everybody** can compute whatever
     /// your contract would derive from its seed. None of {next}'s rules apply here and none would
-    /// help: there is nothing to protect, because there is no secret.
+    /// help: there is no secret to protect.
     ///
-    /// Two consequences, and neither is specific to any kind of transaction:
+    /// Two consequences, neither specific to any kind of transaction:
     ///
     /// 1. **Commit before the seed exists.** A design that settles against a height that already
     ///    existed when the commitment was made is broken outright - the committer knew the outcome
