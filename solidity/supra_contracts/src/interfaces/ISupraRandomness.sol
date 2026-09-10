@@ -7,9 +7,7 @@ pragma solidity 0.8.34;
 /// Two reads at one Supra-reserved address, `0x0000000000000000000000000000000053555003`:
 ///
 /// - {next} is *synchronous*: it returns fresh randomness inside the transaction that asks for it,
-///   protected against test-and-abort by rules the VM enforces. No other EVM chain offers this -
-///   Chainlink VRF, Pyth Entropy and Flare are all asynchronous, so a consumer has to commit in
-///   one transaction and settle in another.
+///   protected against test-and-abort by rules the VM enforces.
 /// - {seedAt} is the *historical* read, for designs that must settle in a later transaction
 ///   anyway. It is public data and carries no rules.
 ///
@@ -145,11 +143,6 @@ interface ISupraRandomness {
     ///    needs no revert, no gas and no contract: the simplest form is reading the seed off-chain
     ///    and not sending the losing transaction. So *anyone* must be able to settle, and the
     ///    design must not need the loser's cooperation.
-    ///
-    /// An automation task owned by a participant is one instance of (2) rather than a separate
-    /// problem: a predicate that reads a seed can decide not to run its action, at no cost and
-    /// indefinitely. It is worth naming only because automation makes the withholding effortless
-    /// and unattended.
     ///
     /// {next} does not have this problem. Its value is not public, and not predictable by anyone.
     ///
