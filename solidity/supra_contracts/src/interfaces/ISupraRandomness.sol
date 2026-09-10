@@ -33,7 +33,9 @@ interface ISupraRandomness {
     /// @notice Thrown when the transaction's sender account has code, which would run at the root
     /// context and could revert on the outcome. This refuses EIP-7702 delegated senders.
     error OriginHasCode();
-    /// @notice Thrown when a system or genesis transaction attempts to read randomness.
+    /// @notice Thrown when the transaction is of a kind that may not read randomness. Ordinary
+    /// user transactions, automation task actions and automation task predicates all may;
+    /// the chain's own internal transactions may not.
     error ExecutionModeNotPermitted();
     /// @notice Thrown when the requested height is outside the window {seedAt} serves.
     error HeightOutOfWindow();
@@ -57,7 +59,9 @@ interface ISupraRandomness {
     ///    by `DELEGATECALL` runs *as* its caller, so a proxy's implementation, a Diamond facet and
     ///    an external library are all served: the read happens at the proxy's own context.
     /// 3. The transaction's sender is an account with no code.
-    /// 4. The execution mode is not a system or genesis transaction.
+    /// 4. The transaction is one that may read: an ordinary user transaction, an automation
+    ///    task's action, an automation task's predicate, or a simulated call (`eth_call`,
+    ///    `eth_estimateGas`). The chain's own internal transactions may not read.
     ///
     /// Rule 2 is the analogue of Move's private-entry requirement. It guarantees that the only
     /// code between the transaction boundary and the read is code the reading contract's own
@@ -71,6 +75,16 @@ interface ISupraRandomness {
     /// made to cost what the sender was willing to spend, which removes the cheap retry that would
     /// otherwise make grinding an outcome free. `eth_estimateGas` estimates the success path and
     /// is unaffected.
+    ///
+    /// **This charge does not reach an automation task's predicate**, which is executed free of
+    /// charge. A predicate that reads and then *reverts* pays no gas, but its task is removed from
+    /// the registry, so it cannot be repeated. A predicate that reads and returns `false` pays
+    /// nothing and keeps its task - and is prevented from gaming its own action by a different
+    /// mechanism: reads are counted per transaction and the count carries across a predicate and
+    /// the action it gates, so the action reads the *next* value and the predicate cannot compute
+    /// it. A predicate therefore learns nothing about what its action will be given.
+    ///
+    /// That protection is specific to {next}. See the warning on {seedAt} about automation tasks.
     ///
     /// # What the rules do not cover
     ///
@@ -113,6 +127,19 @@ interface ISupraRandomness {
     /// belongs to a block that is already committed and executed, so the value is public and a
     /// caller reading it has nothing left to bias. The hazard note on {next} still applies to
     /// whatever the settlement does with the value.
+    ///
+    /// # Whoever settles must not be the only party who can
+    ///
+    /// Because the value is public and fixed, a design that commits in one transaction and settles
+    /// against this in another is only sound if *anyone* can submit the settlement. If the only
+    /// party who can settle is the one who loses by settling, a losing outcome is simply never
+    /// settled.
+    ///
+    /// **An automation task is the easiest way to build that by accident.** A task whose predicate
+    /// reads this to decide whether to run its action can compute the action's outcome exactly -
+    /// unlike with {next}, this returns the same value to both - and a predicate that returns
+    /// `false` costs nothing and keeps its task, so it can decline a losing outcome indefinitely.
+    /// If a task settles against a seed, the decision to settle must not depend on the outcome.
     ///
     /// @param height The block height whose seed is wanted.
     /// @return `keccak256` of that block's raw seed.

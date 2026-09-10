@@ -18,7 +18,10 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// > revert the transaction after observing the outcome. Persisting the outcome to storage first
 /// > does not help: a revert unwinds the frame, storage writes included.
 ///
-/// And: a transaction that reads and then fails is charged its whole gas limit.
+/// And: a transaction that reads and then fails is charged its whole gas limit - except an
+/// automation task's predicate, which is executed free of charge. See {ISupraRandomness-next} for
+/// what protects a predicate's action instead, and {ISupraRandomness-seedAt} for why a task that
+/// settles against a seed must not decide whether to settle based on the outcome.
 library LibRandomness {
     /// @notice The randomness precompile. Frozen.
     ISupraRandomness internal constant RANDOMNESS = ISupraRandomness(0x0000000000000000000000000000000053555003);
