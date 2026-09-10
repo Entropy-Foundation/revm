@@ -128,18 +128,30 @@ interface ISupraRandomness {
     /// caller reading it has nothing left to bias. The hazard note on {next} still applies to
     /// whatever the settlement does with the value.
     ///
-    /// # Whoever settles must not be the only party who can
+    /// # This value is public, and that is the whole hazard
     ///
-    /// Because the value is public and fixed, a design that commits in one transaction and settles
-    /// against this in another is only sound if *anyone* can submit the settlement. If the only
-    /// party who can settle is the one who loses by settling, a losing outcome is simply never
-    /// settled.
+    /// Anyone can read any served height with `eth_call`, at any time, for free, without sending a
+    /// transaction. So the moment block `height` is committed, **everybody** can compute whatever
+    /// your contract would derive from its seed. None of {next}'s rules apply here and none would
+    /// help: there is nothing to protect, because there is no secret.
     ///
-    /// **An automation task is the easiest way to build that by accident.** A task whose predicate
-    /// reads this to decide whether to run its action can compute the action's outcome exactly -
-    /// unlike with {next}, this returns the same value to both - and a predicate that returns
-    /// `false` costs nothing and keeps its task, so it can decline a losing outcome indefinitely.
-    /// If a task settles against a seed, the decision to settle must not depend on the outcome.
+    /// Two consequences, and neither is specific to any kind of transaction:
+    ///
+    /// 1. **Commit before the seed exists.** A design that settles against a height that already
+    ///    existed when the commitment was made is broken outright - the committer knew the outcome
+    ///    as they committed.
+    /// 2. **Settlement must not be withholdable.** If the only party who can settle is a party that
+    ///    a particular outcome is bad for, they settle when they win and never when they lose. This
+    ///    needs no revert, no gas and no contract: the simplest form is reading the seed off-chain
+    ///    and not sending the losing transaction. So *anyone* must be able to settle, and the
+    ///    design must not need the loser's cooperation.
+    ///
+    /// An automation task owned by a participant is one instance of (2) rather than a separate
+    /// problem: a predicate that reads a seed can decide not to run its action, at no cost and
+    /// indefinitely. It is worth naming only because automation makes the withholding effortless
+    /// and unattended.
+    ///
+    /// {next} does not have this problem. Its value is not public, and not predictable by anyone.
     ///
     /// @param height The block height whose seed is wanted.
     /// @return `keccak256` of that block's raw seed.

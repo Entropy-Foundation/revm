@@ -20,8 +20,12 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 ///
 /// And: a transaction that reads and then fails is charged its whole gas limit - except an
 /// automation task's predicate, which is executed free of charge. See {ISupraRandomness-next} for
-/// what protects a predicate's action instead, and {ISupraRandomness-seedAt} for why a task that
-/// settles against a seed must not decide whether to settle based on the outcome.
+/// what protects a predicate's action instead.
+///
+/// {seedAt} carries a different obligation, and one that applies to every kind of transaction: the
+/// value is public, so anyone can compute what your contract will derive from it. A design that
+/// settles against a seed must commit before that seed exists, and must not let the party a
+/// outcome is bad for decide whether the settlement happens. See {ISupraRandomness-seedAt}.
 library LibRandomness {
     /// @notice The randomness precompile. Frozen.
     ISupraRandomness internal constant RANDOMNESS = ISupraRandomness(0x0000000000000000000000000000000053555003);
