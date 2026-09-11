@@ -25,11 +25,13 @@ interface IMultiSignatureWallet {
     /// @notice Thrown when a transaction does not have enough confirmations to execute.
     error NotEnoughConfirmation();
     /// @notice Thrown when the low-level transaction call fails.
-    error ExecutionFailed();
+    /// @param data The raw returndata (revert reason/failure data) from the failed target call.
+    error ExecutionFailed(bytes data);
     /// @notice Thrown when empty creation bytecode is passed to deployContract.
     error EmptyCreationCode();
     /// @notice Thrown when a CREATE deployment returns address(0).
-    error ContractCreationFailed();
+    /// @param data The raw returndata (revert reason/failure data) from the failed constructor call, if any.
+    error ContractCreationFailed(bytes data);
     /// @notice Thrown when revoking a confirmation the caller has not given.
     error TransactionNotConfirmed();
     /// @notice Thrown when an admin function is called by anyone other than the multisig itself.

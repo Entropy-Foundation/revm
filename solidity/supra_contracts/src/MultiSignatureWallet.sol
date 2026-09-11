@@ -3,6 +3,7 @@ pragma solidity 0.8.34;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {LowLevelCall} from "@openzeppelin/contracts/utils/LowLevelCall.sol";
 import {IMultiSignatureWallet} from "./interfaces/IMultiSignatureWallet.sol";
 
 /**
@@ -236,6 +237,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     /**
      * @dev Function to execute a confirmed transaction.
      * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
+     * @dev Reverts with ExecutionFailed(bytes data), where data is the target call's raw returndata, if the low-level call fails.
      * @param _txIndex Index of the transaction to execute.
      */
     function executeTransaction(uint256 _txIndex) public returns (bytes memory) {
@@ -250,7 +252,7 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         removeTransaction(_txIndex);
 
         (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
-        if (!success) { revert ExecutionFailed(); }
+        if (!success) { revert ExecutionFailed(data); }
 
         emit ExecuteTransaction(msg.sender, _txIndex, data);
         return data;
@@ -468,6 +470,8 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     /**
      * @notice Deploys a contract using raw CREATE opcode
+     * @dev Reverts with ContractCreationFailed(bytes data), where data is the failed constructor
+     *      call's raw returndata (if any), if the CREATE deployment fails.
      * @param _creationCode The creation bytecode of the contract to deploy
      * @param _value Amount of ETH to sent along with contract creation.
      * @return deployed The address of the deployed contract
@@ -484,7 +488,10 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
                 mload(_creationCode)            // size of creation code
             )
         }
-        if (deployed == address(0)) { revert ContractCreationFailed(); }
+        // A failed CREATE leaves the constructor's revert data in the returndata buffer, same as
+        // any other failed call; LowLevelCall.returnData() must run before any intervening external
+        // call, since that would overwrite the buffer.
+        if (deployed == address(0)) { revert ContractCreationFailed(LowLevelCall.returnData()); }
         emit ContractDeployed(deployed);
     }
 

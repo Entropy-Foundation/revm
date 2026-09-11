@@ -55,21 +55,18 @@ fn main() {
     rebuild_rust_bindings();
 
     let manifest_dir = Path::new(CURRENT_DIR);
-    let config = CompileConfig::load(manifest_dir).expect("Config should always be valid");
+    let config = CompileConfig::load(manifest_dir).expect("compile_config.toml is readable TOML");
     // Rerun this script if the compile configuration changes (e.g. a contract name is added).
     println!("cargo:rerun-if-changed={}/compile_config.toml", CURRENT_DIR);
 
-    let supra_contracts_artifacts = compile_contracts(&config.contracts_dapp_path(manifest_dir))
-        .expect("Successful supra contracts compilation");
-
     let mut contracts_bytecode = BTreeMap::new();
-    load_contracts_bytecode(
+    compile_and_load_contracts(
+        &config.contracts_dapp_path(manifest_dir),
         config.contract_names(),
-        &supra_contracts_artifacts,
         &mut contracts_bytecode,
     )
-    .expect("Supra contracts loaded successfully");
+    .expect("the Supra contracts compile and their bytecode is readable");
 
     dump_bytecodes(contracts_bytecode, "supra_contracts_bytecode")
-        .expect("Bytecodes dumped successfully");
+        .expect("the compiled bytecode is written to OUT_DIR");
 }
