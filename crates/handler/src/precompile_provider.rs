@@ -1,6 +1,7 @@
 use auto_impl::auto_impl;
 use context::{Cfg, LocalContextTr};
 use context_interface::ContextTr;
+use core::ops::Deref;
 use interpreter::{CallInput, Gas, InputsImpl, InstructionResult, InterpreterResult};
 use precompile::PrecompileError;
 use precompile::{PrecompileSpecId, Precompiles};
@@ -113,7 +114,7 @@ impl<CTX: ContextTr> PrecompileProvider<CTX> for EthPrecompiles {
             CallInput::SharedBuffer(range) => {
                 if let Some(slice) = context.local().shared_memory_buffer_slice(range.clone()) {
                     r = slice;
-                    r.as_ref()
+                    r.deref()
                 } else {
                     &[]
                 }

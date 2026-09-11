@@ -225,6 +225,7 @@ mod tests {
     };
 
     use super::*;
+    use revm::precompile::tx_hash;
     use revm::{
         precompile::PrecompileError,
         primitives::{hex, Bytes},
@@ -297,7 +298,10 @@ mod tests {
         let new_prague_precompiles = Precompiles::prague().difference(Precompiles::cancun());
 
         // isthmus contains all precompiles that were new in prague, without modifications
-        assert!(new_prague_precompiles.difference(isthmus()).is_empty())
+        let diff = new_prague_precompiles.difference(isthmus());
+        // On Supra revm branch prague comes with 1 new precompile TX_HASH.
+        assert_eq!(diff.len(), 1);
+        assert!(diff.contains(tx_hash::TX_HASH.address()));
     }
 
     #[test]

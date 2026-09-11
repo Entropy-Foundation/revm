@@ -229,8 +229,7 @@ pub trait JournalTr {
     /// **Must be called before [`JournalTr::commit_tx`] or [`JournalTr::discard_tx`]** — both
     /// of those methods clear the entry list, making detection impossible afterward.
     ///
-    /// Used by [`Handler::execution_result`] to validate that [`ExecutionMode::ReadOnly`]
-    /// transactions are truly stateless.
+    /// Can be used by runtime to validate transaction is stateless or not.
     fn has_state_mutations(&self) -> bool;
 
     /// Clear current journal resetting it to initial state and return changes state.

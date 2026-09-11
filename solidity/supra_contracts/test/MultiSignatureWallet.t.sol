@@ -829,13 +829,13 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Helper function to return calldata to update the number of confirmations required in the multisig.
-    function dataToUpdateNumConfimationsMultiSig(uint256 _num) private pure returns (bytes memory) {
+    function dataToUpdateNumConfirmationsMultiSig(uint256 _num) private pure returns (bytes memory) {
         return abi.encodeCall(MultiSignatureWallet.updateNumConfirmations, (_num));
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' updates the number of confirmations required.
-    function testUpdateNumConfimations() public {
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+    function testUpdateNumConfirmations() public {
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
         grantSufficientConfirmations(0);
 
         vm.prank(address(1002));
@@ -845,8 +845,8 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the number of confirmations required is zero.
-    function testUpdateNumConfimationsRevertsIfNumConfirmationsZero() public {
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(0));
+    function testUpdateNumConfirmationsRevertsIfNumConfirmationsZero() public {
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(0));
         grantSufficientConfirmations(0);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
@@ -856,8 +856,8 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the number of confirmations required is more than the number of owners.
-    function testUpdateNumConfimationsRevertsIfNumConfirmationsMoreThanOwners() public {
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(6));
+    function testUpdateNumConfirmationsRevertsIfNumConfirmationsMoreThanOwners() public {
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(6));
         grantSufficientConfirmations(0);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
@@ -867,8 +867,8 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the caller is not an owner.
-    function testUpdateNumConfimationsRevertsIfNotOwner() public {
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+    function testUpdateNumConfirmationsRevertsIfNotOwner() public {
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
         grantSufficientConfirmations(0);
 
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
@@ -878,9 +878,9 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' transaction reverts on execute if it has expired.
-    function testUpdateNumConfimationsRevertsIfExpired() public {
+    function testUpdateNumConfirmationsRevertsIfExpired() public {
         vm.warp(500);
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
         assertEq(multiSig.txCount(), 1);
 
         grantSufficientConfirmations(0);
@@ -894,8 +894,8 @@ contract MultiSignatureWalletTest is Test {
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the transaction has insufficient number of confirmations.
-    function testUpdateNumConfimationsRevertsIfInsufficientConfirmations() public {
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+    function testUpdateNumConfirmationsRevertsIfInsufficientConfirmations() public {
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
 
         uint256 txId = 0;
         confirmTransaction(address(1002), txId);
@@ -1234,7 +1234,7 @@ contract MultiSignatureWalletTest is Test {
 
         // Lower the threshold to 2 via a second multisig transaction (txId 1), gathering the
         // full original threshold's worth of confirmations to pass it.
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(2));
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(2));
         grantSufficientConfirmations(1);
         vm.prank(address(1001));
         multiSig.executeTransaction(1);
@@ -1251,7 +1251,7 @@ contract MultiSignatureWalletTest is Test {
         testSubmitTransactionIncrement(); // txId 0, implicitly confirmed by owner1 (address(1001))
         confirmTransaction(address(1002), 0);
 
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(2));
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(2));
         grantSufficientConfirmations(1);
         vm.prank(address(1001));
         multiSig.executeTransaction(1);
@@ -1270,7 +1270,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure raising the threshold does not wipe unrelated pending confirmations.
     function testRaisingThresholdDoesNotWipeConfirmations() public {
         // Lower the threshold first so there is room to raise it again without exceeding the owner count.
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(2));
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(2));
         grantSufficientConfirmations(0);
         vm.prank(address(1001));
         multiSig.executeTransaction(0);
@@ -1281,7 +1281,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1002), 1); // 2 of 2 required - sufficient
 
         // Raise the threshold back to 3 via a third multisig transaction (txId 2).
-        submitTransactionToMultiSig(dataToUpdateNumConfimationsMultiSig(3));
+        submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
         confirmTransaction(address(1002), 2);
         vm.prank(address(1001));
         multiSig.executeTransaction(2);

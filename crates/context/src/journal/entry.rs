@@ -70,7 +70,7 @@ pub trait JournalEntryTr {
 
     /// Returns `true` if this journal entry represents an operation that mutates persistent state.
     ///
-    /// Used to verify that [`ExecutionMode::ReadOnly`] transactions are truly
+    /// Used to verify that [`context_interface::ExecutionMode::ReadOnly`] transactions are truly
     /// stateless before committing or discarding them.
     ///
     /// `BalanceChange` requires the current `state` snapshot to filter out zero-delta entries

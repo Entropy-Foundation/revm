@@ -213,17 +213,16 @@ impl GenesisTransactionGenerator {
             genesis_transactions.extend(erc20_contracts);
 
             // BlockMetadata contract
-            genesis_transactions.extend(
-                self.setup_block_metadata(multisig_address, block_prologue_gas_cap)?
-                    .into_iter(),
-            );
+            genesis_transactions
+                .extend(self.setup_block_metadata(multisig_address, block_prologue_gas_cap)?);
 
             // Automation registry contracts
             if let Some(config) = automation_config {
-                genesis_transactions.extend(
-                    self.setup_automation_registry(multisig_address, erc20supra_address, config)?
-                        .into_iter(),
-                );
+                genesis_transactions.extend(self.setup_automation_registry(
+                    multisig_address,
+                    erc20supra_address,
+                    config,
+                )?);
             }
         };
 
@@ -259,7 +258,7 @@ impl GenesisTransactionGenerator {
         // -------------------------------------------------------------------------
         let multisig_impl_create_data = Self::load_contract_bytecode(MULTISIG_WALLET)?;
         let multisig_txn = GenesisTransaction::create(
-            self.address.clone(),
+            self.address,
             multisig_impl_create_data,
             self.nonce,
             multisig_impl_address,
@@ -279,7 +278,7 @@ impl GenesisTransactionGenerator {
         .abi_encode();
         let beacon_txn_data = [multisig_beacon_create_data, beacon_args].concat();
         let multisig_beacon_txn = GenesisTransaction::create(
-            self.address.clone(),
+            self.address,
             beacon_txn_data,
             self.nonce,
             beacon_contract_address,
@@ -307,7 +306,7 @@ impl GenesisTransactionGenerator {
         // Concatenate bytecode + constructor args for deployment
         let beacon_proxy_txn_data = [beacon_proxy_create_data, beacon_proxy_args].concat();
         let beacon_proxy_txn = GenesisTransaction::create(
-            self.address.clone(),
+            self.address,
             beacon_proxy_txn_data,
             self.nonce,
             multisig_wallet_address,
@@ -583,7 +582,8 @@ impl GenesisTransactionGenerator {
     ///  6. CoreFacet, // Facet providing API to monitor cycle and initiate bookkeeping on cycle transition
     ///  7. DiamondInit,
     ///  8. Diamond, // The wrapper contract of all the facets, main entry point of automation registry API
-    /// All contracts addresses are pre-computed before deployment to handle circular dependencies if any.
+    ///
+    ///  All contracts addresses are pre-computed before deployment to handle circular dependencies if any.
     fn setup_automation_registry(
         &mut self,
         owner: Address,
@@ -748,7 +748,7 @@ impl GenesisTransactionGenerator {
         // Bytecodes are embedded at compile time via include_bytes! macros
         CONTRACT_BYTECODES
             .get(name)
-            .map(|v| v.clone())
+            .cloned()
             .ok_or_else(|| anyhow!("Failed to get bytecode for contract: {name}"))
     }
 }

@@ -21,7 +21,7 @@ pub const CREATE2_FACTORY_OWNER: Address = address!("0x3fAB184622Dc19b6109349B94
 pub const CREATE2_FACTORY_ADDRESS: Address = address!("0x4e59b44847b379578588920ca78fbf26c0b4956c");
 
 /// The init-code of the default CREATE2 FACTORY widely used in community
-/// Retrieved from https://github.com/Arachnid/deterministic-deployment-proxy
+/// Retrieved from <https://github.com/Arachnid/deterministic-deployment-proxy>
 pub const CREATE2_FACTORY_CODE: &[u8] =
     include_bytes!("canonical_singletons_bytecode/create2_factory.bin");
 
@@ -31,16 +31,16 @@ pub const CREATE2_FACTORY_CODE: &[u8] =
 /// ECDSA-signed transaction. The compromise is irrelevant to reproducing it here: we never sign
 /// with this key, we only replay the sender+nonce+data tuple it produced to derive the same
 /// address and bytecode.
-/// Retrieved from https://github.com/mds1/multicall3 (README, "New Deployments" section).
+/// Retrieved from <https://github.com/mds1/multicall3> (README, "New Deployments" section).
 pub const MULTICALL3_DEPLOYER: Address = address!("0x05f32B3cC3888453ff71B01135B34FF8e41263F2");
 /// Canonical Multicall3 contract address, deployed by [MULTICALL3_DEPLOYER] with nonce 0.
 pub const MULTICALL3_ADDRESS: Address = address!("0xcA11bde05977b3631167028862bE2a173976CA11");
 /// Multicall3 init-code, extracted from the presigned deployment transaction's data field.
-/// Retrieved from https://github.com/mds1/multicall3 (README, "New Deployments" section).
+/// Retrieved from <https://github.com/mds1/multicall3> (README, "New Deployments" section).
 pub const MULTICALL3_CODE: &[u8] = include_bytes!("canonical_singletons_bytecode/multicall3.bin");
 
 /// Deployer of the canonical ERC-2470 SingletonFactory contract (Nick's-method deployment).
-/// Retrieved from https://github.com/ethereum/ercs/blob/master/ERCS/erc-2470.md
+/// Retrieved from <https://github.com/ethereum/ercs/blob/master/ERCS/erc-2470.md>
 pub const SINGLETON_FACTORY_DEPLOYER: Address =
     address!("0xBb6e024b9cFFACB947A71991E386681B1Cd1477D");
 /// Canonical ERC-2470 SingletonFactory contract address, deployed by
@@ -48,12 +48,12 @@ pub const SINGLETON_FACTORY_DEPLOYER: Address =
 pub const SINGLETON_FACTORY_ADDRESS: Address =
     address!("0xce0042B868300000d44A59004Da54A005ffdcf9f");
 /// ERC-2470 SingletonFactory init-code, extracted from the presigned deployment transaction's
-/// data field. Retrieved from https://github.com/ethereum/ercs/blob/master/ERCS/erc-2470.md
+/// data field. Retrieved from <https://github.com/ethereum/ercs/blob/master/ERCS/erc-2470.md>
 pub const SINGLETON_FACTORY_CODE: &[u8] =
     include_bytes!("canonical_singletons_bytecode/singleton_factory.bin");
 
 /// Deployer of the canonical CreateX contract (Nick's-method-style presigned deployment).
-/// Retrieved from https://github.com/pcaversaccio/createx,
+/// Retrieved from <https://github.com/pcaversaccio/createx>,
 /// `scripts/presigned-createx-deployment-transactions/signed_serialised_transaction_gaslimit_3000000_.json`
 /// (the 3M-gas variant — the one that produced the address on all of CreateX's existing chain
 /// deployments; the 25M/45M variants carry byte-identical init-code, differing only in gas
@@ -62,12 +62,12 @@ pub const CREATEX_DEPLOYER: Address = address!("0xeD456e05CaAb11d66C4c797dD6c1D6
 /// Canonical CreateX contract address, deployed by [CREATEX_DEPLOYER] with nonce 0.
 pub const CREATEX_ADDRESS: Address = address!("0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed");
 /// CreateX init-code, extracted from the presigned deployment transaction's data field.
-/// Retrieved from https://github.com/pcaversaccio/createx,
+/// Retrieved from <https://github.com/pcaversaccio/createx>,
 /// `scripts/presigned-createx-deployment-transactions/signed_serialised_transaction_gaslimit_3000000_.json`
 pub const CREATEX_CODE: &[u8] = include_bytes!("canonical_singletons_bytecode/createx.bin");
 
 /// Deployer of the canonical ERC-1820 Registry contract (Nick's-method deployment).
-/// Retrieved from https://github.com/ethereum/ercs/blob/master/ERCS/erc-1820.md
+/// Retrieved from <https://github.com/ethereum/ercs/blob/master/ERCS/erc-1820.md>
 pub const ERC1820_REGISTRY_DEPLOYER: Address =
     address!("0xa990077c3205cbDf861e17Fa532eeB069cE9fF96");
 /// Canonical ERC-1820 Registry contract address, deployed by [ERC1820_REGISTRY_DEPLOYER] with
@@ -75,7 +75,7 @@ pub const ERC1820_REGISTRY_DEPLOYER: Address =
 pub const ERC1820_REGISTRY_ADDRESS: Address =
     address!("0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24");
 /// ERC-1820 Registry init-code, extracted from the presigned deployment transaction's data
-/// field. Retrieved from https://github.com/ethereum/ercs/blob/master/ERCS/erc-1820.md
+/// field. Retrieved from <https://github.com/ethereum/ercs/blob/master/ERCS/erc-1820.md>
 pub const ERC1820_REGISTRY_CODE: &[u8] =
     include_bytes!("canonical_singletons_bytecode/erc1820_registry.bin");
 

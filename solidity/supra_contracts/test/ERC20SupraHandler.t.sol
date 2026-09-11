@@ -79,7 +79,7 @@ contract ERC20SupraHandlerTest is Test {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'receive' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Test to ensure sending native tokens direcly mints ERC20Supra tokens 1:1.
+    /// @dev Test to ensure sending native tokens directly mints ERC20Supra tokens 1:1.
     function testReceiveMintsERC20Supra() public {
         vm.prank(alice);
         (bool success, ) = address(erc20SupraHandler).call{value: 3 ether}("");

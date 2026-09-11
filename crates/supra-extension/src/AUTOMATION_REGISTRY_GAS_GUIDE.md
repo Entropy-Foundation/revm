@@ -135,7 +135,7 @@ sub-calls will just silently receive less gas than their registered limit once t
 outer call frame runs low — showing up as spurious `CallFailed` events, not a
 revert with a clear reason.
 
-### Why a mis-sized `monitorCycleEnd` entry fails quietly, not loudly
+### Why a miss-sized `monitorCycleEnd` entry fails quietly, not loudly
 
 `blockPrologue()`'s loop does not `require(ok)` — a failing entry only emits
 `CallFailed` and the loop moves on to the next entry. So if `monitorCycleEnd`'s

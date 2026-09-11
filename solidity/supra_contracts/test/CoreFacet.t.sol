@@ -1474,7 +1474,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasks[0] = 0;
 
         vm.expectEmit(true, true, true, true);
-        emit ICoreFacet.TaskCancelledInsufficentBalanceAllowance(0, alice, 3 ether, 38.9 ether, 0, keccak256("txHash"));
+        emit ICoreFacet.TaskCancelledInsufficientBalanceAllowance(0, alice, 3 ether, 38.9 ether, 0, keccak256("txHash"));
 
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
