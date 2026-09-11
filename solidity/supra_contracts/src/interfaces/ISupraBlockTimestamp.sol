@@ -24,6 +24,10 @@ interface ISupraBlockTimestamp {
     /// paths that execute no real block; it is not reachable from a transaction in a block or from
     /// `eth_call`.
     error TimestampUnavailable();
+    /// @notice Thrown when the call carries value. The precompile takes none: a call with value
+    /// reverts, which returns the value to the caller rather than leaving it at an address
+    /// nothing can spend from.
+    error ValueNotAccepted();
 
     /// @notice The block's timestamp in microseconds since the Unix epoch.
     ///
@@ -31,10 +35,14 @@ interface ISupraBlockTimestamp {
     ///
     /// # Rules
     ///
-    /// None. Header data is public, so no caller rule applies and none would help: `STATICCALL`, a
+    /// No caller rule. Header data is public, so none applies and none would help: `STATICCALL`, a
     /// nested `CALL`, `DELEGATECALL`, any transaction sender including one with code, and every
     /// kind of transaction are all served. This is unlike {ISupraRandomness-next}, whose rules
     /// exist to protect a value that is not public; do not carry them over to this read.
+    ///
+    /// The call must carry no value and no call data beyond the four-byte selector. The refusals
+    /// are therefore {UnknownSelector}, {MalformedInput}, {ValueNotAccepted} and, on node-internal
+    /// paths only, {TimestampUnavailable}.
     ///
     /// # Cost
     ///
