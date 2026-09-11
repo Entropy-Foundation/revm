@@ -20,9 +20,10 @@ interface ISupraBlockTimestamp {
     error UnknownSelector();
     /// @notice Thrown when the call data is anything other than the bare four-byte selector.
     error MalformedInput();
-    /// @notice Thrown when the execution has no block timestamp. This happens only on node-internal
-    /// paths that execute no real block; it is not reachable from a transaction in a block or from
-    /// `eth_call`.
+    /// @notice Thrown when the execution has no block timestamp: genesis contract deployment,
+    /// which runs before any certified block exists, and node-internal paths that execute no
+    /// block. It is not reachable from a transaction in an ordinary block or from `eth_call` /
+    /// `eth_estimateGas`.
     error TimestampUnavailable();
     /// @notice Thrown when the call carries value. The precompile takes none: a call with value
     /// reverts, which returns the value to the caller rather than leaving it at an address
@@ -41,8 +42,8 @@ interface ISupraBlockTimestamp {
     /// exist to protect a value that is not public; do not carry them over to this read.
     ///
     /// The call must carry no value and no call data beyond the four-byte selector. The refusals
-    /// are therefore {UnknownSelector}, {MalformedInput}, {ValueNotAccepted} and, on node-internal
-    /// paths only, {TimestampUnavailable}.
+    /// are therefore {UnknownSelector}, {MalformedInput}, {ValueNotAccepted} and, at genesis
+    /// deployment and on node-internal paths, {TimestampUnavailable}.
     ///
     /// # Cost
     ///
