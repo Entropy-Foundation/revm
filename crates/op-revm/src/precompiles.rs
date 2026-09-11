@@ -225,12 +225,12 @@ mod tests {
     };
 
     use super::*;
+    use revm::precompile::tx_hash;
     use revm::{
         precompile::PrecompileError,
         primitives::{hex, Bytes},
     };
     use std::vec;
-    use revm::precompile::tx_hash;
 
     #[test]
     fn test_bn254_pair() {

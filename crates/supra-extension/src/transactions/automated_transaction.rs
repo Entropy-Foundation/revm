@@ -583,10 +583,9 @@ impl AutomatedTransactionBuilder {
             input,
             predicate: predicate.unwrap_or_default(),
         };
-        Ok(BuildResult::Success(Box::new(AutomatedTransactionDetails {
-            txn,
-            priority,
-        })))
+        Ok(BuildResult::Success(Box::new(
+            AutomatedTransactionDetails { txn, priority },
+        )))
     }
 }
 

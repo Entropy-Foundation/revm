@@ -747,7 +747,8 @@ impl GenesisTransactionGenerator {
     fn load_contract_bytecode(name: &str) -> Result<Vec<u8>> {
         // Bytecodes are embedded at compile time via include_bytes! macros
         CONTRACT_BYTECODES
-            .get(name).cloned()
+            .get(name)
+            .cloned()
             .ok_or_else(|| anyhow!("Failed to get bytecode for contract: {name}"))
     }
 }
