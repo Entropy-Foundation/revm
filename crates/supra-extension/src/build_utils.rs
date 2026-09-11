@@ -12,17 +12,21 @@
 //! Then in the consuming `build.rs`:
 //!
 //! ```rust,ignore
-//! use revm_supra_extension::build_utils::{CompileConfig, compile_contracts,
-//!     load_contracts_bytecode, dump_bytecodes};
+//! use revm_supra_extension::build_utils::{CompileConfig, compile_and_load_contracts,
+//!     dump_bytecodes};
 //! use std::collections::BTreeMap;
 //! use std::path::Path;
 //!
 //! fn main() {
 //!     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
 //!     let config = CompileConfig::load(manifest_dir).unwrap();
-//!     let artifacts = compile_contracts(&config.contracts_dapp_path(manifest_dir)).unwrap();
 //!     let mut bytecodes = BTreeMap::new();
-//!     load_contracts_bytecode(config.contract_names(), &artifacts, &mut bytecodes).unwrap();
+//!     compile_and_load_contracts(
+//!         &config.contracts_dapp_path(manifest_dir),
+//!         config.contract_names(),
+//!         &mut bytecodes,
+//!     )
+//!     .unwrap();
 //!     dump_bytecodes(bytecodes, "my_contracts_bytecode").unwrap();
 //! }
 //! ```
