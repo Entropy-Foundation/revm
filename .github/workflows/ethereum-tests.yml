@@ -6,9 +6,9 @@ concurrency:
 
 on:
   push:
-    branches: [main, "release/**"]
+    branches: [main, "release/**", "feature/**"]
   pull_request:
-    branches: [main, "release/**"]
+    branches: [main, "release/**", "feature/**"]
 
 jobs:
   test:
@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
+        with:
+            submodules: recursive
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@stable
