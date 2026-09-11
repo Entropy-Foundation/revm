@@ -136,7 +136,7 @@ jobs:
         run: forge build
       - name: Run forge tests
         working-directory: ./solidity/supra_contracts
-        run: forge test --vvv
+        run: forge test
 
   feature-propagation:
     runs-on: ubuntu-latest

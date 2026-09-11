@@ -38,7 +38,7 @@ impl GenesisTransaction {
     /// Creates a new genesis transaction with the given parameters to deploy a contract via create2 API.
     pub fn create2(sender: Address, salt: &str, data: Vec<u8>, nonce: u64) -> Self {
         let salt_hash = keccak256(salt);
-        let deploy_address = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, &data.as_slice());
+        let deploy_address = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, data.as_slice());
         let call_data = [salt_hash.to_vec(), data].concat();
         Self::new(
             sender,
@@ -59,7 +59,7 @@ impl GenesisTransaction {
         value: u128,
     ) -> Self {
         let salt_hash = keccak256(salt);
-        let deploy_address = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, &data.as_slice());
+        let deploy_address = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, data.as_slice());
         let call_data = [salt_hash.to_vec(), data].concat();
         Self::new(
             sender,

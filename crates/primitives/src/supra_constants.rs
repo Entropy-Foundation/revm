@@ -43,6 +43,7 @@ mod tests {
         assert!(is_supra_reserved(&addr5));
         assert!(is_supra_reserved(&VM_SIGNER));
         assert!(is_supra_reserved(&TX_HASH_ADDRESS));
+        assert!(is_supra_reserved(&last_reserved));
         assert!(!is_supra_reserved(&any_address));
         assert!(!is_supra_reserved(&any_low_address));
         assert!(!is_supra_reserved(&any_up_address));

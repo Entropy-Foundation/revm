@@ -467,7 +467,7 @@ pub trait Handler {
     /// This method retrieves the final state from the journal, converts internal results to the
     /// external output format, and prepares the EVM for the next transaction.
     ///
-    /// For [`ExecutionMode::ReadOnly`] transactions the journal is always discarded
+    /// For [`context::ExecutionMode::ReadOnly`] transactions the journal is always discarded
     /// via [`JournalTr::discard_tx`] rather than committed, preventing any side effects
     /// (including account warmth) from leaking into subsequent transaction execution.
     /// If the journal contains state-mutating entries the method returns an error, because

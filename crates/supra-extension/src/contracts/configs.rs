@@ -530,7 +530,7 @@ mod tests {
     fn block_prologue_gas_cap_above_block_metadata_gas_limit_is_rejected() {
         let upper_bound = DEFAULT_BLOCK_METADATA_GAS_LIMIT;
         let config = GenesisTransactionGeneratorConfig {
-            block_prologue_gas_cap: (upper_bound + 1) as u64,
+            block_prologue_gas_cap: upper_bound + 1,
             ..valid_genesis_config()
         };
         assert!(config.is_valid().is_err());

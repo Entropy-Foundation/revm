@@ -375,7 +375,7 @@ impl TryFrom<u8> for AutomationTaskState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BuildResult {
     /// Success result wrapping [`AutomatedTransactionDetails`]
-    Success(AutomatedTransactionDetails),
+    Success(Box<AutomatedTransactionDetails>),
     /// Build failure due to gas-price limit surpass.
     GasPriceLimitExceeded {
         /// Task index for which error is observed.
@@ -583,16 +583,22 @@ impl AutomatedTransactionBuilder {
             input,
             predicate: predicate.unwrap_or_default(),
         };
-        Ok(BuildResult::Success(AutomatedTransactionDetails {
+        Ok(BuildResult::Success(Box::new(AutomatedTransactionDetails {
             txn,
             priority,
-        }))
+        })))
+    }
+}
+
+impl Default for AutomatedTransactionBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 /// Constructs [`AutomatedTransactionBuilder`] from automation task details loaded from chain state.
 /// Fails if:
-///   - inner payload cannot be deserialized based on the  [`ExpandedPayloadTy`] schema
+///   - inner payload cannot be deserialized based on the  `ExpandedPayloadTy` schema
 ///   - Loaded task is not in active state (Active | Cancelled)
 impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
     type Error = SupraExtensionError;
@@ -735,7 +741,7 @@ mod tests {
 
     fn unwrap_success(r: BuildResult) -> AutomatedTransactionDetails {
         match r {
-            BuildResult::Success(d) => d,
+            BuildResult::Success(d) => *d,
             other => panic!("expected BuildResult::Success, got {other:?}"),
         }
     }

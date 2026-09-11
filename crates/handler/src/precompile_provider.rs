@@ -6,6 +6,7 @@ use precompile::PrecompileError;
 use precompile::{PrecompileSpecId, Precompiles};
 use primitives::{hardfork::SpecId, Address, Bytes};
 use std::boxed::Box;
+use std::ops::Deref;
 use std::string::String;
 
 /// Provider for precompiled contracts in the EVM.
@@ -113,7 +114,7 @@ impl<CTX: ContextTr> PrecompileProvider<CTX> for EthPrecompiles {
             CallInput::SharedBuffer(range) => {
                 if let Some(slice) = context.local().shared_memory_buffer_slice(range.clone()) {
                     r = slice;
-                    r.as_ref()
+                    r.deref()
                 } else {
                     &[]
                 }

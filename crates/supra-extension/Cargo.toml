@@ -56,9 +56,13 @@ bincode = { workspace =  true , features = ["serde"]}
 enum-kinds = { workspace = true }
 
 [features]
-serde = ["alloy-serde"]
+serde = ["alloy-serde", "alloy-consensus/serde", "alloy-eips/serde", "primitives/serde", "context/serde", "bincode/serde"]
 # Exposes `revm_supra_extension::build_utils` — a set of utilities for compiling
 # Solidity contracts and loading bytecodes inside `build.rs` scripts.
 # Add this crate as a `[build-dependencies]` entry with `features = ["build-utils"]`
 # to use them from another crate's build script.
 build-utils = ["dep:foundry-config", "dep:toml", "dep:foundry-compilers"]
+
+# Ignore doctests for the time being, as it fails currently due to generated supra-contract bindings not being available in the doctest environment.
+[lib]
+doctest = false
