@@ -1,12 +1,12 @@
 use auto_impl::auto_impl;
 use context::{Cfg, LocalContextTr};
 use context_interface::ContextTr;
+use core::ops::Deref;
 use interpreter::{CallInput, Gas, InputsImpl, InstructionResult, InterpreterResult};
 use precompile::PrecompileError;
 use precompile::{PrecompileSpecId, Precompiles};
 use primitives::{hardfork::SpecId, Address, Bytes};
 use std::boxed::Box;
-use std::ops::Deref;
 use std::string::String;
 
 /// Provider for precompiled contracts in the EVM.

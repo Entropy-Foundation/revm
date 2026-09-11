@@ -56,7 +56,6 @@ std = [
 	"either/std",
 ]
 serde = [
-	"dep:serde",
 	"database/serde",
 	"context/serde",
 	"database-interface/serde",
@@ -67,7 +66,7 @@ serde = [
 	"either/serde",
 ]
 
-tracer = ["std", "serde", "dep:serde_json"]
+tracer = ["dep:serde", "std", "serde", "dep:serde_json"]
 
 # Deprecated, please use `tracer` feature instead.
 serde-json = ["tracer"]
