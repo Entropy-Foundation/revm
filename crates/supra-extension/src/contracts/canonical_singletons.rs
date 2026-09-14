@@ -84,7 +84,6 @@ pub fn generate_create2_factory_transaction() -> GenesisTransaction {
     GenesisTransaction::new(
         CREATE2_FACTORY_OWNER,
         0,
-        0,
         CREATE2_FACTORY_CODE.to_owned(),
         TxKind::Create,
         Some(CREATE2_FACTORY_ADDRESS),
