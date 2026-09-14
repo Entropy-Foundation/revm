@@ -18,8 +18,6 @@ pub struct GenesisTransaction {
     sender: Address,
     /// Expected nonce of the sender account.
     nonce: u64,
-    /// Amount to mint to the contract address if the transaction deploys a contract.
-    value: u128,
     /// Input data of the transaction.
     #[serde_as(as = "Hex")]
     data: Vec<u8>,
@@ -32,7 +30,7 @@ pub struct GenesisTransaction {
 impl GenesisTransaction {
     /// Creates a new genesis transaction with the given parameters to deploy a contract via standard create API.
     pub fn create(sender: Address, data: Vec<u8>, nonce: u64, deploy_address: Address) -> Self {
-        Self::new(sender, nonce, 0, data, TxKind::Create, Some(deploy_address))
+        Self::new(sender, nonce, data, TxKind::Create, Some(deploy_address))
     }
 
     /// Creates a new genesis transaction with the given parameters to deploy a contract via create2 API.
@@ -43,28 +41,6 @@ impl GenesisTransaction {
         Self::new(
             sender,
             nonce,
-            0,
-            call_data,
-            TxKind::Call(CREATE2_FACTORY_ADDRESS),
-            Some(deploy_address),
-        )
-    }
-
-    /// Creates a new genesis transaction with the given parameters to deploy a contract via create2 API.
-    pub fn create2_with_value(
-        sender: Address,
-        salt: &str,
-        data: Vec<u8>,
-        nonce: u64,
-        value: u128,
-    ) -> Self {
-        let salt_hash = keccak256(salt);
-        let deploy_address = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, &data.as_slice());
-        let call_data = [salt_hash.to_vec(), data].concat();
-        Self::new(
-            sender,
-            nonce,
-            value,
             call_data,
             TxKind::Call(CREATE2_FACTORY_ADDRESS),
             Some(deploy_address),
@@ -73,18 +49,7 @@ impl GenesisTransaction {
 
     /// Creates a new genesis call transaction with the given parameters.
     pub fn call(sender: Address, target: Address, data: Vec<u8>, nonce: u64) -> Self {
-        Self::new(sender, nonce, 0, data, TxKind::Call(target), None)
-    }
-
-    /// Creates a new genesis call transaction with the given parameters including value.
-    pub fn call_with_value(
-        sender: Address,
-        target: Address,
-        data: Vec<u8>,
-        nonce: u64,
-        value: u128,
-    ) -> Self {
-        Self::new(sender, nonce, value, data, TxKind::Call(target), None)
+        Self::new(sender, nonce, data, TxKind::Call(target), None)
     }
 }
 
@@ -96,7 +61,6 @@ impl Debug for GenesisTransaction {
             .field("data", &self.data.len())
             .field("nonce", &self.nonce)
             .field("deploy_address", &self.deploy_address)
-            .field("value", &self.value)
             .finish()
     }
 }
@@ -241,8 +205,6 @@ mod tests {
         assert_eq!(*txn.sender(), SENDER);
         assert_eq!(*txn.nonce(), nonce);
         assert_eq!(*txn.data(), data);
-        // Plain create carries no value.
-        assert_eq!(*txn.value(), 0u128);
         assert_eq!(*txn.kind(), TxKind::Create);
         assert_eq!(*txn.deploy_address(), Some(DEPLOY_ADDR));
     }
@@ -257,26 +219,8 @@ mod tests {
         assert_eq!(*txn.sender(), SENDER);
         assert_eq!(*txn.nonce(), nonce);
         assert_eq!(*txn.data(), data);
-        // Plain call carries no value.
-        assert_eq!(*txn.value(), 0u128);
         assert_eq!(*txn.kind(), TxKind::Call(TARGET));
         // Call transactions have no pre-computed deploy address.
-        assert_eq!(*txn.deploy_address(), None);
-    }
-
-    #[test]
-    fn call_with_value_sets_fields_correctly() {
-        let data = vec![0x01, 0x02];
-        let nonce = 5u64;
-        let value = 1_000_000u128;
-
-        let txn = GenesisTransaction::call_with_value(SENDER, TARGET, data.clone(), nonce, value);
-
-        assert_eq!(*txn.sender(), SENDER);
-        assert_eq!(*txn.nonce(), nonce);
-        assert_eq!(*txn.data(), data);
-        assert_eq!(*txn.value(), value);
-        assert_eq!(*txn.kind(), TxKind::Call(TARGET));
         assert_eq!(*txn.deploy_address(), None);
     }
 
@@ -291,7 +235,6 @@ mod tests {
         // create2 wraps the call to the CREATE2 factory, so kind must target it.
         assert_eq!(*txn.sender(), SENDER);
         assert_eq!(*txn.nonce(), nonce);
-        assert_eq!(*txn.value(), 0u128);
         assert_eq!(*txn.kind(), TxKind::Call(CREATE2_FACTORY_ADDRESS));
 
         // The factory call-data is salt_hash ++ bytecode.
@@ -300,29 +243,6 @@ mod tests {
         assert_eq!(*txn.data(), expected_data);
 
         // The deploy address is deterministically derived from the factory address, salt, and code.
-        let expected_deploy = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, &bytecode);
-        assert_eq!(*txn.deploy_address(), Some(expected_deploy));
-    }
-
-    #[test]
-    fn create2_with_value_sets_fields_correctly() {
-        let salt = "salted_contract";
-        let bytecode = vec![0xAB, 0xCD];
-        let nonce = 2u64;
-        let value = 42u128;
-
-        let txn =
-            GenesisTransaction::create2_with_value(SENDER, salt, bytecode.clone(), nonce, value);
-
-        assert_eq!(*txn.sender(), SENDER);
-        assert_eq!(*txn.nonce(), nonce);
-        assert_eq!(*txn.value(), value);
-        assert_eq!(*txn.kind(), TxKind::Call(CREATE2_FACTORY_ADDRESS));
-
-        let salt_hash = keccak256(salt);
-        let expected_data = [salt_hash.to_vec(), bytecode.clone()].concat();
-        assert_eq!(*txn.data(), expected_data);
-
         let expected_deploy = CREATE2_FACTORY_ADDRESS.create2_from_code(salt_hash, &bytecode);
         assert_eq!(*txn.deploy_address(), Some(expected_deploy));
     }
