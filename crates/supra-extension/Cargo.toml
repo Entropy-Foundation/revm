@@ -63,6 +63,7 @@ serde = ["alloy-serde", "alloy-consensus/serde", "alloy-eips/serde", "primitives
 # to use them from another crate's build script.
 build-utils = ["dep:foundry-config", "dep:toml", "dep:foundry-compilers"]
 
-# Ignore doctests for the time being, as it fails currently due to generated supra-contract bindings not being available in the doctest environment.
+# Ignore doctests for the time being, as it fails currently due to generated supra-contract bindings
+# not being available in the doctest environment. Tracked in Entropy-Foundation/smr-moonshot#3951.
 [lib]
 doctest = false

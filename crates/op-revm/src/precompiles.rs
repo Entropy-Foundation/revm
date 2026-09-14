@@ -298,8 +298,8 @@ mod tests {
         let new_prague_precompiles = Precompiles::prague().difference(Precompiles::cancun());
 
         // isthmus contains all precompiles that were new in prague, without modifications
+        // but on Supra revm branch prague comes with 1 new precompile TX_HASH.
         let diff = new_prague_precompiles.difference(isthmus());
-        // On Supra revm branch prague comes with 1 new precompile TX_HASH.
         assert_eq!(diff.len(), 1);
         assert!(diff.contains(tx_hash::TX_HASH.address()));
     }

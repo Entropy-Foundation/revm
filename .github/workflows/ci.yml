@@ -15,26 +15,18 @@ env:
 
 jobs:
   test:
-    name: test ${{ matrix.rust }} ${{ matrix.flags }}
+    name: test ${{ matrix.flags }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        rust: ["stable"]
         flags: ["--no-default-features", "", "--all-features"]
-    # This matrix is the one place that deliberately compiles on something other than the pinned
-    # toolchain, so it has to outrank `rust-toolchain.toml`. `RUSTUP_TOOLCHAIN` does; the toolchain
-    # the install step selects does not.
-    env:
-      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
+      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace ${{ matrix.flags }}
 
@@ -141,6 +133,8 @@ jobs:
           submodules: recursive
       - name: Install forge
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: 1.5.1
       - name: Build forge project
         working-directory: ./solidity/supra_contracts
         run: forge build
