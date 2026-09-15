@@ -4,6 +4,10 @@ out = "out"
 libs = ["lib"]
 via_ir = true
 optimizer = true
+# Pin explicitly rather than relying on Foundry's implicit default of 200, so a future
+# change to that default can't silently change compiled bytecode and therefore every
+# CREATE2 genesis address derived from it.
+optimizer_runs = 200
 evm_version = "prague"
 # Fix the solc version to avoid breaking changes in the future.  See
 solc_version = "0.8.34"
@@ -27,5 +31,13 @@ remappings = [
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
 ]
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+# Selected instead of [profile.default] for release builds (see select_foundry_profile
+# in crates/supra-extension/build_utils_impl.rs). Foundry merges [profile.default] as
+# the base for every other profile and layers this section's overrides on top, so an
+# empty section here means production compiles identically to default today. It exists
+# so a future relaxation of [profile.default] for faster local dev iteration can't
+# silently change genesis-affecting release bytecode without an explicit override here.
+[profile.production]
 
 

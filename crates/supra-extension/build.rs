@@ -64,6 +64,7 @@ fn main() {
         &config.contracts_dapp_path(manifest_dir),
         config.contract_names(),
         &mut contracts_bytecode,
+        &[],
     )
     .expect("the Supra contracts compile and their bytecode is readable");
 
