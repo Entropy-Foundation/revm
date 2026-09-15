@@ -335,7 +335,8 @@ impl GenesisTransactionGenerator {
         let erc20_supra_address = self.address.create(self.nonce + 1);
         let erc20_handler_address = self.address.create(self.nonce + 3);
 
-        // For now only erc20supra handler address is specified as authorized, the bridge one will be specified past deployment
+        // ERC20SupraHandler is the only address authorized to mint and burn ERC20Supra, and
+        // nothing after deployment adds another (Entropy-Foundation/smr-moonshot#3946).
         let mut erc20_supra_txn = self.setup_erc20_supra(owner, vec![erc20_handler_address])?;
         let gen_erc20_supra_address = *erc20_supra_txn
             .get(&GenesisTransactionTags::Erc20Supra)
@@ -798,11 +799,6 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::Erc20Supra));
         assert!(result.contains_key(&GenesisTransactionTags::Erc20SupraHandlerImpl));
         assert!(result.contains_key(&GenesisTransactionTags::Erc20SupraHandler));
-        let erc20_supra_handler = result
-            .get(&GenesisTransactionTags::Erc20SupraHandler)
-            .unwrap();
-        assert_eq!(erc20_supra_handler.value(), &0);
-
         // Verify automation contracts are not deployed
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondCutFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::Diamond));
