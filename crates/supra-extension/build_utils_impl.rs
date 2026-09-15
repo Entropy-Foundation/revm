@@ -69,17 +69,16 @@ const FOUNDRY_WATCHED_ENV_VARS: &[&str] = &[
     "DAPP_REMAPPINGS",
 ];
 
-/// Guard against ambient `FOUNDRY_*`/`DAPP_*` environment variables silently changing
-/// compiled Solidity bytecode. Foundry merges any such variable over `foundry.toml`
-/// (last-wins), so an entirely ordinary developer or CI environment can move every
-/// embedded contract's bytecode, and therefore every `CREATE2` genesis address, with
-/// no warning.
+/// Guard against ambient `FOUNDRY_WATCHED_ENV_VARS` silently changing compiled
+/// Solidity bytecode. Foundry merges any such variable over `foundry.toml`
+/// (last-wins).
 ///
-/// Emits `cargo:rerun-if-env-changed` for the variables Foundry actually reads, then
-/// fails the build if any `FOUNDRY_*`/`DAPP_*` variable is set that isn't listed in
-/// `allowed_env`. A caller that deliberately sets one of these variables itself (to
-/// select a Foundry profile, for instance) must pass its name there rather than have
-/// it silently excluded here.
+/// Emits `cargo:rerun-if-env-changed` for each variable in `FOUNDRY_WATCHED_ENV_VARS`,
+/// then fails the build if any of them is set and isn't listed in `allowed_env`. A
+/// caller that deliberately sets one of these variables itself (to select a Foundry
+/// profile, for instance) must pass its name there rather than have it silently
+/// excluded here. Other `FOUNDRY_*`/`DAPP_*` variables Foundry reads are not checked,
+/// so this only rejects variables actually in the list above.
 fn guard_ambient_foundry_env(allowed_env: &[&str]) -> Result<()> {
     for var in FOUNDRY_WATCHED_ENV_VARS {
         println!("cargo:rerun-if-env-changed={var}");
@@ -88,7 +87,7 @@ fn guard_ambient_foundry_env(allowed_env: &[&str]) -> Result<()> {
 
     let offending: Vec<String> = std::env::vars()
         .map(|(key, _)| key)
-        .filter(|key| key.starts_with("FOUNDRY_") || key.starts_with("DAPP_"))
+        .filter(|key| FOUNDRY_WATCHED_ENV_VARS.contains(&key.as_str()))
         .filter(|key| !allowed_env.contains(&key.as_str()))
         .collect();
 
@@ -160,10 +159,12 @@ pub fn compile_contracts(path: &impl AsRef<Path>, allowed_env: &[&str]) -> Resul
         "cargo:rerun-if-changed={}",
         project.paths.root.join("foundry.toml").display()
     );
-    let remappings_path = project.paths.root.join("remappings.txt");
-    if remappings_path.exists() {
-        println!("cargo:rerun-if-changed={}", remappings_path.display());
-    }
+    // Cargo accepts a rerun-if-changed path that doesn't exist yet and treats its
+    // later appearance as a change, so this is unconditional.
+    println!(
+        "cargo:rerun-if-changed={}",
+        project.paths.root.join("remappings.txt").display()
+    );
 
     let artifacts_dir = project.paths.artifacts.clone();
     println!(
