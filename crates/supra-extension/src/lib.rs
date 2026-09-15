@@ -7,6 +7,7 @@ pub mod contracts;
 pub mod errors;
 #[allow(missing_docs, missing_debug_implementations)]
 #[allow(elided_lifetimes_in_paths)]
+#[rustfmt::skip]
 mod supra_contract_bindings;
 pub mod transactions;
 pub use crate::supra_contract_bindings::supra_contracts_bindings::{

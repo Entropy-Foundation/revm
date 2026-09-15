@@ -145,7 +145,7 @@ pub fn load_contracts_bytecode(
 /// Compile the Solidity project rooted at `path` and populate `bytecodes` with the
 /// deployment bytecode of each contract in `contract_names`.
 ///
-/// An artifact that is missing, empty, unparseable or devoid of deployment bytecode is
+/// An artifact that is missing, empty, unparsable or devoid of deployment bytecode is
 /// treated as damaged rather than fatal: the compiled output and the compiler cache are
 /// discarded and the project is compiled once more before the error is reported. The
 /// cache must go with the artifacts, because the compiler considers unchanged sources

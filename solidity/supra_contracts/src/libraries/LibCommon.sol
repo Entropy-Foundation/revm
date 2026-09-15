@@ -202,8 +202,8 @@ library LibCommon {
     /// @notice Function to remove a task from the registry.
     /// @param _taskIndex Index of the task to remove.
     /// @param _owner Address of the task owner.
-    /// @param _removeFromSysReg Wheather to remove from system task registry.
-    /// @param _removeFromActive Wheather to remove from active task list.
+    /// @param _removeFromSysReg Whether to remove from system task registry.
+    /// @param _removeFromActive Whether to remove from active task list.
     function removeTask(uint64 _taskIndex, address _owner, bool _removeFromSysReg, bool _removeFromActive) internal {
         RegistryState storage registryState = LibAppStorage.registryState();
 

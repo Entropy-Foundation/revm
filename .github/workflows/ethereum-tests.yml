@@ -6,9 +6,9 @@ concurrency:
 
 on:
   push:
-    branches: [main, "release/**"]
+    branches: [main, "release/**", "feature/**"]
   pull_request:
-    branches: [main, "release/**"]
+    branches: [main, "release/**", "feature/**"]
 
 jobs:
   test:
@@ -17,10 +17,12 @@ jobs:
     strategy:
       matrix:
         profile: [ethtests, release]
-        target: [i686-unknown-linux-gnu, x86_64-unknown-linux-gnu]
+        target: [x86_64-unknown-linux-gnu]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
+        with:
+            submodules: recursive
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@stable

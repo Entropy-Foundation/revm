@@ -2707,9 +2707,9 @@ dependencies = [
 [[package]]
 name = "gmp-mpfr-sys"
 version = "1.6.8"
-source = "git+ssh://git@github.com/Entropy-Foundation/gmp-mpfr-sys?branch=master#6d5c91968d809b692df0abdcc3d93ce3588ff7ad"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60f8970a75c006bb2f8ae79c6768a116dd215fa8346a87aed99bf9d82ca43394"
 dependencies = [
- "cc",
  "libc",
  "windows-sys 0.60.2",
 ]

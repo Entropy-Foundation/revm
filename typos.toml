@@ -1,5 +1,5 @@
 [default]
-extend-ignore-identifiers-re = ["[sS]imular", "ba"]
+extend-ignore-identifiers-re = ["[sS]imular", "ba", "mis"]
 
 [files]
-extend-exclude = ["CHANGELOG.md", "tests"]
+extend-exclude = ["CHANGELOG.md", "tests", "solidity/supra_contracts/lib" ]

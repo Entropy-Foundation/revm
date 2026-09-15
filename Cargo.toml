@@ -159,7 +159,7 @@ repository = "https://github.com/bluealloy/revm"
 documentation = "https://bluealloy.github.io/revm/"
 homepage = "https://github.com/bluealloy/revm"
 edition = "2021"
-rust-version = "1.88.0"
+rust-version = "1.97.1"
 
 [workspace.lints]
 rust.missing_debug_implementations = "warn"
@@ -168,10 +168,6 @@ rust.rust_2018_idioms = { level = "deny", priority = -1 }
 rust.unreachable_pub = "warn"
 rust.unused_must_use = "deny"
 rustdoc.all = "warn"
-
-[patch.crates-io]
-gmp-mpfr-sys = { git = "ssh://git@github.com/Entropy-Foundation/gmp-mpfr-sys", branch="master" }
-
 
 [workspace.metadata.docs.rs]
 all-features = true

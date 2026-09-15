@@ -466,7 +466,7 @@ library LibAccounting {
         // it would mean it is their first and only cycle and we charge the fee for entire cycle.
         // Note that although the new short tasks are charged for entire cycle, the refunding logic remains the same for
         // them as for the long tasks.
-        // This way bad-actors will be discourged to submit small and short tasks with big occupancy by blocking other
+        // This way bad-actors will be discouraged to submit small and short tasks with big occupancy by blocking other
         // good-actors register tasks.
         uint64 actualFeeTimeframe; 
         if (_state == LibCommon.TaskState.PENDING) {

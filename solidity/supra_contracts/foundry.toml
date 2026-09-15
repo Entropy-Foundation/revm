@@ -18,7 +18,7 @@ cbor_metadata = false
 # each, totalling ~1.2 billion gas across the full search.  Individual N-point tests
 # never exceed ~350 million gas, so this increase has no visible effect on them.
 block_gas_limit = 30_000_000_000
-# Uncomment when running agains supra chain
+# Uncomment when running against supra chain
 
 #eth_rpc_url = "http://localhost:27000/rpc/v1/eth/wallet_integration"
 

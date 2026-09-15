@@ -46,7 +46,7 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when a task is removed due to insufficient balance or allowance.
-    event TaskCancelledInsufficentBalanceAllowance(
+    event TaskCancelledInsufficientBalanceAllowance(
         uint64 indexed taskIndex,
         address owner,
         uint128 indexed fee,

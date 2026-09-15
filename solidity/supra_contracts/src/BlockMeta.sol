@@ -318,7 +318,7 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     }
 
     /// @notice Returns all the selectors of a target contract.
-    /// @param _targetContract The target contract addresss.
+    /// @param _targetContract The target contract address.
     /// @return selectors Array of function selectors registered for the target contract.
     function getSelectors(address _targetContract) external view returns (bytes4[] memory) {
         uint256 len = executions.length;

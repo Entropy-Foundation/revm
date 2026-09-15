@@ -51,7 +51,7 @@ pub struct AutomationRegistryRecord {
 }
 
 impl AutomationRegistryRecord {
-    /// Attempts to convert input bytes of [`AutomationRegistryRecord`] to [`AutomationRegistryAction`]
+    /// Attempts to convert input bytes of [`AutomationRegistryRecord`] to [`AutomationRecordAction`]
     pub fn try_convert_to_action(&self) -> Result<AutomationRecordAction, SupraExtensionError> {
         if self.input.len() < SELECTOR_LEN {
             return Err(SupraExtensionError::InvalidAutomationRecord(
