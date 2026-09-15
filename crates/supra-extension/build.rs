@@ -59,6 +59,19 @@ fn main() {
     // Rerun this script if the compile configuration changes (e.g. a contract name is added).
     println!("cargo:rerun-if-changed={}/compile_config.toml", CURRENT_DIR);
 
+    // Exposes which Foundry profile this build actually selected (see
+    // select_foundry_profile in build_utils_impl.rs), so tests can tell whether golden
+    // values captured from a --release build are meaningful to compare against for the
+    // current build (see genesis_contract_bytecode_matches_expected_hashes).
+    println!(
+        "cargo:rustc-env=SUPRA_CONTRACTS_FOUNDRY_PROFILE={}",
+        if std::env::var("PROFILE").as_deref() == Ok("release") {
+            "production"
+        } else {
+            "default"
+        }
+    );
+
     let mut contracts_bytecode = BTreeMap::new();
     compile_and_load_contracts(
         &config.contracts_dapp_path(manifest_dir),

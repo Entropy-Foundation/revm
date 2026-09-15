@@ -34,10 +34,12 @@ remappings = [
 
 # Selected instead of [profile.default] for release builds (see select_foundry_profile
 # in crates/supra-extension/build_utils_impl.rs). Foundry merges [profile.default] as
-# the base for every other profile and layers this section's overrides on top, so an
-# empty section here means production compiles identically to default today. It exists
-# so a future relaxation of [profile.default] for faster local dev iteration can't
-# silently change genesis-affecting release bytecode without an explicit override here.
+# the base for every other profile and layers this section's overrides on top.
 [profile.production]
+# Deployed code, not just gas cost, is the binding constraint: RegistryFacet is within
+# EIP-170's 24,576-byte limit up to 800 runs and over it by 900 (see
+# genesis_contract_deployed_bytecode_is_within_eip170_limit), so this stays well below
+# supranova's optimizer_runs.
+optimizer_runs = 800
 
 

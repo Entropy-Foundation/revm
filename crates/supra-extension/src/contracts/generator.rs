@@ -766,68 +766,81 @@ mod tests {
     /// These hashes were captured from a `--release` build — see `select_foundry_profile`
     /// in `build_utils_impl.rs`. A future intentional change to `solidity/supra_contracts`
     /// must update this map as part of that same change's PR.
+    ///
+    /// Only meaningful for a build where Cargo sets `PROFILE=release` (that includes
+    /// `[profile.production]`-selecting custom profiles too, not just `--release`
+    /// itself): `[profile.default]` and `[profile.production]` no longer compile to the
+    /// same bytecode once `[profile.production]` pins its own `optimizer_runs`.
     #[test]
     fn genesis_contract_bytecode_matches_expected_hashes() {
+        if env!("SUPRA_CONTRACTS_FOUNDRY_PROFILE") != "production" {
+            println!(
+                "skipping: this build selected the '{}' Foundry profile, not 'production'",
+                env!("SUPRA_CONTRACTS_FOUNDRY_PROFILE")
+            );
+            return;
+        }
+
         let expected: &[(&str, B256)] = &[
             (
                 "BeaconProxy",
-                b256!("e5c18af47c569fc62fb41736f452b3899de4c9b1e69c817bcc8de9a10a4e6f9e"),
+                b256!("4a727827636b859aa2156a81930bda39efc957d03793244f204145f46838b7dc"),
             ),
             (
                 "BlockMeta",
-                b256!("fefad4e564686bf7d19dd1cfa4052795aa5793643ce7d97269522d68fce91990"),
+                b256!("c52e1a412125c99d96a9bf17f882d05c620f88e28ed0153d72603684bc43e132"),
             ),
             (
                 "ConfigFacet",
-                b256!("c17a1340863f073b76bb33c8fecc2b49abc099ee3de113dc53c71d57cb0e9415"),
+                b256!("bb332d6a2e8abe4636530f5c4f1c9bf93f73ff8c5309f86ddde34901796f9594"),
             ),
             (
                 "CoreFacet",
-                b256!("d91a10047decf1a2fd13ac174eb83ab14a330b08752cf56aa9e43a2d2252612e"),
+                b256!("3aa6a5683c6708aae3d35d0a02e9ad76ef9426a973763f06a9ce6785db2356b3"),
             ),
             (
                 "Diamond",
-                b256!("fc987e2c0ecfe09c1b2839820dee239ae778ae9b0f4ae62b297ff2939e3a30cd"),
+                b256!("198e4a13e01fddea0ab2e1fce3875c20e0008e85acab7dc38c41889a9275b91c"),
             ),
             (
                 "DiamondCutFacet",
-                b256!("59d97991658f3c8ee3d9def296f861fd7ce887eb16cd39c5ba6d8b1ee3d196ce"),
+                b256!("c79834176e70f6992b079aaeee23c6db4f01d3b85bb3b2c8d3a1378d6961e832"),
             ),
             (
                 "DiamondInit",
-                b256!("747fb58b207223f9c77cc80a23af27562b95592a3c6c8dc17093f1d5c303abbd"),
+                b256!("59a19ef73c12e0cb2029c57066a0807866bc0bd7707a9a97e80ebbf4c2035524"),
             ),
             (
                 "DiamondLoupeFacet",
-                b256!("5c0fd3ac40436a516d92f42f7f9441dc1580c8e340a3f7ab692b2e371974a62a"),
+                b256!("6cbc526bb26e430f045bae9632e91ae332cc03e5c811e8562c915fe46c437706"),
             ),
             (
                 "ERC1967Proxy",
-                b256!("4bfb41ad3ef1a65d0566b8050c14dafa20748dde40e4edebc74dcbd3209cc5af"),
+                b256!("57b89089b8335f394fbef3fd80480b7e55222a3d164aa0233dea6fd23d9e4776"),
             ),
             (
                 "ERC20Supra",
-                b256!("51a5db923bdc936a5324fa99cb73cd422155ebe5dd48d8d64a7663e9c256bde0"),
+                b256!("459aa2da83be43f506f1e4aa6e0883d69ff63bea55208fd27f10cfeb35c37938"),
             ),
             (
                 "ERC20SupraHandler",
-                b256!("b221137df1ba69707f690d6043df8bc3560ce5c7b73ea28c63ec8a09dbcdc009"),
+                b256!("999782eef4d8b9f4df8b08589e23306515a7e5b93130a92e25c077fd6a6fe84e"),
             ),
             (
                 "MultiSignatureWallet",
-                b256!("a67fcf8b5e8c4259805a07e5dce7602ba32f091d747863257d4713940eeab632"),
+                b256!("a8232648e1d4eb06fd23d5e56182f1aa28934f99b9f9e472e9611d4279e0a2ba"),
             ),
             (
                 "MultisigBeacon",
-                b256!("03da3d7e9243fb3d4bbf7e9cec86044b05f837f7a19778adfa83fbc1021e303a"),
+                b256!("4da93de647b77fb3a3bdfe3b3c249d511b32dff2e6c0489a8a3b6967bfd2fc74"),
             ),
             (
                 "OwnershipFacet",
-                b256!("6c21ca4b4384d1f4f72cdaa90a2a908b2d22bcc36024d6bb085bffb84c0589e3"),
+                b256!("f471fc64d15c9dc0e0fec9c72185447404f2616ffeb32e86974f2aafdd4886ca"),
             ),
             (
                 "RegistryFacet",
-                b256!("3450a0ea8052e103fcee2d0b00be5af388fc920fc4ab0838d8bda638c8d763a4"),
+                b256!("7886535bb9e1391d90fc6574984ccaefe97619ec2f885bdd8c200415e75cbd2a"),
             ),
         ];
 
