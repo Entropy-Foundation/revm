@@ -759,7 +759,97 @@ mod tests {
     use super::*;
     use crate::contracts::configs::AutomationRegistryConfigV1;
     use primitives::supra_constants::u64_to_address;
-    use primitives::TxKind;
+    use primitives::{b256, TxKind, B256};
+
+    /// Regression guard for Entropy-Foundation/smr-moonshot#3473.
+    ///
+    /// These hashes were captured from a `--release` build — see `select_foundry_profile`
+    /// in `build_utils_impl.rs`. A future intentional change to `solidity/supra_contracts`
+    /// must update this map as part of that same change's PR.
+    #[test]
+    fn genesis_contract_bytecode_matches_expected_hashes() {
+        let expected: &[(&str, B256)] = &[
+            (
+                "BeaconProxy",
+                b256!("e5c18af47c569fc62fb41736f452b3899de4c9b1e69c817bcc8de9a10a4e6f9e"),
+            ),
+            (
+                "BlockMeta",
+                b256!("fefad4e564686bf7d19dd1cfa4052795aa5793643ce7d97269522d68fce91990"),
+            ),
+            (
+                "ConfigFacet",
+                b256!("c17a1340863f073b76bb33c8fecc2b49abc099ee3de113dc53c71d57cb0e9415"),
+            ),
+            (
+                "CoreFacet",
+                b256!("d91a10047decf1a2fd13ac174eb83ab14a330b08752cf56aa9e43a2d2252612e"),
+            ),
+            (
+                "Diamond",
+                b256!("fc987e2c0ecfe09c1b2839820dee239ae778ae9b0f4ae62b297ff2939e3a30cd"),
+            ),
+            (
+                "DiamondCutFacet",
+                b256!("59d97991658f3c8ee3d9def296f861fd7ce887eb16cd39c5ba6d8b1ee3d196ce"),
+            ),
+            (
+                "DiamondInit",
+                b256!("747fb58b207223f9c77cc80a23af27562b95592a3c6c8dc17093f1d5c303abbd"),
+            ),
+            (
+                "DiamondLoupeFacet",
+                b256!("5c0fd3ac40436a516d92f42f7f9441dc1580c8e340a3f7ab692b2e371974a62a"),
+            ),
+            (
+                "ERC1967Proxy",
+                b256!("4bfb41ad3ef1a65d0566b8050c14dafa20748dde40e4edebc74dcbd3209cc5af"),
+            ),
+            (
+                "ERC20Supra",
+                b256!("51a5db923bdc936a5324fa99cb73cd422155ebe5dd48d8d64a7663e9c256bde0"),
+            ),
+            (
+                "ERC20SupraHandler",
+                b256!("b221137df1ba69707f690d6043df8bc3560ce5c7b73ea28c63ec8a09dbcdc009"),
+            ),
+            (
+                "MultiSignatureWallet",
+                b256!("a67fcf8b5e8c4259805a07e5dce7602ba32f091d747863257d4713940eeab632"),
+            ),
+            (
+                "MultisigBeacon",
+                b256!("03da3d7e9243fb3d4bbf7e9cec86044b05f837f7a19778adfa83fbc1021e303a"),
+            ),
+            (
+                "OwnershipFacet",
+                b256!("6c21ca4b4384d1f4f72cdaa90a2a908b2d22bcc36024d6bb085bffb84c0589e3"),
+            ),
+            (
+                "RegistryFacet",
+                b256!("3450a0ea8052e103fcee2d0b00be5af388fc920fc4ab0838d8bda638c8d763a4"),
+            ),
+        ];
+
+        assert_eq!(
+            expected.len(),
+            CONTRACT_BYTECODES.len(),
+            "the set of embedded genesis contracts changed; update this test's expected \
+             list alongside compile_config.toml"
+        );
+        for (name, expected_hash) in expected {
+            let bytecode = CONTRACT_BYTECODES
+                .get(*name)
+                .unwrap_or_else(|| panic!("no compiled bytecode embedded for {name}"));
+            assert_eq!(
+                primitives::keccak256(bytecode),
+                *expected_hash,
+                "compiled bytecode for {name} no longer matches its expected hash; if this \
+                 change is intentional, regenerate this test's expected hash from a \
+                 --release build as part of this change's own PR"
+            );
+        }
+    }
 
     #[test]
     fn check_multisig_setup() {
