@@ -122,10 +122,10 @@ fn select_foundry_profile() {
 /// and sets `cargo:rustc-env=COMPILED_CONTRACTS_DIR` to the artifacts directory so
 /// downstream code can locate the compiled output.
 ///
-/// Fails the build if an ambient `FOUNDRY_*`/`DAPP_*` environment variable is set
-/// that isn't in `allowed_env` — see `guard_ambient_foundry_env`. The Foundry profile
-/// used is always `FOUNDRY_PROFILE`, selected by `select_foundry_profile`, so callers
-/// never need to (and must not) allowlist `FOUNDRY_PROFILE` themselves.
+/// Fails the build if a variable in `FOUNDRY_WATCHED_ENV_VARS` is set and isn't in
+/// `allowed_env` — see `guard_ambient_foundry_env`. The Foundry profile used is always
+/// `FOUNDRY_PROFILE`, selected by `select_foundry_profile`, so callers never need to
+/// (and must not) allowlist `FOUNDRY_PROFILE` themselves.
 ///
 /// Returns the path to the compiled artifacts directory.
 pub fn compile_contracts(path: &impl AsRef<Path>, allowed_env: &[&str]) -> Result<PathBuf> {
