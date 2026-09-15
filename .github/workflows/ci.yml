@@ -142,6 +142,24 @@ jobs:
         working-directory: ./solidity/supra_contracts
         run: forge test
 
+  genesis-bytecode-checks:
+    name: genesis bytecode checks (release profile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      # select_foundry_profile (build_utils_impl.rs) only selects
+      # [profile.production] for a --release build; the default `cargo test`
+      # matrix above always runs under the dev profile, so it never exercises
+      # production's settings. genesis_contract_bytecode_matches_expected_hashes
+      # and genesis_contract_deployed_bytecode_is_within_eip170_limit
+      # (crates/supra-extension/src/contracts/generator.rs) must run here to
+      # check the bytecode genesis deployments actually use.
+      - run: cargo test --release -p revm-supra-extension genesis_contract
+
   feature-propagation:
     runs-on: ubuntu-latest
     timeout-minutes: 20
