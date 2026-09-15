@@ -878,16 +878,19 @@ mod tests {
             let artifact_path = artifacts_dir
                 .join(format!("{name}.sol"))
                 .join(format!("{name}.json"));
-            let artifact: serde_json::Value = serde_json::from_str(
-                &std::fs::read_to_string(&artifact_path).unwrap_or_else(|e| {
-                    panic!("failed to read artifact {}: {e}", artifact_path.display())
-                }),
-            )
-            .unwrap_or_else(|e| panic!("failed to parse artifact {}: {e}", artifact_path.display()));
+            let artifact: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&artifact_path).unwrap_or_else(
+                    |e| panic!("failed to read artifact {}: {e}", artifact_path.display()),
+                ))
+                .unwrap_or_else(|e| {
+                    panic!("failed to parse artifact {}: {e}", artifact_path.display())
+                });
 
             let deployed_hex = artifact["deployedBytecode"]["object"]
                 .as_str()
-                .unwrap_or_else(|| panic!("no deployedBytecode.object for {name} in {artifact_path:?}"))
+                .unwrap_or_else(|| {
+                    panic!("no deployedBytecode.object for {name} in {artifact_path:?}")
+                })
                 .trim_start_matches("0x");
             let deployed_len = deployed_hex.len() / 2;
 

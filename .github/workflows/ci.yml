@@ -141,6 +141,12 @@ jobs:
       - name: Run forge tests
         working-directory: ./solidity/supra_contracts
         run: forge test
+      - name: Run Deployed Bytecode Size Checks (Default Profile)
+        working-directory: ./solidity/supra_contracts
+        run: forge build --sizes
+      - name: Run Deployed Bytecode Size Checks (Production Profile)
+        working-directory: ./solidity/supra_contracts
+        run: FOUNDRY_PROFILE=production forge build --sizes
 
   genesis-bytecode-checks:
     name: genesis bytecode checks (release profile)
