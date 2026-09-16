@@ -233,18 +233,23 @@ pub fn load_contracts_bytecode(
                 )
             })?;
 
-        if let Some(deployed_len) = contract
+        let deployed_len = contract
             .deployed_bytecode
             .as_ref()
             .and_then(|d| d.bytes())
             .map(|b| b.len())
-        {
-            if deployed_len > EIP170_DEPLOYED_CODE_LIMIT {
-                return Err(anyhow::anyhow!(
-                    "{contract_name}'s deployed bytecode is {deployed_len} bytes, \
-                     exceeding EIP-170's {EIP170_DEPLOYED_CODE_LIMIT}-byte limit"
-                ));
-            }
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Failed to load deployed bytecode for contract {contract_name} from {}",
+                    path.display()
+                )
+            })?;
+
+        if deployed_len > EIP170_DEPLOYED_CODE_LIMIT {
+            return Err(anyhow::anyhow!(
+                "{contract_name}'s deployed bytecode is {deployed_len} bytes, \
+                 exceeding EIP-170's {EIP170_DEPLOYED_CODE_LIMIT}-byte limit"
+            ));
         }
 
         let bytecode: Vec<u8> = contract

@@ -37,9 +37,9 @@ remappings = [
 # the base for every other profile and layers this section's overrides on top.
 [profile.production]
 # Deployed code, not just gas cost, is the binding constraint: RegistryFacet is within
-# EIP-170's 24,576-byte limit up to 800 runs and over it by 900 (see
-# genesis_contract_deployed_bytecode_is_within_eip170_limit), so this stays well below
-# supranova's optimizer_runs.
+# EIP-170's 24,576-byte limit (enforced by load_contracts_bytecode's
+# EIP170_DEPLOYED_CODE_LIMIT check in build_utils_impl.rs) up to 800 runs and over it
+# by 900.
 optimizer_runs = 800
 
 
