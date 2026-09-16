@@ -161,9 +161,10 @@ jobs:
       # [profile.production] for a --release build; the default `cargo test`
       # matrix above always runs under the dev profile, so it never exercises
       # production's settings. genesis_contract_bytecode_matches_expected_hashes
-      # and genesis_contract_deployed_bytecode_is_within_eip170_limit
       # (crates/supra-extension/src/contracts/generator.rs) must run here to
-      # check the bytecode genesis deployments actually use.
+      # check the bytecode genesis deployments actually use. The build itself
+      # also enforces the EIP-170 deployed-size limit as a side effect (see
+      # load_contracts_bytecode in build_utils_impl.rs).
       - run: cargo test --release -p revm-supra-extension genesis_contract
 
   feature-propagation:

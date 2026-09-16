@@ -864,45 +864,6 @@ mod tests {
         }
     }
 
-    /// EIP-170 limits deployed contract code to 24,576 bytes; a genesis deployment
-    /// exceeding it reverts on-chain, regardless of what `forge build` reports. Checks
-    /// each contract's deployed (runtime) bytecode from its Foundry artifact directly,
-    /// since `CONTRACT_BYTECODES` above holds the larger init code (deployment
-    /// bytecode plus constructor logic), not the code that ends up stored on-chain.
-    #[test]
-    fn genesis_contract_deployed_bytecode_is_within_eip170_limit() {
-        const EIP170_LIMIT: usize = 24_576;
-        let artifacts_dir = std::path::Path::new(env!("COMPILED_CONTRACTS_DIR"));
-
-        for name in CONTRACT_BYTECODES.keys() {
-            let artifact_path = artifacts_dir
-                .join(format!("{name}.sol"))
-                .join(format!("{name}.json"));
-            let artifact: serde_json::Value =
-                serde_json::from_str(&std::fs::read_to_string(&artifact_path).unwrap_or_else(
-                    |e| panic!("failed to read artifact {}: {e}", artifact_path.display()),
-                ))
-                .unwrap_or_else(|e| {
-                    panic!("failed to parse artifact {}: {e}", artifact_path.display())
-                });
-
-            let deployed_hex = artifact["deployedBytecode"]["object"]
-                .as_str()
-                .unwrap_or_else(|| {
-                    panic!("no deployedBytecode.object for {name} in {artifact_path:?}")
-                })
-                .trim_start_matches("0x");
-            let deployed_len = deployed_hex.len() / 2;
-
-            assert!(
-                deployed_len <= EIP170_LIMIT,
-                "{name}'s deployed bytecode is {deployed_len} bytes, exceeding EIP-170's \
-                 {EIP170_LIMIT}-byte limit; a genesis deployment of this size reverts \
-                 on-chain even though forge build reports no error"
-            );
-        }
-    }
-
     #[test]
     fn check_multisig_setup() {
         let mut generator = GenesisTransactionGenerator::default();

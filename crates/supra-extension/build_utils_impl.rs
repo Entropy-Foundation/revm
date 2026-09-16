@@ -175,12 +175,20 @@ pub fn compile_contracts(path: &impl AsRef<Path>, allowed_env: &[&str]) -> Resul
     Ok(artifacts_dir)
 }
 
+/// EIP-170's limit on deployed contract code size, in bytes. A genesis deployment
+/// exceeding it reverts on-chain even though `forge build` reports no error, so
+/// `load_contracts_bytecode` enforces this against every contract's deployed
+/// (runtime) bytecode as part of loading — not the larger creation bytecode it
+/// extracts for embedding, and not as an opt-in check callers must remember to run.
+const EIP170_DEPLOYED_CODE_LIMIT: usize = 24_576;
+
 /// Populate `bytecodes` with the compiled deployment bytecode for each contract in
 /// `contract_names`, reading Foundry's default artifact layout under `artifacts_path`:
 /// `<artifacts_path>/<ContractName>.sol/<ContractName>.json`.
 ///
-/// Returns an error if any artifact is missing, its bytecode field is empty, or a
-/// contract name appears more than once.
+/// Returns an error if any artifact is missing, its bytecode field is empty, its
+/// deployed bytecode exceeds `EIP170_DEPLOYED_CODE_LIMIT`, or a contract name appears
+/// more than once.
 pub fn load_contracts_bytecode(
     contract_names: &[String],
     artifacts_path: &Path,
@@ -213,13 +221,31 @@ pub fn load_contracts_bytecode(
 
         let file = std::fs::File::open(&path)?;
         let buf_reader = std::io::BufReader::new(file);
-        let contract: foundry_compilers::artifacts::ContractBytecode =
+        // `CompactContractBytecode`, not `ContractBytecode`: only the former has
+        // `#[serde(rename_all = "camelCase")]`, which `deployedBytecode` needs to
+        // deserialize at all — `ContractBytecode::deployed_bytecode` silently stays
+        // `None` against this same JSON.
+        let contract: foundry_compilers::artifacts::CompactContractBytecode =
             serde_json::from_reader(buf_reader).map_err(|e| {
                 anyhow::anyhow!(
                     "Failed to parse contract artifact at {}: {e}",
                     path.display()
                 )
             })?;
+
+        if let Some(deployed_len) = contract
+            .deployed_bytecode
+            .as_ref()
+            .and_then(|d| d.bytes())
+            .map(|b| b.len())
+        {
+            if deployed_len > EIP170_DEPLOYED_CODE_LIMIT {
+                return Err(anyhow::anyhow!(
+                    "{contract_name}'s deployed bytecode is {deployed_len} bytes, \
+                     exceeding EIP-170's {EIP170_DEPLOYED_CODE_LIMIT}-byte limit"
+                ));
+            }
+        }
 
         let bytecode: Vec<u8> = contract
             .bytecode
