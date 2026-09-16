@@ -4,6 +4,10 @@ out = "out"
 libs = ["lib"]
 via_ir = true
 optimizer = true
+# Pin explicitly rather than relying on Foundry's implicit default of 200, so a future
+# change to that default can't silently change compiled bytecode and therefore every
+# CREATE2 genesis address derived from it.
+optimizer_runs = 200
 evm_version = "prague"
 # Fix the solc version to avoid breaking changes in the future.  See
 solc_version = "0.8.34"
@@ -27,5 +31,15 @@ remappings = [
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
 ]
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+# Selected instead of [profile.default] for release builds (see select_foundry_profile
+# in crates/supra-extension/build_utils_impl.rs). Foundry merges [profile.default] as
+# the base for every other profile and layers this section's overrides on top.
+[profile.production]
+# Deployed code, not just gas cost, is the binding constraint: RegistryFacet is within
+# EIP-170's 24,576-byte limit (enforced by load_contracts_bytecode's
+# EIP170_DEPLOYED_CODE_LIMIT check in build_utils_impl.rs) up to 800 runs and over it
+# by 900.
+optimizer_runs = 800
 
 

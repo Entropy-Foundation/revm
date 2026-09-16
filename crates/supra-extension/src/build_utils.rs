@@ -25,6 +25,7 @@
 //!         &config.contracts_dapp_path(manifest_dir),
 //!         config.contract_names(),
 //!         &mut bytecodes,
+//!         &[],
 //!     )
 //!     .unwrap();
 //!     dump_bytecodes(bytecodes, "my_contracts_bytecode").unwrap();

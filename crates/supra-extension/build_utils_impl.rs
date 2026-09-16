@@ -45,14 +45,95 @@ impl CompileConfig {
     }
 }
 
+/// `FOUNDRY_*`/`DAPP_*` environment variables that Foundry reads and that can change
+/// compiled bytecode. Watched here (via `cargo:rerun-if-env-changed`) even for the
+/// ones this build script manages itself, so the build cache still invalidates when
+/// they change.
+const FOUNDRY_WATCHED_ENV_VARS: &[&str] = &[
+    "FOUNDRY_PROFILE",
+    "FOUNDRY_CONFIG",
+    "FOUNDRY_SRC",
+    "FOUNDRY_OUT",
+    "FOUNDRY_LIBS",
+    "FOUNDRY_REMAPPINGS",
+    "FOUNDRY_OPTIMIZER",
+    "FOUNDRY_OPTIMIZER_RUNS",
+    "FOUNDRY_VIA_IR",
+    "FOUNDRY_BYTECODE_HASH",
+    "FOUNDRY_CBOR_METADATA",
+    "FOUNDRY_EVM_VERSION",
+    "FOUNDRY_SOLC_VERSION",
+    "FOUNDRY_SOLC",
+    "DAPP_SRC",
+    "DAPP_LIBS",
+    "DAPP_REMAPPINGS",
+];
+
+/// Guard against ambient `FOUNDRY_WATCHED_ENV_VARS` silently changing compiled
+/// Solidity bytecode. Foundry merges any such variable over `foundry.toml`
+/// (last-wins).
+///
+/// Emits `cargo:rerun-if-env-changed` for each variable in `FOUNDRY_WATCHED_ENV_VARS`,
+/// then fails the build if any of them is set and isn't listed in `allowed_env`. A
+/// caller that deliberately sets one of these variables itself (to select a Foundry
+/// profile, for instance) must pass its name there rather than have it silently
+/// excluded here. Other `FOUNDRY_*`/`DAPP_*` variables Foundry reads are not checked,
+/// so this only rejects variables actually in the list above.
+fn guard_ambient_foundry_env(allowed_env: &[&str]) -> Result<()> {
+    for var in FOUNDRY_WATCHED_ENV_VARS {
+        println!("cargo:rerun-if-env-changed={var}");
+    }
+    println!("cargo:rerun-if-env-changed=PROFILE");
+
+    let offending: Vec<String> = std::env::vars()
+        .map(|(key, _)| key)
+        .filter(|key| FOUNDRY_WATCHED_ENV_VARS.contains(&key.as_str()))
+        .filter(|key| !allowed_env.contains(&key.as_str()))
+        .collect();
+
+    if !offending.is_empty() {
+        return Err(anyhow::anyhow!(
+            "Ambient environment variable(s) {} would silently change the compiled \
+             Solidity bytecode embedded into this binary, and therefore every \
+             CREATE2 genesis contract address derived from it. Unset them before \
+             building.",
+            offending.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Explicitly select the Foundry profile to compile with, based on Cargo's own build
+/// profile rather than leaving profile selection to an ambient `FOUNDRY_PROFILE`.
+/// Release builds — the ones whose genesis bytecode actually ships — compile under
+/// `[profile.production]`; everything else compiles under `[profile.default]`.
+fn select_foundry_profile() {
+    let profile = match std::env::var("PROFILE").as_deref() {
+        Ok("release") => "production",
+        _ => "default",
+    };
+    std::env::set_var("FOUNDRY_PROFILE", profile);
+}
+
 /// Compile all Solidity contracts in the foundry project rooted at `path`.
 ///
-/// Emits `cargo:rerun-if-changed` for every Solidity source file discovered by
-/// the project, and sets `cargo:rustc-env=COMPILED_CONTRACTS_DIR` to the
-/// artifacts directory so downstream code can locate the compiled output.
+/// Emits `cargo:rerun-if-changed` for every Solidity source file discovered by the
+/// project, for the project's `lib/` directories and `foundry.toml`/`remappings.txt`,
+/// and sets `cargo:rustc-env=COMPILED_CONTRACTS_DIR` to the artifacts directory so
+/// downstream code can locate the compiled output.
+///
+/// Fails the build if a variable in `FOUNDRY_WATCHED_ENV_VARS` is set and isn't in
+/// `allowed_env` — see `guard_ambient_foundry_env`. The Foundry profile used is always
+/// `FOUNDRY_PROFILE`, selected by `select_foundry_profile`, so callers never need to
+/// (and must not) allowlist `FOUNDRY_PROFILE` themselves.
 ///
 /// Returns the path to the compiled artifacts directory.
-pub fn compile_contracts(path: &impl AsRef<Path>) -> Result<PathBuf> {
+pub fn compile_contracts(path: &impl AsRef<Path>, allowed_env: &[&str]) -> Result<PathBuf> {
+    let mut allowed = vec!["FOUNDRY_PROFILE"];
+    allowed.extend_from_slice(allowed_env);
+    guard_ambient_foundry_env(&allowed)?;
+    select_foundry_profile();
+
     let foundry_config = Config::load_with_root(path.as_ref())?.sanitized();
     let _ = foundry_config.install_lib_dir();
     let project = foundry_config.project()?;
@@ -69,6 +150,21 @@ pub fn compile_contracts(path: &impl AsRef<Path>) -> Result<PathBuf> {
     }
     // Instruct Cargo to re-run this build script whenever a Solidity source changes.
     project.rerun_if_sources_changed();
+    // `rerun_if_sources_changed` above only watches `src/`; also watch `lib/` and
+    // `foundry.toml`/`remappings.txt` below (Entropy-Foundation/smr-moonshot#3473).
+    for library in &project.paths.libraries {
+        println!("cargo:rerun-if-changed={}", library.display());
+    }
+    println!(
+        "cargo:rerun-if-changed={}",
+        project.paths.root.join("foundry.toml").display()
+    );
+    // Cargo accepts a rerun-if-changed path that doesn't exist yet and treats its
+    // later appearance as a change, so this is unconditional.
+    println!(
+        "cargo:rerun-if-changed={}",
+        project.paths.root.join("remappings.txt").display()
+    );
 
     let artifacts_dir = project.paths.artifacts.clone();
     println!(
@@ -79,12 +175,20 @@ pub fn compile_contracts(path: &impl AsRef<Path>) -> Result<PathBuf> {
     Ok(artifacts_dir)
 }
 
+/// EIP-170's limit on deployed contract code size, in bytes. A genesis deployment
+/// exceeding it reverts on-chain even though `forge build` reports no error, so
+/// `load_contracts_bytecode` enforces this against every contract's deployed
+/// (runtime) bytecode as part of loading — not the larger creation bytecode it
+/// extracts for embedding, and not as an opt-in check callers must remember to run.
+const EIP170_DEPLOYED_CODE_LIMIT: usize = 24_576;
+
 /// Populate `bytecodes` with the compiled deployment bytecode for each contract in
 /// `contract_names`, reading Foundry's default artifact layout under `artifacts_path`:
 /// `<artifacts_path>/<ContractName>.sol/<ContractName>.json`.
 ///
-/// Returns an error if any artifact is missing, its bytecode field is empty, or a
-/// contract name appears more than once.
+/// Returns an error if any artifact is missing, its bytecode field is empty, its
+/// deployed bytecode exceeds `EIP170_DEPLOYED_CODE_LIMIT`, or a contract name appears
+/// more than once.
 pub fn load_contracts_bytecode(
     contract_names: &[String],
     artifacts_path: &Path,
@@ -117,13 +221,36 @@ pub fn load_contracts_bytecode(
 
         let file = std::fs::File::open(&path)?;
         let buf_reader = std::io::BufReader::new(file);
-        let contract: foundry_compilers::artifacts::ContractBytecode =
+        // `CompactContractBytecode`, not `ContractBytecode`: only the former has
+        // `#[serde(rename_all = "camelCase")]`, which `deployedBytecode` needs to
+        // deserialize at all — `ContractBytecode::deployed_bytecode` silently stays
+        // `None` against this same JSON.
+        let contract: foundry_compilers::artifacts::CompactContractBytecode =
             serde_json::from_reader(buf_reader).map_err(|e| {
                 anyhow::anyhow!(
                     "Failed to parse contract artifact at {}: {e}",
                     path.display()
                 )
             })?;
+
+        let deployed_len = contract
+            .deployed_bytecode
+            .as_ref()
+            .and_then(|d| d.bytes())
+            .map(|b| b.len())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Failed to load deployed bytecode for contract {contract_name} from {}",
+                    path.display()
+                )
+            })?;
+
+        if deployed_len > EIP170_DEPLOYED_CODE_LIMIT {
+            return Err(anyhow::anyhow!(
+                "{contract_name}'s deployed bytecode is {deployed_len} bytes, \
+                 exceeding EIP-170's {EIP170_DEPLOYED_CODE_LIMIT}-byte limit"
+            ));
+        }
 
         let bytecode: Vec<u8> = contract
             .bytecode
@@ -161,8 +288,9 @@ pub fn compile_and_load_contracts(
     path: &impl AsRef<Path>,
     contract_names: &[String],
     bytecodes: &mut BTreeMap<String, Vec<u8>>,
+    allowed_env: &[&str],
 ) -> Result<PathBuf> {
-    let artifacts_dir = compile_contracts(path)?;
+    let artifacts_dir = compile_contracts(path, allowed_env)?;
     let first_attempt = match load_contracts_bytecode(contract_names, &artifacts_dir, bytecodes) {
         Ok(()) => return Ok(artifacts_dir),
         Err(e) => e,
@@ -179,7 +307,7 @@ pub fn compile_and_load_contracts(
     }
     discard_compiled_output(path)?;
 
-    let artifacts_dir = compile_contracts(path)?;
+    let artifacts_dir = compile_contracts(path, allowed_env)?;
     load_contracts_bytecode(contract_names, &artifacts_dir, bytecodes).map_err(|e| {
         anyhow::anyhow!(
             "Recompiling the Solidity project at {} did not produce readable artifacts. \
@@ -193,6 +321,11 @@ pub fn compile_and_load_contracts(
 
 /// Delete the compiled artifacts and the compiler cache of the Solidity project rooted
 /// at `path`, so that the next compilation rebuilds every source from scratch.
+///
+/// Does not re-run `guard_ambient_foundry_env`/`select_foundry_profile`: this is only
+/// called from `compile_and_load_contracts`'s retry path, immediately before another
+/// `compile_contracts` call that already does both, and `FOUNDRY_PROFILE` set by the
+/// first `compile_contracts` call persists in the process for this one to see.
 fn discard_compiled_output(path: &impl AsRef<Path>) -> Result<()> {
     let foundry_config = Config::load_with_root(path.as_ref())?.sanitized();
     let project = foundry_config.project()?;
