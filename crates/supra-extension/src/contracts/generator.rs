@@ -759,7 +759,110 @@ mod tests {
     use super::*;
     use crate::contracts::configs::AutomationRegistryConfigV1;
     use primitives::supra_constants::u64_to_address;
-    use primitives::TxKind;
+    use primitives::{b256, TxKind, B256};
+
+    /// Regression guard for Entropy-Foundation/smr-moonshot#3473.
+    ///
+    /// These hashes were captured from a `--release` build — see `select_foundry_profile`
+    /// in `build_utils_impl.rs`. A future intentional change to `solidity/supra_contracts`
+    /// must update this map as part of that same change's PR.
+    ///
+    /// Only meaningful for a build where Cargo sets `PROFILE=release` (that includes
+    /// `[profile.production]`-selecting custom profiles too, not just `--release`
+    /// itself): `[profile.default]` and `[profile.production]` no longer compile to the
+    /// same bytecode once `[profile.production]` pins its own `optimizer_runs`.
+    #[test]
+    fn genesis_contract_bytecode_matches_expected_hashes() {
+        if env!("SUPRA_CONTRACTS_FOUNDRY_PROFILE") != "production" {
+            println!(
+                "skipping: this build selected the '{}' Foundry profile, not 'production'",
+                env!("SUPRA_CONTRACTS_FOUNDRY_PROFILE")
+            );
+            return;
+        }
+
+        let expected: &[(&str, B256)] = &[
+            (
+                "BeaconProxy",
+                b256!("4a727827636b859aa2156a81930bda39efc957d03793244f204145f46838b7dc"),
+            ),
+            (
+                "BlockMeta",
+                b256!("c52e1a412125c99d96a9bf17f882d05c620f88e28ed0153d72603684bc43e132"),
+            ),
+            (
+                "ConfigFacet",
+                b256!("bb332d6a2e8abe4636530f5c4f1c9bf93f73ff8c5309f86ddde34901796f9594"),
+            ),
+            (
+                "CoreFacet",
+                b256!("3aa6a5683c6708aae3d35d0a02e9ad76ef9426a973763f06a9ce6785db2356b3"),
+            ),
+            (
+                "Diamond",
+                b256!("198e4a13e01fddea0ab2e1fce3875c20e0008e85acab7dc38c41889a9275b91c"),
+            ),
+            (
+                "DiamondCutFacet",
+                b256!("c79834176e70f6992b079aaeee23c6db4f01d3b85bb3b2c8d3a1378d6961e832"),
+            ),
+            (
+                "DiamondInit",
+                b256!("59a19ef73c12e0cb2029c57066a0807866bc0bd7707a9a97e80ebbf4c2035524"),
+            ),
+            (
+                "DiamondLoupeFacet",
+                b256!("6cbc526bb26e430f045bae9632e91ae332cc03e5c811e8562c915fe46c437706"),
+            ),
+            (
+                "ERC1967Proxy",
+                b256!("57b89089b8335f394fbef3fd80480b7e55222a3d164aa0233dea6fd23d9e4776"),
+            ),
+            (
+                "ERC20Supra",
+                b256!("459aa2da83be43f506f1e4aa6e0883d69ff63bea55208fd27f10cfeb35c37938"),
+            ),
+            (
+                "ERC20SupraHandler",
+                b256!("999782eef4d8b9f4df8b08589e23306515a7e5b93130a92e25c077fd6a6fe84e"),
+            ),
+            (
+                "MultiSignatureWallet",
+                b256!("a8232648e1d4eb06fd23d5e56182f1aa28934f99b9f9e472e9611d4279e0a2ba"),
+            ),
+            (
+                "MultisigBeacon",
+                b256!("4da93de647b77fb3a3bdfe3b3c249d511b32dff2e6c0489a8a3b6967bfd2fc74"),
+            ),
+            (
+                "OwnershipFacet",
+                b256!("f471fc64d15c9dc0e0fec9c72185447404f2616ffeb32e86974f2aafdd4886ca"),
+            ),
+            (
+                "RegistryFacet",
+                b256!("7886535bb9e1391d90fc6574984ccaefe97619ec2f885bdd8c200415e75cbd2a"),
+            ),
+        ];
+
+        assert_eq!(
+            expected.len(),
+            CONTRACT_BYTECODES.len(),
+            "the set of embedded genesis contracts changed; update this test's expected \
+             list alongside compile_config.toml"
+        );
+        for (name, expected_hash) in expected {
+            let bytecode = CONTRACT_BYTECODES
+                .get(*name)
+                .unwrap_or_else(|| panic!("no compiled bytecode embedded for {name}"));
+            assert_eq!(
+                primitives::keccak256(bytecode),
+                *expected_hash,
+                "compiled bytecode for {name} no longer matches its expected hash; if this \
+                 change is intentional, regenerate this test's expected hash from a \
+                 --release build as part of this change's own PR"
+            );
+        }
+    }
 
     #[test]
     fn check_multisig_setup() {
