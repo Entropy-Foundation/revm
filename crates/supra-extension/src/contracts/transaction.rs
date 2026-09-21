@@ -96,55 +96,110 @@ impl Display for ContractCustomTag {
     }
 }
 
-/// Genesis transaction tags which also guide deployment/execution order
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// Genesis transaction tags, which also decide the order the genesis transactions are deployed in.
+///
+/// The genesis transactions are held in a map keyed by this type, so this type's [`Ord`] is what
+/// puts them in order. Each deployer's nonces follow that order, and a `CREATE` address is fixed by
+/// the deployer and the nonce, so the order decides the addresses the genesis contracts land at.
+///
+/// [`Self::deployment_rank`] states that order and is the only thing that decides it. Declaration
+/// order and any discriminant a variant might carry do not enter into it.
+///
+/// Serde encodes this enum by declaration position, so a variant belongs at the end of the list
+/// whatever position it is given in the deployment order.
+#[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(missing_docs)]
-#[repr(u8)]
 pub enum GenesisTransactionTags {
     // Canonical EVM singleton predeploys: well-known third-party contracts the wider
     // EVM ecosystem/tooling expects at fixed addresses. Independent of Supra's own
-    // system/application contracts below, and of each other, but placed first since
-    // that's also their actual deployment order: this enum's derived `Ord` compares
-    // by discriminant (the explicit `= N` value), and that `Ord` governs the
-    // BTreeMap iteration order genesis transactions are executed in — while serde's
-    // encoding of this enum keys off declaration position instead, ignoring `= N`
-    // entirely. The two currently coincide only because the discriminants are dense
-    // and assigned in the same order as the declarations.
-    // NOTE: the discriminants and the declaration order must be kept in lockstep.
-    // Renumbering the `= N` values without reordering the variants (or vice versa)
-    // silently changes deployment/execution order without changing serde's index,
-    // or changes serde's index without changing deployment order — either way a
-    // silent divergence. Only ever append new variants; never renumber or reorder
-    // existing ones once this chain has live deployments depending on either.
-    Create2Factory = 0,
-    Multicall3 = 1,
-    SingletonFactory = 2,
-    CreateX = 3,
-    Erc1820Registry = 4,
+    // system/application contracts below, and of each other.
+    Create2Factory,
+    Multicall3,
+    SingletonFactory,
+    CreateX,
+    Erc1820Registry,
 
     // Main system and foundation contracts
-    MultisigWalletImpl = 5,
-    MultisigBeacon = 6,
-    FoundationWallet = 7,
-    Erc20SupraImpl = 8,
-    Erc20Supra = 9,
-    Erc20SupraHandlerImpl = 10,
-    Erc20SupraHandler = 11,
-    BlockMetadataImpl = 12,
-    BlockMetadata = 13,
+    MultisigWalletImpl,
+    MultisigBeacon,
+    FoundationWallet,
+    Erc20SupraImpl,
+    Erc20Supra,
+    Erc20SupraHandlerImpl,
+    Erc20SupraHandler,
+    BlockMetadataImpl,
+    BlockMetadata,
 
     // Automation registry contracts
-    DiamondCutFacet = 14,
-    DiamondLoupeFacet = 15,
-    OwnershipFacet = 16,
-    ConfigFacet = 17,
-    RegistryFacet = 18,
-    CoreFacet = 19,
-    DiamondInit = 20,
-    Diamond = 21,
+    DiamondCutFacet,
+    DiamondLoupeFacet,
+    OwnershipFacet,
+    ConfigFacet,
+    RegistryFacet,
+    CoreFacet,
+    DiamondInit,
+    Diamond,
 
     // Custom contracts injected by application layer
     Custom(ContractCustomTag),
+}
+
+impl GenesisTransactionTags {
+    /// Position of this tag in the genesis deployment order, lowest first.
+    ///
+    /// Every variant names its position here, so a new variant does not compile until its position
+    /// is stated. `Custom` comes after every tag this type names, and custom tags are ordered among
+    /// themselves by [`ContractCustomTag`].
+    ///
+    /// Changing a value here changes the addresses the genesis contracts are deployed at. The order
+    /// is pinned by `deployment_order_is_pinned`.
+    fn deployment_rank(&self) -> u8 {
+        match self {
+            Self::Create2Factory => 0,
+            Self::Multicall3 => 1,
+            Self::SingletonFactory => 2,
+            Self::CreateX => 3,
+            Self::Erc1820Registry => 4,
+
+            Self::MultisigWalletImpl => 5,
+            Self::MultisigBeacon => 6,
+            Self::FoundationWallet => 7,
+            Self::Erc20SupraImpl => 8,
+            Self::Erc20Supra => 9,
+            Self::Erc20SupraHandlerImpl => 10,
+            Self::Erc20SupraHandler => 11,
+            Self::BlockMetadataImpl => 12,
+            Self::BlockMetadata => 13,
+
+            Self::DiamondCutFacet => 14,
+            Self::DiamondLoupeFacet => 15,
+            Self::OwnershipFacet => 16,
+            Self::ConfigFacet => 17,
+            Self::RegistryFacet => 18,
+            Self::CoreFacet => 19,
+            Self::DiamondInit => 20,
+            Self::Diamond => 21,
+
+            Self::Custom(_) => 22,
+        }
+    }
+}
+
+/// Order genesis transactions by the position [`GenesisTransactionTags::deployment_rank`] gives
+/// their tag, and custom contracts sharing that position by their own tag.
+impl Ord for GenesisTransactionTags {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Custom(tag), Self::Custom(other_tag)) => tag.cmp(other_tag),
+            _ => self.deployment_rank().cmp(&other.deployment_rank()),
+        }
+    }
+}
+
+impl PartialOrd for GenesisTransactionTags {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Display for GenesisTransactionTags {
@@ -160,10 +215,56 @@ impl Display for GenesisTransactionTags {
 mod tests {
     use super::*;
     use primitives::address;
+    use std::collections::BTreeMap;
 
     const SENDER: Address = address!("0x0000000000000000000000000000000000000001");
     const TARGET: Address = address!("0x0000000000000000000000000000000000000002");
     const DEPLOY_ADDR: Address = address!("0x0000000000000000000000000000000000000003");
+
+    /// The order the genesis transactions are deployed in, which decides the addresses the genesis
+    /// contracts land at. A change to it is a change to genesis state, so it belongs in this list
+    /// before it belongs anywhere else.
+    #[test]
+    fn deployment_order_is_pinned() {
+        let order = [
+            GenesisTransactionTags::Create2Factory,
+            GenesisTransactionTags::Multicall3,
+            GenesisTransactionTags::SingletonFactory,
+            GenesisTransactionTags::CreateX,
+            GenesisTransactionTags::Erc1820Registry,
+            GenesisTransactionTags::MultisigWalletImpl,
+            GenesisTransactionTags::MultisigBeacon,
+            GenesisTransactionTags::FoundationWallet,
+            GenesisTransactionTags::Erc20SupraImpl,
+            GenesisTransactionTags::Erc20Supra,
+            GenesisTransactionTags::Erc20SupraHandlerImpl,
+            GenesisTransactionTags::Erc20SupraHandler,
+            GenesisTransactionTags::BlockMetadataImpl,
+            GenesisTransactionTags::BlockMetadata,
+            GenesisTransactionTags::DiamondCutFacet,
+            GenesisTransactionTags::DiamondLoupeFacet,
+            GenesisTransactionTags::OwnershipFacet,
+            GenesisTransactionTags::ConfigFacet,
+            GenesisTransactionTags::RegistryFacet,
+            GenesisTransactionTags::CoreFacet,
+            GenesisTransactionTags::DiamondInit,
+            GenesisTransactionTags::Diamond,
+            GenesisTransactionTags::Custom(ContractCustomTag::new(0, "custom".to_string())),
+        ];
+
+        // Ranks that are dense and ascending: every tag has a position of its own, and the
+        // positions are the ones listed above.
+        let ranks: Vec<u8> = order.iter().map(|tag| tag.deployment_rank()).collect();
+        let expected: Vec<u8> = (0..order.len() as u8).collect();
+        assert_eq!(ranks, expected);
+
+        // A map keyed by these tags yields them in that order, which is how the genesis
+        // transactions reach the executor.
+        let map: BTreeMap<&GenesisTransactionTags, ()> =
+            order.iter().rev().map(|tag| (tag, ())).collect();
+        let iterated: Vec<&GenesisTransactionTags> = map.keys().copied().collect();
+        assert_eq!(iterated, order.iter().collect::<Vec<_>>());
+    }
 
     #[test]
     fn check_tag_ordering() {
