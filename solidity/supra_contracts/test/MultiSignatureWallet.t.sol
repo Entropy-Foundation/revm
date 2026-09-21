@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {Counter} from "./Counter.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
@@ -21,11 +22,18 @@ contract MultiSignatureWalletTest is Test {
     address[] newOwners;
     address alice = address(0xA11CE);
 
+    /// @dev Tracks, on the test's own side, the content digest each submitted transaction must
+    /// be confirmed/executed with. Populated at submission time by the submit helpers below, and
+    /// read back by the confirm/execute helpers - looked up locally rather than fetched from the
+    /// wallet via getTransaction, since an extra call in between would consume the very
+    /// vm.expectRevert() many of these tests set up for the confirm/execute call itself.
+    mapping(uint256 => bytes32) private txContentHash;
+
     /// @dev Sets up initial state for testing.
     /// @dev Deploys all required contracts.
     function setUp() public {
         vm.deal(alice, 10 ether);
-        
+
         address owner1 = address(1001);
         address owner2 = address(1002);
         address owner3 = address(1003);
@@ -41,14 +49,13 @@ contract MultiSignatureWalletTest is Test {
         // Deploy Beacon contract
         multiSigImplV1 = address(new MultiSignatureWallet());
         beacon = new MultisigBeacon(multiSigImplV1, 0xE64Bd5C4810e6C7666C544a05c980C9Fe617283f); // Pre-determined address of multisigProxy
-        
+
         // Deploy BeaconProxy for MultiSig
         bytes memory multiSigInitData = abi.encodeCall(MultiSignatureWallet.initialize, (owners, 4));
         BeaconProxy multisigProxy = new BeaconProxy(address(beacon), multiSigInitData);
         multiSig = MultiSignatureWallet(payable(multisigProxy));
-        
-        vm.stopPrank();
 
+        vm.stopPrank();
 
         vm.startPrank(address(multisigProxy));
         // Deploy Counter proxy contract
@@ -57,9 +64,9 @@ contract MultiSignatureWalletTest is Test {
         ERC1967Proxy counterProxy = new ERC1967Proxy(address(counterImpl), counterInitData);
         counter = Counter(address(counterProxy));
         vm.stopPrank();
-    }    
+    }
 
-    /// @dev Test to ensure ownership and implementation address is initialized correctly. 
+    /// @dev Test to ensure ownership and implementation address is initialized correctly.
     function testOwnerAndImplementation() public view {
         assertEq(beacon.owner(), address(multiSig));
         assertEq(counter.owner(), address(multiSig));
@@ -75,7 +82,7 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Test to ensure 'initialize' reverts if array of owners is empty.
     function testInitializeRevertsIfOwnersArrayEmpty() public {
-        address[] memory emptyOwners;        
+        address[] memory emptyOwners;
         vm.expectRevert(IMultiSignatureWallet.OwnersRequired.selector);
 
         bytes memory initData = abi.encodeCall(MultiSignatureWallet.initialize, (emptyOwners, 1));
@@ -102,7 +109,7 @@ contract MultiSignatureWalletTest is Test {
     function testInitializeRevertsIfOwnerAddressZero() public {
         address[] memory invalidOwners = new address[](3);
         invalidOwners[0] = address(1001);
-        invalidOwners[1] = address(0);          // Invalid owner
+        invalidOwners[1] = address(0); // Invalid owner
         invalidOwners[2] = address(1002);
 
         vm.expectRevert(IMultiSignatureWallet.InvalidOwner.selector);
@@ -115,7 +122,7 @@ contract MultiSignatureWalletTest is Test {
     function testInitializeRevertsIfDuplicateOwner() public {
         address[] memory duplicateOwners = new address[](3);
         duplicateOwners[0] = address(1001);
-        duplicateOwners[1] = address(1001);       // Duplicate owner
+        duplicateOwners[1] = address(1001); // Duplicate owner
         duplicateOwners[2] = address(1002);
 
         vm.expectRevert(IMultiSignatureWallet.OwnerNotUnique.selector);
@@ -124,28 +131,26 @@ contract MultiSignatureWalletTest is Test {
         new BeaconProxy(address(beacon), initData);
     }
 
-    /// @dev Helper function that returns calldata for 'increment' in Counter. 
+    /// @dev Helper function that returns calldata for 'increment' in Counter.
     function dataForIncrement() private pure returns (bytes memory) {
         return abi.encodeCall(Counter.increment, ());
     }
 
     /// @dev Helper function to submit a transaction to perform an action in the Counter contract.
     function submitTransaction(bytes memory _data) private {
+        uint256 txnId = multiSig.getNextTransactionIndex();
         vm.prank(address(1001));
-        multiSig.submitTransaction(
-            address(counter),
-            0,
-            10000,
-            _data
-        );
+        multiSig.submitTransaction(address(counter), 0, 10000, _data);
+        txContentHash[txnId] = multiSig.hashTransactionContent(address(counter), 0, _data);
     }
 
     /// @dev Test to ensure 'submitTransaction' submits a transaction.
     function testSubmitTransactionIncrement() public {
         bytes memory data = dataForIncrement();
         submitTransaction(data);
-        
-        (address to, uint256 value, uint24 numConfirmations, uint64 timeout, bytes memory storedData) = multiSig.getTransaction(0);
+
+        (address to, uint256 value, uint24 numConfirmations, uint64 timeout, bytes memory storedData) =
+            multiSig.getTransaction(0);
         assertEq(to, address(counter));
         assertEq(value, 0);
         assertEq(numConfirmations, 1);
@@ -160,13 +165,8 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
-        vm.prank(alice);                    // Not an owner
-        multiSig.submitTransaction(
-            address(counter),
-            0,
-            100000,
-            data
-        );
+        vm.prank(alice); // Not an owner
+        multiSig.submitTransaction(address(counter), 0, 100000, data);
     }
 
     /// @dev Test to ensure 'submitTransaction' reverts if address(0) is passed as recipient.
@@ -176,34 +176,40 @@ contract MultiSignatureWalletTest is Test {
         vm.expectRevert(IMultiSignatureWallet.InvalidRecipient.selector);
 
         vm.prank(address(1001));
-        multiSig.submitTransaction(
-            address(0),
-            0,
-            100000,
-            data
-        );
+        multiSig.submitTransaction(address(0), 0, 100000, data);
     }
 
-    /// @dev Helper function to confirm a transaction.
+    /// @dev Helper function to confirm a transaction. Confirms with the digest txContentHash
+    /// recorded for _txnId at submission time, since none of the existing behaviour this suite
+    /// exercises depends on a caller naming the wrong action; the mismatch tests below call
+    /// multiSig.confirmTransaction directly with a deliberately wrong digest instead. Reads the
+    /// mapping rather than the wallet itself so no extra external call lands between a test's
+    /// vm.expectRevert() and this one.
     function confirmTransaction(address _owner, uint256 _txnId) private {
         vm.prank(_owner);
-        multiSig.confirmTransaction(_txnId);
+        multiSig.confirmTransaction(_txnId, txContentHash[_txnId]);
     }
-    
-    /// @dev Helper function to grant sufficient confirmations. 
+
+    /// @dev Helper function to execute a transaction, analogous to confirmTransaction above.
+    function executeTransaction(address _owner, uint256 _txnId) private returns (bytes memory) {
+        vm.prank(_owner);
+        return multiSig.executeTransaction(_txnId, txContentHash[_txnId]);
+    }
+
+    /// @dev Helper function to grant sufficient confirmations.
     function grantSufficientConfirmations(uint256 _txnId) private {
         confirmTransaction(address(1002), _txnId);
         confirmTransaction(address(1003), _txnId);
         confirmTransaction(address(1004), _txnId);
-    } 
+    }
 
     /// @dev Test to ensure 'confirmTransaction' confirms a transaction.
     function testConfirmTransactionIncrement() public {
         testSubmitTransactionIncrement();
-        
+
         grantSufficientConfirmations(0);
 
-        ( , , uint256 numConfirmations, , ) = multiSig.getTransaction(0);
+        (,, uint256 numConfirmations,,) = multiSig.getTransaction(0);
         assertEq(numConfirmations, 4);
     }
 
@@ -212,7 +218,7 @@ contract MultiSignatureWalletTest is Test {
         testSubmitTransactionIncrement();
 
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
-        confirmTransaction(alice, 0);      // Not an owner
+        confirmTransaction(alice, 0); // Not an owner
     }
 
     /// @dev Test to ensure 'confirmTransaction' reverts if transaction does not exist.
@@ -226,12 +232,11 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'confirmTransaction' reverts if the transaction is already executed.
     function testConfirmTransactionRevertsIfTxAlreadyExecuted() public {
         testSubmitTransactionIncrement();
-        
+
         uint256 txId = 0;
         grantSufficientConfirmations(txId);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(txId);
+        executeTransaction(address(1002), txId);
 
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
 
@@ -267,12 +272,12 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'revokeConfirmation' revokes the confirmation of an owner.
     function testRevokeConfirmation() public {
         testSubmitTransactionIncrement();
-        
+
         uint256 txId = 0;
         confirmTransaction(address(1002), txId);
         revokeConfirmation(address(1001), txId);
 
-        ( , , uint256 confirmations , , ) = multiSig.getTransaction(txId);
+        (,, uint256 confirmations,,) = multiSig.getTransaction(txId);
         assertEq(confirmations, 1);
         assertFalse(multiSig.isConfirmed(txId, address(1001)));
     }
@@ -280,7 +285,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'revokeConfirmation' reverts if caller is not an owner.
     function testRevokeConfirmationRevertsIfNotOwner() public {
         testSubmitTransactionIncrement();
-        
+
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
         revokeConfirmation(alice, 1);
     }
@@ -288,7 +293,7 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'revokeConfirmation' reverts if transaction does not exist.
     function testRevokeConfirmationRevertsIfTxDoesNotExist() public {
         testSubmitTransactionIncrement();
-        
+
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), 1);
     }
@@ -296,12 +301,11 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'revokeConfirmation' reverts if the transaction is already executed.
     function testRevokeConfirmationRevertsIfTxAlreadyExecuted() public {
         testSubmitTransactionIncrement();
-        
+
         uint256 txId = 0;
         grantSufficientConfirmations(txId);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(txId);
+        executeTransaction(address(1002), txId);
 
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         revokeConfirmation(address(1001), txId);
@@ -349,9 +353,8 @@ contract MultiSignatureWalletTest is Test {
 
         uint256 txId = 0;
         grantSufficientConfirmations(txId);
-        
-        vm.prank(address(1001));
-        multiSig.executeTransaction(txId);
+
+        executeTransaction(address(1001), txId);
 
         assertEq(multiSig.txCount(), 0);
         assertEq(counter.counter(), 1);
@@ -363,16 +366,14 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
-        vm.prank(alice);
-        multiSig.executeTransaction(0);
+        executeTransaction(alice, 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' reverts if transaction does not exist.
     function testExecuteTransactionRevertsIfTxDoesNotExist() public {
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1002), 1);
     }
 
     /// @dev Test to ensure 'executeTransaction' reverts if transaction is already executed.
@@ -381,8 +382,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' reverts if transaction has expired.
@@ -393,8 +393,7 @@ contract MultiSignatureWalletTest is Test {
         vm.warp(10501);
         vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
         assertEq(multiSig.txCount(), 1);
     }
 
@@ -405,16 +404,21 @@ contract MultiSignatureWalletTest is Test {
         uint256 txId = 0;
         confirmTransaction(address(1002), txId);
         confirmTransaction(address(1003), txId);
-        
+
         vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(txId);
+        executeTransaction(address(1001), txId);
     }
 
     /// @dev Helper function to build calldata to remove a single owner via multisig and execute it.
     /// @dev Submits from owner1 (implicit confirmation) then confirms with the three given confirmers before executing.
-    function removeOwnerViaMultiSig(address _ownerToRemove, uint256 _txIndex, address _confirmer1, address _confirmer2, address _confirmer3) private {
+    function removeOwnerViaMultiSig(
+        address _ownerToRemove,
+        uint256 _txIndex,
+        address _confirmer1,
+        address _confirmer2,
+        address _confirmer3
+    ) private {
         address[] memory ownersToRemove = new address[](1);
         ownersToRemove[0] = _ownerToRemove;
         bytes memory data = abi.encodeCall(MultiSignatureWallet.removeOwners, (ownersToRemove));
@@ -424,8 +428,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(_confirmer2, _txIndex);
         confirmTransaction(_confirmer3, _txIndex);
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(_txIndex);
+        executeTransaction(address(1001), _txIndex);
     }
 
     /// @dev Test to ensure 'hasValidNumberOfConfirmations' reverts if the transaction does not exist.
@@ -466,8 +469,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1001), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' still succeeds if an owner who did NOT confirm the transaction
@@ -483,8 +485,7 @@ contract MultiSignatureWalletTest is Test {
         // Remove owner(1005), which did not confirm txId 0, via a second multisig transaction.
         removeOwnerViaMultiSig(address(1005), 1, address(1002), address(1003), address(1004));
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1001), 0);
 
         assertEq(multiSig.txCount(), 0);
         assertEq(counter.counter(), 1);
@@ -495,14 +496,13 @@ contract MultiSignatureWalletTest is Test {
         return abi.encodeCall(OwnableUpgradeable.transferOwnership, (alice));
     }
 
-    /// @dev Test to ensure ownership transfer works correctly. 
+    /// @dev Test to ensure ownership transfer works correctly.
     function testChangeOwnership() public {
         submitTransaction(dataToTransferOwnership());
         grantSufficientConfirmations(0);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
-        
+
+        executeTransaction(address(1002), 0);
+
         assertEq(counter.owner(), alice);
     }
 
@@ -514,13 +514,10 @@ contract MultiSignatureWalletTest is Test {
 
     /// @dev Helper function to submit a transaction targeting an arbitrary contract.
     function submitTransactionToTarget(address _to, bytes memory _data) private {
+        uint256 txnId = multiSig.getNextTransactionIndex();
         vm.prank(address(1001));
-        multiSig.submitTransaction(
-            _to,
-            0,
-            10000,
-            _data
-        );
+        multiSig.submitTransaction(_to, 0, 10000, _data);
+        txContentHash[txnId] = multiSig.hashTransactionContent(_to, 0, _data);
     }
 
     /// @dev Helper function to submit a transaction to perform an action in the MultiSignatureWallet.
@@ -532,9 +529,8 @@ contract MultiSignatureWalletTest is Test {
     function testAddOwners() public {
         submitTransactionToMultiSig(dataToAddOwnerInMultiSig());
         grantSufficientConfirmations(0);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+
+        executeTransaction(address(1002), 0);
 
         address[] memory updatedOwners = multiSig.getOwners();
         assertEq(updatedOwners[5], newOwners[0]);
@@ -551,8 +547,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' forwards the exact failure data from the target call.
@@ -566,8 +561,7 @@ contract MultiSignatureWalletTest is Test {
         bytes memory expectedInnerRevert = abi.encodeWithSelector(IMultiSignatureWallet.OwnersRequired.selector);
         vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' forwards a plain revert-string reason (Error(string)) unchanged.
@@ -582,8 +576,7 @@ contract MultiSignatureWalletTest is Test {
         bytes memory expectedInnerRevert = abi.encodeWithSignature("Error(string)", reason);
         vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' forwards a custom error with mixed dynamic and static args unchanged.
@@ -601,8 +594,7 @@ contract MultiSignatureWalletTest is Test {
         bytes memory expectedInnerRevert = abi.encodeWithSelector(RevertingTarget.BigError.selector, blob, uint256(42));
         vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedInnerRevert));
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'executeTransaction' forwards empty returndata (e.g. a bare 'revert(0, 0)')
@@ -616,8 +608,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, bytes("")));
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'deployContract' forwards the failed constructor's exact revert data through
@@ -634,8 +625,7 @@ contract MultiSignatureWalletTest is Test {
             abi.encodeWithSelector(IMultiSignatureWallet.ContractCreationFailed.selector, expectedConstructorRevert);
         vm.expectRevert(abi.encodeWithSelector(IMultiSignatureWallet.ExecutionFailed.selector, expectedDeployRevert));
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'addOwners' reverts if any of the owners is address(0).
@@ -647,19 +637,17 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'addOwners' reverts if caller is not an owner.
     function testAddOwnersRevertsIfCallerNotOwner() public {
-        submitTransactionToMultiSig(dataToAddOwnerInMultiSig());    
+        submitTransactionToMultiSig(dataToAddOwnerInMultiSig());
         grantSufficientConfirmations(0);
 
-        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);        
+        vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
-        vm.prank(alice);            // Not an owner
-        multiSig.executeTransaction(0);
+        executeTransaction(alice, 0); // Not an owner
     }
 
     /// @dev Test to ensure 'addOwners' transaction reverts on execute if it has expired.
@@ -673,8 +661,7 @@ contract MultiSignatureWalletTest is Test {
         vm.warp(10501);
         vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
         assertEq(multiSig.txCount(), 1);
     }
 
@@ -686,10 +673,9 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1004), txId);
         confirmTransaction(address(1005), txId);
 
-        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);        
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(txId);
+        vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
+
+        executeTransaction(address(1002), txId);
     }
 
     /// @dev Test to ensure 'addOwners' emits only the addresses actually added, trimming out
@@ -707,8 +693,7 @@ contract MultiSignatureWalletTest is Test {
         vm.expectEmit(false, false, false, true);
         emit IMultiSignatureWallet.OwnersAdded(expected);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Helper function to return calldata to remove an array of owners from multisig.
@@ -723,9 +708,8 @@ contract MultiSignatureWalletTest is Test {
 
         submitTransactionToMultiSig(dataToRemoveOwnerFromMultiSig());
         grantSufficientConfirmations(1);
-                    
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
+
+        executeTransaction(address(1002), 1);
 
         assertEq(multiSig.getOwners().length, 4);
     }
@@ -745,8 +729,7 @@ contract MultiSignatureWalletTest is Test {
         vm.expectEmit(false, false, false, true);
         emit IMultiSignatureWallet.OwnersRemoved(expected);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if array of owners is empty.
@@ -758,9 +741,8 @@ contract MultiSignatureWalletTest is Test {
         grantSufficientConfirmations(0);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if number of owners goes below the number of confirmations required.
@@ -775,9 +757,8 @@ contract MultiSignatureWalletTest is Test {
         grantSufficientConfirmations(0);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if caller is not an owner.
@@ -785,13 +766,12 @@ contract MultiSignatureWalletTest is Test {
         testAddOwners();
 
         submitTransactionToMultiSig(dataToRemoveOwnerFromMultiSig());
-        
+
         grantSufficientConfirmations(1);
 
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
-        
-        vm.prank(alice);        // Not an owner
-        multiSig.executeTransaction(1);
+
+        executeTransaction(alice, 1); // Not an owner
     }
 
     /// @dev Test to ensure 'removeOwners' transaction reverts on execute if it has expired.
@@ -807,15 +787,14 @@ contract MultiSignatureWalletTest is Test {
         vm.warp(10501);
         vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1002), 1);
         assertEq(multiSig.txCount(), 1);
     }
 
     /// @dev Test to ensure 'removeOwners' reverts if transaction has insufficient number of confirmations.
     function testRemoveOwnersRevertsIfInsufficientConfirmations() public {
         testAddOwners();
-        
+
         submitTransactionToMultiSig(dataToRemoveOwnerFromMultiSig());
 
         uint256 txId = 1;
@@ -823,9 +802,8 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(address(1005), txId);
 
         vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
-        
-        vm.prank(address(1002));
-        multiSig.executeTransaction(txId);
+
+        executeTransaction(address(1002), txId);
     }
 
     /// @dev Helper function to return calldata to update the number of confirmations required in the multisig.
@@ -838,8 +816,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
         grantSufficientConfirmations(0);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
 
         assertEq(multiSig.numConfirmationsRequired(), 3);
     }
@@ -851,8 +828,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the number of confirmations required is more than the number of owners.
@@ -862,8 +838,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' reverts if the caller is not an owner.
@@ -873,8 +848,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.NotAnOwner.selector);
 
-        vm.prank(alice);        // Not an owner
-        multiSig.executeTransaction(0);
+        executeTransaction(alice, 0); // Not an owner
     }
 
     /// @dev Test to ensure 'updateNumConfirmations' transaction reverts on execute if it has expired.
@@ -888,8 +862,7 @@ contract MultiSignatureWalletTest is Test {
         vm.warp(10501);
         vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
         assertEq(multiSig.txCount(), 1);
     }
 
@@ -903,76 +876,63 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(txId);
+        executeTransaction(address(1002), txId);
     }
 
-    
     /// @dev Test to ensure 'upgradeTo' upgrades the implementation address of the beacon.
     function testUpgradeBeacon() public {
         MultiSignatureWallet implV2 = new MultiSignatureWallet();
         bytes memory data = abi.encodeWithSelector(UpgradeableBeacon.upgradeTo.selector, address(implV2));
 
         vm.prank(address(1001));
-        multiSig.submitTransaction(
-            address(beacon),
-            0,
-            100000,
-            data
-        );
+        multiSig.submitTransaction(address(beacon), 0, 100000, data);
+        txContentHash[0] = multiSig.hashTransactionContent(address(beacon), 0, data);
 
         grantSufficientConfirmations(0);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
 
         assertEq(beacon.implementation(), address(implV2));
         assertNotEq(beacon.implementation(), multiSigImplV1);
     }
 
-    /// @dev Test to ensure 'upgradeTo' reverts if caller is not the owner.  
-    function testUpgradeBeaconRevertIfNotOwner() public {        
+    /// @dev Test to ensure 'upgradeTo' reverts if caller is not the owner.
+    function testUpgradeBeaconRevertIfNotOwner() public {
         MultiSignatureWallet implV2 = new MultiSignatureWallet();
 
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
-        
+
         vm.prank(alice);
         beacon.upgradeTo(address(implV2));
     }
-    
+
     /// @dev Helper function to submit a transaction for contract deployment and grant sufficient confirmations.
     function submitToDeploy(bytes memory _creationCode, uint256 _value, uint256 _txIndex) private {
         bytes memory data = abi.encodeCall(MultiSignatureWallet.deployContract, (_creationCode, _value));
         submitTransactionToMultiSig(data);
-        grantSufficientConfirmations(_txIndex);   
+        grantSufficientConfirmations(_txIndex);
     }
 
     /// @dev Helper function that returns creation code to deploy ERC1967 proxy contract.
     function proxyCreationCode(address _impl) private view returns (bytes memory) {
-        bytes memory initData = abi.encodeCall(Counter.initialize, (address(multiSig)));        
-        
-        return abi.encodePacked(
-            type(ERC1967Proxy).creationCode,
-            abi.encode(_impl, initData)
-        );
+        bytes memory initData = abi.encodeCall(Counter.initialize, (address(multiSig)));
+
+        return abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(_impl, initData));
     }
 
     /// @dev Test to ensure 'deployContract' deploys contract and assigns MultiSig as contract owner.
     function testDeployContract() public {
         // Deploy implementation
         submitToDeploy(type(Counter).creationCode, 0, 0);
-        
-        vm.prank(address(1002));
-        bytes memory dataImpl =  multiSig.executeTransaction(0);
+
+        bytes memory dataImpl = executeTransaction(address(1002), 0);
         address impl = abi.decode(dataImpl, (address));
 
-        
         // Deploy proxy
-        bytes memory creationCode = proxyCreationCode(impl);        
+        bytes memory creationCode = proxyCreationCode(impl);
         submitToDeploy(creationCode, 0, 1);
 
-        vm.prank(address(1002));
-        bytes memory dataProxy =  multiSig.executeTransaction(1);
+        bytes memory dataProxy = executeTransaction(address(1002), 1);
         address proxy = abi.decode(dataProxy, (address));
         assertEq(Counter(proxy).owner(), address(multiSig));
     }
@@ -990,12 +950,11 @@ contract MultiSignatureWalletTest is Test {
     /// @dev Test to ensure 'deployContract' reverts if contract creation code is empty.
     function testDeployContractRevertsIfCreationCodeEmpty() public {
         // Deploy implementation
-        submitToDeploy("", 0, 0);   // Empty creation code
-        
+        submitToDeploy("", 0, 0); // Empty creation code
+
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'deployContract' reverts if initialize function is non-payable.
@@ -1004,31 +963,27 @@ contract MultiSignatureWalletTest is Test {
 
         // Deploy implementation
         submitToDeploy(type(Counter).creationCode, 0, 0);
-        
-        vm.prank(address(1002));
-        bytes memory dataImpl =  multiSig.executeTransaction(0);
+
+        bytes memory dataImpl = executeTransaction(address(1002), 0);
         address impl = abi.decode(dataImpl, (address));
 
-        
         // Deploy proxy
-        bytes memory creationCode = proxyCreationCode(impl);        
+        bytes memory creationCode = proxyCreationCode(impl);
         submitToDeploy(creationCode, 1 ether, 1);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1002), 1);
     }
 
     /// @dev Test to ensure 'deployContract' reverts if creation code is invalid.
     function testDeployContractRevertsIfInvalidCreationCode() public {
         // Deploy implementation
-        submitToDeploy(hex"f1", 0, 0);  // Invalid creation code
+        submitToDeploy(hex"f1", 0, 0); // Invalid creation code
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'receive' works correctly.
@@ -1037,7 +992,7 @@ contract MultiSignatureWalletTest is Test {
 
         // Send ETH to multisig
         vm.prank(alice);
-        (bool success, ) = address(multiSig).call{value: 1 ether}("");
+        (bool success,) = address(multiSig).call{value: 1 ether}("");
         assertTrue(success);
 
         assertEq(address(multiSig).balance, 1 ether);
@@ -1056,7 +1011,7 @@ contract MultiSignatureWalletTest is Test {
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
         multiSig.getTransaction(0);
     }
-    
+
     /// @dev Test to ensure 'getTransaction' reverts for an expired-but-unswept transaction.
     function testGetTransactionRevertsIfTxExpired() public {
         vm.warp(500);
@@ -1112,12 +1067,12 @@ contract MultiSignatureWalletTest is Test {
         testSubmitTransactionIncrement();
         grantSufficientConfirmations(0);
 
-        ( , , uint24 confsBefore, , ) = multiSig.getTransaction(0);
+        (,, uint24 confsBefore,,) = multiSig.getTransaction(0);
         assertEq(confsBefore, 4);
 
         removeOwnerViaMultiSig(address(1004), 1, address(1002), address(1003), address(1005));
 
-        ( , , uint24 confsAfter, , ) = multiSig.getTransaction(0);
+        (,, uint24 confsAfter,,) = multiSig.getTransaction(0);
         assertEq(confsAfter, 3);
     }
 
@@ -1159,7 +1114,13 @@ contract MultiSignatureWalletTest is Test {
     // ── issue #3448: owner-removal confirmation handling ────────────────────────────────────────
 
     /// @dev Helper function to build calldata to add a single owner via multisig and execute it.
-    function addOwnerViaMultiSig(address _ownerToAdd, uint256 _txIndex, address _confirmer1, address _confirmer2, address _confirmer3) private {
+    function addOwnerViaMultiSig(
+        address _ownerToAdd,
+        uint256 _txIndex,
+        address _confirmer1,
+        address _confirmer2,
+        address _confirmer3
+    ) private {
         address[] memory ownersToAdd = new address[](1);
         ownersToAdd[0] = _ownerToAdd;
         bytes memory data = abi.encodeCall(MultiSignatureWallet.addOwners, (ownersToAdd));
@@ -1169,8 +1130,7 @@ contract MultiSignatureWalletTest is Test {
         confirmTransaction(_confirmer2, _txIndex);
         confirmTransaction(_confirmer3, _txIndex);
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(_txIndex);
+        executeTransaction(address(1001), _txIndex);
     }
 
     /// @dev Test to ensure a re-added owner's earlier confirmation is not counted.
@@ -1186,7 +1146,7 @@ contract MultiSignatureWalletTest is Test {
         addOwnerViaMultiSig(address(1002), 2, address(1003), address(1004), address(1005));
 
         // owner(1002)'s pre-removal confirmation of txId 0 must not be counted.
-        (, , uint24 confs, , ) = multiSig.getTransaction(0);
+        (,, uint24 confs,,) = multiSig.getTransaction(0);
         assertEq(confs, 1);
         assertFalse(multiSig.isConfirmed(0, address(1002)));
         assertFalse(multiSig.hasValidNumberOfConfirmations(0));
@@ -1202,7 +1162,7 @@ contract MultiSignatureWalletTest is Test {
 
         confirmTransaction(address(1002), 0); // fresh re-confirmation
 
-        (, , uint24 confs, , ) = multiSig.getTransaction(0);
+        (,, uint24 confs,,) = multiSig.getTransaction(0);
         assertEq(confs, 2);
         assertTrue(multiSig.isConfirmed(0, address(1002)));
     }
@@ -1221,7 +1181,7 @@ contract MultiSignatureWalletTest is Test {
 
         // The 1st cycle's fresh confirmation must not survive the 2nd removal either.
         assertFalse(multiSig.isConfirmed(0, address(1002)));
-        (, , uint24 confs, , ) = multiSig.getTransaction(0);
+        (,, uint24 confs,,) = multiSig.getTransaction(0);
         assertEq(confs, 1);
     }
 
@@ -1236,14 +1196,12 @@ contract MultiSignatureWalletTest is Test {
         // full original threshold's worth of confirmations to pass it.
         submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(2));
         grantSufficientConfirmations(1);
-        vm.prank(address(1001));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1001), 1);
         assertEq(multiSig.numConfirmationsRequired(), 2);
 
         // txId 0 must still require confirmations gathered under the new threshold.
         vm.expectRevert(IMultiSignatureWallet.NotEnoughConfirmation.selector);
-        vm.prank(address(1001));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1001), 0);
     }
 
     /// @dev Test to ensure a transaction can still execute after fresh re-confirmation following a threshold decrease.
@@ -1253,15 +1211,13 @@ contract MultiSignatureWalletTest is Test {
 
         submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(2));
         grantSufficientConfirmations(1);
-        vm.prank(address(1001));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1001), 1);
 
         // Fresh re-confirmation under the new threshold (2), including the original submitter.
         confirmTransaction(address(1001), 0);
         confirmTransaction(address(1002), 0);
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1001), 0);
 
         assertEq(multiSig.txCount(), 0);
         assertEq(counter.counter(), 1);
@@ -1272,8 +1228,7 @@ contract MultiSignatureWalletTest is Test {
         // Lower the threshold first so there is room to raise it again without exceeding the owner count.
         submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(2));
         grantSufficientConfirmations(0);
-        vm.prank(address(1001));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1001), 0);
         assertEq(multiSig.numConfirmationsRequired(), 2);
 
         // Submit and confirm a fresh, unrelated transaction (txId 1) under the new, lower threshold.
@@ -1283,12 +1238,11 @@ contract MultiSignatureWalletTest is Test {
         // Raise the threshold back to 3 via a third multisig transaction (txId 2).
         submitTransactionToMultiSig(dataToUpdateNumConfirmationsMultiSig(3));
         confirmTransaction(address(1002), 2);
-        vm.prank(address(1001));
-        multiSig.executeTransaction(2);
+        executeTransaction(address(1001), 2);
         assertEq(multiSig.numConfirmationsRequired(), 3);
 
         // txId 1's confirmations must be unaffected by the threshold increase.
-        (, , uint24 confs, , ) = multiSig.getTransaction(1);
+        (,, uint24 confs,,) = multiSig.getTransaction(1);
         assertEq(confs, 2);
     }
 
@@ -1310,8 +1264,7 @@ contract MultiSignatureWalletTest is Test {
         vm.expectEmit(true, false, false, false);
         emit IMultiSignatureWallet.TransactionCancelled(0);
 
-        vm.prank(address(1001));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1001), 1);
 
         assertEq(multiSig.txCount(), 0);
         vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
@@ -1334,8 +1287,7 @@ contract MultiSignatureWalletTest is Test {
         grantSufficientConfirmations(0);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
-        vm.prank(address(1001));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1001), 0);
     }
 
     // ── removeExpiredTransaction ─────────────────────────────────────────────────────────────
@@ -1404,8 +1356,7 @@ contract MultiSignatureWalletTest is Test {
         vm.expectEmit(false, false, false, true);
         emit IMultiSignatureWallet.MaxTimeoutDurationUpdated(uint64(7 days));
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
 
         assertEq(multiSig.maxTimeoutDuration(), 7 days);
     }
@@ -1417,8 +1368,7 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
     }
 
     /// @dev Test to ensure 'updateMaxTimeoutDuration' reverts if caller is not the multisig itself.
@@ -1441,8 +1391,7 @@ contract MultiSignatureWalletTest is Test {
         submitTransactionToBeacon(abi.encodeWithSelector(beacon.transferOwnership.selector, alice));
         grantSufficientConfirmations(0);
 
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
 
         assertEq(beacon.pendingOwner(), alice);
         assertEq(beacon.owner(), address(multiSig));
@@ -1463,8 +1412,7 @@ contract MultiSignatureWalletTest is Test {
         address wrongAddress = address(0xBAD);
         submitTransactionToBeacon(abi.encodeWithSelector(beacon.transferOwnership.selector, wrongAddress));
         grantSufficientConfirmations(0);
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
 
         // Ownership has NOT actually moved yet - the multisig still controls the beacon.
         assertEq(beacon.owner(), address(multiSig));
@@ -1472,15 +1420,13 @@ contract MultiSignatureWalletTest is Test {
         bytes memory upgradeData = abi.encodeWithSelector(UpgradeableBeacon.upgradeTo.selector, address(implV2));
         submitTransactionToBeacon(upgradeData);
         grantSufficientConfirmations(1);
-        vm.prank(address(1002));
-        multiSig.executeTransaction(1);
+        executeTransaction(address(1002), 1);
         assertEq(beacon.implementation(), address(implV2));
 
         // Issue a corrective transfer to the intended address instead.
         submitTransactionToBeacon(abi.encodeWithSelector(beacon.transferOwnership.selector, alice));
         grantSufficientConfirmations(2);
-        vm.prank(address(1002));
-        multiSig.executeTransaction(2);
+        executeTransaction(address(1002), 2);
         assertEq(beacon.pendingOwner(), alice);
         assertEq(beacon.owner(), address(multiSig));
     }
@@ -1492,9 +1438,162 @@ contract MultiSignatureWalletTest is Test {
         grantSufficientConfirmations(0);
 
         vm.expectPartialRevert(IMultiSignatureWallet.ExecutionFailed.selector);
-        vm.prank(address(1002));
-        multiSig.executeTransaction(0);
+        executeTransaction(address(1002), 0);
 
         assertEq(beacon.owner(), address(multiSig));
+    }
+
+    // ── issue #3450: content-bound confirmation and execution ───────────────────────────────
+
+    /// @dev Test to ensure 'hashTransactionContent' computes keccak256(abi.encode(to, value, data)).
+    function testHashTransactionContentMatchesAbiEncoding() public view {
+        address to = address(counter);
+        uint256 value = 7;
+        bytes memory data = dataForIncrement();
+        assertEq(multiSig.hashTransactionContent(to, value, data), keccak256(abi.encode(to, value, data)));
+    }
+
+    /// @dev Test to ensure 'getTransactionContentHash' returns the same digest
+    /// 'hashTransactionContent' would compute from the transaction's stored to/value/data.
+    function testGetTransactionContentHashMatchesHashTransactionContent() public {
+        testSubmitTransactionIncrement(); // txId 0: (address(counter), 0, dataForIncrement())
+
+        assertEq(
+            multiSig.getTransactionContentHash(0),
+            multiSig.hashTransactionContent(address(counter), 0, dataForIncrement())
+        );
+    }
+
+    /// @dev Test to ensure 'getTransactionContentHash' reverts if the transaction does not exist.
+    function testGetTransactionContentHashRevertsIfTxDoesNotExist() public {
+        vm.expectRevert(IMultiSignatureWallet.InvalidTxnId.selector);
+        multiSig.getTransactionContentHash(0);
+    }
+
+    /// @dev Test to ensure 'getTransactionContentHash' reverts for an expired-but-unswept transaction.
+    function testGetTransactionContentHashRevertsIfTxExpired() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
+        multiSig.getTransactionContentHash(0);
+    }
+
+    /// @dev Test to ensure 'confirmTransaction' rejects a digest that does not match the
+    /// transaction stored at the given index, and leaves that transaction's confirmations
+    /// untouched.
+    function testConfirmWithMismatchedContentHashIsRejected() public {
+        testSubmitTransactionIncrement(); // txId 0: (address(counter), 0, dataForIncrement())
+
+        bytes32 wrongHash = multiSig.hashTransactionContent(address(counter), 0, dataToTransferOwnership());
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.confirmTransaction(0, wrongHash);
+
+        (,, uint24 numConfirmations,,) = multiSig.getTransaction(0);
+        assertEq(numConfirmations, 1);
+    }
+
+    /// @dev Test to ensure the target address participates in the digest 'confirmTransaction' binds to.
+    function testConfirmWithMismatchedToIsRejected() public {
+        testSubmitTransactionIncrement(); // txId 0: to = address(counter)
+
+        bytes32 wrongHash = multiSig.hashTransactionContent(alice, 0, dataForIncrement());
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.confirmTransaction(0, wrongHash);
+    }
+
+    /// @dev Test to ensure the ETH value participates in the digest 'confirmTransaction' binds to.
+    function testConfirmWithMismatchedValueIsRejected() public {
+        testSubmitTransactionIncrement(); // txId 0: value = 0
+
+        bytes32 wrongHash = multiSig.hashTransactionContent(address(counter), 1, dataForIncrement());
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.confirmTransaction(0, wrongHash);
+    }
+
+    /// @dev Test to ensure 'executeTransaction' rejects a digest that does not match the
+    /// transaction stored at the given index, leaving it (and its confirmations) in place for a
+    /// subsequent execution with the correct digest to succeed.
+    function testExecuteWithMismatchedContentHashIsRejected() public {
+        testSubmitTransactionIncrement();
+        grantSufficientConfirmations(0);
+
+        bytes32 wrongHash = multiSig.hashTransactionContent(address(counter), 0, dataToTransferOwnership());
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0, wrongHash);
+
+        assertEq(multiSig.txCount(), 1);
+
+        executeTransaction(address(1002), 0);
+        assertEq(multiSig.txCount(), 0);
+        assertEq(counter.counter(), 1);
+    }
+
+    /// @dev Test to ensure a confirmation is bound to the action it names, not merely to the
+    /// index it was submitted at: two transactions submitted to different indices cannot be
+    /// confirmed for each other, only for themselves.
+    function testConfirmationBindsToIntendedContentAcrossIndices() public {
+        bytes memory dataA = dataForIncrement();
+        bytes memory dataB = dataToTransferOwnership();
+
+        submitTransaction(dataA); // txId 0: (address(counter), 0, dataA)
+        submitTransactionToTarget(address(counter), dataB); // txId 1: (address(counter), 0, dataB)
+
+        bytes32 hashB = multiSig.hashTransactionContent(address(counter), 0, dataB);
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.confirmTransaction(0, hashB);
+
+        confirmTransaction(address(1002), 1);
+        assertTrue(multiSig.isConfirmed(1, address(1002)));
+    }
+
+    /// @dev Test to ensure an expired transaction is rejected on its expiry, before its content
+    /// digest is even considered - a wrong digest is not what causes the revert here.
+    function testExpiredTransactionIsRejectedBeforeContentCheck() public {
+        vm.warp(500);
+        testSubmitTransactionIncrement();
+
+        vm.warp(10501);
+        bytes32 wrongHash = multiSig.hashTransactionContent(address(counter), 0, dataToTransferOwnership());
+        vm.expectRevert(IMultiSignatureWallet.TransactionAlreadyExpired.selector);
+        vm.prank(address(1002));
+        multiSig.confirmTransaction(0, wrongHash);
+    }
+
+    /// @dev Test to ensure the index a submission is assigned is readable from the
+    /// SubmitTransaction event, so a caller does not need to predict it beforehand.
+    function testSubmitTransactionEventCarriesAssignedIndex() public {
+        bytes32 submitTransactionTopic0 = keccak256("SubmitTransaction(address,uint256,address,uint256,bytes)");
+
+        uint256 expectedFirst = multiSig.getNextTransactionIndex();
+        vm.recordLogs();
+        submitTransaction(dataForIncrement());
+        uint256 firstIndex = decodeSubmittedTxIndex(vm.getRecordedLogs(), submitTransactionTopic0);
+        assertEq(firstIndex, expectedFirst);
+
+        uint256 expectedSecond = multiSig.getNextTransactionIndex();
+        assertEq(expectedSecond, expectedFirst + 1);
+
+        vm.recordLogs();
+        submitTransaction(dataToTransferOwnership());
+        uint256 secondIndex = decodeSubmittedTxIndex(vm.getRecordedLogs(), submitTransactionTopic0);
+        assertEq(secondIndex, expectedSecond);
+    }
+
+    /// @dev Helper function to pick the SubmitTransaction log out of a recorded log set and
+    /// decode its assigned index (the event's second indexed topic).
+    function decodeSubmittedTxIndex(Vm.Log[] memory logs, bytes32 topic0) private view returns (uint256) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter == address(multiSig) && logs[i].topics[0] == topic0) {
+                return uint256(logs[i].topics[2]);
+            }
+        }
+        revert("SubmitTransaction log not found");
     }
 }

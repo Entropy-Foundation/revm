@@ -44,6 +44,9 @@ interface IMultiSignatureWallet {
     error NotExpired();
     /// @notice Thrown when updateMaxTimeoutDuration is called with a zero duration.
     error InvalidMaxTimeoutDuration();
+    /// @notice Thrown when the content digest supplied to confirmTransaction or
+    /// executeTransaction does not match the stored transaction at that index.
+    error TransactionContentMismatch();
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -60,11 +63,7 @@ interface IMultiSignatureWallet {
     /// @param value ETH value attached to the transaction.
     /// @param data Call data payload.
     event SubmitTransaction(
-        address indexed owner,
-        uint256 indexed txIndex,
-        address indexed to,
-        uint256 value,
-        bytes data
+        address indexed owner, uint256 indexed txIndex, address indexed to, uint256 value, bytes data
     );
 
     /// @notice Emitted when a pending transaction expires and is removed.
@@ -129,23 +128,29 @@ interface IMultiSignatureWallet {
     /// @param _value Amount of ETH to send with the transaction.
     /// @param _timeoutDuration Seconds from now after which the transaction expires.
     /// @param _data Call data payload.
-    function submitTransaction(
-        address _to,
-        uint256 _value,
-        uint64 _timeoutDuration,
-        bytes memory _data
-    ) external payable;
+    function submitTransaction(address _to, uint256 _value, uint64 _timeoutDuration, bytes memory _data)
+        external
+        payable;
 
-    /// @notice Confirms a pending transaction. Reverts if it has expired; use
-    /// removeExpiredTransaction to clean up an expired one.
+    /// @notice Confirms a pending transaction. The caller supplies the digest of the action it
+    /// intends to confirm, computed by hashTransactionContent from that action's to/value/data;
+    /// a digest that does not match the transaction stored at _txIndex is rejected. Reverts if
+    /// the transaction has expired; use removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction to confirm.
-    function confirmTransaction(uint256 _txIndex) external;
+    /// @param _contentHash keccak256 digest of the intended to/value/data, from
+    /// hashTransactionContent.
+    function confirmTransaction(uint256 _txIndex, bytes32 _contentHash) external;
 
-    /// @notice Executes a transaction once enough confirmations are gathered. Reverts if it has
-    /// expired; use removeExpiredTransaction to clean up an expired one.
+    /// @notice Executes a transaction once enough confirmations are gathered. The caller
+    /// supplies the digest of the action it intends to execute, computed by
+    /// hashTransactionContent from that action's to/value/data; a digest that does not match the
+    /// transaction stored at _txIndex is rejected and the transaction remains pending. Reverts if
+    /// the transaction has expired; use removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction to execute.
+    /// @param _contentHash keccak256 digest of the intended to/value/data, from
+    /// hashTransactionContent.
     /// @return Data returned by the executed call.
-    function executeTransaction(uint256 _txIndex) external returns (bytes memory);
+    function executeTransaction(uint256 _txIndex, bytes32 _contentHash) external returns (bytes memory);
 
     /// @notice Revokes a previously given confirmation. Reverts if the transaction has expired;
     /// use removeExpiredTransaction to clean up an expired one.
@@ -204,16 +209,28 @@ interface IMultiSignatureWallet {
     /// @return numConfirmations Number of confirmations received so far.
     /// @return timeout Expiry timestamp of the transaction.
     /// @return data Call data payload.
-    function getTransaction(uint256 _txIndex) external view returns (
-        address to,
-        uint256 value,
-        uint24 numConfirmations,
-        uint64 timeout,
-        bytes memory data
-    );
+    function getTransaction(uint256 _txIndex)
+        external
+        view
+        returns (address to, uint256 value, uint24 numConfirmations, uint64 timeout, bytes memory data);
 
     /// @notice Function to check if a transaction has a valid number of confirmations.
     /// @param _txIndex Index of the transaction to check for.
     /// @return bool True if the transaction has a valid number of confirmations counting only valid owners, false otherwise.
     function hasValidNumberOfConfirmations(uint256 _txIndex) external view returns (bool);
+
+    /// @notice Returns the content digest stored for a pending transaction - the same value
+    /// hashTransactionContent would compute from its to/value/data, without recomputing it.
+    /// @param _txIndex Index of the transaction.
+    /// @return The transaction's stored content digest.
+    function getTransactionContentHash(uint256 _txIndex) external view returns (bytes32);
+
+    /// @notice Computes the digest that confirmTransaction and executeTransaction bind to for a
+    /// given action. Pure, so a caller can derive the digest for the action it intends to submit
+    /// or vote on without reading the wallet's state.
+    /// @param _to Target contract address.
+    /// @param _value Amount of ETH to send with the transaction.
+    /// @param _data Call data payload.
+    /// @return keccak256(abi.encode(_to, _value, _data)).
+    function hashTransactionContent(address _to, uint256 _value, bytes memory _data) external pure returns (bytes32);
 }

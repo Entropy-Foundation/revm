@@ -828,7 +828,7 @@ mod tests {
             ),
             (
                 "MultiSignatureWallet",
-                b256!("a8232648e1d4eb06fd23d5e56182f1aa28934f99b9f9e472e9611d4279e0a2ba"),
+                b256!("afb5568f962f7ae6611441b349254a1952645265639572b0024a8ad76dfe30d6"),
             ),
             (
                 "MultisigBeacon",
