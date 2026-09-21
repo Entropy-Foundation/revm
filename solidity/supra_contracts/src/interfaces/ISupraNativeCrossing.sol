@@ -88,16 +88,24 @@ interface ISupraNativeCrossing {
     /// property of the chain, and its two refusals - {SettlementDisabled} and {BacklogFull} - are
     /// transient: a caller that retries later can succeed unchanged.
     ///
+    /// **The rules are decided in that order**, so a call that breaks one of rules 1 to 4 is
+    /// refused for that and never told that a retry would serve it. A caller that receives a
+    /// transient error can therefore act on it, because the call itself has already been found
+    /// sound.
+    ///
     /// A refusal reverts, which returns the value sent with the call. Nothing crosses and nothing
-    /// is debited; the gas spent up to the refusal stays spent.
+    /// is debited.
     ///
     /// # Cost
     ///
-    /// A fixed 100,000 gas in addition to the cost of the call itself, charged before anything is
-    /// debited. It prices the Move-side settlement the crossing causes - a durable queue row, a
-    /// row in the next block's settlement transaction, and the escrow withdrawal and deposit that
-    /// transaction performs - none of which the Move side charges for. A frame whose gas does not
-    /// cover it runs out of gas, which carries no revert data.
+    /// A fixed 100,000 gas in addition to the cost of the call itself. It prices the Move-side
+    /// settlement the crossing causes - a durable queue row, a row in the next block's settlement
+    /// transaction, and the escrow withdrawal and deposit that transaction performs - none of
+    /// which the Move side charges for.
+    ///
+    /// It is charged after every rule above has passed and before anything is debited, so **a
+    /// refused crossing is charged nothing** and only a recorded crossing pays for one. A frame
+    /// whose gas does not cover the charge runs out of gas, which carries no revert data.
     ///
     /// @param recipient The 32 bytes of the Move address to credit.
     /// @return amountQuants The amount recorded as crossing, in quants: the value sent divided by
