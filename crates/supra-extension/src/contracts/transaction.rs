@@ -65,44 +65,13 @@ impl Debug for GenesisTransaction {
     }
 }
 
-/// Custom contract tag to be used by upper layer to configure a custom genesis contract transactions.
-#[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, Constructor)]
-pub struct ContractCustomTag {
-    /// Nonce of the contract deployment.
-    pub nonce: u64,
-    /// Contract name, used as a tag
-    pub name: String,
-}
-
-/// Order custom contracts by the nonce.
-impl Ord for ContractCustomTag {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.nonce.cmp(&other.nonce) {
-            Ordering::Equal => self.name.cmp(&other.name),
-            r => r,
-        }
-    }
-}
-
-impl PartialOrd for ContractCustomTag {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Display for ContractCustomTag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
 /// Genesis transaction tags, which also decide the order the genesis transactions are deployed in.
 ///
 /// The genesis transactions are held in a map keyed by this type, so this type's [`Ord`] is what
 /// puts them in order. Each deployer's nonces follow that order, and a `CREATE` address is fixed by
 /// the deployer and the nonce, so the order decides the addresses the genesis contracts land at.
 ///
-/// [`Self::deployment_rank`] states that order and is the only thing that decides it. Declaration
+/// `deployment_rank` states that order and is the only thing that decides it. Declaration
 /// order and any discriminant a variant might carry do not enter into it.
 ///
 /// Serde encodes this enum by declaration position, so a variant belongs at the end of the list
@@ -139,17 +108,13 @@ pub enum GenesisTransactionTags {
     CoreFacet,
     DiamondInit,
     Diamond,
-
-    // Custom contracts injected by application layer
-    Custom(ContractCustomTag),
 }
 
 impl GenesisTransactionTags {
     /// Position of this tag in the genesis deployment order, lowest first.
     ///
     /// Every variant names its position here, so a new variant does not compile until its position
-    /// is stated. `Custom` comes after every tag this type names, and custom tags are ordered among
-    /// themselves by [`ContractCustomTag`].
+    /// is stated.
     ///
     /// Changing a value here changes the addresses the genesis contracts are deployed at. The order
     /// is pinned by `deployment_order_is_pinned`.
@@ -179,20 +144,14 @@ impl GenesisTransactionTags {
             Self::CoreFacet => 19,
             Self::DiamondInit => 20,
             Self::Diamond => 21,
-
-            Self::Custom(_) => 22,
         }
     }
 }
 
-/// Order genesis transactions by the position [`GenesisTransactionTags::deployment_rank`] gives
-/// their tag, and custom contracts sharing that position by their own tag.
+/// Order genesis transactions by the position `deployment_rank` gives their tag.
 impl Ord for GenesisTransactionTags {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Self::Custom(tag), Self::Custom(other_tag)) => tag.cmp(other_tag),
-            _ => self.deployment_rank().cmp(&other.deployment_rank()),
-        }
+        self.deployment_rank().cmp(&other.deployment_rank())
     }
 }
 
@@ -204,10 +163,7 @@ impl PartialOrd for GenesisTransactionTags {
 
 impl Display for GenesisTransactionTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GenesisTransactionTags::Custom(custom_tag) => write!(f, "{}", custom_tag),
-            _ => write!(f, "{:?}", self),
-        }
+        write!(f, "{self:?}")
     }
 }
 
@@ -249,7 +205,6 @@ mod tests {
             GenesisTransactionTags::CoreFacet,
             GenesisTransactionTags::DiamondInit,
             GenesisTransactionTags::Diamond,
-            GenesisTransactionTags::Custom(ContractCustomTag::new(0, "custom".to_string())),
         ];
 
         // Ranks that are dense and ascending: every tag has a position of its own, and the
@@ -264,36 +219,6 @@ mod tests {
             order.iter().rev().map(|tag| (tag, ())).collect();
         let iterated: Vec<&GenesisTransactionTags> = map.keys().copied().collect();
         assert_eq!(iterated, order.iter().collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn check_tag_ordering() {
-        let tag1 = ContractCustomTag {
-            nonce: 1,
-            name: "2test".to_string(),
-        };
-        let tag11 = ContractCustomTag {
-            nonce: 1,
-            name: "1test".to_string(),
-        };
-        let tag2 = ContractCustomTag {
-            nonce: 2,
-            name: "1test".to_string(),
-        };
-        let tag2_sibling = ContractCustomTag {
-            nonce: 2,
-            name: "1test".to_string(),
-        };
-        let tag2_diff_name = ContractCustomTag {
-            nonce: 2,
-            name: "2test".to_string(),
-        };
-
-        assert!(tag1 < tag2);
-        assert!(tag11 < tag2);
-        assert_eq!(tag2, tag2_sibling);
-        assert_eq!(tag2.cmp(&tag2_sibling), Ordering::Equal);
-        assert!(tag2 < tag2_diff_name);
     }
 
     #[test]
