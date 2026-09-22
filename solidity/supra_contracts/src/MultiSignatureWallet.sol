@@ -146,9 +146,14 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     /// @dev Rejects a caller-supplied digest that does not match the one stored for _txIndex at
     ///      submission time. confirmTransaction and executeTransaction each require the caller to
-    ///      name the action it is voting on or triggering, not merely its slot.
+    ///      name the action it is voting on or triggering, not merely its slot. A stored digest
+    ///      of bytes32(0) is rejected outright, regardless of what the caller supplies:
+    ///      hashTransactionContent never produces bytes32(0) in practice (that would require an
+    ///      exact keccak256 preimage of it), so the only way this field reads back as zero is a
+    ///      slot that predates it - not a value naming any actual to/value/data.
     function contentMatches(uint256 _txIndex, bytes32 _contentHash) private view {
-        if (transactions[_txIndex].contentHash != _contentHash) {
+        bytes32 storedContentHash = transactions[_txIndex].contentHash;
+        if (storedContentHash == bytes32(0) || storedContentHash != _contentHash) {
             revert TransactionContentMismatch();
         }
     }
@@ -266,8 +271,10 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
         Transaction memory transaction = transactions[_txIndex];
         // Inlined rather than routed through contentMatches: transaction is already in memory
-        // here, so comparing its field directly avoids a second SLOAD of the same value.
-        if (transaction.contentHash != _contentHash) {
+        // here, so comparing its field directly avoids a second SLOAD of the same value. Rejects
+        // a stored digest of bytes32(0) for the same reason contentMatches does - see its
+        // comment - so this path can't be the one where that guard is missing.
+        if (transaction.contentHash == bytes32(0) || transaction.contentHash != _contentHash) {
             revert TransactionContentMismatch();
         }
         if (validNumberOfConfirmations(_txIndex) < numConfirmationsRequired) {

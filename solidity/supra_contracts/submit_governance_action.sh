@@ -27,8 +27,6 @@
 
 set -euo pipefail
 
-# Import environment variables from .env file. This script expects the following variables to be set in the .env file:
-source .env
 
 if [ -z "${1:-}" ]; then
     echo "Usage: $0 GOV_ACTION_SCRIPT_NAME"
@@ -49,6 +47,10 @@ for owner in ${foundation_owners[*]}
 do
   foundation_owners_addresses+=( $(basename ${owner} | cut -d "_" -f2) )
 done
+
+# Import environment variables from .env file. This script expects the following variables to be set in the .env file:
+#  - MULTISIG_WALLET_ADDRESS
+source ${script_path}/.env
 
 echo ${foundation_owners[*]} ${foundation_owners_addresses[*]}
 

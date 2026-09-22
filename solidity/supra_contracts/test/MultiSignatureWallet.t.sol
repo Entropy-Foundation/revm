@@ -1496,6 +1496,44 @@ contract MultiSignatureWalletTest is Test {
         multiSig.getTransactionContentHash(0);
     }
 
+    /// @dev Storage slot of MultiSignatureWallet's `transactions` mapping and the struct-relative
+    /// offset of its `contentHash` field, from `forge inspect src/MultiSignatureWallet.sol
+    /// storage-layout`. Update these two constants if that layout changes.
+    uint256 private constant TRANSACTIONS_MAPPING_SLOT = 5;
+    uint256 private constant TRANSACTION_CONTENT_HASH_OFFSET = 3;
+
+    /// @dev Overwrites the content digest stored for _txIndex directly in storage, bypassing
+    /// submitTransaction. Used to reach a stored digest of bytes32(0), which
+    /// hashTransactionContent itself never produces and no public function can write.
+    function forceStoredContentHash(uint256 _txIndex, bytes32 _value) private {
+        bytes32 baseSlot = keccak256(abi.encode(_txIndex, TRANSACTIONS_MAPPING_SLOT));
+        vm.store(address(multiSig), bytes32(uint256(baseSlot) + TRANSACTION_CONTENT_HASH_OFFSET), _value);
+    }
+
+    /// @dev Test to ensure 'confirmTransaction' rejects a transaction whose stored content digest
+    /// is bytes32(0), even when the caller supplies bytes32(0) itself - the one case an ordinary
+    /// mismatch check alone would let through.
+    function testConfirmRejectsStoredZeroDigestEvenWhenSupplied() public {
+        testSubmitTransactionIncrement(); // txId 0
+        forceStoredContentHash(0, bytes32(0));
+
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.confirmTransaction(0, bytes32(0));
+    }
+
+    /// @dev Test to ensure 'executeTransaction' rejects a transaction whose stored content digest
+    /// is bytes32(0), even when the caller supplies bytes32(0) itself.
+    function testExecuteRejectsStoredZeroDigestEvenWhenSupplied() public {
+        testSubmitTransactionIncrement(); // txId 0
+        grantSufficientConfirmations(0);
+        forceStoredContentHash(0, bytes32(0));
+
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1002));
+        multiSig.executeTransaction(0, bytes32(0));
+    }
+
     /// @dev Test to ensure 'confirmTransaction' rejects a digest that does not match the
     /// transaction stored at the given index, and leaves that transaction's confirmations
     /// untouched.
