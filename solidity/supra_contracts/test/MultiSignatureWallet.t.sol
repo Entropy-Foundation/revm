@@ -263,10 +263,13 @@ contract MultiSignatureWalletTest is Test {
         assertEq(multiSig.txCount(), 1);
     }
 
-    /// @dev Helper function to revoke confirmation.
+    /// @dev Helper function to revoke confirmation. Reads the digest from txContentHash rather
+    /// than the wallet, for the same reason confirmTransaction/executeTransaction do: an extra
+    /// external call here would consume the vm.expectRevert() many of these tests set up for
+    /// this call itself.
     function revokeConfirmation(address _owner, uint256 _txIndex) private {
         vm.prank(_owner);
-        multiSig.revokeConfirmation(_txIndex);
+        multiSig.revokeConfirmation(_txIndex, txContentHash[_txIndex]);
     }
 
     /// @dev Test to ensure 'revokeConfirmation' revokes the confirmation of an owner.
@@ -329,6 +332,19 @@ contract MultiSignatureWalletTest is Test {
 
         vm.expectRevert(IMultiSignatureWallet.TransactionNotConfirmed.selector);
         revokeConfirmation(address(1002), 0);
+    }
+
+    /// @dev Test to ensure 'revokeConfirmation' rejects a digest that does not match the
+    /// transaction stored at the given index, leaving the confirmation in place.
+    function testRevokeConfirmationWithMismatchedContentHashIsRejected() public {
+        testSubmitTransactionIncrement(); // txId 0: (address(counter), 0, dataForIncrement())
+
+        bytes32 wrongHash = multiSig.hashTransactionContent(address(counter), 0, dataToTransferOwnership());
+        vm.expectRevert(IMultiSignatureWallet.TransactionContentMismatch.selector);
+        vm.prank(address(1001));
+        multiSig.revokeConfirmation(0, wrongHash);
+
+        assertTrue(multiSig.isConfirmed(0, address(1001)));
     }
 
     /// @dev Test to ensure an owner can still revoke a confirmation that has gone stale (owner

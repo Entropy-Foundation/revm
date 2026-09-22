@@ -265,6 +265,8 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         notExpired(_txIndex);
 
         Transaction memory transaction = transactions[_txIndex];
+        // Inlined rather than routed through contentMatches: transaction is already in memory
+        // here, so comparing its field directly avoids a second SLOAD of the same value.
         if (transaction.contentHash != _contentHash) {
             revert TransactionContentMismatch();
         }
@@ -282,14 +284,18 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     }
 
     /**
-     * @dev Function to revoke a previously given confirmation for a transaction.
+     * @dev Function to revoke a previously given confirmation for a transaction. The caller
+     * supplies the digest of the action it intends to revoke its confirmation on (see
+     * hashTransactionContent), so a revocation names the action, not merely the slot.
      * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @param _txIndex Index of the transaction to revoke confirmation.
+     * @param _contentHash Digest of the intended to/value/data, from hashTransactionContent.
      */
-    function revokeConfirmation(uint256 _txIndex) external {
+    function revokeConfirmation(uint256 _txIndex, bytes32 _contentHash) external {
         onlyOwner(msg.sender);
         txExists(_txIndex);
         notExpired(_txIndex);
+        contentMatches(_txIndex, _contentHash);
         // Gated on raw membership rather than _isOwnerConfirmationValid: an owner whose
         // confirmation went stale (threshold lowered, or removed and re-added) is no longer
         // counted anywhere, but should still be able to clear their own now-inert set entry

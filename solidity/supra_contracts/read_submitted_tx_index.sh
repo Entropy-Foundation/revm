@@ -1,8 +1,7 @@
 #!/bin/bash
-# Reads the transaction index a MultiSignatureWallet.submitTransaction call was actually
-# assigned, from a Foundry broadcast receipt, instead of a value predicted before the call
-# landed. Prints the decimal index on stdout and exits 0, or prints an error to stderr and
-# exits non-zero.
+# Reads the transaction index a MultiSignatureWallet.submitTransaction call was assigned, from
+# the Foundry broadcast receipt of that same call. Prints the decimal index on stdout and exits
+# 0, or prints an error to stderr and exits non-zero.
 #
 # Usage: read_submitted_tx_index.sh <run-latest.json> <wallet-address>
 #

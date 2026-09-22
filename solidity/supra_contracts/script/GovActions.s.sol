@@ -16,9 +16,10 @@ abstract contract GovSubmitAction is Script {
     uint64 timeout;
 
     /// @dev Submits a governance action and prints the digest that VoteForTxn and ExecuteTxn
-    /// must be given to confirm/execute it. The assigned transaction index is not read here -
-    /// it is only known once this submission lands on chain, so it must be read from the
-    /// SubmitTransaction event in this run's broadcast receipt, not predicted in advance.
+    /// must be given to confirm/execute it. The transaction index this submission is assigned
+    /// becomes known only from the SubmitTransaction event in this run's own broadcast receipt,
+    /// once the submission has landed. Do not read it from getNextTransactionIndex: a
+    /// different submission landing first would misattribute the index.
     function submit(address _to, uint256 _value, bytes memory _data) internal {
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
         bytes32 contentHash = wallet.hashTransactionContent(_to, _value, _data);
@@ -134,16 +135,23 @@ contract VoteForTxn is Script {
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
         console.log("Txn count", wallet.txCount());
 
-        // Log the transaction actually stored at this index next to the digest this run was
-        // given, so the operator sees the action being confirmed before it is signed for.
-        (address to, uint256 value,,, bytes memory data) = wallet.getTransaction(txIndex);
-        console.log("Confirming txIndex: ", txIndex);
-        console.log("  to: ", to);
-        console.log("  value: ", value);
-        console.log("  data: ");
-        console.logBytes(data);
-        console.log(string.concat("  expected content hash: ", vm.toString(contentHash)));
-        console.log(string.concat("  on-chain content hash: ", vm.toString(wallet.getTransactionContentHash(txIndex))));
+        // getTransaction reverts if txIndex does not exist or has expired, the same conditions
+        // confirmTransaction itself checks. Caught here only so the operator sees that
+        // diagnosis in the log; the catch block itself aborts the run, so a missing or expired
+        // transaction is never confirmed.
+        try wallet.getTransaction(txIndex) returns (address to, uint256 value, uint24, uint64, bytes memory data) {
+            console.log("Confirming txIndex: ", txIndex);
+            console.log("  to: ", to);
+            console.log("  value: ", value);
+            console.log("  data: ");
+            console.logBytes(data);
+            console.log(string.concat("  expected content hash: ", vm.toString(contentHash)));
+            console.log(
+                string.concat("  on-chain content hash: ", vm.toString(wallet.getTransactionContentHash(txIndex)))
+            );
+        } catch {
+            revert("No live transaction at this index (does not exist, or expired); refusing to confirm.");
+        }
 
         vm.startBroadcast();
         wallet.confirmTransaction(txIndex, contentHash);
@@ -165,14 +173,23 @@ contract ExecuteTxn is Script {
     function run() public {
         MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
 
-        (address to, uint256 value,,, bytes memory data) = wallet.getTransaction(txIndex);
-        console.log("Executing txIndex: ", txIndex);
-        console.log("  to: ", to);
-        console.log("  value: ", value);
-        console.log("  data: ");
-        console.logBytes(data);
-        console.log(string.concat("  expected content hash: ", vm.toString(contentHash)));
-        console.log(string.concat("  on-chain content hash: ", vm.toString(wallet.getTransactionContentHash(txIndex))));
+        // getTransaction reverts if txIndex does not exist or has expired, the same conditions
+        // executeTransaction itself checks. Caught here only so the operator sees that
+        // diagnosis in the log; the catch block itself aborts the run, so a missing or expired
+        // transaction is never executed.
+        try wallet.getTransaction(txIndex) returns (address to, uint256 value, uint24, uint64, bytes memory data) {
+            console.log("Executing txIndex: ", txIndex);
+            console.log("  to: ", to);
+            console.log("  value: ", value);
+            console.log("  data: ");
+            console.logBytes(data);
+            console.log(string.concat("  expected content hash: ", vm.toString(contentHash)));
+            console.log(
+                string.concat("  on-chain content hash: ", vm.toString(wallet.getTransactionContentHash(txIndex)))
+            );
+        } catch {
+            revert("No live transaction at this index (does not exist, or expired); refusing to execute.");
+        }
 
         vm.startBroadcast();
         wallet.executeTransaction(txIndex, contentHash);

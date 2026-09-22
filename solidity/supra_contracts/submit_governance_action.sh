@@ -19,13 +19,16 @@
 #
 #   - run this script
 #
-# The submitted transaction's index is read from the SubmitTransaction event in the submit
-# step's own broadcast receipt (via read_submitted_tx_index.sh), not predicted before the
-# submission lands. GOV_TXN_CONTENT_HASH, scraped from the submit step's own "TxnContentHash:"
-# log line, is the digest of the action this run actually submitted; confirmTransaction and
-# executeTransaction reject any index whose stored content does not match it.
+# GOV_TXN_INDEX is the index the submit step's own broadcast receipt records for its
+# SubmitTransaction event (via read_submitted_tx_index.sh). GOV_TXN_CONTENT_HASH, scraped from
+# the submit step's own "TxnContentHash:" log line, is the digest of the action this run
+# submitted; confirmTransaction and executeTransaction reject any index whose stored content
+# does not match it.
 
 set -euo pipefail
+
+# Import environment variables from .env file. This script expects the following variables to be set in the .env file:
+source .env
 
 if [ -z "${1:-}" ]; then
     echo "Usage: $0 GOV_ACTION_SCRIPT_NAME"
@@ -63,6 +66,10 @@ fi
 # against.
 run_latest_json=$(ls -t ${script_path}/broadcast/GovActions.s.sol/*/run-latest.json | head -1)
 export GOV_TXN_INDEX=$(${script_path}/read_submitted_tx_index.sh "${run_latest_json}" "${MULTISIG_WALLET_ADDRESS}")
+if [ -z "${GOV_TXN_INDEX}" ]; then
+    echo "Could not read the submitted transaction's index from the script output." >&2
+    exit 2
+fi
 
 echo "Voting for: ${GOV_TXN_INDEX} (content hash ${GOV_TXN_CONTENT_HASH})"
 length=${#foundation_owners[@]}

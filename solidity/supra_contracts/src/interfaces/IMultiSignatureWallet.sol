@@ -152,10 +152,15 @@ interface IMultiSignatureWallet {
     /// @return Data returned by the executed call.
     function executeTransaction(uint256 _txIndex, bytes32 _contentHash) external returns (bytes memory);
 
-    /// @notice Revokes a previously given confirmation. Reverts if the transaction has expired;
-    /// use removeExpiredTransaction to clean up an expired one.
+    /// @notice Revokes a previously given confirmation. The caller supplies the digest of the
+    /// action it intends to revoke its confirmation on, computed by hashTransactionContent from
+    /// that action's to/value/data; a digest that does not match the transaction stored at
+    /// _txIndex is rejected. Reverts if the transaction has expired; use
+    /// removeExpiredTransaction to clean up an expired one.
     /// @param _txIndex Index of the transaction.
-    function revokeConfirmation(uint256 _txIndex) external;
+    /// @param _contentHash keccak256 digest of the intended to/value/data, from
+    /// hashTransactionContent.
+    function revokeConfirmation(uint256 _txIndex, bytes32 _contentHash) external;
 
     /// @notice Removes an already-expired transaction from storage. Callable by anyone.
     /// @param _txIndex Index of the expired transaction to remove.
