@@ -96,6 +96,13 @@ interface ISupraNativeCrossing {
     /// A refusal reverts, which returns the value sent with the call. Nothing crosses and nothing
     /// is debited.
     ///
+    /// @dev A call whose `value` exceeds the caller's balance carries none of these errors. The EVM
+    /// refuses it as it builds the frame, returning `OutOfFunds` to the parent frame, so the `CALL`
+    /// returns 0 with empty return data - a high-level call reverts with empty revert data, a
+    /// low-level `.call` returns `false` - and this precompile does not run. An externally owned
+    /// account sending a crossing directly is refused at admission, with `insufficient funds for
+    /// gas * price + value`.
+    ///
     /// # Cost
     ///
     /// A fixed 100,000 gas in addition to the cost of the call itself. It prices the Move-side
