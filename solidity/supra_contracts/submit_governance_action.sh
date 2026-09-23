@@ -19,15 +19,24 @@
 #
 #   - run this script
 #
+# GOV_TXN_INDEX is the index the submit step's own broadcast receipt records for its
+# SubmitTransaction event (via read_submitted_tx_index.sh). GOV_TXN_CONTENT_HASH, scraped from
+# the submit step's own "TxnContentHash:" log line, is the digest of the action this run
+# submitted; confirmTransaction and executeTransaction reject any index whose stored content
+# does not match it.
 
-if [ -z "$1" ]; then
+set -euo pipefail
+
+
+if [ -z "${1:-}" ]; then
     echo "Usage: $0 GOV_ACTION_SCRIPT_NAME"
+    exit 1
 fi
 
 action=$1
 
 password=""
-if [ -n ${PASSWORD} ]; then
+if [ -n "${PASSWORD:-}" ]; then
   password="--password ${PASSWORD}"
 fi
 
@@ -39,12 +48,32 @@ do
   foundation_owners_addresses+=( $(basename ${owner} | cut -d "_" -f2) )
 done
 
+# Import environment variables from .env file. This script expects the following variables to be set in the .env file:
+#  - MULTISIG_WALLET_ADDRESS
+source ${script_path}/.env
+
 echo ${foundation_owners[*]} ${foundation_owners_addresses[*]}
 
 result=$(forge script ${script_path}/script/GovActions.s.sol:${action} --keystore ${foundation_owners[0]} --sender ${foundation_owners_addresses[0]} --broadcast ${password})
-export GOV_TXN_INDEX=$(echo ${result} | grep -o "TxnIndex: [0-9]* "| cut -d ":" -f2 | tr -d " ")
+echo "${result}"
 
-echo "Voting for: ${GOV_TXN_INDEX}"
+export GOV_TXN_CONTENT_HASH=$(echo "${result}" | grep -o "TxnContentHash: 0x[0-9a-fA-F]*" | head -1 | cut -d " " -f2)
+if [ -z "${GOV_TXN_CONTENT_HASH}" ]; then
+    echo "Could not read the submitted transaction's content hash from the script output." >&2
+    exit 1
+fi
+
+# forge writes this run's receipt to broadcast/GovActions.s.sol/<chainId>/run-latest.json; the
+# submit step above is the most recently written one regardless of which chain this is run
+# against.
+run_latest_json=$(ls -t ${script_path}/broadcast/GovActions.s.sol/*/run-latest.json | head -1)
+export GOV_TXN_INDEX=$(${script_path}/read_submitted_tx_index.sh "${run_latest_json}" "${MULTISIG_WALLET_ADDRESS}")
+if [ -z "${GOV_TXN_INDEX}" ]; then
+    echo "Could not read the submitted transaction's index from the script output." >&2
+    exit 2
+fi
+
+echo "Voting for: ${GOV_TXN_INDEX} (content hash ${GOV_TXN_CONTENT_HASH})"
 length=${#foundation_owners[@]}
 for ((  i = 1;  i < length;  i++ )); do
     keystore=${foundation_owners[$i]}

@@ -29,6 +29,10 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         uint64 timeout; // Expiry timestamp of the transaction
         uint256 value; // Amount of ether sent with the transaction
         bytes data; // Data payload of the transaction
+        // keccak256(abi.encode(to, value, data)), computed once at submission. confirmTransaction
+        // and executeTransaction compare a caller-supplied digest against this stored value
+        // rather than recomputing it from to/value/data on every call.
+        bytes32 contentHash;
     }
 
     // Mapping to track confirmations for each transaction.
@@ -70,8 +74,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     // Function to ensure the caller is an owner
     function onlyOwner(address owner) private view {
-        if (!owners.contains(owner))
-        revert NotAnOwner();
+        if (!owners.contains(owner)) {
+            revert NotAnOwner();
+        }
     }
 
     // Function to ensure the caller is the multisig contract itself
@@ -83,8 +88,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
 
     // Function to check if a transaction exists
     function txExists(uint256 _txIndex) private view {
-        if (transactions[_txIndex].to == address(0))
-        revert InvalidTxnId();
+        if (transactions[_txIndex].to == address(0)) {
+            revert InvalidTxnId();
+        }
     }
 
     /// @dev Reverts if the transaction's timeout has passed but it hasn't been swept from storage
@@ -102,9 +108,8 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     ///      both epoch mappings defaulting to 0, which would otherwise spuriously read as valid
     ///      whenever ownerEpoch/currentEpoch also happen to still be 0.
     function _isOwnerConfirmationValid(uint256 _txIndex, address owner) private view returns (bool) {
-        return confirmations[_txIndex].contains(owner) &&
-            ownerConfirmationEpoch[_txIndex][owner] == ownerEpoch[owner] &&
-            confirmationTxEpoch[_txIndex][owner] == currentEpoch;
+        return confirmations[_txIndex].contains(owner) && ownerConfirmationEpoch[_txIndex][owner] == ownerEpoch[owner]
+            && confirmationTxEpoch[_txIndex][owner] == currentEpoch;
     }
 
     /// @dev Counts confirmations from current valid owners only.
@@ -139,6 +144,20 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         if (_isOwnerConfirmationValid(_txIndex, msg.sender)) revert TxnAlreadyConfirmed();
     }
 
+    /// @dev Rejects a caller-supplied digest that does not match the one stored for _txIndex at
+    ///      submission time. confirmTransaction and executeTransaction each require the caller to
+    ///      name the action it is voting on or triggering, not merely its slot. A stored digest
+    ///      of bytes32(0) is rejected outright, regardless of what the caller supplies:
+    ///      hashTransactionContent never produces bytes32(0) in practice (that would require an
+    ///      exact keccak256 preimage of it), so the only way this field reads back as zero is a
+    ///      slot that predates it - not a value naming any actual to/value/data.
+    function contentMatches(uint256 _txIndex, bytes32 _contentHash) private view {
+        bytes32 storedContentHash = transactions[_txIndex].contentHash;
+        if (storedContentHash == bytes32(0) || storedContentHash != _contentHash) {
+            revert TransactionContentMismatch();
+        }
+    }
+
     /// @dev Records owner's confirmation of _txIndex, stamping both epochs current at the time of
     ///      confirmation. Shared by submitTransaction's implicit self-confirmation and
     ///      confirmTransaction so the two paths can't drift apart.
@@ -162,10 +181,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function initialize(address[] memory _owners, uint256 _numConfirmationsRequired) public initializer {
         if (_owners.length == 0) revert OwnersRequired();
-        if (
-            _numConfirmationsRequired == 0 ||
-            _numConfirmationsRequired > _owners.length
-        ) revert InvalidNumberOfConfirmations();
+        if (_numConfirmationsRequired == 0 || _numConfirmationsRequired > _owners.length) {
+            revert InvalidNumberOfConfirmations();
+        }
 
         for (uint256 i = 0; i < _owners.length; i++) {
             address owner = _owners[i];
@@ -191,23 +209,22 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      * @param _timeoutDuration Duration after which the transaction will get expire.
      * @param _data Data payload of the transaction.
      */
-    function submitTransaction(
-        address _to,
-        uint256 _value,
-        uint64 _timeoutDuration,
-        bytes memory _data
-    ) external payable {
+    function submitTransaction(address _to, uint256 _value, uint64 _timeoutDuration, bytes memory _data)
+        external
+        payable
+    {
         onlyOwner(msg.sender);
         if (_to == address(0)) revert InvalidRecipient();
         if (_timeoutDuration > maxTimeoutDuration) revert TimeoutTooLong();
 
         uint256 currentTxIndex = txIndex;
 
-        transactions[currentTxIndex]  = Transaction({
+        transactions[currentTxIndex] = Transaction({
             to: _to,
             timeout: uint64(block.timestamp) + _timeoutDuration,
             value: _value,
-            data: _data
+            data: _data,
+            contentHash: hashTransactionContent(_to, _value, _data)
         });
 
         //We assume the act of submission is an implicit confirmation
@@ -219,14 +236,18 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     }
 
     /**
-     * @dev Function to confirm an existing transaction.
+     * @dev Function to confirm an existing transaction. The caller supplies the digest of the
+     * action it intends to confirm (see hashTransactionContent), so a confirmation names the
+     * action, not merely the slot it was submitted at.
      * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @param _txIndex Index of the transaction to confirm.
+     * @param _contentHash Digest of the intended to/value/data, from hashTransactionContent.
      */
-    function confirmTransaction(uint256 _txIndex) public {
+    function confirmTransaction(uint256 _txIndex, bytes32 _contentHash) public {
         onlyOwner(msg.sender);
         txExists(_txIndex);
         notExpired(_txIndex);
+        contentMatches(_txIndex, _contentHash);
         notConfirmed(_txIndex);
 
         _recordConfirmation(_txIndex, msg.sender);
@@ -235,38 +256,53 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     }
 
     /**
-     * @dev Function to execute a confirmed transaction.
+     * @dev Function to execute a confirmed transaction. The caller supplies the digest of the
+     * action it intends to execute (see hashTransactionContent); a mismatch reverts and leaves
+     * the transaction and its confirmations untouched.
      * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @dev Reverts with ExecutionFailed(bytes data), where data is the target call's raw returndata, if the low-level call fails.
      * @param _txIndex Index of the transaction to execute.
+     * @param _contentHash Digest of the intended to/value/data, from hashTransactionContent.
      */
-    function executeTransaction(uint256 _txIndex) public returns (bytes memory) {
+    function executeTransaction(uint256 _txIndex, bytes32 _contentHash) public returns (bytes memory) {
         onlyOwner(msg.sender);
         txExists(_txIndex);
         notExpired(_txIndex);
 
         Transaction memory transaction = transactions[_txIndex];
-        if (validNumberOfConfirmations(_txIndex) < numConfirmationsRequired)
+        // Inlined rather than routed through contentMatches: transaction is already in memory
+        // here, so comparing its field directly avoids a second SLOAD of the same value. Rejects
+        // a stored digest of bytes32(0) for the same reason contentMatches does - see its
+        // comment - so this path can't be the one where that guard is missing.
+        if (transaction.contentHash == bytes32(0) || transaction.contentHash != _contentHash) {
+            revert TransactionContentMismatch();
+        }
+        if (validNumberOfConfirmations(_txIndex) < numConfirmationsRequired) {
             revert NotEnoughConfirmation();
+        }
 
         removeTransaction(_txIndex);
 
         (bool success, bytes memory data) = transaction.to.call{value: transaction.value}(transaction.data);
-        if (!success) { revert ExecutionFailed(data); }
+        if (!success) revert ExecutionFailed(data);
 
         emit ExecuteTransaction(msg.sender, _txIndex, data);
         return data;
     }
 
     /**
-     * @dev Function to revoke a previously given confirmation for a transaction.
+     * @dev Function to revoke a previously given confirmation for a transaction. The caller
+     * supplies the digest of the action it intends to revoke its confirmation on (see
+     * hashTransactionContent), so a revocation names the action, not merely the slot.
      * @dev Reverts if the transaction has expired; call removeExpiredTransaction to clean it up.
      * @param _txIndex Index of the transaction to revoke confirmation.
+     * @param _contentHash Digest of the intended to/value/data, from hashTransactionContent.
      */
-    function revokeConfirmation(uint256 _txIndex) external {
+    function revokeConfirmation(uint256 _txIndex, bytes32 _contentHash) external {
         onlyOwner(msg.sender);
         txExists(_txIndex);
         notExpired(_txIndex);
+        contentMatches(_txIndex, _contentHash);
         // Gated on raw membership rather than _isOwnerConfirmationValid: an owner whose
         // confirmation went stale (threshold lowered, or removed and re-added) is no longer
         // counted anywhere, but should still be able to clear their own now-inert set entry
@@ -379,10 +415,9 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function updateNumConfirmations(uint256 _numConfirmationsRequired) external {
         onlyMultiSig();
-        if (
-            _numConfirmationsRequired == 0 ||
-            _numConfirmationsRequired > owners.length()
-        ) revert InvalidNumberOfConfirmations();
+        if (_numConfirmationsRequired == 0 || _numConfirmationsRequired > owners.length()) {
+            revert InvalidNumberOfConfirmations();
+        }
 
         if (_numConfirmationsRequired < numConfirmationsRequired) {
             currentEpoch++;
@@ -442,18 +477,10 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      * @return timeout Expiry timestamp of the transaction.
      * @return data Data payload of the transaction.
      */
-    function getTransaction(
-        uint256 _txIndex
-    )
+    function getTransaction(uint256 _txIndex)
         public
         view
-        returns (
-            address to,
-            uint256 value,
-            uint24 numConfirmations,
-            uint64 timeout,
-            bytes memory data
-        )
+        returns (address to, uint256 value, uint24 numConfirmations, uint64 timeout, bytes memory data)
     {
         txExists(_txIndex);
         notExpired(_txIndex);
@@ -478,21 +505,33 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
      */
     function deployContract(bytes memory _creationCode, uint256 _value) external returns (address deployed) {
         onlyMultiSig();
-        if (_creationCode.length == 0) { revert EmptyCreationCode(); }
+        if (_creationCode.length == 0) revert EmptyCreationCode();
 
         assembly ("memory-safe") {
             // CREATE(value, offset, size)
             deployed := create(
-                _value,                         // forward ETH if any
-                add(_creationCode, 0x20),       // skip the length slot
-                mload(_creationCode)            // size of creation code
+                _value, // forward ETH if any
+                add(_creationCode, 0x20), // skip the length slot
+                mload(_creationCode) // size of creation code
             )
         }
         // A failed CREATE leaves the constructor's revert data in the returndata buffer, same as
         // any other failed call; LowLevelCall.returnData() must run before any intervening external
         // call, since that would overwrite the buffer.
-        if (deployed == address(0)) { revert ContractCreationFailed(LowLevelCall.returnData()); }
+        if (deployed == address(0)) revert ContractCreationFailed(LowLevelCall.returnData());
         emit ContractDeployed(deployed);
+    }
+
+    /**
+     * @notice Returns the content digest stored for a pending transaction - the same value
+     * hashTransactionContent would compute from its to/value/data, without recomputing it.
+     * @param _txIndex Index of the transaction.
+     * @return The transaction's stored content digest.
+     */
+    function getTransactionContentHash(uint256 _txIndex) external view returns (bytes32) {
+        txExists(_txIndex);
+        notExpired(_txIndex);
+        return transactions[_txIndex].contentHash;
     }
 
     /**
@@ -504,5 +543,19 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
         txExists(_txIndex);
         notExpired(_txIndex);
         return validNumberOfConfirmations(_txIndex) >= numConfirmationsRequired;
+    }
+
+    /**
+     * @notice Computes the digest that confirmTransaction and executeTransaction bind to.
+     * @dev Pure: a caller derives this from the action it intends to submit or vote on, without
+     *      reading the wallet's state. Excludes timeout, which is assigned at submission time
+     *      from block.timestamp and so is never part of the caller's intent.
+     * @param _to Target contract address.
+     * @param _value Amount of ETH to send with the transaction.
+     * @param _data Call data payload.
+     * @return keccak256(abi.encode(_to, _value, _data)).
+     */
+    function hashTransactionContent(address _to, uint256 _value, bytes memory _data) public pure returns (bytes32) {
+        return keccak256(abi.encode(_to, _value, _data));
     }
 }
