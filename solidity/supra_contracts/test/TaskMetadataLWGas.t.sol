@@ -5,7 +5,6 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
-import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {WSUPRA} from "../src/WSUPRA.sol";

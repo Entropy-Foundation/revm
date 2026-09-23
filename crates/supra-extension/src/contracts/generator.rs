@@ -44,10 +44,13 @@ sol! {
     }
 }
 
-///////////////////// WSUPRA related contracts /////////////////////////////
-// WSUPRA is a plain, non-upgradeable contract with a no-argument constructor, so it needs
-// neither an `initialize` API nor a proxy — it is deployed directly.
+///////////////////// WSUPRA related contracts and init APIs /////////////////////////////
 const WSUPRA: &str = "WSUPRA";
+sol! {
+    contract Wsupra {
+         function initialize(address _initialOwner);
+    }
+}
 
 ///////////////////// Block Meta related contracts and init APIs /////////////////////////////
 const BLOCK_META: &str = "BlockMeta";
@@ -195,7 +198,7 @@ impl GenesisTransactionGenerator {
                 .expect("Foundation wallet deployment address should be set");
 
             // WSUPRA contract
-            let wsupra_contract = self.setup_wsupra()?;
+            let wsupra_contract = self.setup_wsupra(multisig_address)?;
             let wsupra_address = *wsupra_contract
                 .get(&GenesisTransactionTags::Wsupra)
                 .expect("Wsupra deployment transaction exists")
@@ -312,32 +315,66 @@ impl GenesisTransactionGenerator {
         ]))
     }
 
-    /// Generates genesis transaction for WSUPRA (Wrapped Supra) token contract deployment.
-    /// WSUPRA is a plain, non-upgradeable contract with a no-argument constructor, so it is
-    /// deployed directly in a single transaction — no implementation/proxy pair and no
-    /// initializer call are needed.
-    fn setup_wsupra(&mut self) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
+    /// Generates genesis transactions for WSUPRA (Wrapped Supra) token contract deployment.
+    /// Deployment order follows GenesisTransactionTags:
+    ///  1. WsupraImpl (nonce+0) - WSUPRA implementation contract (UUPS upgradeable)
+    ///  2. Wsupra (nonce+1) - ERC1967Proxy with initialize(initialOwner)
+    ///
+    /// WSUPRA is a UUPS upgradeable contract deployed behind an ERC1967Proxy.
+    /// The proxy pattern allows future upgrades while maintaining the same address.
+    /// The initial owner (typically the foundation multisig wallet) receives
+    /// administrative privileges over the token contract, including upgrade authorization.
+    fn setup_wsupra(
+        &mut self,
+        initial_owner: Address,
+    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
         // -------------------------------------------------------------------------
-        // Pre-compute deployment address
+        // Pre-compute all deployment addresses
+        // nonce+0: WSUPRA Implementation
+        // nonce+1: WSUPRA Proxy(ERC2967Proxy)
         // -------------------------------------------------------------------------
-        let wsupra_address = self.address.create(self.nonce);
+        let wsupra_impl_address = self.address.create(self.nonce);
+        let wsupra_address = self.address.create(self.nonce + 1);
 
         // -------------------------------------------------------------------------
-        // Deploy WSUPRA
+        // 1. Deploy WSUPRA implementation (UUPS - no constructor args)
         // -------------------------------------------------------------------------
-        let wsupra_create_data = Self::load_contract_bytecode(WSUPRA)?;
-        let wsupra_txn = GenesisTransaction::create(
+        let wsupra_impl_data = Self::load_contract_bytecode(WSUPRA)?;
+        let wsupra_impl_txn = GenesisTransaction::create(
             self.address,
-            wsupra_create_data,
+            wsupra_impl_data,
             self.nonce,
-            wsupra_address,
+            wsupra_impl_address,
         );
         self.nonce += 1;
 
-        Ok(BTreeMap::from([(
-            GenesisTransactionTags::Wsupra,
-            wsupra_txn,
-        )]))
+        // -------------------------------------------------------------------------
+        // 2. Deploy WSUPRA Proxy (ERC1967Proxy)
+        // Constructor args: implementation address, initialization data
+        // Initialization data: initialize(initialOwner)
+        // -------------------------------------------------------------------------
+        let proxy_impl_data = Self::load_contract_bytecode(ERC1967PROXY)?;
+        // Encode Wsupra initialize call
+        let wsupra_init_args = Wsupra::initializeCall {
+            _initialOwner: initial_owner,
+        }
+        .abi_encode();
+        // Encode the ERC1967Proxy constructor args
+        let proxy_args = ERC1967Proxy::constructorCall {
+            _impl: wsupra_impl_address,
+            _data: wsupra_init_args.into(),
+        }
+        .abi_encode();
+        // Concatenate bytecode + constructor args for deployment
+        let proxy_txn_data = [proxy_impl_data, proxy_args].concat();
+        let wsupra_proxy_txn =
+            GenesisTransaction::create(self.address, proxy_txn_data, self.nonce, wsupra_address);
+        self.nonce += 1;
+
+        Ok(BTreeMap::from([
+            (GenesisTransactionTags::WsupraImpl, wsupra_impl_txn),
+            (GenesisTransactionTags::Wsupra, wsupra_proxy_txn),
+        ]))
     }
 
     /// Generates genesis transactions for BlockMeta contract deployment.
@@ -734,6 +771,7 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::Create2Factory));
         assert!(result.contains_key(&GenesisTransactionTags::FoundationWallet));
         assert!(result.contains_key(&GenesisTransactionTags::BlockMetadata));
+        assert!(result.contains_key(&GenesisTransactionTags::WsupraImpl));
         assert!(result.contains_key(&GenesisTransactionTags::Wsupra));
         // Verify automation contracts are not deployed
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondCutFacet));

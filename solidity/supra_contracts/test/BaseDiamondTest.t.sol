@@ -32,8 +32,11 @@ abstract contract BaseDiamondTest is Test {
         vm.deal(alice, 500 ether);
 
         vm.startPrank(admin);
-        wsupra = new WSUPRA();
-        
+        WSUPRA impl = new WSUPRA();
+        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (admin));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        wsupra = WSUPRA(payable(address(proxy)));
+
         defaultParams = LibDiamondUtils.defaultInitParams();
         deployment = LibDiamondUtils.deploy(admin, address(wsupra), defaultParams);
         diamondAddr = deployment.diamond;

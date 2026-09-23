@@ -115,7 +115,10 @@ contract AutomationFeeMultiplierTest is Test {
 
         // Deploy WSUPRA (the Diamond requires a valid contract address).
         vm.startPrank(admin);
-        wsupra = new WSUPRA();
+        WSUPRA impl = new WSUPRA();
+        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (admin));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        wsupra = WSUPRA(payable(address(proxy)));
         vm.stopPrank();
 
         // Deploy the diamond with the user-specified config.

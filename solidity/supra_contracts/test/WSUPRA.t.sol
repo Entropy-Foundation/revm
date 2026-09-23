@@ -4,8 +4,15 @@ pragma solidity 0.8.34;
 import {Test} from "forge-std/Test.sol";
 import {Errors} from "@openzeppelin/contracts/utils/Errors.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ERC20PermitUpgradeable} from
+    "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {WSUPRA} from "../src/WSUPRA.sol";
 import {IWSUPRA} from "../src/interfaces/IWSUPRA.sol";
+import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 contract WSUPRATest is Test {
     WSUPRA wsupra;
@@ -19,15 +26,45 @@ contract WSUPRATest is Test {
         vm.deal(bob, 50 ether);
 
         vm.startPrank(deployer);
-        wsupra = new WSUPRA();
+        WSUPRA impl = new WSUPRA();
+        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (deployer));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        wsupra = WSUPRA(payable(address(proxy)));
         vm.stopPrank();
     }
 
     /// @dev Test to ensure all state variables are initialized correctly.
     function testDeployment() public view {
+        assertEq(wsupra.owner(), deployer);
         assertEq(wsupra.name(), "Wrapped Supra");
         assertEq(wsupra.symbol(), "WSUPRA");
         assertEq(wsupra.decimals(), 18);
+    }
+
+    /// @dev Test to ensure initialization reverts with invalid owner address.
+    function testInitializeRevertsWithInvalidOwner() public {
+        vm.startPrank(deployer);
+        WSUPRA impl = new WSUPRA();
+        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (address(0)));
+
+        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
+        new ERC1967Proxy(address(impl), initData);
+        vm.stopPrank();
+    }
+
+    /// @dev Test to ensure 'initialize' cannot be called a second time on the proxy.
+    function testCannotReinitialize() public {
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        wsupra.initialize(alice);
+    }
+
+    /// @dev Test to ensure the implementation contract itself can never be initialized
+    /// directly, since its constructor disables initializers on deployment.
+    function testImplementationCannotBeInitializedDirectly() public {
+        WSUPRA impl = new WSUPRA();
+
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        impl.initialize(alice);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'deposit' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -177,6 +214,28 @@ contract WSUPRATest is Test {
         assertEq(wsupra.balanceOf(address(rejector)), 1 ether);
     }
 
+    /// @notice Test to ensure 'withdraw' cannot be reentered to double-spend the same balance.
+    /// @dev The token balance is burned before the native transfer (checks-effects-interactions),
+    /// so a reentrant 'withdraw' call sees a zero balance and reverts with
+    /// 'ERC20InsufficientBalance', which bubbles up and fails the whole outer transaction.
+    function testWithdrawReentrancyCannotDoubleSpend() public {
+        ReentrantWithdrawer attacker = new ReentrantWithdrawer(wsupra);
+
+        vm.deal(address(attacker), 1 ether);
+        vm.prank(address(attacker));
+        wsupra.deposit{value: 1 ether}();
+        assertEq(wsupra.balanceOf(address(attacker)), 1 ether);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, address(attacker), 0, 1 ether)
+        );
+        attacker.attack(1 ether);
+
+        // State is unchanged since the whole transaction reverted.
+        assertEq(wsupra.balanceOf(address(attacker)), 1 ether);
+        assertEq(address(wsupra).balance, 1 ether);
+    }
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Additional test cases for WSUPRA ::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Test to ensure transfer of tokens between users works correctly.
@@ -211,7 +270,30 @@ contract WSUPRATest is Test {
         assertEq(wsupra.allowance(alice, bob), 1 ether);
     }
 
-    /// @dev Test to ensure 'totalSupply' is equal to the balance of WSUPRA contract. 
+    /// @dev Test to ensure 'transfer' reverts when sent to the zero address.
+    function testTransferRevertsToZeroAddress() public {
+        vm.prank(alice);
+        wsupra.deposit{value: 1 ether}();
+
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)));
+        vm.prank(alice);
+        wsupra.transfer(address(0), 1 ether);
+    }
+
+    /// @dev Test to ensure 'transferFrom' reverts if the allowance is insufficient.
+    function testTransferFromRevertsIfInsufficientAllowance() public {
+        vm.prank(alice);
+        wsupra.deposit{value: 1 ether}();
+
+        vm.prank(alice);
+        wsupra.approve(bob, 0.5 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, bob, 0.5 ether, 1 ether));
+        vm.prank(bob);
+        wsupra.transferFrom(alice, bob, 1 ether);
+    }
+
+    /// @dev Test to ensure 'totalSupply' is equal to the balance of WSUPRA contract.
     function testTotalSupplyEqualsContractBalance() public {
         vm.prank(alice);
         wsupra.deposit{value: 3 ether}();
@@ -228,6 +310,163 @@ contract WSUPRATest is Test {
         assertEq(wsupra.balanceOf(alice), 2 ether);
         assertEq(wsupra.balanceOf(bob), 0);
     }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'upgradeToAndCall' :::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'upgradeToAndCall' upgrades the proxy to a new implementation while preserving state.
+    function testUpgradeToAndCall() public {
+        vm.prank(alice);
+        wsupra.deposit{value: 5 ether}();
+        assertEq(wsupra.balanceOf(alice), 5 ether);
+
+        vm.prank(deployer);
+        WSUPRA newImpl = new WSUPRA();
+
+        vm.prank(deployer);
+        wsupra.upgradeToAndCall(address(newImpl), "");
+
+        assertEq(address(uint160(uint256(vm.load(address(wsupra), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
+
+        // Existing balance and behavior are preserved after the upgrade.
+        assertEq(wsupra.balanceOf(alice), 5 ether);
+
+        vm.prank(alice);
+        wsupra.deposit{value: 2 ether}();
+        assertEq(wsupra.balanceOf(alice), 7 ether);
+    }
+
+    /// @dev Test to ensure 'upgradeToAndCall' reverts if caller is not the owner.
+    function testUpgradeToAndCallRevertsIfNotOwner() public {
+        vm.prank(deployer);
+        WSUPRA newImpl = new WSUPRA();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        wsupra.upgradeToAndCall(address(newImpl), "");
+    }
+
+    /// @dev Test to ensure 'upgradeToAndCall' reverts when the new implementation doesn't
+    /// implement the UUPS 'proxiableUUID' contract, since ERC1967Utils can't safely verify it.
+    function testUpgradeRevertsIfNewImplementationNotUUPS() public {
+        NotUUPSCompliant badImpl = new NotUUPSCompliant();
+
+        vm.expectRevert(abi.encodeWithSelector(ERC1967Utils.ERC1967InvalidImplementation.selector, address(badImpl)));
+        vm.prank(deployer);
+        wsupra.upgradeToAndCall(address(badImpl), "");
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to ownership :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Test to ensure 'transferOwnership' moves upgrade authority to the new owner.
+    function testTransferOwnership() public {
+        vm.prank(deployer);
+        wsupra.transferOwnership(alice);
+        assertEq(wsupra.owner(), alice);
+
+        WSUPRA newImpl = new WSUPRA();
+
+        // The former owner can no longer upgrade.
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, deployer));
+        vm.prank(deployer);
+        wsupra.upgradeToAndCall(address(newImpl), "");
+
+        // The new owner can.
+        vm.prank(alice);
+        wsupra.upgradeToAndCall(address(newImpl), "");
+        assertEq(address(uint160(uint256(vm.load(address(wsupra), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
+    }
+
+    /// @notice Test to ensure 'renounceOwnership' permanently blocks future upgrades.
+    /// @dev This is an irreversible foot-gun specific to an upgradeable contract: once
+    /// ownership is renounced, 'upgradeToAndCall' can never be called by anyone again.
+    function testRenounceOwnershipBlocksFutureUpgrades() public {
+        vm.prank(deployer);
+        wsupra.renounceOwnership();
+        assertEq(wsupra.owner(), address(0));
+
+        WSUPRA newImpl = new WSUPRA();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, deployer));
+        vm.prank(deployer);
+        wsupra.upgradeToAndCall(address(newImpl), "");
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'permit' :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    uint256 constant PERMIT_SIGNER_KEY = 0xA11CE5;
+    address permitSigner = vm.addr(PERMIT_SIGNER_KEY);
+
+    /// @dev Signs an EIP-2612 permit for `permitSigner` using the given key over the current domain separator.
+    function _signPermit(uint256 signerKey, address spender, uint256 value, uint256 deadline)
+        internal
+        view
+        returns (uint8 v, bytes32 r, bytes32 s)
+    {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                permitSigner,
+                spender,
+                value,
+                wsupra.nonces(permitSigner),
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", wsupra.DOMAIN_SEPARATOR(), structHash));
+        (v, r, s) = vm.sign(signerKey, digest);
+    }
+
+    /// @dev Test to ensure 'permit' approves a spender via signature, usable immediately with 'transferFrom'.
+    function testPermitApprovesSpenderViaSignature() public {
+        vm.deal(permitSigner, 5 ether);
+        vm.prank(permitSigner);
+        wsupra.deposit{value: 5 ether}();
+
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(PERMIT_SIGNER_KEY, bob, 3 ether, deadline);
+
+        wsupra.permit(permitSigner, bob, 3 ether, deadline, v, r, s);
+        assertEq(wsupra.allowance(permitSigner, bob), 3 ether);
+        assertEq(wsupra.nonces(permitSigner), 1);
+
+        vm.prank(bob);
+        wsupra.transferFrom(permitSigner, bob, 3 ether);
+        assertEq(wsupra.balanceOf(bob), 3 ether);
+    }
+
+    /// @dev Test to ensure 'permit' reverts once its deadline has passed.
+    function testPermitRevertsIfDeadlineExpired() public {
+        uint256 deadline = block.timestamp + 1;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(PERMIT_SIGNER_KEY, bob, 1 ether, deadline);
+
+        vm.warp(deadline + 1);
+
+        vm.expectRevert(abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612ExpiredSignature.selector, deadline));
+        wsupra.permit(permitSigner, bob, 1 ether, deadline, v, r, s);
+    }
+
+    /// @dev Test to ensure 'permit' reverts if the signature was not produced by the claimed owner.
+    function testPermitRevertsIfSignerMismatched() public {
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 wrongKey = 0xBADD1e;
+        address wrongSigner = vm.addr(wrongKey);
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                permitSigner,
+                bob,
+                1 ether,
+                wsupra.nonces(permitSigner),
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", wsupra.DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, digest);
+
+        vm.expectRevert(abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612InvalidSigner.selector, wrongSigner, permitSigner));
+        wsupra.permit(permitSigner, bob, 1 ether, deadline, v, r, s);
+    }
 }
 
 /// @notice Helper contract that rejects all incoming native token transfers.
@@ -235,3 +474,30 @@ contract RejectReceive {
     fallback() external payable { revert(); }
     receive() external payable { revert(); }
 }
+
+/// @notice Helper contract that attempts to reenter 'withdraw' from within its 'receive' hook.
+contract ReentrantWithdrawer {
+    WSUPRA public wsupra;
+    uint256 public reentryAmount;
+    bool public reentered;
+
+    constructor(WSUPRA _wsupra) {
+        wsupra = _wsupra;
+    }
+
+    function attack(uint256 amount) external {
+        reentryAmount = amount;
+        wsupra.withdraw(amount);
+    }
+
+    receive() external payable {
+        if (!reentered) {
+            reentered = true;
+            wsupra.withdraw(reentryAmount);
+        }
+    }
+}
+
+/// @notice Helper contract used to test that upgrading to a non-UUPS-compliant
+/// implementation reverts, since it exposes no 'proxiableUUID' function.
+contract NotUUPSCompliant {}
