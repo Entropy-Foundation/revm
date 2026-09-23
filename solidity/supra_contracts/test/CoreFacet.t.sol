@@ -12,7 +12,7 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {WSUPRA} from "../src/WSUPRA.sol";
+import {WrappedSupra} from "../src/WrappedSupra.sol";
 
 contract CoreFacetTest is BaseDiamondTest {
 
@@ -736,7 +736,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @dev Registers a GST with an explicit maxGasAmount (registerGst hardcodes 100_000).
     function registerGstWithGas(address _diamond, uint64 _duration, uint128 _maxGasAmount) internal {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WSUPRA.withdraw, 100));
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
         bytes memory predicate = createPredicate(_diamond);
 
         vm.prank(bob);
@@ -1642,7 +1642,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint128 cap = 450 ether;
 
         IRegistryFacet(diamondAddr).register(
-            createPayload(0, address(wsupra), abi.encodeCall(WSUPRA.withdraw, uint128(100))),
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, uint128(100))),
             createPredicate(diamondAddr),
             uint64(block.timestamp + 2450),
             uint128(11_000_000),

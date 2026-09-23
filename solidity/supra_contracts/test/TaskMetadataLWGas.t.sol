@@ -7,7 +7,7 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {WSUPRA} from "../src/WSUPRA.sol";
+import {WrappedSupra} from "../src/WrappedSupra.sol";
 
 /// @notice Gas-comparison tests proving that task charging/lifecycle branches which do NOT
 /// delete the task from storage (dropOrChargeTask's "stays active" branch, and cancelTask's
@@ -29,7 +29,7 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
     uint256 constant GAS_TOLERANCE = 5_000;
 
     function lightPayload() internal view returns (bytes memory) {
-        return createPayload(0, address(wsupra), abi.encodeCall(WSUPRA.withdraw, 100));
+        return createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
     }
 
     /// @dev payloadTx is only length-checked (>= 4 bytes) and decoded at registration time in
@@ -37,7 +37,7 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
     /// the VM signer) — so padding the inner call data with junk bytes is a safe way to inflate
     /// its size without affecting any validation.
     function heavyPayload() internal view returns (bytes memory) {
-        bytes memory paddedCallData = abi.encodePacked(abi.encodeCall(WSUPRA.withdraw, 100), new bytes(5_000));
+        bytes memory paddedCallData = abi.encodePacked(abi.encodeCall(WrappedSupra.withdraw, 100), new bytes(5_000));
         return createPayload(0, address(wsupra), paddedCallData);
     }
 

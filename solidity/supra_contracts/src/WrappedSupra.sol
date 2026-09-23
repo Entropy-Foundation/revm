@@ -7,11 +7,11 @@ import {ERC20PermitUpgradeable} from
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {IWSUPRA} from "../src/interfaces/IWSUPRA.sol";
+import {IWrappedSupra} from "../src/interfaces/IWrappedSupra.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 /// @notice Wrapped Supra implementation.
-contract WSUPRA is ERC20Upgradeable, ERC20PermitUpgradeable, IWSUPRA, OwnableUpgradeable, UUPSUpgradeable {
+contract WrappedSupra is ERC20Upgradeable, ERC20PermitUpgradeable, IWrappedSupra, OwnableUpgradeable, UUPSUpgradeable {
     using Address for address payable;
     using LibUtils for address;
 
@@ -26,7 +26,7 @@ contract WSUPRA is ERC20Upgradeable, ERC20PermitUpgradeable, IWSUPRA, OwnableUpg
         _disableInitializers();
     }
 
-    /// @notice Initializes the WSUPRA token contract.
+    /// @notice Initializes the WrappedSupra token contract.
     /// @param _initialOwner Address that will be assigned ownership of the contract.
     function initialize(address _initialOwner) public initializer {
         _initialOwner.validateAddress();

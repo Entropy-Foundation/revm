@@ -459,9 +459,9 @@ library LibCore {
                 _regHash
             );
         } else {
-            address wsupra = s.wsupra;
-            uint256 userBalance = IERC20(wsupra).balanceOf(_owner);
-            uint256 allowance = IERC20(wsupra).allowance(_owner, address(this));
+            address erc20Supra = s.erc20Supra;
+            uint256 userBalance = IERC20(erc20Supra).balanceOf(_owner);
+            uint256 allowance = IERC20(erc20Supra).allowance(_owner, address(this));
             
             if (userBalance < _fee || allowance < _fee) {
                 // If the user hasn't granted enough allowance or if they don't have enough balance, remove the task.
@@ -483,7 +483,7 @@ library LibCore {
             } else {
                 if (_fee != 0)  {
                     // Charge the fee    
-                    bool sent = IERC20(wsupra).transferFrom(_owner, address(this), _fee);
+                    bool sent = IERC20(erc20Supra).transferFrom(_owner, address(this), _fee);
                     if (!sent) { revert ICoreFacet.TransferFailed(); }
 
                     fees = _fee;

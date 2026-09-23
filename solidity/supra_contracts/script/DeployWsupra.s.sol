@@ -2,7 +2,7 @@
 pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
-import {WSUPRA} from "../src/WSUPRA.sol";
+import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract DeployWsupra is Script {
@@ -15,14 +15,14 @@ contract DeployWsupra is Script {
     function run() public {
         vm.startBroadcast();
 
-        // Deploy WSUPRA implementation
-        WSUPRA impl = new WSUPRA();
-        console.log("WSUPRA implementation deployed at: ", address(impl));
+        // Deploy WrappedSupra implementation
+        WrappedSupra impl = new WrappedSupra();
+        console.log("WrappedSupra implementation deployed at: ", address(impl));
 
-        // Deploy WSUPRA proxy
-        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (owner));
+        // Deploy WrappedSupra proxy
+        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (owner));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        console.log("WSUPRA proxy deployed at: ", address(proxy));
+        console.log("WrappedSupra proxy deployed at: ", address(proxy));
 
         vm.stopBroadcast();
     }

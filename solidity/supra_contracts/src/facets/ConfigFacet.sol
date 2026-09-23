@@ -67,14 +67,14 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         if (_amount == 0) { revert InvalidAmount(); }
         LibUtils.validateAddress(_recipient);
         AppStorage storage s = LibAppStorage.appStorage();
-        uint256 balance = IERC20(s.wsupra).balanceOf(address(this));
+        uint256 balance = IERC20(s.erc20Supra).balanceOf(address(this));
 
         if (balance < _amount) { revert InsufficientBalance(); }
         
         RegistryState storage registryState = LibAppStorage.registryState();
         if (balance - _amount < registryState.cycleLockedFees + registryState.totalDepositedAutomationFees) { revert RequestExceedsLockedBalance(); }
 
-        bool sent = IERC20(s.wsupra).transfer(_recipient, _amount);
+        bool sent = IERC20(s.erc20Supra).transfer(_recipient, _amount);
         if (!sent) { revert TransferFailed(); }
 
         emit RegistryFeeWithdrawn(_recipient, _amount);
@@ -180,9 +180,9 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Returns the WSUPRA address.
-    function wsupra() external view returns (address) {
-        return LibAppStorage.appStorage().wsupra;
+    /// @notice Returns the WrappedSupra token address.
+    function erc20Supra() external view returns (address) {
+        return LibAppStorage.appStorage().erc20Supra;
     }
 
     /// @notice Returns if task registration is enabled.
@@ -217,7 +217,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         selectors[3] = ConfigFacet.disableRegistration.selector;
         selectors[4] = ConfigFacet.withdrawFees.selector;
         selectors[5] = ConfigFacet.updateConfigBuffer.selector;
-        selectors[6] = ConfigFacet.wsupra.selector;
+        selectors[6] = ConfigFacet.erc20Supra.selector;
         selectors[7] = ConfigFacet.isRegistrationEnabled.selector;
         selectors[8] = ConfigFacet.getConfig.selector;
         selectors[9] = ConfigFacet.getConfigBuffer.selector;

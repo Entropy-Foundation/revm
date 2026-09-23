@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {InitParams} from "../src/libraries/DiamondTypes.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {WSUPRA} from "../src/WSUPRA.sol";
+import {WrappedSupra} from "../src/WrappedSupra.sol";
 
 /// @notice Tests for calculateAutomationFeeMultiplierForCommittedOccupancy.
 ///
@@ -95,7 +95,7 @@ contract AutomationFeeMultiplierTest is Test {
     // ── Addresses / contracts ──────────────────────────────────────────────
     address admin   = address(0xA11CE);
     address bridge  = address(0xBEEF);
-    WSUPRA wsupra;
+    WrappedSupra wsupra;
     address testDiamond;
 
     // ── TX-hash precompile required by BaseDiamondTest infra ──────────────
@@ -113,12 +113,12 @@ contract AutomationFeeMultiplierTest is Test {
             abi.encode(keccak256("txHash"))
         );
 
-        // Deploy WSUPRA (the Diamond requires a valid contract address).
+        // Deploy WrappedSupra (the Diamond requires a valid contract address).
         vm.startPrank(admin);
-        WSUPRA impl = new WSUPRA();
-        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (admin));
+        WrappedSupra impl = new WrappedSupra();
+        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (admin));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        wsupra = WSUPRA(payable(address(proxy)));
+        wsupra = WrappedSupra(payable(address(proxy)));
         vm.stopPrank();
 
         // Deploy the diamond with the user-specified config.

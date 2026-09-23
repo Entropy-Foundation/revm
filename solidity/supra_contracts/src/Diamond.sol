@@ -21,12 +21,12 @@ contract Diamond {
     /// @notice Constructor to initialize the diamond with owner and diamond cut facet.
     /// @param _contractOwner The address of the contract owner.
     /// @param _d                  Addresses of all deployed facets and DiamondInit.
-    /// @param _wsupra               WSUPRA contract address passed to DiamondInit.
+    /// @param _erc20Supra         WrappedSupra contract address passed to DiamondInit.
     /// @param _params             Registry configuration passed to DiamondInit.
     constructor(
         address _contractOwner,
         FacetsDeployment memory _d,
-        address _wsupra,
+        address _erc20Supra,
         InitParams memory _params
     ) {
         LibDiamond.setContractOwner(_contractOwner);
@@ -76,7 +76,7 @@ contract Diamond {
             DiamondInit.init,
             (
                 _params,
-                _wsupra
+                _erc20Supra
             )
         );
 

@@ -36,7 +36,7 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 20_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
         assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
-        assertEq(IConfigFacet(diamondAddr).wsupra(), address(wsupra));
+        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(wsupra));
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
 
@@ -247,7 +247,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = MockRegistryFacet.wsupra.selector;
+        selectors[0] = MockRegistryFacet.erc20Supra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -353,7 +353,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IConfigFacet.wsupra.selector;
+        selectors[0] = IConfigFacet.erc20Supra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -366,17 +366,17 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
 
         // Verify selector now points to mockRegistryFacet
-        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.wsupra.selector);
+        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.erc20Supra.selector);
         assertEq(facet, address(mockRegistryFacet));
 
         // Verify logic changed
-        assertEq(IConfigFacet(diamondAddr).wsupra(), address(0x999));
+        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(0x999));
     }
 
     /// @dev Test to ensure replacing a selector with same facet address reverts.
     function testReplaceWithSameFacetReverts() public {
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IConfigFacet.wsupra.selector;
+        selectors[0] = IConfigFacet.erc20Supra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -723,7 +723,7 @@ interface INonExistent {
 }
 
 contract MockRegistryFacet {
-    function wsupra() external pure returns (address) {
+    function erc20Supra() external pure returns (address) {
         return address(0x999);
     }
 

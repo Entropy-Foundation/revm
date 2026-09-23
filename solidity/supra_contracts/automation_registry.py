@@ -51,7 +51,7 @@ def load_environments() -> None:
     ENV = {**load_env_file(".env"), **load_env_file("deployed.env")}
     for k, v in ENV.items():
         os.environ.setdefault(k, v)
-    required = ["RPC_URL", "ERC20_SUPRA", "ERC20_SUPRA_HANDLER", "DIAMOND"]
+    required = ["RPC_URL", "WSUPRA", "DIAMOND"]
     missing = [k for k in required if not ENV.get(k)]
     if missing:
         print(f"❌ Missing required environment variables: {', '.join(missing)}")
@@ -328,11 +328,11 @@ def cmd_native_balance() -> None:
         print(f"  ❌ {e}")
 
 
-def cmd_erc20_supra_balance() -> None:
+def cmd_wsupra_balance() -> None:
     address = prompt_validated("Address", validate_address)
     try:
-        raw = run_cast(["balance", "--erc20", cfg("ERC20_SUPRA"), address, "--rpc-url", cfg("RPC_URL")])
-        _print_supra("ERC20Supra Balance", _first_token(raw))
+        raw = run_cast(["balance", "--erc20", cfg("WSUPRA"), address, "--rpc-url", cfg("RPC_URL")])
+        _print_supra("WSUPRA Balance", _first_token(raw))
     except RuntimeError as e:
         print(f"  ❌ {e}")
 
@@ -341,7 +341,7 @@ def cmd_allowance() -> None:
     address = prompt_validated("Address", validate_address)
     try:
         raw = cast_call(
-            cfg("ERC20_SUPRA"), "allowance(address,address)(uint256)",
+            cfg("WSUPRA"), "allowance(address,address)(uint256)",
             address, cfg("DIAMOND"),
         )
         _print_supra("Allowance to Automation Registry", _first_token(raw))
@@ -411,8 +411,8 @@ def cmd_registry_locked_balance() -> None:
 
 def cmd_registry_balance() -> None:
     try:
-        raw = run_cast(["balance", "--erc20", cfg("ERC20_SUPRA"), cfg("DIAMOND"), "--rpc-url", cfg("RPC_URL")])
-        _print_supra("Automation Registry ERC20Supra Balance", _first_token(raw))
+        raw = run_cast(["balance", "--erc20", cfg("WSUPRA"), cfg("DIAMOND"), "--rpc-url", cfg("RPC_URL")])
+        _print_supra("Automation Registry WSUPRA Balance", _first_token(raw))
     except RuntimeError as e:
         print(f"  ❌ {e}")
 
@@ -459,24 +459,24 @@ def cmd_task_exists() -> None:
 # Commands — write / send
 # ─────────────────────────────────────────────
 
-def cmd_native_to_erc20() -> None:
-    print("Deposit native SUPRA → mint ERC20Supra")
+def cmd_native_to_wsupra() -> None:
+    print("Deposit native SUPRA → mint WSUPRA")
     wei = prompt_validated(
         "Amount to deposit (SUPRA, e.g. 0.5 or 10)",
         validate_decimal_amount, "Amount", unit="ether",
     )
     account = get_keystore_account()
-    send_tx(account, cfg("ERC20_SUPRA_HANDLER"), "deposit()", value_wei=wei)
+    send_tx(account, cfg("WSUPRA"), "deposit()", value_wei=wei)
 
 
 def cmd_approve() -> None:
-    print("Approve ERC20Supra spending for Automation Registry")
+    print("Approve WSUPRA spending for Automation Registry")
     wei = prompt_validated(
         "Amount to approve (SUPRA, e.g. 0.5 or 10)",
         validate_decimal_amount, "Amount", unit="ether",
     )
     account = get_keystore_account()
-    send_tx(account, cfg("ERC20_SUPRA"), "approve(address,uint256)", cfg("DIAMOND"), wei)
+    send_tx(account, cfg("WSUPRA"), "approve(address,uint256)", cfg("DIAMOND"), wei)
 
 
 def _prompt_register_common() -> tuple[str, str, int]:
@@ -560,10 +560,10 @@ def cmd_revoke_authorization() -> None:
 COMMANDS: dict[str, tuple[str, Optional[Callable]]] = {
     "list-accounts":           ("List available keystore accounts",             cmd_list_accounts),
     "native-balance":          ("Show native SUPRA balance",                    cmd_native_balance),
-    "erc20Supra-balance":      ("Show ERC20Supra balance",                      cmd_erc20_supra_balance),
-    "allowance":               ("Check ERC20 approval to registry",             cmd_allowance),
-    "deposit":                 ("Deposit native → mint ERC20Supra",             cmd_native_to_erc20),
-    "approve":                 ("Approve ERC20Supra for fees",                  cmd_approve),
+    "wsupra-balance":          ("Show WSUPRA balance",                          cmd_wsupra_balance),
+    "allowance":               ("Check WSUPRA approval to registry",            cmd_allowance),
+    "deposit":                 ("Deposit native → mint WSUPRA",                 cmd_native_to_wsupra),
+    "approve":                 ("Approve WSUPRA for fees",                      cmd_approve),
     "register":                ("Register a user task",                         cmd_register),
     "register-system":         ("Register a system task",                       cmd_register_system),
     "cancel":                  ("Cancel user task(s)",                          cmd_cancel),
@@ -575,7 +575,7 @@ COMMANDS: dict[str, tuple[str, Optional[Callable]]] = {
     "is-submitter":            ("Check if address is authorized submitter",     cmd_is_submitter),
     "task-details":            ("View details of a task",                       cmd_view_task_details),
     "registry-locked-balance": ("View registry locked balance",                 cmd_registry_locked_balance),
-    "registry-balance":        ("View ERC20Supra balance of registry contract", cmd_registry_balance),
+    "registry-balance":        ("View WSUPRA balance of registry contract",      cmd_registry_balance),
     "task-list":               ("View all task IDs",                            cmd_task_list),
     "total-tasks":             ("View total task count",                        cmd_total_tasks),
     "user-tasks":              ("View tasks belonging to a user",               cmd_user_tasks),
@@ -603,9 +603,8 @@ def main() -> None:
     readline.parse_and_bind("tab: complete")
 
     print("\n=== Contracts Loaded ===")
-    print(f"  ERC20_SUPRA:         {cfg('ERC20_SUPRA')}")
-    print(f"  ERC20_SUPRA_HANDLER: {cfg('ERC20_SUPRA_HANDLER')}")
-    print(f"  DIAMOND:             {cfg('DIAMOND')}")
+    print(f"  WSUPRA:         {cfg('WSUPRA')}")
+    print(f"  DIAMOND:        {cfg('DIAMOND')}")
 
     print_menu()
     while True:

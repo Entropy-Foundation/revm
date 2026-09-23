@@ -46,7 +46,7 @@ interface IConfigFacet {
     // =============================================================
     //                      View functions
     // =============================================================
-    function wsupra() external view returns (address);
+    function erc20Supra() external view returns (address);
     function getConfig() external view returns (Config memory);
     function getConfigBuffer() external view returns (Config memory);
     function isRegistrationEnabled() external view returns (bool);

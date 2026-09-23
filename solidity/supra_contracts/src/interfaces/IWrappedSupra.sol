@@ -3,7 +3,7 @@ pragma solidity 0.8.34;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-interface IWSUPRA is IERC20 {
+interface IWrappedSupra is IERC20 {
     /// @notice Thrown when zero is passed as an amount.
     error InvalidAmount();
 

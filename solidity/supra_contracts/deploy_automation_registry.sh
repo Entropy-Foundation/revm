@@ -24,35 +24,20 @@ echo "=== Deploying contracts ==="
 ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
 export OWNER=$ADDRESS
 
-forge script script/DeployERC20Supra.s.sol:DeployERC20Supra \
+forge script script/DeployWsupra.s.sol:DeployWsupra \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
     --skip-simulation \
     -vvvv > "$DEPLOY_LOG" 2>&1
 
-ERC20_SUPRA=$(extract "ERC20Supra proxy deployed at: ")
-if [[ "$ERC20_SUPRA" == "NOT_FOUND" ]]; then
-    echo "ERROR: ERC20Supra address not found"
+WSUPRA=$(extract "WSUPRA proxy deployed at: ")
+if [[ "$WSUPRA" == "NOT_FOUND" ]]; then
+    echo "ERROR: WSUPRA address not found"
     exit 1
 fi
 
-export ERC20_SUPRA
-
-forge script script/DeployERC20SupraHandler.s.sol:DeployERC20SupraHandler \
-    --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    --broadcast \
-    --skip-simulation \
-    -vvvv >> "$DEPLOY_LOG" 2>&1
-
-ERC20_SUPRA_HANDLER=$(extract "ERC20SupraHandler proxy deployed at: ")
-if [[ "$ERC20_SUPRA_HANDLER" == "NOT_FOUND" ]]; then
-    echo "ERROR: ERC20SupraHandler address not found"
-    exit 1
-fi
-
-export ERC20_SUPRA_HANDLER
+export WSUPRA
 
 forge script script/DeployDiamond.s.sol:DeployDiamond \
     --rpc-url "$RPC_URL" \
@@ -89,8 +74,7 @@ echo ""
 cat <<EOF > "$ENV_FILE"
 # Auto-generated deployment output
 
-ERC20_SUPRA=$ERC20_SUPRA
-ERC20_SUPRA_HANDLER=$ERC20_SUPRA_HANDLER
+WSUPRA=$WSUPRA
 
 DIAMOND_OWNER=$DIAMOND_OWNER
 DIAMOND=$DIAMOND

@@ -10,12 +10,12 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {ERC20PermitUpgradeable} from
     "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
-import {WSUPRA} from "../src/WSUPRA.sol";
-import {IWSUPRA} from "../src/interfaces/IWSUPRA.sol";
+import {WrappedSupra} from "../src/WrappedSupra.sol";
+import {IWrappedSupra} from "../src/interfaces/IWrappedSupra.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 
-contract WSUPRATest is Test {
-    WSUPRA wsupra;
+contract WrappedSupraTest is Test {
+    WrappedSupra wsupra;
 
     address deployer = address(0x123);
     address alice = address(0x456);
@@ -26,10 +26,10 @@ contract WSUPRATest is Test {
         vm.deal(bob, 50 ether);
 
         vm.startPrank(deployer);
-        WSUPRA impl = new WSUPRA();
-        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (deployer));
+        WrappedSupra impl = new WrappedSupra();
+        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (deployer));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        wsupra = WSUPRA(payable(address(proxy)));
+        wsupra = WrappedSupra(payable(address(proxy)));
         vm.stopPrank();
     }
 
@@ -44,8 +44,8 @@ contract WSUPRATest is Test {
     /// @dev Test to ensure initialization reverts with invalid owner address.
     function testInitializeRevertsWithInvalidOwner() public {
         vm.startPrank(deployer);
-        WSUPRA impl = new WSUPRA();
-        bytes memory initData = abi.encodeCall(WSUPRA.initialize, (address(0)));
+        WrappedSupra impl = new WrappedSupra();
+        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (address(0)));
 
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
         new ERC1967Proxy(address(impl), initData);
@@ -61,7 +61,7 @@ contract WSUPRATest is Test {
     /// @dev Test to ensure the implementation contract itself can never be initialized
     /// directly, since its constructor disables initializers on deployment.
     function testImplementationCannotBeInitializedDirectly() public {
-        WSUPRA impl = new WSUPRA();
+        WrappedSupra impl = new WrappedSupra();
 
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         impl.initialize(alice);
@@ -83,7 +83,7 @@ contract WSUPRATest is Test {
     /// @dev Test to ensure 'deposit' emits event.
     function testDepositEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit IWSUPRA.Deposit(alice, 5 ether);
+        emit IWrappedSupra.Deposit(alice, 5 ether);
 
         vm.prank(alice);
         wsupra.deposit{value: 5 ether}();
@@ -91,7 +91,7 @@ contract WSUPRATest is Test {
 
     /// @dev Test to ensure 'deposit' reverts if amount sent is zero.
     function testDepositRevertsIfAmountZero() public {
-        vm.expectRevert(IWSUPRA.InvalidAmount.selector);
+        vm.expectRevert(IWrappedSupra.InvalidAmount.selector);
 
         vm.prank(alice);
         wsupra.deposit{value: 0}();
@@ -113,7 +113,7 @@ contract WSUPRATest is Test {
     /// @dev Test to ensure 'receive' emits event.
     function testReceiveEmitsEvent() public {
         vm.expectEmit(true, true, false, false);
-        emit IWSUPRA.Deposit(alice, 3 ether);
+        emit IWrappedSupra.Deposit(alice, 3 ether);
 
         vm.prank(alice);
         (bool success, ) = address(wsupra).call{value: 3 ether}("");
@@ -126,7 +126,7 @@ contract WSUPRATest is Test {
         (bool success, bytes memory data) = address(wsupra).call{value: 0}("");
 
         assertFalse(success);
-        assertEq(bytes4(data), IWSUPRA.InvalidAmount.selector);
+        assertEq(bytes4(data), IWrappedSupra.InvalidAmount.selector);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'withdraw' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -152,7 +152,7 @@ contract WSUPRATest is Test {
         wsupra.deposit{value: 5 ether}();
 
         vm.expectEmit(true, true, false, false);
-        emit IWSUPRA.Withdrawal(alice, 2 ether);
+        emit IWrappedSupra.Withdrawal(alice, 2 ether);
 
         vm.prank(alice);
         wsupra.withdraw(2 ether);
@@ -185,7 +185,7 @@ contract WSUPRATest is Test {
 
     /// @dev Test to ensure 'withdraw' reverts if requested amount is zero.
     function testWithdrawRevertsIfAmountZero() public {
-        vm.expectRevert(IWSUPRA.InvalidAmount.selector);
+        vm.expectRevert(IWrappedSupra.InvalidAmount.selector);
 
         vm.prank(alice);
         wsupra.withdraw(0);
@@ -320,7 +320,7 @@ contract WSUPRATest is Test {
         assertEq(wsupra.balanceOf(alice), 5 ether);
 
         vm.prank(deployer);
-        WSUPRA newImpl = new WSUPRA();
+        WrappedSupra newImpl = new WrappedSupra();
 
         vm.prank(deployer);
         wsupra.upgradeToAndCall(address(newImpl), "");
@@ -338,7 +338,7 @@ contract WSUPRATest is Test {
     /// @dev Test to ensure 'upgradeToAndCall' reverts if caller is not the owner.
     function testUpgradeToAndCallRevertsIfNotOwner() public {
         vm.prank(deployer);
-        WSUPRA newImpl = new WSUPRA();
+        WrappedSupra newImpl = new WrappedSupra();
 
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
         vm.prank(alice);
@@ -363,7 +363,7 @@ contract WSUPRATest is Test {
         wsupra.transferOwnership(alice);
         assertEq(wsupra.owner(), alice);
 
-        WSUPRA newImpl = new WSUPRA();
+        WrappedSupra newImpl = new WrappedSupra();
 
         // The former owner can no longer upgrade.
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, deployer));
@@ -384,7 +384,7 @@ contract WSUPRATest is Test {
         wsupra.renounceOwnership();
         assertEq(wsupra.owner(), address(0));
 
-        WSUPRA newImpl = new WSUPRA();
+        WrappedSupra newImpl = new WrappedSupra();
 
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, deployer));
         vm.prank(deployer);
@@ -477,11 +477,11 @@ contract RejectReceive {
 
 /// @notice Helper contract that attempts to reenter 'withdraw' from within its 'receive' hook.
 contract ReentrantWithdrawer {
-    WSUPRA public wsupra;
+    WrappedSupra public wsupra;
     uint256 public reentryAmount;
     bool public reentered;
 
-    constructor(WSUPRA _wsupra) {
+    constructor(WrappedSupra _wsupra) {
         wsupra = _wsupra;
     }
 
