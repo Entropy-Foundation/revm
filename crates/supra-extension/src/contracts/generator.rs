@@ -713,7 +713,7 @@ mod tests {
             ),
             (
                 "WrappedSupra",
-                b256!("7935c913ea0beec27471a6040a520f57d29d2597a2ac877653a38624ccec0454"),
+                b256!("253ec527353606582786e79d10344d80dfdf9032a5da9d24ce8bb100c6cae9c9"),
             ),
         ];
 

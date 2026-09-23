@@ -82,7 +82,7 @@ contract WrappedSupraTest is Test {
 
     /// @dev Test to ensure 'deposit' emits event.
     function testDepositEmitsEvent() public {
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true);
         emit IWrappedSupra.Deposit(alice, 5 ether);
 
         vm.prank(alice);
@@ -112,7 +112,7 @@ contract WrappedSupraTest is Test {
 
     /// @dev Test to ensure 'receive' emits event.
     function testReceiveEmitsEvent() public {
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true);
         emit IWrappedSupra.Deposit(alice, 3 ether);
 
         vm.prank(alice);
@@ -151,7 +151,7 @@ contract WrappedSupraTest is Test {
         vm.prank(alice);
         wsupra.deposit{value: 5 ether}();
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true);
         emit IWrappedSupra.Withdrawal(alice, 2 ether);
 
         vm.prank(alice);

@@ -10,12 +10,12 @@ interface IWrappedSupra is IERC20 {
     /// @notice Emitted when native tokens are deposited and WSUPRA tokens are minted 1:1.
     /// @param from Address of the depositor.
     /// @param amount Amount of native tokens deposited.
-    event Deposit(address indexed from, uint256 indexed amount);
+    event Deposit(address indexed from, uint256 amount);
 
     /// @notice Emitted when WSUPRA tokens are burned and native tokens are returned 1:1.
     /// @param to Address that received the native tokens.
     /// @param amount Amount of native tokens withdrawn.
-    event Withdrawal(address indexed to, uint256 indexed amount);
+    event Withdrawal(address indexed to, uint256 amount);
     
     /// @notice Deposits native tokens and mints an equal amount of WSUPRA tokens to the caller.
     function deposit() external payable;
