@@ -326,8 +326,12 @@ impl GenesisTransactionGenerator {
         // Deploy WSUPRA
         // -------------------------------------------------------------------------
         let wsupra_create_data = Self::load_contract_bytecode(WSUPRA)?;
-        let wsupra_txn =
-            GenesisTransaction::create(self.address, wsupra_create_data, self.nonce, wsupra_address);
+        let wsupra_txn = GenesisTransaction::create(
+            self.address,
+            wsupra_create_data,
+            self.nonce,
+            wsupra_address,
+        );
         self.nonce += 1;
 
         Ok(BTreeMap::from([(
