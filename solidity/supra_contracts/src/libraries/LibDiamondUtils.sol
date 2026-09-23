@@ -51,11 +51,11 @@ library LibDiamondUtils {
     ///         and runs DiamondInit atomically.
     function deploy(
         address _owner,
-        address _erc20Supra,
+        address _wsupra,
         InitParams memory _params
     ) internal returns (Deployment memory d) {
         d.facets = deployFacets();
-        d.diamond = address (new Diamond(_owner, d.facets,  _erc20Supra, _params));
+        d.diamond = address (new Diamond(_owner, d.facets, _wsupra, _params));
     }
 
     /// @notice Deploys all facets, DiamondInit.

@@ -114,7 +114,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         }
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         diamond = d.diamond;
         IConfigFacet(diamond).grantAuthorization(bob);
         vm.stopPrank();
@@ -142,14 +142,14 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         bytes[] memory auxData;
         bytes memory payload = createPayload(
             0,
-            address(erc20SupraHandler),
-            abi.encodeCall(erc20SupraHandler.withdraw, 100)
+            address(wsupra),
+            abi.encodeCall(wsupra.withdraw, 100)
         );
         bytes memory predicate = createPredicate(_diamond);
 
         vm.startPrank(alice);
-        erc20SupraHandler.deposit{value: depositAmount}();
-        erc20Supra.approve(_diamond, type(uint256).max);
+        wsupra.deposit{value: depositAmount}();
+        wsupra.approve(_diamond, type(uint256).max);
 
         for (uint256 i = 0; i < _n; i++) {
             IRegistryFacet(_diamond).register(
@@ -172,8 +172,8 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         bytes[] memory auxData;
         bytes memory payload = createPayload(
             0,
-            address(erc20SupraHandler),
-            abi.encodeCall(erc20SupraHandler.withdraw, 100)
+            address(wsupra),
+            abi.encodeCall(wsupra.withdraw, 100)
         );
         bytes memory predicate = createPredicate(_diamond);
         uint64 expiry = uint64(block.timestamp + 86400);

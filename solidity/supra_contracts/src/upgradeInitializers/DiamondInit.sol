@@ -49,10 +49,10 @@ contract DiamondInit is Initializable {
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
-    /// @param _erc20Supra Address of the ERC20Supra contract.
+    /// @param _wsupra Address of the WSUPRA contract.
     function init(
         InitParams memory _params,
-        address _erc20Supra
+        address _wsupra
     ) external initializer {
         AppStorage storage s = LibAppStorage.appStorage();
 
@@ -79,7 +79,7 @@ contract DiamondInit is Initializable {
             _params.sysRegistryMaxGasCap,
             _params.sysTaskCapacity
         );
-        LibUtils.validateContractAddress(_erc20Supra);
+        LibUtils.validateContractAddress(_wsupra);
 
         // ---------------------------------------------------------------------
         //                          Config initialization
@@ -104,7 +104,7 @@ contract DiamondInit is Initializable {
 
         s.automationEnabled = _params.automationEnabled;
         s.registrationEnabled = _params.registrationEnabled;
-        s.erc20Supra = _erc20Supra;
+        s.wsupra = _wsupra;
 
         // Default task-registration input size caps. Generous relative to real CALL-only
         // payloads (CREATE payloads are not supported) — see ConfigFacet.updateDataLengthCaps

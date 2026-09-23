@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {InitParams} from "../src/libraries/DiamondTypes.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {ERC20Supra} from "../src/ERC20Supra.sol";
+import {WSUPRA} from "../src/WSUPRA.sol";
 
 /// @notice Tests for calculateAutomationFeeMultiplierForCommittedOccupancy.
 ///
@@ -95,7 +95,7 @@ contract AutomationFeeMultiplierTest is Test {
     // ── Addresses / contracts ──────────────────────────────────────────────
     address admin   = address(0xA11CE);
     address bridge  = address(0xBEEF);
-    ERC20Supra erc20Supra;
+    WSUPRA wsupra;
     address testDiamond;
 
     // ── TX-hash precompile required by BaseDiamondTest infra ──────────────
@@ -113,14 +113,9 @@ contract AutomationFeeMultiplierTest is Test {
             abi.encode(keccak256("txHash"))
         );
 
-        // Deploy ERC20Supra (the Diamond requires a valid contract address).
+        // Deploy WSUPRA (the Diamond requires a valid contract address).
         vm.startPrank(admin);
-        address[] memory authorized = new address[](1);
-        authorized[0] = bridge;
-        ERC20Supra impl = new ERC20Supra();
-        bytes memory initData = abi.encodeCall(ERC20Supra.initialize, (admin, authorized));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        erc20Supra = ERC20Supra(address(proxy));
+        wsupra = new WSUPRA();
         vm.stopPrank();
 
         // Deploy the diamond with the user-specified config.
@@ -143,7 +138,7 @@ contract AutomationFeeMultiplierTest is Test {
         p.automationBaseFeeWeiPerSec    = automationBaseFee;
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         vm.stopPrank();
         return d.diamond;
     }
@@ -294,7 +289,7 @@ contract AutomationFeeMultiplierTest is Test {
         p.automationBaseFeeWeiPerSec    = 0;
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         vm.stopPrank();
 
         assertEq(_calc(d.diamond, REGISTRY_MAX_GAS), 0,
@@ -315,7 +310,7 @@ contract AutomationFeeMultiplierTest is Test {
         p.automationBaseFeeWeiPerSec    = 0;
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         vm.stopPrank();
 
         assertEq(_calc(d.diamond, REGISTRY_MAX_GAS), 0,
@@ -356,7 +351,7 @@ contract AutomationFeeMultiplierTest is Test {
         p.automationBaseFeeWeiPerSec    = AUTOMATION_BASE_FEE;
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         vm.stopPrank();
 
         uint128 fee = _calc(d.diamond, REGISTRY_MAX_GAS);
@@ -381,7 +376,7 @@ contract AutomationFeeMultiplierTest is Test {
         p.automationBaseFeeWeiPerSec    = AUTOMATION_BASE_FEE;
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         vm.stopPrank();
 
         vm.expectRevert(stdError.arithmeticError);

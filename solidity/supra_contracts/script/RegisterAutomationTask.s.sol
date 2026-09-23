@@ -14,7 +14,7 @@ contract RegisterAutomationTask is Script {
     uint128 taskMaxGas;
     uint128 taskGasPriceCap;
     address registry;
-    address erc20supra;
+    address wsupra;
     address target;
     uint128 amountToTransfer;
 
@@ -25,7 +25,7 @@ contract RegisterAutomationTask is Script {
         taskMaxGas = uint128(vm.envUint("TASK_MAX_GAS"));
         taskGasPriceCap = uint128(vm.envUint("TASK_GAS_PRICE_CAP"));
         registry = vm.envAddress("REGISTRY");
-        erc20supra = vm.envAddress("ERC20SUPRA");
+        wsupra = vm.envAddress("WSUPRA");
         target = vm.envAddress("TARGET");
         amountToTransfer = uint128(vm.envUint("AMOUNT_TO_TRANSFER"));
         automationFeeCap = uint64(vm.envUint("TASK_AUTOMATION_FEE_CAP"));
@@ -43,7 +43,7 @@ contract RegisterAutomationTask is Script {
         uint64 taskIdx = registryFacet.getNextTaskIndex();
         console.log("Next task index ", taskIdx);
 
-        bytes memory payload = createPayload(0, amountToTransfer, target, erc20supra);
+        bytes memory payload = createPayload(0, amountToTransfer, target, wsupra);
         bytes memory predicate = createPredicate(registry);
 
         registryFacet.register(
@@ -79,7 +79,7 @@ contract RegisterGaslessAutomationTask is Script {
     uint64 taskDurationSecs;
     uint128 taskMaxGas;
     address registry;
-    address erc20supra;
+    address wsupra;
     address target;
     uint128 amountToTransfer;
 
@@ -89,7 +89,7 @@ contract RegisterGaslessAutomationTask is Script {
         taskDurationSecs = uint64(vm.envUint("TASK_DURATION_SEC"));
         taskMaxGas = uint128(vm.envUint("TASK_MAX_GAS"));
         registry = vm.envAddress("REGISTRY");
-        erc20supra = vm.envAddress("ERC20SUPRA");
+        wsupra = vm.envAddress("WSUPRA");
         target = vm.envAddress("TARGET");
         amountToTransfer = uint128(vm.envUint("AMOUNT_TO_TRANSFER"));
 
@@ -106,7 +106,7 @@ contract RegisterGaslessAutomationTask is Script {
         uint64 taskIdx = registryFacet.getNextTaskIndex();
         console.log("Next task index ", taskIdx);
 
-        bytes memory payload = createPayload(0, amountToTransfer, target, erc20supra);
+        bytes memory payload = createPayload(0, amountToTransfer, target, wsupra);
         bytes memory predicate = createPredicate(registry);
 
         registryFacet.registerSystemTask(

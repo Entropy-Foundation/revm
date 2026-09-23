@@ -36,7 +36,7 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 20_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
         assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
-        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(erc20Supra));
+        assertEq(IConfigFacet(diamondAddr).wsupra(), address(wsupra));
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
 
@@ -79,14 +79,14 @@ contract DiamondInitTest is BaseDiamondTest {
         vm.prank(admin);
         DiamondInit(diamondAddr).init(
             params,
-            address(erc20Supra)
+            address(wsupra)
         );
     }
     
     /// @dev Test to ensure 'init' can only ever run once (smr-moonshot#3451).
     function testInitCannotBeReplayedViaDiamondCut() public {
         IDiamondCut.FacetCut[] memory emptyCut = new IDiamondCut.FacetCut[](0);
-        bytes memory initCalldata = abi.encodeCall(DiamondInit.init, (defaultParams, address(erc20Supra)));
+        bytes memory initCalldata = abi.encodeCall(DiamondInit.init, (defaultParams, address(wsupra)));
 
         vm.expectRevert(Initializable.InvalidInitialization.selector);
 
@@ -247,7 +247,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = MockRegistryFacet.erc20Supra.selector;
+        selectors[0] = MockRegistryFacet.wsupra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -353,7 +353,7 @@ contract DiamondInitTest is BaseDiamondTest {
         MockRegistryFacet mockRegistryFacet = new MockRegistryFacet();
 
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IConfigFacet.erc20Supra.selector;
+        selectors[0] = IConfigFacet.wsupra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -366,17 +366,17 @@ contract DiamondInitTest is BaseDiamondTest {
         IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
 
         // Verify selector now points to mockRegistryFacet
-        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.erc20Supra.selector);
+        address facet = IDiamondLoupe(diamondAddr).facetAddress(IConfigFacet.wsupra.selector);
         assertEq(facet, address(mockRegistryFacet));
 
         // Verify logic changed
-        assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(0x999));
+        assertEq(IConfigFacet(diamondAddr).wsupra(), address(0x999));
     }
 
     /// @dev Test to ensure replacing a selector with same facet address reverts.
     function testReplaceWithSameFacetReverts() public {
         bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IConfigFacet.erc20Supra.selector;
+        selectors[0] = IConfigFacet.wsupra.selector;
 
         IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -396,26 +396,26 @@ contract DiamondInitTest is BaseDiamondTest {
         vm.startPrank(admin);
         FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         vm.expectRevert(LibDiamond.AddressCannotBeZero.selector);
-        new Diamond(address(0), facets, address(erc20Supra), defaultParams);
+        new Diamond(address(0), facets, address(wsupra), defaultParams);
         vm.stopPrank();
     }
 
-    /// @dev Test to ensure initialization fails if ERC20Supra address is zero.
-    function testInitializeRevertsIfErc20SupraIsZero() public {
+    /// @dev Test to ensure initialization fails if WSUPRA address is zero.
+    function testInitializeRevertsIfWsupraIsZero() public {
         vm.startPrank(admin);
         FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
-        // address(0) as ERC20Supra
+        // address(0) as WSUPRA
         new Diamond(admin, facets, address(0), defaultParams);
         vm.stopPrank();
     }
   
-    /// @dev Test to ensure initialization fails if EOA is passed as ERC20Supra address.
-    function testInitializeRevertsIfErc20SupraIsEoa() public {
+    /// @dev Test to ensure initialization fails if EOA is passed as WSUPRA address.
+    function testInitializeRevertsIfWsupraIsEoa() public {
         vm.startPrank(admin);
         FacetsDeployment memory facets = LibDiamondUtils.deployFacets();
         vm.expectRevert(LibUtils.AddressCannotBeEOA.selector);
-        // EOA address as ERC20Supra
+        // EOA address as WSUPRA
         new Diamond(admin, facets, admin, defaultParams);
         vm.stopPrank();
     }
@@ -444,7 +444,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidTaskDuration.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -472,7 +472,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidRegistryMaxGasCap.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -500,7 +500,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidCongestionThreshold.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -528,7 +528,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidCongestionExponent.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -556,7 +556,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidTaskCapacity.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -583,7 +583,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
         
         vm.expectRevert(LibCommon.InvalidCycleDuration.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
     
@@ -610,7 +610,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidSysTaskDuration.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -637,7 +637,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidSysRegistryMaxGasCap.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -664,7 +664,7 @@ contract DiamondInitTest is BaseDiamondTest {
         });
 
         vm.expectRevert(LibCommon.InvalidSysTaskCapacity.selector);
-        new Diamond(admin, facets, address(erc20Supra), initParams);
+        new Diamond(admin, facets, address(wsupra), initParams);
         vm.stopPrank();
     }
 
@@ -723,7 +723,7 @@ interface INonExistent {
 }
 
 contract MockRegistryFacet {
-    function erc20Supra() external pure returns (address) {
+    function wsupra() external pure returns (address) {
         return address(0x999);
     }
 

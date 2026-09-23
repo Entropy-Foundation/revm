@@ -58,23 +58,23 @@ library LibAccounting {
     ) private returns (bool) {
         AppStorage storage s = LibAppStorage.appStorage();
 
-        address erc20Supra = s.erc20Supra;
-        uint256 balance = IERC20(erc20Supra).balanceOf(address(this));
+        address wsupra = s.wsupra;
+        uint256 balance = IERC20(wsupra).balanceOf(address(this));
         if (balance < _refundableAmount) {
             emit IRegistryFacet.ErrorInsufficientBalanceToRefund(_taskIndex, _taskOwner, _refundType, _refundableAmount);
             return false;
         } else {
-            return _refund(erc20Supra, _taskOwner, _refundableAmount);
+            return _refund(wsupra, _taskOwner, _refundableAmount);
         }
     }
 
     /// @notice Helper function to transfer refunds.
-    /// @param _erc20Supra Address of the ERC20Supra token.
+    /// @param _wsupra Address of the WSUPRA token.
     /// @param _to Recipeint of the refund
     /// @param _amount Amount to refund
     /// @return Bool representing if refund was successful.
-    function _refund(address _erc20Supra, address _to, uint128 _amount) private returns (bool) {
-        bool sent = IERC20(_erc20Supra).transfer(_to, _amount);
+    function _refund(address _wsupra, address _to, uint128 _amount) private returns (bool) {
+        bool sent = IERC20(_wsupra).transfer(_to, _amount);
         if (!sent) { revert IRegistryFacet.TransferFailed(); }
 
         return sent;
@@ -295,10 +295,10 @@ library LibAccounting {
         if (_amount == 0) return;
         AppStorage storage s = LibAppStorage.appStorage();
         
-        address erc20Supra = s.erc20Supra;
-        uint256 balance = IERC20(erc20Supra).balanceOf(address(this));
+        address wsupra = s.wsupra;
+        uint256 balance = IERC20(wsupra).balanceOf(address(this));
         if (balance < _amount) { revert ICoreFacet.InsufficientBalanceForRefund(); }
-        _refund(erc20Supra, _to, _amount);
+        _refund(wsupra, _to, _amount);
     }
 
     /// @notice Calculates the automation fee multiplier for current cycle. 

@@ -53,7 +53,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         uint128 flatRegistrationFee = LibAppStorage.activeConfig().flatRegistrationFeeWei;
         uint128 fee = flatRegistrationFee + _automationFeeCapForCycle;
 
-        bool sent = IERC20(LibAppStorage.appStorage().erc20Supra).transferFrom(msg.sender, address(this), fee);
+        bool sent = IERC20(LibAppStorage.appStorage().wsupra).transferFrom(msg.sender, address(this), fee);
         if (!sent) { revert TransferFailed(); }
 
         emit TaskRegistered(taskIndex, msg.sender, flatRegistrationFee, _automationFeeCapForCycle, registryState.tasks[taskIndex]);

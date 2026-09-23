@@ -8,7 +8,7 @@ import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
+import {WSUPRA} from "../src/WSUPRA.sol";
 
 /// @notice Gas-comparison tests proving that task charging/lifecycle branches which do NOT
 /// delete the task from storage (dropOrChargeTask's "stays active" branch, and cancelTask's
@@ -30,7 +30,7 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
     uint256 constant GAS_TOLERANCE = 5_000;
 
     function lightPayload() internal view returns (bytes memory) {
-        return createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        return createPayload(0, address(wsupra), abi.encodeCall(WSUPRA.withdraw, 100));
     }
 
     /// @dev payloadTx is only length-checked (>= 4 bytes) and decoded at registration time in
@@ -38,8 +38,8 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
     /// the VM signer) — so padding the inner call data with junk bytes is a safe way to inflate
     /// its size without affecting any validation.
     function heavyPayload() internal view returns (bytes memory) {
-        bytes memory paddedCallData = abi.encodePacked(abi.encodeCall(ERC20SupraHandler.withdraw, 100), new bytes(5_000));
-        return createPayload(0, address(erc20SupraHandler), paddedCallData);
+        bytes memory paddedCallData = abi.encodePacked(abi.encodeCall(WSUPRA.withdraw, 100), new bytes(5_000));
+        return createPayload(0, address(wsupra), paddedCallData);
     }
 
     function heavyAuxData() internal pure returns (bytes[] memory auxData) {
@@ -49,13 +49,13 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
         }
     }
 
-    /// @dev Deploys an independent diamond sharing the same ERC20Supra token, so a "light" and a
+    /// @dev Deploys an independent diamond sharing the same WSUPRA token, so a "light" and a
     /// "heavy" task can each be the sole/last task in their own cycle — avoiding the confound of
     /// cycle-transition-finalization overhead (paid only by whichever task is processed last)
     /// leaking into the payload-size comparison.
     function deploySiblingDiamond() internal returns (address) {
         vm.startPrank(admin);
-        Deployment memory dep = LibDiamondUtils.deploy(admin, address(erc20Supra), defaultParams);
+        Deployment memory dep = LibDiamondUtils.deploy(admin, address(wsupra), defaultParams);
         // Raise the default input-size caps so this diamond can accept the intentionally
         // oversized heavyPayload()/heavyAuxData() fixtures used to prove gas-independence.
         IConfigFacet(dep.diamond).updateDataLengthCaps(type(uint16).max, type(uint16).max, type(uint16).max, type(uint16).max);
@@ -68,8 +68,8 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
         bytes memory predicate = createPredicate(_diamond);
 
         vm.startPrank(alice);
-        erc20SupraHandler.deposit{value: 100 ether}();
-        erc20Supra.approve(_diamond, type(uint256).max);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(_diamond, type(uint256).max);
 
         IRegistryFacet(_diamond).register(
             _payload,

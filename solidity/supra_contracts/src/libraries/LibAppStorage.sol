@@ -118,7 +118,7 @@ struct AppStorage {
     
     bool automationEnabled;
     bool registrationEnabled;
-    address erc20Supra;
+    address wsupra;
     EnumerableSet.AddressSet authorizedAccounts;
     mapping(uint256 => Config) configuration;
     bool ifBufferExists;
