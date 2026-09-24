@@ -56,12 +56,12 @@ library LibRandomness {
     /// @notice 32 fresh random bytes, read only if at least `minGasAfterRead` gas remains.
     ///
     /// @dev Reverts with {InsufficientGasForRead} before the read when `gasleft()` is below
-    /// `minGasAfterRead`. Pass the gas the most expensive outcome uses from the read to the end of
-    /// the transaction, including this read and any calls made after it, with a margin. When the
-    /// check passes every outcome can complete, so the sender's gas limit cannot select between
-    /// them. Call it from the function that acts on the value: an internal library function runs
-    /// in the caller's frame, so `gasleft()` here is that frame's remaining gas. See
-    /// {ISupraRandomness-next} for why that is the transaction's remaining gas.
+    /// `minGasAfterRead`. Use it for the first read of the function that acts on the values, and
+    /// pass the gas the most expensive outcome uses from this read to the end of that function,
+    /// including later reads and any calls made after it, with a margin. When the check passes,
+    /// every outcome of the function can complete, so the sender's gas limit cannot select between
+    /// them. An internal library function runs in the caller's frame, so `gasleft()` here is that
+    /// frame's remaining gas; see {ISupraRandomness-next} for what that does and does not cover.
     function valueWithGasLeft(uint256 minGasAfterRead) internal returns (bytes32) {
         uint256 gasLeft = gasleft();
         if (gasLeft < minGasAfterRead) revert InsufficientGasForRead(gasLeft, minGasAfterRead);

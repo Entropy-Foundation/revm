@@ -123,15 +123,19 @@ interface ISupraRandomness {
     /// value. It selects in one direction only: a limit can favour a cheap outcome over an
     /// expensive one, never the reverse.
     ///
-    /// The check before the read is `require(gasleft() >= N)` immediately before calling this
-    /// function, in the same function, where `N` is the gas the most expensive outcome uses from
-    /// the read to the end of the transaction, including this call and any calls made after it.
-    /// When the check passes every outcome can complete, so the gas limit selects nothing; when it
-    /// fails, nothing has been read. Rule 2 is what makes `gasleft()` reliable here: the reading
-    /// frame runs in the transaction's root context, so its remaining gas is the transaction's,
-    /// not a share passed down by a caller. Behind a proxy or a `DELEGATECALL` library the reading
-    /// frame holds less gas than the frame that called it, so the check refuses early rather than
-    /// late. {LibRandomness-valueWithGasLeft} performs the check and the read together. Measure
+    /// The check before the read is `require(gasleft() >= N)` once, immediately before the first
+    /// read, in the function that reads, where `N` is the gas the most expensive outcome uses from
+    /// that read to the end of the function, including every read and every call made after it.
+    /// When the check passes, every outcome of the function can complete, so the gas limit selects
+    /// nothing; when it fails, nothing has been read. `gasleft()` is the reading frame's own
+    /// remaining gas. Rule 2 is stated over the context address, so the reading frame can be a
+    /// sub-frame running in the root context - a proxy's implementation, a `DELEGATECALL` library,
+    /// a self-call, or a batching function such as a `Multicall` that delegatecalls its own
+    /// contract - and its gas is then a share passed down by the frame above it. The check covers
+    /// the reading frame's work only. Work that runs after the frame returns, such as the later
+    /// calls of a batch the sender assembled, can still run out of gas or revert, so a reading
+    /// function must not be reachable through a batching path that continues after it.
+    /// {LibRandomness-valueWithGasLeft} performs the check and the first read together. Measure
     /// `N` with a margin, and measure again after a gas repricing.
     ///
     /// Recording the outcome and settling in a later transaction closes both.
