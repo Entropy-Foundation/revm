@@ -24,7 +24,8 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// > cheap branch's cost completes only the outcomes that fit it. This needs no external call, so
 /// > a contract that never calls out is exposed too.
 ///
-/// Recording the outcome and settling in a later transaction satisfies both.
+/// Recording the outcome and settling in a later transaction satisfies both. {valueWithGasLeft}
+/// satisfies the second when the gas after the read cannot be made independent of the value.
 ///
 /// A transaction that reads and then fails is charged its whole gas limit, except an automation
 /// task's predicate, which is executed free of charge. See {ISupraRandomness-next} for what
@@ -44,8 +45,26 @@ library LibRandomness {
     /// @notice Thrown when the range passed to a `*Range` helper is empty or inverted.
     error EmptyRange(uint256 minIncl, uint256 maxExcl);
 
+    /// @notice Thrown by {valueWithGasLeft} when less gas remains than the caller requires.
+    error InsufficientGasForRead(uint256 gasLeft, uint256 minGasAfterRead);
+
     /// @notice 32 fresh random bytes.
     function value() internal returns (bytes32) {
+        return RANDOMNESS.next();
+    }
+
+    /// @notice 32 fresh random bytes, read only if at least `minGasAfterRead` gas remains.
+    ///
+    /// @dev Reverts with {InsufficientGasForRead} before the read when `gasleft()` is below
+    /// `minGasAfterRead`. Pass the gas the most expensive outcome uses from the read to the end of
+    /// the transaction, including this read and any calls made after it, with a margin. When the
+    /// check passes every outcome can complete, so the sender's gas limit cannot select between
+    /// them. Call it from the function that acts on the value: an internal library function runs
+    /// in the caller's frame, so `gasleft()` here is that frame's remaining gas. See
+    /// {ISupraRandomness-next} for why that is the transaction's remaining gas.
+    function valueWithGasLeft(uint256 minGasAfterRead) internal returns (bytes32) {
+        uint256 gasLeft = gasleft();
+        if (gasLeft < minGasAfterRead) revert InsufficientGasForRead(gasLeft, minGasAfterRead);
         return RANDOMNESS.next();
     }
 

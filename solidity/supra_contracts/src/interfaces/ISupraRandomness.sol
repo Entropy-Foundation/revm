@@ -112,8 +112,9 @@ interface ISupraRandomness {
     /// exactly as a revert does.
     ///
     /// > **After a read, the gas you spend must not depend on the value in a way that makes an
-    /// > outcome the sender would reject the more expensive one.** Equalise the branches, or record
-    /// > the outcome and let a later transaction spend the outcome-dependent gas.
+    /// > outcome the sender would reject the more expensive one.** Equalise the branches, record
+    /// > the outcome and let a later transaction spend the outcome-dependent gas, or check before
+    /// > the read that enough gas remains for the most expensive outcome.
     ///
     /// If one outcome costs more than another, a sender can set a limit that completes the outcome
     /// they want and exhausts the one they do not. The full-gas charge applies to the exhausted
@@ -121,6 +122,17 @@ interface ISupraRandomness {
     /// and an unfavourable outcome is never completed, while each resubmission is served a fresh
     /// value. It selects in one direction only: a limit can favour a cheap outcome over an
     /// expensive one, never the reverse.
+    ///
+    /// The check before the read is `require(gasleft() >= N)` immediately before calling this
+    /// function, in the same function, where `N` is the gas the most expensive outcome uses from
+    /// the read to the end of the transaction, including this call and any calls made after it.
+    /// When the check passes every outcome can complete, so the gas limit selects nothing; when it
+    /// fails, nothing has been read. Rule 2 is what makes `gasleft()` reliable here: the reading
+    /// frame runs in the transaction's root context, so its remaining gas is the transaction's,
+    /// not a share passed down by a caller. Behind a proxy or a `DELEGATECALL` library the reading
+    /// frame holds less gas than the frame that called it, so the check refuses early rather than
+    /// late. {LibRandomness-valueWithGasLeft} performs the check and the read together. Measure
+    /// `N` with a margin, and measure again after a gas repricing.
     ///
     /// Recording the outcome and settling in a later transaction closes both.
     ///
