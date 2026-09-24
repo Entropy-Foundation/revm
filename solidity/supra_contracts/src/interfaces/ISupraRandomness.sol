@@ -130,13 +130,13 @@ interface ISupraRandomness {
     /// nothing; when it fails, nothing has been read. `gasleft()` is the reading frame's own
     /// remaining gas. Rule 2 is stated over the context address, so the reading frame can be a
     /// sub-frame running in the root context - a proxy's implementation, a `DELEGATECALL` library,
-    /// a self-call, or a batching function such as a `Multicall` that delegatecalls its own
-    /// contract - and its gas is then a share passed down by the frame above it. The check covers
-    /// the reading frame's work only. Work that runs after the frame returns, such as the later
-    /// calls of a batch the sender assembled, can still run out of gas or revert, so a reading
-    /// function must not be reachable through a batching path that continues after it.
-    /// {LibRandomness-valueWithGasLeft} performs the check and the first read together. Measure
-    /// `N` with a margin, and measure again after a gas repricing.
+    /// a self-call, a callee calling back into the contract, or a batching function such as a
+    /// `Multicall` that delegatecalls its own contract - and its gas is then a share passed down by
+    /// the frame above it. The check covers the reading frame's work only. Work that runs after the
+    /// frame returns, such as the later calls of a batch the sender assembled, can still run out of
+    /// gas or revert, so a reading function must not be reachable through a batching path that
+    /// continues after it. {LibRandomness-valueWithGasLeft} performs the check and the first read
+    /// together. Measure `N` with a margin, and measure again after a gas repricing.
     ///
     /// Recording the outcome and settling in a later transaction closes both.
     ///
