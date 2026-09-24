@@ -44,13 +44,10 @@ sol! {
     }
 }
 
-///////////////////// WrappedSupra related contracts and init APIs /////////////////////////////
+///////////////////// WrappedSupra related contracts /////////////////////////////
+// WrappedSupra is a plain, non-upgradeable contract with a no-argument constructor, so it
+// needs neither an `initialize` API nor a proxy — it is deployed directly.
 const WRAPPED_SUPRA: &str = "WrappedSupra";
-sol! {
-    contract WrappedSupra {
-         function initialize(address _initialOwner);
-    }
-}
 
 ///////////////////// Block Meta related contracts and init APIs /////////////////////////////
 const BLOCK_META: &str = "BlockMeta";
@@ -198,7 +195,7 @@ impl GenesisTransactionGenerator {
                 .expect("Foundation wallet deployment address should be set");
 
             // WrappedSupra contract
-            let wsupra_contract = self.setup_wsupra(multisig_address)?;
+            let wsupra_contract = self.setup_wsupra()?;
             let wsupra_address = *wsupra_contract
                 .get(&GenesisTransactionTags::WrappedSupra)
                 .expect("WrappedSupra deployment transaction exists")
@@ -315,66 +312,32 @@ impl GenesisTransactionGenerator {
         ]))
     }
 
-    /// Generates genesis transactions for WrappedSupra token contract deployment.
-    /// Deployment order follows GenesisTransactionTags:
-    ///  1. WrappedSupraImpl (nonce+0) - WrappedSupra implementation contract (UUPS upgradeable)
-    ///  2. WrappedSupra (nonce+1) - ERC1967Proxy with initialize(initialOwner)
-    ///
-    /// WrappedSupra is a UUPS upgradeable contract deployed behind an ERC1967Proxy.
-    /// The proxy pattern allows future upgrades while maintaining the same address.
-    /// The initial owner (typically the foundation multisig wallet) receives
-    /// administrative privileges over the token contract, including upgrade authorization.
-    fn setup_wsupra(
-        &mut self,
-        initial_owner: Address,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
+    /// Generates genesis transaction for WrappedSupra token contract deployment.
+    /// WrappedSupra is a plain, non-upgradeable contract with a no-argument constructor, so it
+    /// is deployed directly in a single transaction — no implementation/proxy pair and no
+    /// initializer call are needed.
+    fn setup_wsupra(&mut self) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
         // -------------------------------------------------------------------------
-        // Pre-compute all deployment addresses
-        // nonce+0: WrappedSupra Implementation
-        // nonce+1: WrappedSupra Proxy(ERC1967Proxy)
+        // Pre-compute deployment address
         // -------------------------------------------------------------------------
-        let wsupra_impl_address = self.address.create(self.nonce);
-        let wsupra_address = self.address.create(self.nonce + 1);
+        let wsupra_address = self.address.create(self.nonce);
 
         // -------------------------------------------------------------------------
-        // 1. Deploy WrappedSupra implementation (UUPS - no constructor args)
+        // Deploy WrappedSupra
         // -------------------------------------------------------------------------
-        let wsupra_impl_data = Self::load_contract_bytecode(WRAPPED_SUPRA)?;
-        let wsupra_impl_txn = GenesisTransaction::create(
+        let wsupra_create_data = Self::load_contract_bytecode(WRAPPED_SUPRA)?;
+        let wsupra_txn = GenesisTransaction::create(
             self.address,
-            wsupra_impl_data,
+            wsupra_create_data,
             self.nonce,
-            wsupra_impl_address,
+            wsupra_address,
         );
         self.nonce += 1;
 
-        // -------------------------------------------------------------------------
-        // 2. Deploy WrappedSupra Proxy (ERC1967Proxy)
-        // Constructor args: implementation address, initialization data
-        // Initialization data: initialize(initialOwner)
-        // -------------------------------------------------------------------------
-        let proxy_impl_data = Self::load_contract_bytecode(ERC1967PROXY)?;
-        // Encode WrappedSupra initialize call
-        let wsupra_init_args = WrappedSupra::initializeCall {
-            _initialOwner: initial_owner,
-        }
-        .abi_encode();
-        // Encode the ERC1967Proxy constructor args
-        let proxy_args = ERC1967Proxy::constructorCall {
-            _impl: wsupra_impl_address,
-            _data: wsupra_init_args.into(),
-        }
-        .abi_encode();
-        // Concatenate bytecode + constructor args for deployment
-        let proxy_txn_data = [proxy_impl_data, proxy_args].concat();
-        let wsupra_proxy_txn =
-            GenesisTransaction::create(self.address, proxy_txn_data, self.nonce, wsupra_address);
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::WrappedSupraImpl, wsupra_impl_txn),
-            (GenesisTransactionTags::WrappedSupra, wsupra_proxy_txn),
-        ]))
+        Ok(BTreeMap::from([(
+            GenesisTransactionTags::WrappedSupra,
+            wsupra_txn,
+        )]))
     }
 
     /// Generates genesis transactions for BlockMeta contract deployment.
@@ -713,7 +676,7 @@ mod tests {
             ),
             (
                 "WrappedSupra",
-                b256!("253ec527353606582786e79d10344d80dfdf9032a5da9d24ce8bb100c6cae9c9"),
+                b256!("07a103c15b1a177a6731b820ddf382fe147bb995d591fefc8da2f42081e89740"),
             ),
         ];
 
@@ -771,7 +734,6 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::Create2Factory));
         assert!(result.contains_key(&GenesisTransactionTags::FoundationWallet));
         assert!(result.contains_key(&GenesisTransactionTags::BlockMetadata));
-        assert!(result.contains_key(&GenesisTransactionTags::WrappedSupraImpl));
         assert!(result.contains_key(&GenesisTransactionTags::WrappedSupra));
         // Verify automation contracts are not deployed
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondCutFacet));

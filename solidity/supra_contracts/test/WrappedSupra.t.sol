@@ -4,15 +4,9 @@ pragma solidity 0.8.34;
 import {Test} from "forge-std/Test.sol";
 import {Errors} from "@openzeppelin/contracts/utils/Errors.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
-import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {ERC20PermitUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {IWrappedSupra} from "../src/interfaces/IWrappedSupra.sol";
-import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 contract WrappedSupraTest is Test {
     WrappedSupra wsupra;
@@ -26,45 +20,15 @@ contract WrappedSupraTest is Test {
         vm.deal(bob, 50 ether);
 
         vm.startPrank(deployer);
-        WrappedSupra impl = new WrappedSupra();
-        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (deployer));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        wsupra = WrappedSupra(payable(address(proxy)));
+        wsupra = new WrappedSupra();
         vm.stopPrank();
     }
 
     /// @dev Test to ensure all state variables are initialized correctly.
     function testDeployment() public view {
-        assertEq(wsupra.owner(), deployer);
         assertEq(wsupra.name(), "Wrapped Supra");
         assertEq(wsupra.symbol(), "WSUPRA");
         assertEq(wsupra.decimals(), 18);
-    }
-
-    /// @dev Test to ensure initialization reverts with invalid owner address.
-    function testInitializeRevertsWithInvalidOwner() public {
-        vm.startPrank(deployer);
-        WrappedSupra impl = new WrappedSupra();
-        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (address(0)));
-
-        vm.expectRevert(LibUtils.AddressCannotBeZero.selector);
-        new ERC1967Proxy(address(impl), initData);
-        vm.stopPrank();
-    }
-
-    /// @dev Test to ensure 'initialize' cannot be called a second time on the proxy.
-    function testCannotReinitialize() public {
-        vm.expectRevert(Initializable.InvalidInitialization.selector);
-        wsupra.initialize(alice);
-    }
-
-    /// @dev Test to ensure the implementation contract itself can never be initialized
-    /// directly, since its constructor disables initializers on deployment.
-    function testImplementationCannotBeInitializedDirectly() public {
-        WrappedSupra impl = new WrappedSupra();
-
-        vm.expectRevert(Initializable.InvalidInitialization.selector);
-        impl.initialize(alice);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'deposit' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -311,86 +275,6 @@ contract WrappedSupraTest is Test {
         assertEq(wsupra.balanceOf(bob), 0);
     }
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'upgradeToAndCall' :::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev Test to ensure 'upgradeToAndCall' upgrades the proxy to a new implementation while preserving state.
-    function testUpgradeToAndCall() public {
-        vm.prank(alice);
-        wsupra.deposit{value: 5 ether}();
-        assertEq(wsupra.balanceOf(alice), 5 ether);
-
-        vm.prank(deployer);
-        WrappedSupra newImpl = new WrappedSupra();
-
-        vm.prank(deployer);
-        wsupra.upgradeToAndCall(address(newImpl), "");
-
-        assertEq(address(uint160(uint256(vm.load(address(wsupra), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
-
-        // Existing balance and behavior are preserved after the upgrade.
-        assertEq(wsupra.balanceOf(alice), 5 ether);
-
-        vm.prank(alice);
-        wsupra.deposit{value: 2 ether}();
-        assertEq(wsupra.balanceOf(alice), 7 ether);
-    }
-
-    /// @dev Test to ensure 'upgradeToAndCall' reverts if caller is not the owner.
-    function testUpgradeToAndCallRevertsIfNotOwner() public {
-        vm.prank(deployer);
-        WrappedSupra newImpl = new WrappedSupra();
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
-        vm.prank(alice);
-        wsupra.upgradeToAndCall(address(newImpl), "");
-    }
-
-    /// @dev Test to ensure 'upgradeToAndCall' reverts when the new implementation doesn't
-    /// implement the UUPS 'proxiableUUID' contract, since ERC1967Utils can't safely verify it.
-    function testUpgradeRevertsIfNewImplementationNotUUPS() public {
-        NotUUPSCompliant badImpl = new NotUUPSCompliant();
-
-        vm.expectRevert(abi.encodeWithSelector(ERC1967Utils.ERC1967InvalidImplementation.selector, address(badImpl)));
-        vm.prank(deployer);
-        wsupra.upgradeToAndCall(address(badImpl), "");
-    }
-
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to ownership :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev Test to ensure 'transferOwnership' moves upgrade authority to the new owner.
-    function testTransferOwnership() public {
-        vm.prank(deployer);
-        wsupra.transferOwnership(alice);
-        assertEq(wsupra.owner(), alice);
-
-        WrappedSupra newImpl = new WrappedSupra();
-
-        // The former owner can no longer upgrade.
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, deployer));
-        vm.prank(deployer);
-        wsupra.upgradeToAndCall(address(newImpl), "");
-
-        // The new owner can.
-        vm.prank(alice);
-        wsupra.upgradeToAndCall(address(newImpl), "");
-        assertEq(address(uint160(uint256(vm.load(address(wsupra), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
-    }
-
-    /// @notice Test to ensure 'renounceOwnership' permanently blocks future upgrades.
-    /// @dev This is an irreversible foot-gun specific to an upgradeable contract: once
-    /// ownership is renounced, 'upgradeToAndCall' can never be called by anyone again.
-    function testRenounceOwnershipBlocksFutureUpgrades() public {
-        vm.prank(deployer);
-        wsupra.renounceOwnership();
-        assertEq(wsupra.owner(), address(0));
-
-        WrappedSupra newImpl = new WrappedSupra();
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, deployer));
-        vm.prank(deployer);
-        wsupra.upgradeToAndCall(address(newImpl), "");
-    }
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'permit' :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     uint256 constant PERMIT_SIGNER_KEY = 0xA11CE5;
@@ -441,7 +325,7 @@ contract WrappedSupraTest is Test {
 
         vm.warp(deadline + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612ExpiredSignature.selector, deadline));
+        vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, deadline));
         wsupra.permit(permitSigner, bob, 1 ether, deadline, v, r, s);
     }
 
@@ -464,7 +348,7 @@ contract WrappedSupraTest is Test {
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", wsupra.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, digest);
 
-        vm.expectRevert(abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612InvalidSigner.selector, wrongSigner, permitSigner));
+        vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612InvalidSigner.selector, wrongSigner, permitSigner));
         wsupra.permit(permitSigner, bob, 1 ether, deadline, v, r, s);
     }
 }

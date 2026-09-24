@@ -1,40 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import {ERC20PermitUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IWrappedSupra} from "../src/interfaces/IWrappedSupra.sol";
-import {LibUtils} from "../src/libraries/LibUtils.sol";
 
 /// @notice Wrapped Supra implementation.
-contract WrappedSupra is ERC20Upgradeable, ERC20PermitUpgradeable, IWrappedSupra, OwnableUpgradeable, UUPSUpgradeable {
+contract WrappedSupra is ERC20, ERC20Permit, IWrappedSupra {
     using Address for address payable;
-    using LibUtils for address;
 
-
-    /**
-    * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    *                                                              CONSTRUCTOR AND INITIALIZER
-    * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-    */
-    /// @dev Disables the initialization for the implementation contract.
-    constructor() {
-        _disableInitializers();
-    }
-
-    /// @notice Initializes the WrappedSupra token contract.
-    /// @param _initialOwner Address that will be assigned ownership of the contract.
-    function initialize(address _initialOwner) public initializer {
-        _initialOwner.validateAddress();
-
-        __ERC20_init("Wrapped Supra", "WSUPRA");
-        __ERC20Permit_init("Wrapped Supra");
-        __Ownable_init(_initialOwner);
-    }
+    constructor() ERC20("Wrapped Supra", "WSUPRA") ERC20Permit("Wrapped Supra") {}
 
     /// @notice Deposit native token → Mint WSUPRA 1:1
     function deposit() public payable {
@@ -59,12 +35,4 @@ contract WrappedSupra is ERC20Upgradeable, ERC20PermitUpgradeable, IWrappedSupra
     receive() external payable {
         deposit();
     }
-
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: UPGRADEABILITY FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Helper function that reverts when 'msg.sender' is not authorized to upgrade the contract.
-    /// @dev called by 'upgradeTo' and 'upgradeToAndCall' in UUPSUpgradeable
-    /// @dev must be called by 'owner'
-    /// @param newImplementation address of the new implementation
-    function _authorizeUpgrade(address newImplementation) internal virtual override onlyOwner { }
 }

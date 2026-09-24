@@ -2,7 +2,6 @@
 pragma solidity 0.8.34;
 
 import {Test, stdError} from "forge-std/Test.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {InitParams} from "../src/libraries/DiamondTypes.sol";
@@ -115,10 +114,7 @@ contract AutomationFeeMultiplierTest is Test {
 
         // Deploy WrappedSupra (the Diamond requires a valid contract address).
         vm.startPrank(admin);
-        WrappedSupra impl = new WrappedSupra();
-        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (admin));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        wsupra = WrappedSupra(payable(address(proxy)));
+        wsupra = new WrappedSupra();
         vm.stopPrank();
 
         // Deploy the diamond with the user-specified config.

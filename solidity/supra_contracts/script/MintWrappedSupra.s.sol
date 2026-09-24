@@ -4,7 +4,7 @@ pragma solidity 0.8.34;
 import {Script, console} from "forge-std/Script.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 
-contract MintWsupra is Script {
+contract MintWrappedSupra is Script {
     uint256 value;
     uint256 allowance;
     address wsupraAddr;

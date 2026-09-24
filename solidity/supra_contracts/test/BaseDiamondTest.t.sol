@@ -2,7 +2,6 @@
 pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -32,10 +31,7 @@ abstract contract BaseDiamondTest is Test {
         vm.deal(alice, 500 ether);
 
         vm.startPrank(admin);
-        WrappedSupra impl = new WrappedSupra();
-        bytes memory initData = abi.encodeCall(WrappedSupra.initialize, (admin));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        wsupra = WrappedSupra(payable(address(proxy)));
+        wsupra = new WrappedSupra();
 
         defaultParams = LibDiamondUtils.defaultInitParams();
         deployment = LibDiamondUtils.deploy(admin, address(wsupra), defaultParams);

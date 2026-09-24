@@ -21,17 +21,14 @@ extract() {
 echo ""
 echo "=== Deploying contracts ==="
 
-ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
-export OWNER=$ADDRESS
-
-forge script script/DeployWsupra.s.sol:DeployWsupra \
+forge script script/DeployWrappedSupra.s.sol:DeployWrappedSupra \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
     --skip-simulation \
     -vvvv > "$DEPLOY_LOG" 2>&1
 
-WSUPRA=$(extract "WSUPRA proxy deployed at: ")
+WSUPRA=$(extract "WrappedSupra deployed at: ")
 if [[ "$WSUPRA" == "NOT_FOUND" ]]; then
     echo "ERROR: WSUPRA address not found"
     exit 1
