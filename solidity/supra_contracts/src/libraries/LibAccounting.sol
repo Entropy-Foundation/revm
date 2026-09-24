@@ -69,7 +69,7 @@ library LibAccounting {
     }
 
     /// @notice Helper function to transfer refunds.
-    /// @param _erc20Supra Address of the ERC20Supra token.
+    /// @param _erc20Supra Address of the WrappedSupra token.
     /// @param _to Recipeint of the refund
     /// @param _amount Amount to refund
     /// @return Bool representing if refund was successful.

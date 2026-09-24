@@ -21,7 +21,7 @@ contract Diamond {
     /// @notice Constructor to initialize the diamond with owner and diamond cut facet.
     /// @param _contractOwner The address of the contract owner.
     /// @param _d                  Addresses of all deployed facets and DiamondInit.
-    /// @param _erc20Supra         ERC20Supra contract address passed to DiamondInit.
+    /// @param _erc20Supra         WrappedSupra contract address passed to DiamondInit.
     /// @param _params             Registry configuration passed to DiamondInit.
     constructor(
         address _contractOwner,

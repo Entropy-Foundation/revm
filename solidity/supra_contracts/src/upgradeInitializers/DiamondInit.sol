@@ -49,7 +49,7 @@ contract DiamondInit is Initializable {
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
-    /// @param _erc20Supra Address of the ERC20Supra contract.
+    /// @param _erc20Supra Address of the WrappedSupra contract.
     function init(
         InitParams memory _params,
         address _erc20Supra

@@ -55,7 +55,7 @@ library LibDiamondUtils {
         InitParams memory _params
     ) internal returns (Deployment memory d) {
         d.facets = deployFacets();
-        d.diamond = address (new Diamond(_owner, d.facets,  _erc20Supra, _params));
+        d.diamond = address (new Diamond(_owner, d.facets, _erc20Supra, _params));
     }
 
     /// @notice Deploys all facets, DiamondInit.

@@ -220,14 +220,14 @@ contract ConfigFacetTest is BaseDiamondTest {
     function testWithdrawFees() public {
         registerUst(diamondAddr, 2450);
 
-        assertEq(erc20Supra.balanceOf(admin), 0);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 61.1 ether);
+        assertEq(wsupra.balanceOf(admin), 0);
+        assertEq(wsupra.balanceOf(diamondAddr), 61.1 ether);
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).withdrawFees(1 ether, admin);
 
-        assertEq(erc20Supra.balanceOf(admin), 1 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 60.1 ether);
+        assertEq(wsupra.balanceOf(admin), 1 ether);
+        assertEq(wsupra.balanceOf(diamondAddr), 60.1 ether);
     }
     
     /// @dev Test to ensure 'withdrawFees' emits event 'RegistryFeeWithdrawn'.
@@ -244,7 +244,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'withdrawFees' reverts if ERC20 transfer fails.
     function testWithdrawFeesRevertsIfTransferFails() public {
         FailingERC20 failingToken = new FailingERC20();
-        vm.etch(address(erc20Supra), address(failingToken).code);
+        vm.etch(address(wsupra), address(failingToken).code);
 
         vm.expectRevert(IConfigFacet.TransferFailed.selector);
         

@@ -180,7 +180,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @notice Returns the ERC20Supra address.
+    /// @notice Returns the WrappedSupra token address.
     function erc20Supra() external view returns (address) {
         return LibAppStorage.appStorage().erc20Supra;
     }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, LibAppStorage, RegistryState, TaskMetadata} from "../libraries/LibAppStorage.sol";
+import {LibAppStorage, RegistryState, TaskMetadata} from "../libraries/LibAppStorage.sol";
 import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";

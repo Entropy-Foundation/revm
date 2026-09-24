@@ -65,7 +65,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         p.registryMaxGasCap = uint128(uint256(_capacity) * 100_000 + 1_000_000);
 
         vm.startPrank(admin);
-        Deployment memory d = LibDiamondUtils.deploy(admin, address(erc20Supra), p);
+        Deployment memory d = LibDiamondUtils.deploy(admin, address(wsupra), p);
         diamond = d.diamond;
         vm.stopPrank();
     }
@@ -90,15 +90,15 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         bytes[] memory auxData;
         bytes memory payload = createPayload(
             0,
-            address(erc20SupraHandler),
-            abi.encodeCall(erc20SupraHandler.withdraw, 100)
+            address(wsupra),
+            abi.encodeCall(wsupra.withdraw, 100)
         );
         bytes memory predicate = createPredicate(_diamond);
 
         vm.startPrank(alice);
         // Single bulk deposit — mints depositAmount of ERC20 to alice.
-        erc20SupraHandler.deposit{value: depositAmount}();
-        erc20Supra.approve(_diamond, type(uint256).max);
+        wsupra.deposit{value: depositAmount}();
+        wsupra.approve(_diamond, type(uint256).max);
 
         // Expiry is set to 1 day from the current block.timestamp.
         // Using 3600 (1 hour) was too close to the cycle end (1200 s) when

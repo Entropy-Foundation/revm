@@ -2,7 +2,7 @@
 
 **This repository includes following smart contracts:**
 - MultiSignatureWallet and MultisigBeacon
-- ERC20Supra
+- WrappedSupra
 - BlockMeta
 - Automation Registry smart contracts
     - AutomationCore: manages configuration, refunds, fee accounting and other helper functions 

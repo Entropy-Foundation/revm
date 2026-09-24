@@ -44,18 +44,10 @@ sol! {
     }
 }
 
-///////////////////// ERC20Supra related contracts and init APIs /////////////////////////////
-const ERC20_SUPRA: &str = "ERC20Supra";
-const ERC20_SUPRA_HANDLER: &str = "ERC20SupraHandler";
-sol! {
-    contract ERC20Supra {
-         function initialize(address _initialOwner, address[] memory _authorizedAddresses);
-    }
-
-    contract ERC20SupraHandler {
-         function initialize(address _initialOwner, address _erc20Supra);
-    }
-}
+///////////////////// WrappedSupra related contracts /////////////////////////////
+// WrappedSupra is a plain, non-upgradeable contract with a no-argument constructor, so it
+// needs neither an `initialize` API nor a proxy — it is deployed directly.
+const WRAPPED_SUPRA: &str = "WrappedSupra";
 
 ///////////////////// Block Meta related contracts and init APIs /////////////////////////////
 const BLOCK_META: &str = "BlockMeta";
@@ -202,15 +194,15 @@ impl GenesisTransactionGenerator {
                 .as_ref()
                 .expect("Foundation wallet deployment address should be set");
 
-            // Erc20 Supra contracts
-            let erc20_contracts = self.setup_erc20_contracts(multisig_address)?;
-            let erc20supra_address = *erc20_contracts
-                .get(&GenesisTransactionTags::Erc20Supra)
-                .expect("Erc20Supra deployment transaction exists")
+            // WrappedSupra contract
+            let wsupra_contract = self.setup_wsupra()?;
+            let wsupra_address = *wsupra_contract
+                .get(&GenesisTransactionTags::WrappedSupra)
+                .expect("WrappedSupra deployment transaction exists")
                 .deploy_address()
                 .as_ref()
-                .expect("Erc20Supra deployment address should be set");
-            genesis_transactions.extend(erc20_contracts);
+                .expect("WrappedSupra deployment address should be set");
+            genesis_transactions.extend(wsupra_contract);
 
             // BlockMetadata contract
             genesis_transactions
@@ -220,7 +212,7 @@ impl GenesisTransactionGenerator {
             if let Some(config) = automation_config {
                 genesis_transactions.extend(self.setup_automation_registry(
                     multisig_address,
-                    erc20supra_address,
+                    wsupra_address,
                     config,
                 )?);
             }
@@ -320,184 +312,32 @@ impl GenesisTransactionGenerator {
         ]))
     }
 
-    /// Generates Erc20Supra and Erc20SupraHandler contracts deployment transactions.
-    /// Both are ERC1967Proxy upgradeable contracts, and are deployed in the same transaction
-    /// batch to ensure correct initial authorization setup.
-    fn setup_erc20_contracts(
-        &mut self,
-        owner: Address,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        // Precomputed addresses
-        // nonce + 0: ERC20Supra Impl
-        // nonce + 1: ERC20Supra (Proxy)
-        // nonce + 2: ERC20SupraHandler Impl
-        // nonce + 3: ERC20SupraHandler (Proxy)
-        let erc20_supra_address = self.address.create(self.nonce + 1);
-        let erc20_handler_address = self.address.create(self.nonce + 3);
-
-        // ERC20SupraHandler is the only address authorized to mint and burn ERC20Supra, and
-        // nothing after deployment adds another (Entropy-Foundation/smr-moonshot#3946).
-        let mut erc20_supra_txn = self.setup_erc20_supra(owner, vec![erc20_handler_address])?;
-        let gen_erc20_supra_address = *erc20_supra_txn
-            .get(&GenesisTransactionTags::Erc20Supra)
-            .expect("Erc20Supra should be deployed")
-            .deploy_address()
-            .as_ref()
-            .expect("Erc20Supra deploy address");
-        assert_eq!(
-            erc20_supra_address, gen_erc20_supra_address,
-            "Address computed by tag and nonce should be the same"
-        );
-
-        let erc20_handler_txn = self.setup_erc20_supra_handler(owner, gen_erc20_supra_address)?;
-        let gen_erc20_handler_address = *erc20_handler_txn
-            .get(&GenesisTransactionTags::Erc20SupraHandler)
-            .expect("Erc20SupraHandler should be deployed")
-            .deploy_address()
-            .as_ref()
-            .expect("Erc20SupraHandler deploy address");
-
-        assert_eq!(
-            erc20_handler_address, gen_erc20_handler_address,
-            "Address computed by tag and nonce should be the same"
-        );
-
-        erc20_supra_txn.extend(erc20_handler_txn);
-        Ok(erc20_supra_txn)
-    }
-
-    /// Generates genesis transaction for ERC20Supra token contract deployment.
-    /// Deployment order follows GenesisTransactionTags:
-    ///  1. ERC20SupraImpl (nonce+0) - ERC20Supra implementation contract (UUPS upgradeable)
-    ///  2. ERC20Supra (nonce+1) - ERC1967Proxy with initialize(initialOwner, authorizedAddresses[])
-    ///
-    /// The initial owner (typically the foundation multisig wallet) receives
-    /// administrative privileges over the token contract.
-    fn setup_erc20_supra(
-        &mut self,
-        initial_owner: Address,
-        authorized_addresses: Vec<Address>,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
+    /// Generates genesis transaction for WrappedSupra token contract deployment.
+    /// WrappedSupra is a plain, non-upgradeable contract with a no-argument constructor, so it
+    /// is deployed directly in a single transaction — no implementation/proxy pair and no
+    /// initializer call are needed.
+    fn setup_wsupra(&mut self) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
         // -------------------------------------------------------------------------
         // Pre-compute deployment address
         // -------------------------------------------------------------------------
-        let erc20_supra_address_impl = self.address.create(self.nonce);
-        let erc20_supra_address = self.address.create(self.nonce + 1);
+        let wsupra_address = self.address.create(self.nonce);
 
         // -------------------------------------------------------------------------
-        // 1. Deploy ERC20Supra
+        // Deploy WrappedSupra
         // -------------------------------------------------------------------------
-        let erc20_contract_create_data = Self::load_contract_bytecode(ERC20_SUPRA)?;
-        let erc20supra_impl = GenesisTransaction::create(
+        let wsupra_create_data = Self::load_contract_bytecode(WRAPPED_SUPRA)?;
+        let wsupra_txn = GenesisTransaction::create(
             self.address,
-            erc20_contract_create_data,
+            wsupra_create_data,
             self.nonce,
-            erc20_supra_address_impl,
+            wsupra_address,
         );
         self.nonce += 1;
 
-        // -------------------------------------------------------------------------
-        // 2. Deploy ERC1967Proxy (ERC20Supra)
-        // Constructor args: implementation address, initialization data
-        // Initialization data: initialize(initialOwner, authorizedAddresses[])
-        // -------------------------------------------------------------------------
-        let proxy_impl_data = Self::load_contract_bytecode(ERC1967PROXY)?;
-        // Encode Erc20Supra initialize call
-        let erc20_init_args = ERC20Supra::initializeCall {
-            _initialOwner: initial_owner,
-            _authorizedAddresses: authorized_addresses,
-        }
-        .abi_encode();
-        // Encode the ERC1967Proxy constructor args
-        let proxy_args = ERC1967Proxy::constructorCall {
-            _impl: erc20_supra_address_impl,
-            _data: erc20_init_args.into(),
-        }
-        .abi_encode();
-        // Concatenate bytecode + constructor args for deployment
-        let proxy_txn_data = [proxy_impl_data, proxy_args].concat();
-        let erc20supra = GenesisTransaction::create(
-            self.address,
-            proxy_txn_data,
-            self.nonce,
-            erc20_supra_address,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (GenesisTransactionTags::Erc20SupraImpl, erc20supra_impl),
-            (GenesisTransactionTags::Erc20Supra, erc20supra),
-        ]))
-    }
-
-    /// Generates genesis transaction for ERC20SupraHandler token conversion contract deployment.
-    /// Deployment order follows GenesisTransactionTags:
-    ///  1. ERC20SupraHandlerImpl (nonce+0) - ERC20SupraHandler implementation contract (UUPS upgradeable)
-    ///  2. ERC20SupraHandler (nonce+1) - ERC1967Proxy with initialize(initialOwner, erc20supra)
-    ///
-    /// The initial owner (typically the foundation multisig wallet) receives
-    /// administrative privileges over the token contract.
-    fn setup_erc20_supra_handler(
-        &mut self,
-        initial_owner: Address,
-        erc20supra: Address,
-    ) -> Result<BTreeMap<GenesisTransactionTags, GenesisTransaction>> {
-        // -------------------------------------------------------------------------
-        // Pre-compute deployment address
-        // -------------------------------------------------------------------------
-        let erc20_handler_address_impl = self.address.create(self.nonce);
-        let erc20_handler_address = self.address.create(self.nonce + 1);
-
-        // -------------------------------------------------------------------------
-        // 1. Deploy ERC20SupraHandler
-        // -------------------------------------------------------------------------
-        let erc20_contract_create_data = Self::load_contract_bytecode(ERC20_SUPRA_HANDLER)?;
-        let erc20supra_handler_impl = GenesisTransaction::create(
-            self.address,
-            erc20_contract_create_data,
-            self.nonce,
-            erc20_handler_address_impl,
-        );
-        self.nonce += 1;
-
-        // -------------------------------------------------------------------------
-        // 2. Deploy ERC1967Proxy (ERC20SupraHandler)
-        // Constructor args: implementation address, initialization data
-        // Initialization data: initialize(initialOwner, erc20supra)
-        // -------------------------------------------------------------------------
-        let proxy_impl_data = Self::load_contract_bytecode(ERC1967PROXY)?;
-        // Encode Erc20Supra initialize call
-        let erc20_handler_init_args = ERC20SupraHandler::initializeCall {
-            _initialOwner: initial_owner,
-            _erc20Supra: erc20supra,
-        }
-        .abi_encode();
-        // Encode the ERC1967Proxy constructor args
-        let proxy_args = ERC1967Proxy::constructorCall {
-            _impl: erc20_handler_address_impl,
-            _data: erc20_handler_init_args.into(),
-        }
-        .abi_encode();
-        // Concatenate bytecode + constructor args for deployment
-        let proxy_txn_data = [proxy_impl_data, proxy_args].concat();
-        let erc20supra_handler = GenesisTransaction::create(
-            self.address,
-            proxy_txn_data,
-            self.nonce,
-            erc20_handler_address,
-        );
-        self.nonce += 1;
-
-        Ok(BTreeMap::from([
-            (
-                GenesisTransactionTags::Erc20SupraHandlerImpl,
-                erc20supra_handler_impl,
-            ),
-            (
-                GenesisTransactionTags::Erc20SupraHandler,
-                erc20supra_handler,
-            ),
-        ]))
+        Ok(BTreeMap::from([(
+            GenesisTransactionTags::WrappedSupra,
+            wsupra_txn,
+        )]))
     }
 
     /// Generates genesis transactions for BlockMeta contract deployment.
@@ -819,14 +659,6 @@ mod tests {
                 b256!("57b89089b8335f394fbef3fd80480b7e55222a3d164aa0233dea6fd23d9e4776"),
             ),
             (
-                "ERC20Supra",
-                b256!("459aa2da83be43f506f1e4aa6e0883d69ff63bea55208fd27f10cfeb35c37938"),
-            ),
-            (
-                "ERC20SupraHandler",
-                b256!("999782eef4d8b9f4df8b08589e23306515a7e5b93130a92e25c077fd6a6fe84e"),
-            ),
-            (
                 "MultiSignatureWallet",
                 b256!("d5b0485786d3d3be9f20f7033431e3d75fbb58cb52d78a7894b7c02311a349c3"),
             ),
@@ -841,6 +673,10 @@ mod tests {
             (
                 "RegistryFacet",
                 b256!("7886535bb9e1391d90fc6574984ccaefe97619ec2f885bdd8c200415e75cbd2a"),
+            ),
+            (
+                "WrappedSupra",
+                b256!("07a103c15b1a177a6731b820ddf382fe147bb995d591fefc8da2f42081e89740"),
             ),
         ];
 
@@ -898,10 +734,7 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::Create2Factory));
         assert!(result.contains_key(&GenesisTransactionTags::FoundationWallet));
         assert!(result.contains_key(&GenesisTransactionTags::BlockMetadata));
-        assert!(result.contains_key(&GenesisTransactionTags::Erc20SupraImpl));
-        assert!(result.contains_key(&GenesisTransactionTags::Erc20Supra));
-        assert!(result.contains_key(&GenesisTransactionTags::Erc20SupraHandlerImpl));
-        assert!(result.contains_key(&GenesisTransactionTags::Erc20SupraHandler));
+        assert!(result.contains_key(&GenesisTransactionTags::WrappedSupra));
         // Verify automation contracts are not deployed
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondCutFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::Diamond));

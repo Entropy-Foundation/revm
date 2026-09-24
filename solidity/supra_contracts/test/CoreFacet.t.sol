@@ -12,7 +12,7 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
-import {ERC20SupraHandler} from "../src/ERC20SupraHandler.sol";
+import {WrappedSupra} from "../src/WrappedSupra.sol";
 
 contract CoreFacetTest is BaseDiamondTest {
 
@@ -60,7 +60,7 @@ contract CoreFacetTest is BaseDiamondTest {
             automationEnabled: false
         }); 
 
-        Deployment memory deployment = LibDiamondUtils.deploy(admin, address(erc20Supra), initParams);
+        Deployment memory deployment = LibDiamondUtils.deploy(admin, address(wsupra), initParams);
 
         address diamondAddr = deployment.diamond;
         vm.stopPrank();
@@ -736,7 +736,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// @dev Registers a GST with an explicit maxGasAmount (registerGst hardcodes 100_000).
     function registerGstWithGas(address _diamond, uint64 _duration, uint128 _maxGasAmount) internal {
         bytes[] memory auxData;
-        bytes memory payload = createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, 100));
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
         bytes memory predicate = createPredicate(_diamond);
 
         vm.prank(bob);
@@ -826,8 +826,8 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 200_000);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 120.2 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 122.2 ether);
-        assertEq(erc20Supra.balanceOf(alice), 77.8 ether);
+        assertEq(wsupra.balanceOf(diamondAddr), 122.2 ether);
+        assertEq(wsupra.balanceOf(alice), 77.8 ether);
 
         uint256[] memory taskIndexes = new uint256[](2);
         taskIndexes[0] = 0;
@@ -850,8 +850,8 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 66.6 ether);
-        assertEq(erc20Supra.balanceOf(alice), 133.4 ether);
+        assertEq(wsupra.balanceOf(diamondAddr), 66.6 ether);
+        assertEq(wsupra.balanceOf(alice), 133.4 ether);
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' removes a GST when predicate validation fails and reduces the systemGasCommittedForNextCycle.
@@ -994,10 +994,10 @@ contract CoreFacetTest is BaseDiamondTest {
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        uint256 diamondBalance = erc20Supra.balanceOf(diamondAddr);
+        uint256 diamondBalance = wsupra.balanceOf(diamondAddr);
         vm.prank(diamondAddr);
-        erc20Supra.transfer(address(0xdead), diamondBalance);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0);
+        wsupra.transfer(address(0xdead), diamondBalance);
+        assertEq(wsupra.balanceOf(diamondAddr), 0);
 
         vm.expectRevert(ICoreFacet.InsufficientBalanceForRefund.selector);
 
@@ -1428,11 +1428,11 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).monitorCycleEnd();
 
         // Drain the registry's balance so the deposit refund cannot be paid.
-        uint256 diamondBalance = erc20Supra.balanceOf(diamondAddr);
+        uint256 diamondBalance = wsupra.balanceOf(diamondAddr);
         vm.stopPrank();
         vm.prank(diamondAddr);
-        erc20Supra.transfer(bob, diamondBalance);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0);
+        wsupra.transfer(bob, diamondBalance);
+        assertEq(wsupra.balanceOf(diamondAddr), 0);
 
         // Move time forward past task expiration.
         vm.warp(block.timestamp + 1250);
@@ -1454,12 +1454,12 @@ contract CoreFacetTest is BaseDiamondTest {
     /// allowance for the automation fee. The deposit is unlocked and forfeited to the registry.
     function testInsufficientAllowanceDuringTransitionRemovesTask() public {
         registerUst(diamondAddr, 2450);
-        uint256 balanceBefore = erc20Supra.balanceOf(alice);
+        uint256 balanceBefore = wsupra.balanceOf(alice);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
 
         // Revoke alice's allowance for the AutomationRegistry
         vm.prank(alice);
-        erc20Supra.approve(diamondAddr, 0);
+        wsupra.approve(diamondAddr, 0);
 
         ( , uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -1480,7 +1480,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
 
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(erc20Supra.balanceOf(alice), balanceBefore);
+        assertEq(wsupra.balanceOf(alice), balanceBefore);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
     }
 
@@ -1529,7 +1529,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
         // State before refund
-        assertEq(erc20Supra.balanceOf(alice), 35.9 ether);
+        assertEq(wsupra.balanceOf(alice), 35.9 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
 
@@ -1544,7 +1544,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // State after refund
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(erc20Supra.balanceOf(alice), 99 ether);
+        assertEq(wsupra.balanceOf(alice), 99 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
     }
@@ -1564,7 +1564,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
         // State before refund
-        assertEq(erc20Supra.balanceOf(alice), 35.9 ether);
+        assertEq(wsupra.balanceOf(alice), 35.9 ether);
         assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
 
@@ -1580,7 +1580,7 @@ contract CoreFacetTest is BaseDiamondTest {
         // State after refund: only 0.125 ether of the 3 ether locked fee is refunded
         // (50s worth out of 1200s cycle).
         assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(erc20Supra.balanceOf(alice), 96.125 ether);
+        assertEq(wsupra.balanceOf(alice), 96.125 ether);
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
     }
 
@@ -1595,10 +1595,10 @@ contract CoreFacetTest is BaseDiamondTest {
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        uint256 diamondBalance = erc20Supra.balanceOf(diamondAddr);
+        uint256 diamondBalance = wsupra.balanceOf(diamondAddr);
         vm.prank(diamondAddr);
-        erc20Supra.transfer(bob, diamondBalance);
-        assertEq(erc20Supra.balanceOf(diamondAddr), 0);
+        wsupra.transfer(bob, diamondBalance);
+        assertEq(wsupra.balanceOf(diamondAddr), 0);
 
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
@@ -1636,13 +1636,13 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.startPrank(alice);
         vm.deal(alice, depositAmount);
-        erc20SupraHandler.deposit{value: depositAmount}();
-        erc20Supra.approve(diamondAddr, type(uint256).max);
+        wsupra.deposit{value: depositAmount}();
+        wsupra.approve(diamondAddr, type(uint256).max);
 
         uint128 cap = 450 ether;
 
         IRegistryFacet(diamondAddr).register(
-            createPayload(0, address(erc20SupraHandler), abi.encodeCall(ERC20SupraHandler.withdraw, uint128(100))),
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, uint128(100))),
             createPredicate(diamondAddr),
             uint64(block.timestamp + 2450),
             uint128(11_000_000),
@@ -1655,7 +1655,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
         assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), cap, "automation fee not deposited");
-        assertEq(erc20Supra.balanceOf(alice), 0, "balance should be 0 after spending all [450 ether + 1 ether as flat reg fee]");
+        assertEq(wsupra.balanceOf(alice), 0, "balance should be 0 after spending all [450 ether + 1 ether as flat reg fee]");
     }
 
     /// @dev Test to ensure registration succeeds when automation and congestion base fees are zero. 
@@ -1674,7 +1674,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         assertTrue(IRegistryFacet(customRegistry).ifTaskExists(0));
         // Only flat reg fee(1 ether) and automation fee cap(60.1 ether) is deducted since estimated automation fee is 0
-        assertEq(erc20Supra.balanceOf(alice), 38.9 ether);
+        assertEq(wsupra.balanceOf(alice), 38.9 ether);
     }
 
     /// @dev Test to ensure calculateTaskFee returns 0 when the automationBaseFeeWeiPerSec is 0.

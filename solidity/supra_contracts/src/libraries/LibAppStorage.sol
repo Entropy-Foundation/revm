@@ -118,6 +118,7 @@ struct AppStorage {
     
     bool automationEnabled;
     bool registrationEnabled;
+    /// @notice Address of the WrappedSupra token contract.
     address erc20Supra;
     EnumerableSet.AddressSet authorizedAccounts;
     mapping(uint256 => Config) configuration;
