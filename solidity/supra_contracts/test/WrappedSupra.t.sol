@@ -381,7 +381,3 @@ contract ReentrantWithdrawer {
         }
     }
 }
-
-/// @notice Helper contract used to test that upgrading to a non-UUPS-compliant
-/// implementation reverts, since it exposes no 'proxiableUUID' function.
-contract NotUUPSCompliant {}

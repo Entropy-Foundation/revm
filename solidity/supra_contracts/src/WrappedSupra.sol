@@ -6,7 +6,7 @@ import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20P
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IWrappedSupra} from "../src/interfaces/IWrappedSupra.sol";
 
-/// @notice Wrapped Supra implementation.
+/// @notice Wrapped Supra (WSUPRA): an ERC20 token backed 1:1 by native SUPRA.
 contract WrappedSupra is ERC20, ERC20Permit, IWrappedSupra {
     using Address for address payable;
 
