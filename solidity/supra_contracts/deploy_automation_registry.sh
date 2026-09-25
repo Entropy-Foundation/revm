@@ -58,6 +58,7 @@ DIAMOND_LOUPE_FACET=$(extract "DiamondLoupeFacet deployed at:")
 OWNERSHIP_FACET=$(extract "OwnershipFacet deployed at:")
 CONFIG_FACET=$(extract "ConfigFacet deployed at:")
 REGISTRY_FACET=$(extract "RegistryFacet deployed at:")
+REGISTRY_VIEW_FACET=$(extract "RegistryViewFacet deployed at:")
 CORE_FACET=$(extract "CoreFacet deployed at:")
 DIAMOND_INIT=$(extract "DiamondInit deployed at:")
 
@@ -80,6 +81,7 @@ DIAMOND_LOUPE_FACET=$DIAMOND_LOUPE_FACET
 OWNERSHIP_FACET=$OWNERSHIP_FACET
 CONFIG_FACET=$CONFIG_FACET
 REGISTRY_FACET=$REGISTRY_FACET
+REGISTRY_VIEW_FACET=$REGISTRY_VIEW_FACET
 CORE_FACET=$CORE_FACET
 DIAMOND_INIT=$DIAMOND_INIT
 EOF

@@ -105,6 +105,7 @@ pub enum GenesisTransactionTags {
     CoreFacet,
     DiamondInit,
     Diamond,
+    RegistryViewFacet,
 }
 
 impl GenesisTransactionTags {
@@ -135,9 +136,10 @@ impl GenesisTransactionTags {
             Self::OwnershipFacet => 13,
             Self::ConfigFacet => 14,
             Self::RegistryFacet => 15,
-            Self::CoreFacet => 16,
-            Self::DiamondInit => 17,
-            Self::Diamond => 18,
+            Self::RegistryViewFacet => 16,
+            Self::CoreFacet => 17,
+            Self::DiamondInit => 18,
+            Self::Diamond => 19,
         }
     }
 }
@@ -193,6 +195,7 @@ mod tests {
             GenesisTransactionTags::OwnershipFacet,
             GenesisTransactionTags::ConfigFacet,
             GenesisTransactionTags::RegistryFacet,
+            GenesisTransactionTags::RegistryViewFacet,
             GenesisTransactionTags::CoreFacet,
             GenesisTransactionTags::DiamondInit,
             GenesisTransactionTags::Diamond,

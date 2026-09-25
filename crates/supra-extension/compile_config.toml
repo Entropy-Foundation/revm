@@ -13,6 +13,7 @@ contract_names = [
     "OwnershipFacet",
     "ConfigFacet",
     "RegistryFacet",
+    "RegistryViewFacet",
     "CoreFacet",
     "DiamondInit",
 ]

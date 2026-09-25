@@ -73,6 +73,7 @@ const DIAMOND_LOUPE_FACET: &str = "DiamondLoupeFacet";
 const OWNERSHIP_FACET: &str = "OwnershipFacet";
 const CONFIG_FACET: &str = "ConfigFacet";
 const REGISTRY_FACET: &str = "RegistryFacet";
+const REGISTRY_VIEW_FACET: &str = "RegistryViewFacet";
 const CORE_FACET: &str = "CoreFacet";
 const DIAMOND_INIT: &str = "DiamondInit";
 
@@ -104,6 +105,7 @@ sol! {
         address ownershipFacet;
         address configFacet;
         address registryFacet;
+        address registryViewFacet;
         address coreFacet;
         address diamondInit;
     }
@@ -420,9 +422,11 @@ impl GenesisTransactionGenerator {
     ///  3. OwnershipFacet, // Facet to manage ownership credential updates and checks
     ///  4. ConfigFacet, // Facet to manage automation registry configuration
     ///  5. RegistryFacet, // Facet providing API for task registration, cancellation and registry state query
-    ///  6. CoreFacet, // Facet providing API to monitor cycle and initiate bookkeeping on cycle transition
-    ///  7. DiamondInit,
-    ///  8. Diamond, // The wrapper contract of all the facets, main entry point of automation registry API
+    ///  6. RegistryViewFacet, // Facet providing the registry's view API, split out of RegistryFacet
+    ///     (Entropy-Foundation/smr-moonshot#4101) to keep RegistryFacet's deployed bytecode clear of EIP-170
+    ///  7. CoreFacet, // Facet providing API to monitor cycle and initiate bookkeeping on cycle transition
+    ///  8. DiamondInit,
+    ///  9. Diamond, // The wrapper contract of all the facets, main entry point of automation registry API
     ///
     ///  All contracts addresses are pre-computed before deployment to handle circular dependencies if any.
     fn setup_automation_registry(
@@ -434,24 +438,29 @@ impl GenesisTransactionGenerator {
         let config = registry_config
             .v1()
             .ok_or_else(|| anyhow!("Unhandled configuration version"))?;
-        // Pre-compute all deployment addresses
-        // nonce+0: DiamondCutFacet (implementation for Diamond proxy)
-        // nonce+1: DiamondLoupeFacet
-        // nonce+2: OwnershipFacet
-        // nonce+3: ConfigFacet
-        // nonce+4: RegistryFacet
-        // nonce+5: CoreFacet
-        // nonce+6: DiamondInit
-        // nonce+7: Diamond (proxy to all facets APIs)
+        // Pre-compute all deployment addresses, in the same order the deploy steps below
+        // send their transactions: DiamondCutFacet, DiamondLoupeFacet, OwnershipFacet,
+        // ConfigFacet, RegistryFacet, RegistryViewFacet, CoreFacet, DiamondInit, Diamond
+        // (proxy to all facets' APIs). Each address comes from `next_addr()` rather than a
+        // manually offset `self.nonce + N`, so inserting, removing or reordering a facet
+        // here cannot desync an address from the nonce that actually deploys it.
+        let deployer = self.address;
+        let mut next_nonce = self.nonce;
+        let mut next_addr = || {
+            let addr = deployer.create(next_nonce);
+            next_nonce += 1;
+            addr
+        };
 
-        let diamond_cut_facet_addr = self.address.create(self.nonce);
-        let diamond_loupe_facet_addr = self.address.create(self.nonce + 1);
-        let ownership_facet_addr = self.address.create(self.nonce + 2);
-        let config_facet_addr = self.address.create(self.nonce + 3);
-        let registry_facet_addr = self.address.create(self.nonce + 4);
-        let core_facet_addr = self.address.create(self.nonce + 5);
-        let diamond_init_addr = self.address.create(self.nonce + 6);
-        let diamond_addr = self.address.create(self.nonce + 7);
+        let diamond_cut_facet_addr = next_addr();
+        let diamond_loupe_facet_addr = next_addr();
+        let ownership_facet_addr = next_addr();
+        let config_facet_addr = next_addr();
+        let registry_facet_addr = next_addr();
+        let registry_view_facet_addr = next_addr();
+        let core_facet_addr = next_addr();
+        let diamond_init_addr = next_addr();
+        let diamond_addr = next_addr();
 
         // -------------------------------------------------------------------------
         // 1. Deploy DiamondCutFacet (no constructor args)
@@ -510,7 +519,19 @@ impl GenesisTransactionGenerator {
         self.nonce += 1;
 
         // -------------------------------------------------------------------------
-        // 6. Deploy Core facet
+        // 6. Deploy RegistryView facet
+        // -------------------------------------------------------------------------
+        let registry_view_data = Self::load_contract_bytecode(REGISTRY_VIEW_FACET)?;
+        let registry_view_txn = GenesisTransaction::create(
+            self.address,
+            registry_view_data,
+            self.nonce,
+            registry_view_facet_addr,
+        );
+        self.nonce += 1;
+
+        // -------------------------------------------------------------------------
+        // 7. Deploy Core facet
         // -------------------------------------------------------------------------
         let core_data = Self::load_contract_bytecode(CORE_FACET)?;
         let core_txn =
@@ -518,7 +539,7 @@ impl GenesisTransactionGenerator {
         self.nonce += 1;
 
         // -------------------------------------------------------------------------
-        // 7. Deploy Core facet
+        // 8. Deploy DiamondInit
         // -------------------------------------------------------------------------
         let diamond_init_data = Self::load_contract_bytecode(DIAMOND_INIT)?;
         let diamond_init_txn = GenesisTransaction::create(
@@ -530,7 +551,7 @@ impl GenesisTransactionGenerator {
         self.nonce += 1;
 
         // -------------------------------------------------------------------------
-        // 7. Deploy Diamond
+        // 9. Deploy Diamond
         // -------------------------------------------------------------------------
         let diamond_init_data = Self::load_contract_bytecode(DIAMOND)?;
         let facets = FacetsDeployment {
@@ -539,6 +560,7 @@ impl GenesisTransactionGenerator {
             ownershipFacet: ownership_facet_addr,
             configFacet: config_facet_addr,
             registryFacet: registry_facet_addr,
+            registryViewFacet: registry_view_facet_addr,
             coreFacet: core_facet_addr,
             diamondInit: diamond_init_addr,
         };
@@ -580,6 +602,7 @@ impl GenesisTransactionGenerator {
             (GenesisTransactionTags::OwnershipFacet, ownership_txn),
             (GenesisTransactionTags::ConfigFacet, config_txn),
             (GenesisTransactionTags::RegistryFacet, register_txn),
+            (GenesisTransactionTags::RegistryViewFacet, registry_view_txn),
             (GenesisTransactionTags::CoreFacet, core_txn),
             (GenesisTransactionTags::DiamondInit, diamond_init_txn),
         ]))
@@ -640,7 +663,7 @@ mod tests {
             ),
             (
                 "Diamond",
-                b256!("198e4a13e01fddea0ab2e1fce3875c20e0008e85acab7dc38c41889a9275b91c"),
+                b256!("7777092c60e2c6bd700118f3dbe82f114f764b230025084bef1ca585a8810e53"),
             ),
             (
                 "DiamondCutFacet",
@@ -672,7 +695,11 @@ mod tests {
             ),
             (
                 "RegistryFacet",
-                b256!("7886535bb9e1391d90fc6574984ccaefe97619ec2f885bdd8c200415e75cbd2a"),
+                b256!("3c395503f8813a1fba661cb0e83965345b399063df379cbba5db25413e417b05"),
+            ),
+            (
+                "RegistryViewFacet",
+                b256!("d55f358aed517b4058a5643ea2b0de57552133612451ed1e94d827a7c5f964c8"),
             ),
             (
                 "WrappedSupra",
@@ -742,6 +769,7 @@ mod tests {
         assert!(!result.contains_key(&GenesisTransactionTags::OwnershipFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::ConfigFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::RegistryFacet));
+        assert!(!result.contains_key(&GenesisTransactionTags::RegistryViewFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::CoreFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondInit));
         println!("{result:#?}");
@@ -813,6 +841,7 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::OwnershipFacet));
         assert!(result.contains_key(&GenesisTransactionTags::ConfigFacet));
         assert!(result.contains_key(&GenesisTransactionTags::RegistryFacet));
+        assert!(result.contains_key(&GenesisTransactionTags::RegistryViewFacet));
         assert!(result.contains_key(&GenesisTransactionTags::CoreFacet));
         assert!(result.contains_key(&GenesisTransactionTags::DiamondInit));
         println!("{result:#?}");

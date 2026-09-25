@@ -5,6 +5,7 @@ import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {TaskMetadata} from "../src/libraries/LibAppStorage.sol";
@@ -197,7 +198,7 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         registerUst(diamond, 2450);
         registerUst(diamond, 2450);
-        assertEq(IRegistryFacet(diamond).totalTasks(), 2);
+        assertEq(IRegistryViewFacet(diamond).totalTasks(), 2);
         
         bytes[] memory auxData;
         bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)); 
@@ -611,17 +612,17 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        TaskMetadata memory taskMetadata = IRegistryFacet(diamondAddr).getTaskDetails(0);
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
+        TaskMetadata memory taskMetadata = IRegistryViewFacet(diamondAddr).getTaskDetails(0);
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
 
-        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getTasksByAddress(alice);
+        uint256[] memory userTasks = IRegistryViewFacet(diamondAddr).getTasksByAddress(alice);
         assertEq(userTasks.length, 1);
         assertEq(userTasks[0], 0);
 
-        assertEq(IRegistryFacet(diamondAddr).getNextTaskIndex(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).getNextTaskIndex(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
         assertEq(wsupra.balanceOf(diamondAddr), 61.1 ether);
         assertEq(wsupra.balanceOf(alice), 38.9 ether);
 
@@ -753,7 +754,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
         );
         vm.stopPrank();
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
     /// @dev Test to ensure 'register' reverts when payloadTx exceeds the default cap.
@@ -783,7 +784,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
         );
         vm.stopPrank();
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
     /// @dev Test to ensure 'register' reverts when predicate exceeds the default cap.
@@ -848,7 +849,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             payload, predicate, uint64(block.timestamp + 1250), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 0, auxData
         );
         vm.stopPrank();
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'registerSystemTask' :::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -896,8 +897,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         registerGst(diamond, 2450);
         registerGst(diamond, 2450);
-        assertEq(IRegistryFacet(diamond).totalTasks(), 2);
-        assertEq(IRegistryFacet(diamond).totalSystemTasks(), 2);
+        assertEq(IRegistryViewFacet(diamond).totalTasks(), 2);
+        assertEq(IRegistryViewFacet(diamond).totalSystemTasks(), 2);
         
         // Third registration should revert with TaskCapacityReached
         vm.expectRevert(IRegistryFacet.TaskCapacityReached.selector);
@@ -958,18 +959,18 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData                             // aux data
         );
         
-        TaskMetadata memory taskMetadata = IRegistryFacet(diamondAddr).getTaskDetails(0);
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertTrue(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
+        TaskMetadata memory taskMetadata = IRegistryViewFacet(diamondAddr).getTaskDetails(0);
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 1);
 
-        uint256[] memory userTasks = IRegistryFacet(diamondAddr).getTasksByAddress(bob);
+        uint256[] memory userTasks = IRegistryViewFacet(diamondAddr).getTasksByAddress(bob);
         assertEq(userTasks.length, 1);
         assertEq(userTasks[0], 0);
 
-        assertEq(IRegistryFacet(diamondAddr).getNextTaskIndex(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
+        assertEq(IRegistryViewFacet(diamondAddr).getNextTaskIndex(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
 
         assertEq(taskMetadata.maxGasAmount, 100_000);
         assertEq(taskMetadata.gasPriceCap, 0);
@@ -1061,8 +1062,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
 
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
     }
 
     /// @dev Test to ensure 'cancelTasks' reverts if task type is not UST.
@@ -1099,11 +1100,11 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
 
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(alice).length, 0);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(alice).length, 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(wsupra.balanceOf(diamondAddr), 31.05 ether);
         assertEq(wsupra.balanceOf(alice), 68.95 ether);
     }
@@ -1144,7 +1145,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
 
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
     /// @dev Test to ensure 'cancelTasks' on an already-ACTIVE task (post cycle-transition) only
@@ -1156,16 +1157,16 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
+        assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
 
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelTasks(taskUint64);
 
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(uint8(IRegistryFacet(diamondAddr).getTaskDetails(0).taskState), uint8(LibCommon.TaskState.CANCELLED));
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertEq(uint8(IRegistryViewFacet(diamondAddr).getTaskDetails(0).taskState), uint8(LibCommon.TaskState.CANCELLED));
+        assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'cancelSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1203,8 +1204,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
 
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 1);
     }
 
     /// @dev Test to ensure 'cancelSystemTasks' reverts if task type is not GST. 
@@ -1243,12 +1244,12 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskIndexes);
 
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(bob).length, 0);
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(bob).length, 0);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
     /// @dev Test to ensure 'cancelSystemTasks' emits event 'TasksCancelled'. 
@@ -1277,16 +1278,16 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint256[] memory taskIndexes = new uint256[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
+        assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
 
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
         vm.prank(bob);
         IRegistryFacet(diamondAddr).cancelSystemTasks(taskUint64);
 
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(uint8(IRegistryFacet(diamondAddr).getTaskDetails(0).taskState), uint8(LibCommon.TaskState.CANCELLED));
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertEq(uint8(IRegistryViewFacet(diamondAddr).getTaskDetails(0).taskState), uint8(LibCommon.TaskState.CANCELLED));
+        assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1367,8 +1368,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
 
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
     }
 
     /// @dev Test to ensure 'stopTasks' stops the input UST tasks. 
@@ -1393,11 +1394,11 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
 
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(alice).length, 0);
-        assertEq(IRegistryFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(alice).length, 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
         assertEq(wsupra.balanceOf(diamondAddr), 3.9375 ether);
         assertEq(wsupra.balanceOf(alice), 196.0625 ether);
     }
@@ -1447,7 +1448,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskIndexes);
 
-        assertTrue(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
     /// @dev Test to ensure stopping a PENDING task refunds half the deposit.
@@ -1458,14 +1459,14 @@ contract RegistryFacetTest is BaseDiamondTest {
         taskUint64[0] = 0;
 
         uint256 balanceBefore = wsupra.balanceOf(alice);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
 
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
 
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
         assertEq(wsupra.balanceOf(alice), balanceBefore + 30.05 ether);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
     }
 
     /// @dev Test to ensure stopping an expired task refunds the full deposit but returns 0 cycle fee.
@@ -1481,8 +1482,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.warp(block.timestamp + 1251);
 
         uint256 balanceBefore = wsupra.balanceOf(alice);
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 3 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 60.1 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 3 ether);
 
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
@@ -1490,10 +1491,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
 
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
         assertEq(wsupra.balanceOf(alice), balanceBefore + 60.1 ether);  // Cycle fee refund = 0, deposit refund = 60.1 ether
-        assertEq(IRegistryFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).getTotalDepositedAutomationFees(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 0 ether);
     }
 
     /// @dev Locks in cycleLockedFees's current accounting behavior for a task stopped shortly
@@ -1518,7 +1519,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         processCycleTransition(diamondAddr, taskIndexes);
 
         // Charged a full cycle's fee at registration-to-active transition (PENDING branch).
-        uint256 cycleLockedFeesAfterCharge = IRegistryFacet(diamondAddr).getCycleLockedFees();
+        uint256 cycleLockedFeesAfterCharge = IRegistryViewFacet(diamondAddr).getCycleLockedFees();
         assertEq(cycleLockedFeesAfterCharge, 150 ether);
 
         // Stop the task early in cycle 2 (t=1203), well before its actual expiry (1206).
@@ -1528,7 +1529,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
 
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), 149.375 ether);
+        assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 149.375 ether);
     }
 
     /// @dev Locks in that the behavior documented above persists across an empty-registry cycle
@@ -1557,9 +1558,9 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopTasks(taskUint64);
 
-        uint256 stuckAfterStop = IRegistryFacet(diamondAddr).getCycleLockedFees();
+        uint256 stuckAfterStop = IRegistryViewFacet(diamondAddr).getCycleLockedFees();
         assertEq(stuckAfterStop, 149.375 ether);
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
 
         // Advance through the next (now-empty) cycle boundary.
         (, uint64 start2, uint64 duration2,) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -1571,7 +1572,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
         // Residual persists unchanged -- the empty fast path never touches cycleLockedFees.
-        assertEq(IRegistryFacet(diamondAddr).getCycleLockedFees(), stuckAfterStop);
+        assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), stuckAfterStop);
     }
 
     /// @dev Locks in cycleLockedFees's accounting behavior for a task that is already active (not
@@ -1599,7 +1600,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         // Cycle 2 -> 3: task is now active and charged for its final ~5 seconds.
         processCycleTransition(diamondAddr, taskIndexes);
 
-        uint256 cycleLockedFeesAfterCharge = IRegistryFacet(diamondAddr).getCycleLockedFees();
+        uint256 cycleLockedFeesAfterCharge = IRegistryViewFacet(diamondAddr).getCycleLockedFees();
         assertGt(cycleLockedFeesAfterCharge, 0);
 
         // Stop the task early in cycle 3 (t=2403), before its actual expiry (2406).
@@ -1612,7 +1613,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         // Charge and unlock both computed min(expiry - cycle-start, cycle-duration) = 5 from the
         // same inputs, so the unlock is close to (here: exactly) the charged amount -- no stuck
         // residual, unlike the first-cycle PENDING case.
-        assertApproxEqAbs(IRegistryFacet(diamondAddr).getCycleLockedFees(), 0, 1);
+        assertApproxEqAbs(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 0, 1);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'stopSystemTasks' ::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1674,8 +1675,8 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
 
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 1);
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
+        assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 1);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' stops the input GST tasks.
@@ -1693,12 +1694,12 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.prank(bob);
         IRegistryFacet(diamondAddr).stopSystemTasks(taskUint64);
 
-        assertFalse(IRegistryFacet(diamondAddr).ifTaskExists(0));
-        assertFalse(IRegistryFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryFacet(diamondAddr).getTasksByAddress(bob).length, 0);
-        assertEq(IRegistryFacet(diamondAddr).totalTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).totalSystemTasks(), 0);
-        assertEq(IRegistryFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
+        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(bob).length, 0);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 0);
+        assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
     /// @dev Test to ensure 'stopSystemTasks' emits event 'TasksStopped'.
@@ -1724,165 +1725,9 @@ contract RegistryFacetTest is BaseDiamondTest {
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to view functions ::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev Test to ensure 'getTaskIdList' returns correct task IDs.
-    function testGetTaskIdList() public {
-        registerUst(diamondAddr, 2450);
-        registerGst(diamondAddr, 2450);
-
-        uint256[] memory taskIds = IRegistryFacet(diamondAddr).getTaskIdList();
-        assertEq(taskIds.length, 2);
-        assertEq(taskIds[0], 0);
-        assertEq(taskIds[1], 1);
-    }
-
-    /// @dev Test to ensure 'getSystemTaskIds' returns correct system task IDs.
-    function testGetSystemTaskIds() public {
-        registerGst(diamondAddr, 2450);
-        registerGst(diamondAddr, 2450);
-
-        uint256[] memory sysTaskIds = IRegistryFacet(diamondAddr).getSystemTaskIds();
-        assertEq(sysTaskIds.length, 2);
-        assertEq(sysTaskIds[0], 0);
-        assertEq(sysTaskIds[1], 1);
-    }
-
-    /// @dev Test to ensure 'getTaskOwner' returns correct owner for an existing task.
-    function testGetTaskOwner() public {
-        registerUst(diamondAddr, 2450);
-
-        address owner = IRegistryFacet(diamondAddr).getTaskOwner(0);
-        assertEq(owner, alice);
-    }
-
-    /// @dev Test to ensure 'getTotalActiveTasks' returns the correct count of active tasks.
-    function testGetTotalActiveTasks() public {
-        registerUst(diamondAddr, 2450);
-        registerGst(diamondAddr, 2450);
-        
-        uint256[] memory taskIndexes = new uint256[](2);
-        taskIndexes[0] = 0;
-        taskIndexes[1] = 1;
-
-        processCycleTransition(diamondAddr, taskIndexes);
-
-        assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), 2);
-    }
-
-    /// @dev Test to ensure 'getTotalActiveTasks' returns zero when no active tasks.
-    function testGetTotalActiveTasksZero() public view {
-        assertEq(IRegistryFacet(diamondAddr).getTotalActiveTasks(), 0);
-    }
-
-    /// @dev Test to ensure 'getActiveTaskIds' returns correct active task IDs.
-    function testGetActiveTaskIds() public {
-        registerUst(diamondAddr, 2450);
-        registerGst(diamondAddr, 2450);
-
-        uint256[] memory taskIndexes = new uint256[](2);
-        taskIndexes[0] = 0;
-        taskIndexes[1] = 1;
-
-        processCycleTransition(diamondAddr, taskIndexes);
-
-        uint256[] memory activeIds = IRegistryFacet(diamondAddr).getActiveTaskIds();
-        assertEq(activeIds.length, 2);
-        assertEq(activeIds[0], 0);
-        assertEq(activeIds[1], 1);
-    }
-
-    /// @dev Test to ensure 'getActiveTaskIds' returns empty array when no tasks are active.
-    function testGetActiveTaskIdsEmpty() public view {
-        assertEq(IRegistryFacet(diamondAddr).getActiveTaskIds().length, 0);
-    }
-
-    /// @dev Test to ensure 'getTotalLockedBalance' returns the correct locked balance.
-    function testGetTotalLockedBalance() public {
-        registerUst(diamondAddr, 2450);
-
-        assertEq(IRegistryFacet(diamondAddr).getTotalLockedBalance(), 60.1 ether);
-    }
-
-    /// @dev Test to ensure 'hasActiveUserTask' returns true for an active task.
-    function testHasActiveUserTask() public {
-        registerUst(diamondAddr, 2450);
-
-        uint256[] memory taskIndexes = new uint256[](1);
-        taskIndexes[0] = 0;
-
-        processCycleTransition(diamondAddr, taskIndexes);
-
-        assertTrue(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 0));
-    }
-
-    /// @dev Test to ensure 'hasActiveUserTask' returns false for a pending or non-existent task.
-    function testHasActiveUserTaskForPendingOrNonExistent() public {
-        registerUst(diamondAddr, 2450);
-
-        assertFalse(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 0));
-        assertFalse(IRegistryFacet(diamondAddr).hasActiveUserTask(alice, 99));
-    }
-
-    /// @dev Test to ensure 'hasActiveSystemTask' returns true for an active system task.
-    function testHasActiveSystemTask() public {
-        registerGst(diamondAddr, 2450);
-
-        uint256[] memory taskIndexes = new uint256[](1);
-        taskIndexes[0] = 0;
-
-        processCycleTransition(diamondAddr, taskIndexes);
-
-        assertTrue(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 0));
-    }
-
-    /// @dev Test to ensure 'hasActiveSystemTask' returns false for a pending or non-existent system task.
-    function testHasActiveSystemTaskForPendingOrNonExistent() public {
-        registerGst(diamondAddr, 2450);
-
-        assertFalse(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 0));
-        assertFalse(IRegistryFacet(diamondAddr).hasActiveSystemTask(bob, 99));
-    }
-
-    /// @dev Test to ensure 'hasActiveTaskOfType' returns correct values.
-    function testHasActiveTaskOfType() public {
-        registerUst(diamondAddr, 2450);
-        registerGst(diamondAddr, 2450);
-
-        uint256[] memory taskIndexes = new uint256[](2);
-        taskIndexes[0] = 0;
-        taskIndexes[1] = 1;
-
-        processCycleTransition(diamondAddr, taskIndexes);
-
-        assertTrue(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST));
-        assertTrue(IRegistryFacet(diamondAddr).hasActiveTaskOfType(bob, 1, LibCommon.TaskType.GST));
-    }
-
-    /// @dev Test to ensure 'hasActiveTaskOfType' returns false for pending or non-existent task.
-    function testHasActiveTaskOfTypeForPendingOrNonExistent() public {
-        registerUst(diamondAddr, 2450);
-
-        assertFalse(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST));
-        assertFalse(IRegistryFacet(diamondAddr).hasActiveTaskOfType(alice, 99, LibCommon.TaskType.UST));
-    }
-
-    /// @dev Test to ensure 'getTaskDetailsBulk' returns correct details for existing and non-existing tasks.
-    function testGetTaskDetailsBulk() public {
-        registerUst(diamondAddr, 2450);
-        registerGst(diamondAddr, 2450);
-
-        uint64[] memory taskIndexes = new uint64[](3);
-        taskIndexes[0] = 0;
-        taskIndexes[1] = 1;
-        taskIndexes[2] = 99;
-
-        TaskMetadata[] memory details = IRegistryFacet(diamondAddr).getTaskDetailsBulk(taskIndexes);
-        assertEq(details.length, 2);
-        assertEq(details[0].taskIndex, 0);
-        assertEq(details[0].owner, alice);
-        assertEq(details[1].taskIndex, 1);
-        assertEq(details[1].owner, bob);
-    }
+    //
+    // Only the fee-estimating views stay here; the rest moved to test/RegistryViewFacet.t.sol
+    // alongside RegistryViewFacet (Entropy-Foundation/smr-moonshot#4101).
 
     /// @dev Test to ensure 'calculateAutomationFeeMultiplierForCurrentCycle' returns the base fee when
     ///      usage is below the 50% threshold, and a higher fee when it exceeds the threshold.
