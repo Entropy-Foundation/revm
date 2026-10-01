@@ -58,6 +58,16 @@ pub enum SupraExtensionError {
     /// Reported when automation record action can not be decoded from input bytes of the corresponding transaction
     #[error("Failed to decode automation record action: {0}")]
     InvalidAutomationRecord(String),
+
+    /// Reported when a task's `maxGasAmount` does not fit the `u64` gas limit of the transaction
+    /// built for it.
+    ///
+    /// The registry refuses to register a task above the chain's per-transaction gas cap, which is a
+    /// `u64`, so a registered task never carries such a figure. It is reported rather than
+    /// truncated, because a truncated figure would build a transaction with a gas limit the task
+    /// never committed to.
+    #[error("Automation task max gas amount {0} does not fit a u64 gas limit")]
+    MaxGasAmountOutOfRange(u128),
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].
