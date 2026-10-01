@@ -695,7 +695,7 @@ mod tests {
             ),
             (
                 "RegistryFacet",
-                b256!("3c395503f8813a1fba661cb0e83965345b399063df379cbba5db25413e417b05"),
+                b256!("0f3c5ceae210db441958a2b8d0b4ea83b1bd5192817cde4fe90c6987560a0fcc"),
             ),
             (
                 "RegistryViewFacet",

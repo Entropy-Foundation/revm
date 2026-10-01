@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {LibAccounting} from "./LibAccounting.sol";
+import {LibChainParams} from "./LibChainParams.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
@@ -129,6 +130,18 @@ library LibRegistry {
         // _maxGasAmount == 0 it would fail with StaticCallToPredicateFailed and mask the more
         // specific InvalidMaxGasAmount error.
         validateInputs(_payloadTx, _maxGasAmount);
+
+        // A task's maxGasAmount becomes the gas limit of the transaction the chain builds for it,
+        // and the chain refuses any transaction whose gas limit is over the per-transaction cap.
+        // A task over the cap could therefore never execute, so it is refused here, for user and
+        // system tasks alike. This sits before validatePredicate for two reasons: a refused task
+        // does not spend gas running its predicate's staticcall, and since that staticcall is
+        // gas-limited to _maxGasAmount, the predicate's gas is bounded by the cap too.
+        uint64 chainTxGasLimitCap = LibChainParams.txGasLimitCap();
+        if (_maxGasAmount > chainTxGasLimitCap) {
+            revert IRegistryFacet.MaxGasAmountExceedsChainCap(_maxGasAmount, chainTxGasLimitCap);
+        }
+
         validatePredicate(_predicate, _maxGasAmount);
 
         uint64 taskDurationCap;
@@ -136,7 +149,22 @@ library LibRegistry {
         uint128 nextCycleRegistryMaxGasCap;
         if (_isUst) {
             if (_totalTasks >= activeConfig.taskCapacity) { revert IRegistryFacet.TaskCapacityReached(); }
+            // A zero cap is refused with its own error, ahead of the floor check below. It is not
+            // made redundant by that check: the floor is a governed figure, and a cap of zero
+            // means a task that is never willing to pay for its execution whatever the floor is.
             if (_gasPriceCap == 0) { revert IRegistryFacet.InvalidGasPriceCap(); }
+            // A UST's transaction is built at a gas price no higher than its gasPriceCap, and the
+            // chain refuses any transaction priced below the minimum gas price (the base fee). A
+            // UST whose cap is below that minimum could therefore never execute, so it is refused
+            // here. Clearing the floor makes a task eligible, not guaranteed to run: a task is
+            // priced against the block's lowest included gas price, so one at exactly the floor
+            // can be passed over in a block whose transactions all paid more. GSTs are executed
+            // at a gas price of 0 and are registered with a gasPriceCap of 0, so they are exempt
+            // from this check.
+            uint256 chainMinGasPrice = LibChainParams.minGasPrice();
+            if (_gasPriceCap < chainMinGasPrice) {
+                revert IRegistryFacet.GasPriceCapBelowMinimum(_gasPriceCap, chainMinGasPrice);
+            }
 
             gasCommittedForNextCycle = registryState.gasCommittedForNextCycle;
             uint128 estimatedAutomationFeeForCycle = LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
