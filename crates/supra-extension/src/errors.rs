@@ -66,8 +66,12 @@ pub enum SupraExtensionError {
     /// `u64`, so a registered task never carries such a figure. It is reported rather than
     /// truncated, because a truncated figure would build a transaction with a gas limit the task
     /// never committed to.
+    ///
+    /// The amount is held as a [`U128`](alloy::primitives::U128), not a `u128`: a `u128` is
+    /// 16-byte aligned, which would raise the alignment, and so the size, of this error and of
+    /// every error that wraps it.
     #[error("Automation task max gas amount {0} does not fit a u64 gas limit")]
-    MaxGasAmountOutOfRange(u128),
+    MaxGasAmountOutOfRange(alloy::primitives::U128),
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].
