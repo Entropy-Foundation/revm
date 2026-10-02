@@ -7,6 +7,7 @@ import {DiamondLoupeFacet} from "../facets/DiamondLoupeFacet.sol";
 import {OwnershipFacet} from "../facets/OwnershipFacet.sol";
 import {ConfigFacet} from "../facets/ConfigFacet.sol";
 import {RegistryFacet} from "../facets/RegistryFacet.sol";
+import {RegistryViewFacet} from "../facets/RegistryViewFacet.sol";
 import {CoreFacet} from "../facets/CoreFacet.sol";
 import {DiamondInit} from "../upgradeInitializers/DiamondInit.sol";
 import {FacetsDeployment, InitParams} from "../libraries/DiamondTypes.sol";
@@ -69,6 +70,7 @@ library LibDiamondUtils {
         d.ownershipFacet = address(new OwnershipFacet());
         d.configFacet    = address(new ConfigFacet());
         d.registryFacet  = address(new RegistryFacet());
+        d.registryViewFacet = address(new RegistryViewFacet());
         d.coreFacet      = address(new CoreFacet());
 
         // 3) Deploy DiamondInit

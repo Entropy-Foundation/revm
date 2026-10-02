@@ -4,6 +4,7 @@ pragma solidity 0.8.34;
 import {console} from "forge-std/console.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -312,7 +313,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         (uint64 cycleIndexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED), "cycle must be STARTED after full transition");
         assertEq(cycleIndexAfter, cycleIndexBefore + 1, "cycle index must increment exactly once");
-        assertEq(IRegistryFacet(diamond).getActiveTaskIds().length, totalTasks, "all tasks must survive the transition");
+        assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, totalTasks, "all tasks must survive the transition");
 
         uint256 finalBatchGas = _summarizeAndLog(
             string.concat("Scenario 1: FINISHED->STARTED, N=", vm.toString(totalTasks), ", all survive"),
@@ -366,8 +367,8 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         (uint64 cycleIndexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.READY), "cycle must be READY once suspension finalizes with automation disabled");
         assertEq(cycleIndexAfter, cycleIndex, "cycle index must NOT change on suspension - only STARTED transitions increment it");
-        assertEq(IRegistryFacet(diamond).getActiveTaskIds().length, 0, "no tasks survive a suspension - all refunded and removed");
-        assertEq(IRegistryFacet(diamond).totalTasks(), 0, "registry must be empty after full suspension");
+        assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, 0, "no tasks survive a suspension - all refunded and removed");
+        assertEq(IRegistryViewFacet(diamond).totalTasks(), 0, "registry must be empty after full suspension");
 
         uint256 finalBatchGas = _summarizeAndLog(
             string.concat("Scenario 2: STARTED(mid-cycle)->SUSPENDED->READY, N=", vm.toString(totalTasks), ", all dropped"),
@@ -419,7 +420,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         (uint64 cycleIndex1, , , ) = ICoreFacet(diamond).getCycleInfo();
         _measureMonitorCycleEnd(diamond);
         _runAllBatches(diamond, cycleIndex1 + 1, totalTasks, "processTasks gas | scenario 3, cycle 1 setup, batch=");
-        assertEq(IRegistryFacet(diamond).getActiveTaskIds().length, totalTasks, "cycle 1: nothing expired yet, all tasks survive");
+        assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, totalTasks, "cycle 1: nothing expired yet, all tasks survive");
 
         // ---- Cycle 2 transition: the expiringCount short-expiry UST tasks are now
         // past their expiry and get dropped instead of renewed. ----
@@ -440,7 +441,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED), "cycle must be STARTED after cycle 2's transition");
         assertEq(cycleIndex3, cycleIndex2 + 1, "cycle index must increment exactly once");
         assertEq(
-            IRegistryFacet(diamond).getActiveTaskIds().length,
+            IRegistryViewFacet(diamond).getActiveTaskIds().length,
             totalTasks - expiringCount,
             "the expiring UST tasks must be dropped, the rest survive"
         );

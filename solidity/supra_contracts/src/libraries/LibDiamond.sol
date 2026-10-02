@@ -158,9 +158,9 @@ library LibDiamond {
     // And should not be removed unless node binary and automation registry runtime management is updated accordingly:
     //    - DiamondLoupeFacet::isInitialized
     //    - CoreFacet::getCycleStateDetails
-    //    - RegistryFacet::getTaskDetails
-    //    - RegistryFacet::getTaskIdList
-    //    - RegistryFacet::getActiveTaskIds
+    //    - RegistryViewFacet::getTaskDetails
+    //    - RegistryViewFacet::getTaskIdList
+    //    - RegistryViewFacet::getActiveTaskIds
     //    - CoreFacet::isAutomationReadyEnabled
     // Whoever operates diamondCut post-genesis must never submit a Remove action for
     // these selectors (Replace, to ship a fix, is fine and unaffected by

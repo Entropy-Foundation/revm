@@ -35,16 +35,28 @@ contract Diamond {
         _d.coreFacet.validateContractAddress();
         _d.diamondCutFacet.validateContractAddress();
         _d.registryFacet.validateContractAddress();
+        _d.registryViewFacet.validateContractAddress();
         _d.ownershipFacet.validateContractAddress();
         _d.loupeFacet.validateContractAddress();
         _d.diamondInit.validateContractAddress();
 
+        address[6] memory facets = [
+            _d.loupeFacet,
+            _d.ownershipFacet,
+            _d.configFacet,
+            _d.registryFacet,
+            _d.registryViewFacet,
+            _d.coreFacet
+        ];
+
         // ------------------------------------------------------------------
         // Build the full cut array:
-        //   slot 0  — diamondCut function (from DiamondCutFacet)
-        //   slots 1-5 — remaining facets, each self-reporting their selectors
+        //   slot 0 — diamondCut function (from DiamondCutFacet)
+        //   remaining slots — one per entry in `facets`, each self-reporting its selectors
+        // Sized off facets.length rather than a literal, so adding, removing or reordering
+        // a facet above cannot desync the cut array's length from the loop that fills it.
         // ------------------------------------------------------------------
-        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](6);
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](facets.length + 1);
 
         bytes4[] memory cutSelectors = new bytes4[](1);
         cutSelectors[0] = IDiamondCut.diamondCut.selector;
@@ -54,14 +66,7 @@ contract Diamond {
             functionSelectors: cutSelectors
         });
 
-        address[5] memory facets = [
-            _d.loupeFacet,
-            _d.ownershipFacet,
-            _d.configFacet,
-            _d.registryFacet,
-            _d.coreFacet
-        ];
-        for (uint256 i = 0; i < 5; i++) {
+        for (uint256 i = 0; i < facets.length; i++) {
             cut[i + 1] = IDiamondCut.FacetCut({
                 facetAddress: facets[i],
                 action: IDiamondCut.FacetCutAction.Add,

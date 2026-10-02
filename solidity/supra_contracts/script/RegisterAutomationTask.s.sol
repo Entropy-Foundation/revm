@@ -3,6 +3,7 @@ pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -40,7 +41,7 @@ contract RegisterAutomationTask is Script {
         vm.startBroadcast();
         IRegistryFacet registryFacet = IRegistryFacet(registry);
         bytes[] memory auxData;
-        uint64 taskIdx = registryFacet.getNextTaskIndex();
+        uint64 taskIdx = IRegistryViewFacet(registry).getNextTaskIndex();
         console.log("Next task index ", taskIdx);
 
         bytes memory payload = createPayload(0, amountToTransfer, target, wsupra);
@@ -103,7 +104,7 @@ contract RegisterGaslessAutomationTask is Script {
         vm.startBroadcast();
         IRegistryFacet registryFacet = IRegistryFacet(registry);
         bytes[] memory auxData;
-        uint64 taskIdx = registryFacet.getNextTaskIndex();
+        uint64 taskIdx = IRegistryViewFacet(registry).getNextTaskIndex();
         console.log("Next task index ", taskIdx);
 
         bytes memory payload = createPayload(0, amountToTransfer, target, wsupra);

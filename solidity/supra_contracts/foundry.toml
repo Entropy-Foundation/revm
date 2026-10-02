@@ -36,10 +36,18 @@ remappings = [
 # in crates/supra-extension/build_utils_impl.rs). Foundry merges [profile.default] as
 # the base for every other profile and layers this section's overrides on top.
 [profile.production]
-# Deployed code, not just gas cost, is the binding constraint: RegistryFacet is within
-# EIP-170's 24,576-byte limit (enforced by load_contracts_bytecode's
-# EIP170_DEPLOYED_CODE_LIMIT check in build_utils_impl.rs) up to 800 runs and over it
-# by 900.
+# RegistryFacet's views moved to RegistryViewFacet (Entropy-Foundation/smr-moonshot#4101),
+# so RegistryFacet is no longer within reach of EIP-170's 24,576-byte limit (enforced by
+# load_contracts_bytecode's EIP170_DEPLOYED_CODE_LIMIT check in build_utils_impl.rs) at
+# any optimizer_runs value tested.
+#
+# 800 stays the value regardless: any future fix to RegistryFacet, or to a library it
+# inlines, is redeployed as a fresh RegistryFacet that must also fit under the limit
+# (Entropy-Foundation/smr-moonshot#2772), so this keeps that facet's deployed-code
+# headroom rather than spending it on registry-call gas that #4101 measured at under 0.5%.
+#
+# CoreFacet is the largest contract in the genesis set above ~10,000 runs, flat from
+# 10,000 to 20,000 runs and 994 bytes under the limit at solc's maximum runs value.
 optimizer_runs = 800
 
 

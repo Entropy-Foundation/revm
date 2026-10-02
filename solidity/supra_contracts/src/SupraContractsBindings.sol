@@ -9,7 +9,7 @@ interface SupraContractsBindings {
     // View function of Automation Registry Diamond
     function isInitialized() external view returns (bool);
 
-    // View functions of RegistryFacet
+    // View functions of RegistryViewFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function getActiveTaskIds() external view returns (uint256[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
