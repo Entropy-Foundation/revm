@@ -8,6 +8,7 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {TxHashPrecompile} from "./TxHashPrecompile.sol";
+import {ChainParamsStandIn} from "./ChainParamsPrecompile.sol";
 
 contract RegisterAutomationTask is Script {
     uint64 taskDurationSecs;
@@ -35,6 +36,11 @@ contract RegisterAutomationTask is Script {
         // Helps with precompilation but not with simulation, so one need to run the script with --skip-simualation flag
         TxHashPrecompile deployed = new TxHashPrecompile();
         vm.etch(TX_HASH_PRECOMPILE, address(deployed).code);
+
+        // Registration reads the chain's gas cap and minimum gas price from the chain parameters
+        // precompile, so the local run needs a stand-in there too. Its figures only affect the
+        // local run; set CHAIN_TX_GAS_LIMIT_CAP and CHAIN_MIN_GAS_PRICE to the target chain's.
+        ChainParamsStandIn.etch(vm);
     }
 
     function run() public {
@@ -98,6 +104,11 @@ contract RegisterGaslessAutomationTask is Script {
         // Helps with precompilation but not with simulation, so one need to run the script with --skip-simualation flag
         TxHashPrecompile deployed = new TxHashPrecompile();
         vm.etch(TX_HASH_PRECOMPILE, address(deployed).code);
+
+        // Registration reads the chain's gas cap and minimum gas price from the chain parameters
+        // precompile, so the local run needs a stand-in there too. Its figures only affect the
+        // local run; set CHAIN_TX_GAS_LIMIT_CAP and CHAIN_MIN_GAS_PRICE to the target chain's.
+        ChainParamsStandIn.etch(vm);
     }
 
     function run() public {

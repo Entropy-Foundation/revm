@@ -628,9 +628,14 @@ impl TryFrom<TaskMetadata> for AutomatedTransactionBuilder {
 
         let (to, value, input, access_list) = TaskPayload::try_from(payloadTx.as_ref())?.dissolve();
         let predicate = AutomationTaskPredicate::try_from(predicate.as_ref())?;
+        // The registry bounds `maxGasAmount` by the chain's `u64` per-transaction gas cap at
+        // registration, so the conversion succeeds for every registered task. It is checked rather
+        // than cast so that a figure outside that bound is refused instead of silently truncated.
+        let gas_limit = u64::try_from(maxGasAmount).map_err(|_| {
+            SupraExtensionError::MaxGasAmountOutOfRange(alloy::primitives::U128::from(maxGasAmount))
+        })?;
         let builder = Self::new()
-            .with_gas_price_cap(gasPriceCap)
-            .with_gas_limit(maxGasAmount as u64)
+            .with_gas_limit(gas_limit)
             .with_gas_price_cap(gasPriceCap)
             .with_registration_hash(txHash)
             .with_task_index(taskIndex)
@@ -1302,6 +1307,42 @@ mod tests {
         assert_eq!(*builder.owner(), Some(OWNER));
         assert!(matches!(builder.typ(), Some(AutomatedTransactionType::UST)));
         assert_eq!(*builder.to(), Some(TO));
+    }
+
+    /// The largest `maxGasAmount` that fits a `u64` gas limit is carried over whole.
+    #[test]
+    fn task_metadata_max_gas_amount_at_u64_max_is_carried_whole() {
+        let metadata = TaskMetadata {
+            maxGasAmount: u128::from(u64::MAX),
+            ..base_task_metadata(1, 0)
+        };
+        let builder = AutomatedTransactionBuilder::try_from(metadata).unwrap();
+        assert_eq!(*builder.gas_limit(), Some(u64::MAX));
+    }
+
+    /// A `maxGasAmount` above `u64::MAX` is refused rather than truncated to a gas limit the task
+    /// never committed to.
+    #[test]
+    fn task_metadata_max_gas_amount_above_u64_is_refused() {
+        let too_large = u128::from(u64::MAX) + 1;
+        let metadata = TaskMetadata {
+            maxGasAmount: too_large,
+            ..base_task_metadata(1, 0)
+        };
+        let err = AutomatedTransactionBuilder::try_from(metadata).unwrap_err();
+        assert!(matches!(
+            err,
+            SupraExtensionError::MaxGasAmountOutOfRange(amount)
+                if amount == alloy::primitives::U128::from(too_large)
+        ));
+    }
+
+    /// The error's alignment stays at 8 bytes. A 16-byte-aligned field, such as a bare `u128`,
+    /// would grow every error that wraps this one past clippy's `result_large_err` threshold in
+    /// downstream crates.
+    #[test]
+    fn the_error_is_not_16_byte_aligned() {
+        assert!(core::mem::align_of::<SupraExtensionError>() <= 8);
     }
 
     #[test]

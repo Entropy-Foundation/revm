@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
+import {ChainParamsMock} from "./ChainParamsMock.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
@@ -520,6 +521,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
+        // The registry's aggregate cap is 20M, above the default per-transaction cap, so the
+        // per-transaction cap is raised to let this task reach the aggregate check it is about.
+        ChainParamsMock.mockTxGasLimitCap(vm, 20_000_001);
+
         vm.expectRevert(IRegistryFacet.GasCommittedExceedsMaxGasCap.selector);
 
         vm.prank(alice);
@@ -533,6 +538,106 @@ contract RegistryFacetTest is BaseDiamondTest {
             0,
             auxData
         );
+    }
+
+    /// @dev Test to ensure 'register' reverts if the task's max gas amount is above the chain's
+    /// per-transaction gas cap, since the chain would refuse every transaction built for it.
+    function testRegisterRevertsIfMaxGasAmountExceedsChainCap() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+        uint128 maxGasAmount = uint128(ChainParamsMock.DEFAULT_TX_GAS_LIMIT_CAP) + 1;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IRegistryFacet.MaxGasAmountExceedsChainCap.selector,
+                maxGasAmount,
+                ChainParamsMock.DEFAULT_TX_GAS_LIMIT_CAP
+            )
+        );
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            maxGasAmount,                     // one above the chain's per-transaction cap
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            0,
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure the chain-cap check runs before the predicate is evaluated: a task over
+    /// the cap whose predicate would also fail is refused for the cap, without running the predicate.
+    function testRegisterChecksChainCapBeforePredicate() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+        // WrappedSupra has no isRegistrationEnabled, so this predicate's staticcall reverts.
+        bytes memory predicate = createPredicate(address(wsupra));
+        uint128 maxGasAmount = uint128(ChainParamsMock.DEFAULT_TX_GAS_LIMIT_CAP) + 1;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IRegistryFacet.MaxGasAmountExceedsChainCap.selector,
+                maxGasAmount,
+                ChainParamsMock.DEFAULT_TX_GAS_LIMIT_CAP
+            )
+        );
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            maxGasAmount,
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            0,
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure 'register' reverts if the UST's gas price cap is below the chain's
+    /// minimum gas price, since the chain would refuse every transaction built for it.
+    function testRegisterRevertsIfGasPriceCapBelowMinimum() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+        uint128 gasPriceCap = uint128(ChainParamsMock.DEFAULT_MIN_GAS_PRICE) - 1;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IRegistryFacet.GasPriceCapBelowMinimum.selector,
+                gasPriceCap,
+                ChainParamsMock.DEFAULT_MIN_GAS_PRICE
+            )
+        );
+
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            gasPriceCap,                      // one wei below the chain's minimum gas price
+            uint128(60.1 ether),
+            0,
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure both bounds are inclusive: a UST whose max gas amount is exactly the
+    /// chain's cap and whose gas price cap is exactly the minimum gas price is registered.
+    function testRegisterAcceptsTaskAtChainCapAndMinimumGasPrice() public {
+        // registerUst registers 100,000 gas at 4 gwei, so the chain is set to exactly those figures.
+        ChainParamsMock.mockTxGasLimitCap(vm, 100_000);
+        ChainParamsMock.mockMinGasPrice(vm, 4 gwei);
+
+        registerUst(diamondAddr, 1250);
+
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 1);
     }
 
     /// @dev Test to ensure 'register' reverts when 'transferFrom' returns false.
@@ -930,6 +1035,10 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)); 
         bytes memory predicate = createPredicate(diamondAddr);
 
+        // As for the UST twin: the per-transaction cap is raised above the 20M aggregate cap so
+        // the task reaches the aggregate check.
+        ChainParamsMock.mockTxGasLimitCap(vm, 20_000_001);
+
         vm.expectRevert(IRegistryFacet.GasCommittedExceedsMaxGasCap.selector);
 
         vm.prank(bob);
@@ -941,6 +1050,46 @@ contract RegistryFacetTest is BaseDiamondTest {
             2,
             auxData
         );
+    }
+
+    /// @dev Test to ensure 'registerSystemTask' reverts if the task's max gas amount is above the
+    /// chain's per-transaction gas cap: a GST's transaction is bounded by the same cap as a UST's.
+    function testRegisterSystemTaskRevertsIfMaxGasAmountExceedsChainCap() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+        uint128 maxGasAmount = uint128(ChainParamsMock.DEFAULT_TX_GAS_LIMIT_CAP) + 1;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IRegistryFacet.MaxGasAmountExceedsChainCap.selector,
+                maxGasAmount,
+                ChainParamsMock.DEFAULT_TX_GAS_LIMIT_CAP
+            )
+        );
+
+        vm.prank(bob);
+        IRegistryFacet(diamondAddr).registerSystemTask(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            maxGasAmount,                        // one above the chain's per-transaction cap
+            2,
+            auxData
+        );
+    }
+
+    /// @dev Test to ensure a GST is registered at exactly the chain's cap, and is exempt from the
+    /// minimum gas price: GSTs are executed at a gas price of 0, so no floor applies to them.
+    function testRegisterSystemTaskAcceptsTaskAtChainCapWhateverTheMinimumGasPrice() public {
+        // registerGst registers 100,000 gas, so the cap is set to exactly that, and the floor to
+        // the highest figure the precompile could serve.
+        ChainParamsMock.mockTxGasLimitCap(vm, 100_000);
+        ChainParamsMock.mockMinGasPrice(vm, type(uint256).max);
+
+        registerGst(diamondAddr, 1250);
+
+        assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 1);
     }
 
     /// @dev Test to ensure 'registerSystemTask' registers a GST.
