@@ -15,7 +15,7 @@ pragma solidity 0.8.34;
 /// away.
 ///
 /// The address is frozen: it is what callers encode into their contracts, and it is the address
-/// that authenticates a {NativeCrossingToMove} log.
+/// that authenticates a {NativeCrossingToMove} or {NativeCrossingFromMove} log.
 interface ISupraNativeCrossing {
     /// @notice Emitted for each recorded crossing, at this precompile's own address.
     ///
@@ -27,11 +27,40 @@ interface ISupraNativeCrossing {
     /// address and unwinds with the frame that produced it: a crossing recorded inside a call
     /// frame that later reverts disappears along with the debit.
     ///
+    /// @param settlementId The crossing's settlement id: the key the chain's settlement queue holds
+    /// the crossing under, and the `id` of the Move side's `0x1::evm_settlement::InboundSettlementApplied`
+    /// or `InboundSettlementSenderRejected` event that settles it. It is the 16 ASCII bytes
+    /// `supra:sevm->move`, then the block height as 8 bytes, the transaction's position in the
+    /// block's EVM transaction list as 4 bytes, and the crossing's ordinal among the crossings that
+    /// transaction records as 4 bytes, each big-endian. The transaction's position counts
+    /// transactions a receipt's `transactionIndex` does not, so read the id from the log rather than
+    /// deriving it.
     /// @param sender The Supra EVM address that was debited, and the address a Move-side refund
     /// returns the value to.
     /// @param recipient The 32 bytes of the Move address the value is owed to.
     /// @param amountQuants The amount crossing, in quants.
-    event NativeCrossingToMove(address indexed sender, bytes32 indexed recipient, uint256 amountQuants);
+    event NativeCrossingToMove(
+        bytes32 indexed settlementId, address indexed sender, bytes32 indexed recipient, uint256 amountQuants
+    );
+
+    /// @notice Emitted, at this precompile's own address, for each credit of a crossing from the
+    /// Move side into the Supra EVM.
+    ///
+    /// No call emits this event. The chain credits a crossing from the Move side directly to the
+    /// recipient's balance, without calling this precompile, and places this log in the receipt of
+    /// the credit, a system pseudo-transaction. {crossToMove} emits only {NativeCrossingToMove}.
+    ///
+    /// The data word is `amountQuants`, the amount credited in **quants**, as in
+    /// {NativeCrossingToMove}.
+    ///
+    /// @param settlementId The crossing's settlement id: the 32 bytes of the address of the Move-side
+    /// record the crossing was recorded in. It is the `record_address` of the Move side's
+    /// `0x1::evm_settlement::SettlementRecorded` event that recorded the crossing and of the
+    /// `OutboundSettlementCleared` event that deletes the record once it is credited. A refund of a
+    /// crossing to the Move side is credited under the refund's own id.
+    /// @param recipient The Supra EVM address credited.
+    /// @param amountQuants The amount credited, in quants.
+    event NativeCrossingFromMove(bytes32 indexed settlementId, address indexed recipient, uint256 amountQuants);
 
     /// @notice Thrown when the call data does not name a known entry point. Permanent: the call
     /// has to be corrected.
