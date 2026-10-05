@@ -2,8 +2,8 @@
 pragma solidity 0.8.34;
 
 import {LibAccounting} from "./LibAccounting.sol";
-import {LibChainParams} from "./LibChainParams.sol";
 import {LibCommon} from "./LibCommon.sol";
+import {LibEvmGasConfig} from "./LibEvmGasConfig.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
@@ -137,7 +137,7 @@ library LibRegistry {
         // system tasks alike. This sits before validatePredicate for two reasons: a refused task
         // does not spend gas running its predicate's staticcall, and since that staticcall is
         // gas-limited to _maxGasAmount, the predicate's gas is bounded by the cap too.
-        uint64 chainTxGasLimitCap = LibChainParams.txGasLimitCap();
+        uint64 chainTxGasLimitCap = LibEvmGasConfig.txGasLimitCap();
         if (_maxGasAmount > chainTxGasLimitCap) {
             revert IRegistryFacet.MaxGasAmountExceedsChainCap(_maxGasAmount, chainTxGasLimitCap);
         }
@@ -161,7 +161,7 @@ library LibRegistry {
             // can be passed over in a block whose transactions all paid more. GSTs are executed
             // at a gas price of 0 and are registered with a gasPriceCap of 0, so they are exempt
             // from this check.
-            uint256 chainMinGasPrice = LibChainParams.minGasPrice();
+            uint256 chainMinGasPrice = LibEvmGasConfig.minGasPrice();
             if (_gasPriceCap < chainMinGasPrice) {
                 revert IRegistryFacet.GasPriceCapBelowMinimum(_gasPriceCap, chainMinGasPrice);
             }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-/// @title Supra EVM chain parameters.
+/// @title Supra EVM gas config.
 /// @notice The chain's governed EVM gas parameters, exposed to EVM contracts at the Supra-reserved
 /// address `0x0000000000000000000000000000000053555005`.
 ///
@@ -19,7 +19,7 @@ pragma solidity 0.8.34;
 /// may differ from the chain's cap.
 ///
 /// The address is frozen: it is what callers encode into their contracts.
-interface ISupraChainParams {
+interface ISupraEvmGasConfig {
     /// @notice Thrown when the call data does not name a known entry point.
     error UnknownSelector();
     /// @notice Thrown when the call data is anything other than the bare four-byte selector.

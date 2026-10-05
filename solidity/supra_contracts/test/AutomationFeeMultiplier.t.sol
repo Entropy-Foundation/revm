@@ -7,7 +7,7 @@ import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {InitParams} from "../src/libraries/DiamondTypes.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
-import {ChainParamsMock} from "./ChainParamsMock.sol";
+import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 
 /// @notice Tests for calculateAutomationFeeMultiplierForCommittedOccupancy.
 ///
@@ -113,10 +113,10 @@ contract AutomationFeeMultiplierTest is Test {
             abi.encode(keccak256("txHash"))
         );
 
-        // Mock the chain parameters precompile at BaseDiamondTest's figures. No test here
+        // Mock the EVM gas config precompile at BaseDiamondTest's figures. No test here
         // registers a task today, but registration reads the chain's per-transaction gas cap and
         // minimum gas price from it, so a registering test added later needs it in place.
-        ChainParamsMock.mockDefaults(vm);
+        EvmGasConfigMock.mockDefaults(vm);
 
         // Deploy WrappedSupra (the Diamond requires a valid contract address).
         vm.startPrank(admin);
