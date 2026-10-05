@@ -85,7 +85,7 @@ interface IRegistryFacet {
     error GasCommittedExceedsMaxGasCap();
     error GasCommittedValueUnderflow();
     /// @notice Thrown when a UST's gas price cap is below the chain's minimum gas price (the base
-    /// fee, read from {ISupraChainParams-minGasPrice}), so its transaction could never be admitted.
+    /// fee, read from {ISupraEvmGasConfig-minGasPrice}), so its transaction could never be admitted.
     error GasPriceCapBelowMinimum(uint128 gasPriceCap, uint256 minGasPrice);
     error InsufficientFeeCapForCycle(uint128 estimatedAutomationFeeForCycle);
     error InvalidCycleRefundFee(); 
@@ -101,7 +101,7 @@ interface IRegistryFacet {
     error InvalidRegistryState();
     error InvalidTaskDuration();
     /// @notice Thrown when a task's max gas amount is above the chain's per-transaction gas cap
-    /// (read from {ISupraChainParams-txGasLimitCap}), so its transaction could never be admitted.
+    /// (read from {ISupraEvmGasConfig-txGasLimitCap}), so its transaction could never be admitted.
     error MaxGasAmountExceedsChainCap(uint128 maxGasAmount, uint64 txGasLimitCap);
     error RegistrationDisabled();
     error StaticCallToPredicateFailed();

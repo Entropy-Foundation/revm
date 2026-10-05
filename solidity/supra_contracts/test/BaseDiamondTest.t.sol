@@ -9,7 +9,7 @@ import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
-import {ChainParamsMock} from "./ChainParamsMock.sol";
+import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 
 abstract contract BaseDiamondTest is Test {
     WrappedSupra wsupra;                             // WrappedSupra contract
@@ -49,8 +49,8 @@ abstract contract BaseDiamondTest is Test {
         );
 
         // Registration reads the chain's per-transaction gas cap and minimum gas price from the
-        // chain parameters precompile, which Forge's EVM does not have.
-        ChainParamsMock.mockDefaults(vm);
+        // EVM gas config precompile, which Forge's EVM does not have.
+        EvmGasConfigMock.mockDefaults(vm);
     }
 
     /// @dev Helper function to register a UST.

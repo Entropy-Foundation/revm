@@ -2,16 +2,16 @@
 pragma solidity 0.8.34;
 
 import {Vm} from "forge-std/Vm.sol";
-import {ISupraChainParams} from "../src/interfaces/ISupraChainParams.sol";
-import {LibChainParams} from "../src/libraries/LibChainParams.sol";
+import {ISupraEvmGasConfig} from "../src/interfaces/ISupraEvmGasConfig.sol";
+import {LibEvmGasConfig} from "../src/libraries/LibEvmGasConfig.sol";
 
-/// @dev Stands in for the chain parameters precompile in Foundry tests.
+/// @dev Stands in for the EVM gas config precompile in Foundry tests.
 ///
 /// Forge's EVM has no Supra precompiles, so any test that reaches the registry's registration
-/// path has to serve {ISupraChainParams} itself, the same way the tests serve the tx-hash
+/// path has to serve {ISupraEvmGasConfig} itself, the same way the tests serve the tx-hash
 /// precompile. The two reads are mocked per selector so a test can move one figure without
 /// touching the other, and the defaults are kept in one place so every fixture agrees on them.
-library ChainParamsMock {
+library EvmGasConfigMock {
     /// @dev Default per-transaction gas cap: 2^24, comfortably above every task the test helpers
     /// register (100,000 gas) and every larger maxGasAmount a test chooses explicitly, apart from
     /// the tests that set out to exceed it.
@@ -27,21 +27,21 @@ library ChainParamsMock {
         mockMinGasPrice(vm, DEFAULT_MIN_GAS_PRICE);
     }
 
-    /// @dev Makes {ISupraChainParams-txGasLimitCap} return `_cap`, replacing any earlier mock of it.
+    /// @dev Makes {ISupraEvmGasConfig-txGasLimitCap} return `_cap`, replacing any earlier mock of it.
     function mockTxGasLimitCap(Vm vm, uint64 _cap) internal {
         vm.mockCall(
-            address(LibChainParams.CHAIN_PARAMS),
-            abi.encodeCall(ISupraChainParams.txGasLimitCap, ()),
+            address(LibEvmGasConfig.EVM_GAS_CONFIG),
+            abi.encodeCall(ISupraEvmGasConfig.txGasLimitCap, ()),
             abi.encode(_cap)
         );
     }
 
-    /// @dev Makes {ISupraChainParams-minGasPrice} return `_minGasPrice`, replacing any earlier mock
+    /// @dev Makes {ISupraEvmGasConfig-minGasPrice} return `_minGasPrice`, replacing any earlier mock
     /// of it.
     function mockMinGasPrice(Vm vm, uint256 _minGasPrice) internal {
         vm.mockCall(
-            address(LibChainParams.CHAIN_PARAMS),
-            abi.encodeCall(ISupraChainParams.minGasPrice, ()),
+            address(LibEvmGasConfig.EVM_GAS_CONFIG),
+            abi.encodeCall(ISupraEvmGasConfig.minGasPrice, ()),
             abi.encode(_minGasPrice)
         );
     }

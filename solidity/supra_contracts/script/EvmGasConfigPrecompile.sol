@@ -2,10 +2,10 @@
 pragma solidity 0.8.34;
 
 import {Vm} from "forge-std/Vm.sol";
-import {ISupraChainParams} from "../src/interfaces/ISupraChainParams.sol";
-import {LibChainParams} from "../src/libraries/LibChainParams.sol";
+import {ISupraEvmGasConfig} from "../src/interfaces/ISupraEvmGasConfig.sol";
+import {LibEvmGasConfig} from "../src/libraries/LibEvmGasConfig.sol";
 
-/// @dev Stand-in for the chain parameters precompile, etched at its address by the registration
+/// @dev Stand-in for the EVM gas config precompile, etched at its address by the registration
 /// scripts so that their local execution of `register` / `registerSystemTask` can read the
 /// figures, as {TxHashPrecompile} does for the tx-hash precompile.
 ///
@@ -14,11 +14,11 @@ import {LibChainParams} from "../src/libraries/LibChainParams.sol";
 /// direction: a task this stand-in accepts can be refused on chain, and a task it refuses would
 /// be accepted on chain but is never broadcast. Set the figures to the target chain's with the
 /// optional `CHAIN_TX_GAS_LIMIT_CAP` and `CHAIN_MIN_GAS_PRICE` environment variables; read the
-/// chain's own with `eth_call` to {ISupraChainParams-txGasLimitCap} and
-/// {ISupraChainParams-minGasPrice}.
+/// chain's own with `eth_call` to {ISupraEvmGasConfig-txGasLimitCap} and
+/// {ISupraEvmGasConfig-minGasPrice}.
 ///
 /// The figures are immutables, so they are part of the runtime code that `vm.etch` copies.
-contract ChainParamsPrecompile is ISupraChainParams {
+contract EvmGasConfigPrecompile is ISupraEvmGasConfig {
     uint64 internal immutable TX_GAS_LIMIT_CAP;
     uint256 internal immutable MIN_GAS_PRICE;
 
@@ -36,8 +36,8 @@ contract ChainParamsPrecompile is ISupraChainParams {
     }
 }
 
-/// @dev Installs {ChainParamsPrecompile} at the precompile's address for a script's local run.
-library ChainParamsStandIn {
+/// @dev Installs {EvmGasConfigPrecompile} at the precompile's address for a script's local run.
+library EvmGasConfigStandIn {
     /// @dev 2^24 gas, the per-transaction gas cap EIP-7825 sets, served when
     /// `CHAIN_TX_GAS_LIMIT_CAP` is not set.
     uint64 internal constant DEFAULT_TX_GAS_LIMIT_CAP = 16_777_216;
@@ -54,7 +54,7 @@ library ChainParamsStandIn {
         uint256 minGasPrice = vm.envOr("CHAIN_MIN_GAS_PRICE", DEFAULT_MIN_GAS_PRICE);
         // casting to 'uint64' is safe because the require above bounds `cap` by type(uint64).max
         // forge-lint: disable-next-line(unsafe-typecast)
-        ChainParamsPrecompile standIn = new ChainParamsPrecompile(uint64(cap), minGasPrice);
-        vm.etch(address(LibChainParams.CHAIN_PARAMS), address(standIn).code);
+        EvmGasConfigPrecompile standIn = new EvmGasConfigPrecompile(uint64(cap), minGasPrice);
+        vm.etch(address(LibEvmGasConfig.EVM_GAS_CONFIG), address(standIn).code);
     }
 }
