@@ -193,8 +193,8 @@ impl Typed2718 for AutomationRegistryRecord {
 #[repr(u8)]
 pub enum AutomationTaskRemovalReason {
     /// The task failed at runtime (malformed payload or predicate, failed predicate, unexecutable
-    /// gas amount). The registry refunds half of the remaining current-cycle fee and the deposit,
-    /// half the deposit for a pending task.
+    /// gas amount). The registry refunds half of the remaining current-cycle fee and the whole
+    /// deposit, or half the deposit for a pending task.
     Error = 0,
     /// The EVM gas config of the executing block's epoch no longer admits the task's transaction
     /// (#4087). The registry re-checks the task against that config, does nothing if it is still

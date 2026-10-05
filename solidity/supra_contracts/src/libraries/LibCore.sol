@@ -392,8 +392,11 @@ library LibCore {
             // GAS_CONFIG_UPDATE removal had not executed when the cycle ended (#4087).
             uint128 depositRefund;
             if (isUst) {
-                depositRefund = task.depositFee;
-                LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
+                bool refunded =
+                    LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
+                // The event reports what was paid: a deposit the registry could not transfer is
+                // reported as 0, alongside the error event safeDepositRefund emits.
+                depositRefund = refunded ? task.depositFee : 0;
             } else {
                 LibCommon.removeTask(_taskIndex, task.owner, true, false);
             }
@@ -641,7 +644,7 @@ library LibCore {
     /// @param _currentTime Current time.
     /// @param _residualInterval Remaining time of the current cycle.
     /// @param _reason Why the task is removed; selects the refund policy.
-    /// @param _details Human-readable description of the reason, recorded in the ERROR event.
+    /// @param _details Human-readable description of the reason, carried in the record's call data.
     function handleTasksRemoval(
         uint64 _taskId,
         uint64 _cycleEndTime,

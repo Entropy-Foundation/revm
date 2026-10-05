@@ -146,7 +146,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     ///      post-genesis; Replace (to ship a fix) is fine.
     ///
     ///      ERROR removes the task (it must exist) and refunds half of the remaining current-cycle
-    ///      fee and the deposit, half the deposit for a PENDING task; it emits TaskRemovedBySystem.
+    ///      fee and the whole deposit, or half the deposit for a PENDING task; it emits
+    ///      TaskRemovedBySystem.
     ///
     ///      GAS_CONFIG_UPDATE removes the task only if it exists and the EVM gas config served by
     ///      {LibEvmGasConfig} for this block does not admit it, and is a no-op otherwise, so the
@@ -156,7 +157,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     /// @param _cycleIndex index of the current cycle.
     /// @param _taskIndex index of the task to remove.
     /// @param _reason why the task is removed; selects the refund policy.
-    /// @param _details human-readable description of the reason, recorded in the ERROR event.
+    /// @param _details human-readable description of the reason. It is carried in the record's
+    ///      call data; TaskRemovedBySystem indexes its struct, so the event holds only its hash.
     function removeRegisteredTask(
         uint64 _cycleIndex,
         uint64 _taskIndex,

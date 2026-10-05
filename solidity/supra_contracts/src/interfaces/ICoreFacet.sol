@@ -65,7 +65,9 @@ interface ICoreFacet {
     /// cycleFeeRefund the task's whole fee for the remaining cycle time, and when processTasks
     /// drops the task at a cycle transition, with cycleFeeRefund 0: the ended cycle's fee was
     /// earned and the new cycle's fee has not been charged. depositRefund is the whole deposit of
-    /// a UST and 0 for a GST, which pays none.
+    /// a UST and 0 for a GST, which pays none; at a cycle transition it is 0 if the deposit could
+    /// not be transferred, which an ErrorUnlockTaskDepositFee or ErrorInsufficientBalanceToRefund
+    /// event then records.
     event TaskRemovedByGasConfigUpdate(
         uint64 indexed taskIndex,
         address indexed owner,

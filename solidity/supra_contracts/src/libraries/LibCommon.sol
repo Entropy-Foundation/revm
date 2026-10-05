@@ -40,7 +40,7 @@ library LibCommon {
     /// @notice Why the VM signer asks the registry to remove a registered task.
     /// @dev ERROR: the task failed at runtime (malformed payload or predicate, failed predicate,
     ///      unexecutable gas amount). The owner is refunded half of the remaining current-cycle
-    ///      fee and the deposit (half the deposit for a PENDING task), see
+    ///      fee and the whole deposit (half the deposit for a PENDING task), see
     ///      {LibAccounting.unlockDepositAndCycleFee}.
     ///      GAS_CONFIG_UPDATE: a governed EVM gas figure served by {LibEvmGasConfig} changed at
     ///      an epoch boundary, and the task's transaction can no longer be admitted (its

@@ -370,6 +370,31 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
     }
 
+    /// @dev A deposit the registry cannot transfer at the transition is reported as 0 in the event,
+    /// alongside the error event the failed transfer emits, and the task is still dropped.
+    function testTheTransitionDropReportsAnUnpaidDepositAsZero() public {
+        registerUstWith(TASK_GAS, 4 gwei);
+        EvmGasConfigMock.mockMinGasPrice(vm, 5 gwei);
+        uint256 diamondBalance = wsupra.balanceOf(diamondAddr);
+        vm.prank(diamondAddr);
+        wsupra.transfer(address(0xdead), diamondBalance);
+        uint64 nextIndex = endCycle();
+
+        vm.expectEmit(true, true, true, true, diamondAddr);
+        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+            0, alice, LibCommon.TaskType.UST, TASK_GAS, 4 gwei,
+            EvmGasConfigMock.DEFAULT_TX_GAS_LIMIT_CAP, 5 gwei, 0, 0, TX_HASH
+        );
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(nextIndex, singleIndex(0));
+
+        assertEq(
+            countLogs(vm.getRecordedLogs(), IRegistryFacet.ErrorInsufficientBalanceToRefund.selector, true, 0), 1
+        );
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+    }
+
     /// @dev An ACTIVE UST still registered when the cycle ends (its removal record had not
     /// executed) is dropped at the transition with its deposit, and not charged again.
     function testActiveUstOutsideTheGasConfigIsDroppedAtTheNextTransition() public {

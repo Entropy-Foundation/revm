@@ -21,6 +21,10 @@ library LibAccounting {
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
 
+    /// @dev Divisor for refunds without penalty: the whole amount is refunded. Applied to a task
+    /// removed because the EVM gas config no longer admits it (#4087).
+    uint8 constant FULL_REFUND_FACTOR = 1;
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Refunds fee paid by the task for the cycle to the task owner.
@@ -269,12 +273,14 @@ library LibAccounting {
     /// @param _taskOwner Owner of the task.
     /// @param _refundableDeposit Refundable amount of deposit.
     /// @param _lockedDeposit Total locked deposit.
+    /// @return refunded Whether the deposit was unlocked and transferred; when it was not, an error
+    /// event of {safeDepositRefund} records why.
     function refundDepositAndDrop(
         uint64 _taskIndex,
         address _taskOwner,
         uint128 _refundableDeposit,
         uint128 _lockedDeposit
-    ) internal {
+    ) internal returns (bool refunded) {
         // Check if task is UST
         if (LibAppStorage.registryState().tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert ICoreFacet.RegisteredTaskInvalidType(); }
 
@@ -282,7 +288,7 @@ library LibAccounting {
         LibCommon.removeTask(_taskIndex, _taskOwner, false, false);
 
         // Refund
-        safeDepositRefund(
+        refunded = safeDepositRefund(
             _taskIndex,
             _taskOwner,
             _refundableDeposit,
@@ -379,8 +385,8 @@ library LibAccounting {
         uint128 depositRefund;
         // The residual-time fee never exceeds the fee charged for the cycle, since the residual
         // window is a suffix of the charged one, so the InvalidCycleRefundFee invariant below holds
-        // for a divisor of 1 as well.
-        uint8 refundDivisor = _fullRefund ? 1 : REFUND_FACTOR;
+        // for FULL_REFUND_FACTOR as well.
+        uint8 refundDivisor = _fullRefund ? FULL_REFUND_FACTOR : REFUND_FACTOR;
 
         if (_taskState != LibCommon.TaskState.PENDING) {
             // Compute the automation fee multiplier for cycle
