@@ -51,6 +51,10 @@ pub enum SupraExtensionError {
     #[error("Invalid automation task type value: {0}, expected [0(UST), 1(GST)]")]
     InvalidAutomationTaskTypeValue(u8),
 
+    /// Reported on failure of a task removal reason conversion to its counterpart in native layer.
+    #[error("Invalid automation task removal reason value: {0}, expected [0(ERROR), 1(GAS_CONFIG_UPDATE)]")]
+    InvalidAutomationTaskRemovalReasonValue(u8),
+
     /// Reported when automated transaction builder is attempted to be built for inactive task.
     #[error("Attempt to create automated transaction builder for non-active task")]
     InvalidAutomationTaskStateForBuilder,

@@ -37,6 +37,22 @@ library LibCommon {
         GST
     }
 
+    /// @notice Why the VM signer asks the registry to remove a registered task.
+    /// @dev ERROR: the task failed at runtime (malformed payload or predicate, failed predicate,
+    ///      unexecutable gas amount). The owner is refunded half of the remaining current-cycle
+    ///      fee and the deposit (half the deposit for a PENDING task), see
+    ///      {LibAccounting.unlockDepositAndCycleFee}.
+    ///      GAS_CONFIG_UPDATE: a governed EVM gas figure served by {LibEvmGasConfig} changed at
+    ///      an epoch boundary, and the task's transaction can no longer be admitted (its
+    ///      maxGasAmount is above the per-transaction gas cap, or, for a UST, its gasPriceCap is
+    ///      below the minimum gas price). The registry re-checks the task against the current
+    ///      figures, and the owner is refunded the whole remaining current-cycle fee and the whole
+    ///      deposit (#4087).
+    enum TaskRemovalReason {
+        ERROR,
+        GAS_CONFIG_UPDATE
+    }
+
     /// @notice Represents intermediate state of the registry on cycle change.
     struct IntermediateStateOfCycleChange {
         uint256 cycleLockedFees;
@@ -68,13 +84,14 @@ library LibCommon {
         bytes32 txHash;
     }
 
-    /// @notice Struct representing a removed task due to predicate failure.
+    /// @notice Struct representing a task removed by the VM signer for a runtime error.
     struct RemovedTask {
         uint64 taskIndex;
         TaskType taskType;
         address owner;
         bytes32 txHash;
-        string reason;
+        TaskRemovalReason reason;
+        string details;
     }
 
     /// @notice Struct representing an entry in access list.
@@ -181,6 +198,7 @@ library LibCommon {
     function toLW(TaskMetadata storage _task) internal view returns (TaskMetadataLW memory task) {
         task = TaskMetadataLW({
             maxGasAmount: _task.maxGasAmount,
+            gasPriceCap: _task.gasPriceCap,
             automationFeeCapForCycle: _task.automationFeeCapForCycle,
             depositFee: _task.depositFee,
             txHash: _task.txHash,

@@ -55,8 +55,29 @@ interface ICoreFacet {
         bytes32 registrationHash
     );
 
-    /// @notice Emitted when tasks are removed by system due to various reasons.
+    /// @notice Emitted when the VM signer removes a task for a runtime error (TaskRemovalReason.ERROR).
     event TaskRemovedBySystem(LibCommon.RemovedTask indexed removedTask);
+
+    /// @notice Emitted when a task is removed because the EVM gas config of the executing block's
+    /// epoch no longer admits its transaction: its maxGasAmount is above txGasLimitCap, or it is a
+    /// UST whose gasPriceCap is below minGasPrice (#4087).
+    /// @dev Emitted on a TaskRemovalReason.GAS_CONFIG_UPDATE removal during the cycle, with
+    /// cycleFeeRefund the task's whole fee for the remaining cycle time, and when processTasks
+    /// drops the task at a cycle transition, with cycleFeeRefund 0: the ended cycle's fee was
+    /// earned and the new cycle's fee has not been charged. depositRefund is the whole deposit of
+    /// a UST and 0 for a GST, which pays none.
+    event TaskRemovedByGasConfigUpdate(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        LibCommon.TaskType indexed taskType,
+        uint128 maxGasAmount,
+        uint128 gasPriceCap,
+        uint64 txGasLimitCap,
+        uint256 minGasPrice,
+        uint128 cycleFeeRefund,
+        uint128 depositRefund,
+        bytes32 txHash
+    );
 
     // =============================================================
     //                      Custom errors
@@ -92,5 +113,10 @@ interface ICoreFacet {
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
-    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
+    function removeRegisteredTask(
+        uint64 _cycleIndex,
+        uint64 _taskIndex,
+        LibCommon.TaskRemovalReason _reason,
+        string memory _details
+    ) external;
 }

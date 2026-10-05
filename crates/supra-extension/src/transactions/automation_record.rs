@@ -186,6 +186,40 @@ impl Typed2718 for AutomationRegistryRecord {
     }
 }
 
+/// Why the runtime asks the registry to remove a task: the native counterpart of the registry's
+/// `LibCommon.TaskRemovalReason`, which the ABI carries as a `uint8`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[repr(u8)]
+pub enum AutomationTaskRemovalReason {
+    /// The task failed at runtime (malformed payload or predicate, failed predicate, unexecutable
+    /// gas amount). The registry refunds half of the remaining current-cycle fee and the deposit,
+    /// half the deposit for a pending task.
+    Error = 0,
+    /// The EVM gas config of the executing block's epoch no longer admits the task's transaction
+    /// (#4087). The registry re-checks the task against that config, does nothing if it is still
+    /// admitted or no longer registered, and otherwise refunds the whole remaining current-cycle
+    /// fee and the whole deposit.
+    GasConfigUpdate = 1,
+}
+
+impl From<AutomationTaskRemovalReason> for u8 {
+    fn from(value: AutomationTaskRemovalReason) -> Self {
+        value as u8
+    }
+}
+
+impl TryFrom<u8> for AutomationTaskRemovalReason {
+    type Error = SupraExtensionError;
+    fn try_from(value: u8) -> Result<Self, SupraExtensionError> {
+        match value {
+            0 => Ok(Self::Error),
+            1 => Ok(Self::GasConfigUpdate),
+            _ => Err(SupraExtensionError::InvalidAutomationTaskRemovalReasonValue(value)),
+        }
+    }
+}
+
 /// Action to be preformed automation registry record
 ///
 /// Each variant wraps the `sol!`-generated call struct for one public AutomationRegistry facet
@@ -206,13 +240,18 @@ impl Typed2718 for AutomationRegistryRecord {
 /// valid-but-wrong value rather than failing loudly. Treating every released signature as
 /// immutable is what makes that kind of downstream safe by construction, without it needing to
 /// know or check anything about how the AutomationRegistry ABI evolves.
+///
+/// The policy binds from the first release that ships EVM automation. `removeRegisteredTask`
+/// took its `_reason` and `_details` parameters in place before that release (#4087), when no
+/// released node or persisted state carried the earlier signature.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumKind)]
 #[enum_kind(AutomationRecordActionTag)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AutomationRecordAction {
     /// Process the tasks during cycle transition.
     Process(processTasksCall),
-    /// Remove the task with specified index due to the reason provided by the runtime.
+    /// Remove the task with specified index for the reason provided by the runtime; the reason
+    /// (an [`AutomationTaskRemovalReason`] as `u8`) selects the registry's refund policy.
     Remove(removeRegisteredTaskCall),
 }
 
@@ -225,12 +264,22 @@ impl AutomationRecordAction {
         })
     }
 
-    /// Crate remove action with provided cycle index and list of task indexes to be processed.
-    pub fn remove(cycle_index: u64, task_index: u64, reason: String) -> Self {
+    /// Creates a remove action for the task with the provided index in the provided cycle.
+    ///
+    /// `reason` selects the registry's refund policy (see [`AutomationTaskRemovalReason`]) and
+    /// `details` is the human-readable description the registry records for an
+    /// [`AutomationTaskRemovalReason::Error`] removal.
+    pub fn remove(
+        cycle_index: u64,
+        task_index: u64,
+        reason: AutomationTaskRemovalReason,
+        details: String,
+    ) -> Self {
         Self::Remove(removeRegisteredTaskCall {
             _cycleIndex: cycle_index,
             _taskIndex: task_index,
-            _reason: reason,
+            _reason: reason.into(),
+            _details: details,
         })
     }
 
@@ -346,11 +395,18 @@ impl AutomationRecordBuilder {
         self
     }
 
-    pub fn remove_task(mut self, cycle_index: u64, task_index: u64, reason: String) -> Self {
+    pub fn remove_task(
+        mut self,
+        cycle_index: u64,
+        task_index: u64,
+        reason: AutomationTaskRemovalReason,
+        details: String,
+    ) -> Self {
         self.action = Some(AutomationRecordAction::remove(
             cycle_index,
             task_index,
             reason,
+            details,
         ));
         self
     }
@@ -478,7 +534,12 @@ mod tests {
     #[test]
     fn build_remove_record_sets_all_fields() {
         let record = base_builder()
-            .remove_task(CYCLE_INDEX, 7, "expired".to_string())
+            .remove_task(
+                CYCLE_INDEX,
+                7,
+                AutomationTaskRemovalReason::Error,
+                "expired".to_string(),
+            )
             .build()
             .unwrap();
 
@@ -632,7 +693,12 @@ mod tests {
     #[test]
     fn convert_remove_input_roundtrips() {
         let record = base_builder()
-            .remove_task(CYCLE_INDEX, 99, "bad task".to_string())
+            .remove_task(
+                CYCLE_INDEX,
+                99,
+                AutomationTaskRemovalReason::Error,
+                "bad task".to_string(),
+            )
             .build()
             .unwrap();
 
@@ -642,7 +708,74 @@ mod tests {
         };
         assert_eq!(remove._cycleIndex, CYCLE_INDEX);
         assert_eq!(remove._taskIndex, 99);
-        assert_eq!(remove._reason, "bad task".to_string());
+        assert_eq!(remove._reason, u8::from(AutomationTaskRemovalReason::Error));
+        assert_eq!(remove._details, "bad task".to_string());
+    }
+
+    #[test]
+    fn convert_gas_config_update_remove_input_roundtrips() {
+        let record = base_builder()
+            .remove_task(
+                CYCLE_INDEX,
+                12,
+                AutomationTaskRemovalReason::GasConfigUpdate,
+                "max gas amount 200000 above the cap 100000".to_string(),
+            )
+            .build()
+            .unwrap();
+
+        let action = record.try_convert_to_action().unwrap();
+        let AutomationRecordAction::Remove(remove) = action else {
+            panic!("Expected Remove action, got {action:?}");
+        };
+        assert_eq!(remove._taskIndex, 12);
+        assert_eq!(
+            AutomationTaskRemovalReason::try_from(remove._reason).unwrap(),
+            AutomationTaskRemovalReason::GasConfigUpdate
+        );
+        assert_eq!(
+            remove._details,
+            "max gas amount 200000 above the cap 100000".to_string()
+        );
+        assert_eq!(
+            record.try_get_action_tag().unwrap(),
+            AutomationRecordActionTag::Remove
+        );
+    }
+
+    /// The registry's `LibCommon.TaskRemovalReason` is a `uint8` on the wire, with `ERROR = 0` and
+    /// `GAS_CONFIG_UPDATE = 1`.
+    #[test]
+    fn removal_reasons_match_the_registry_enum() {
+        assert_eq!(u8::from(AutomationTaskRemovalReason::Error), 0);
+        assert_eq!(u8::from(AutomationTaskRemovalReason::GasConfigUpdate), 1);
+        assert_eq!(
+            AutomationTaskRemovalReason::try_from(0).unwrap(),
+            AutomationTaskRemovalReason::Error
+        );
+        assert_eq!(
+            AutomationTaskRemovalReason::try_from(1).unwrap(),
+            AutomationTaskRemovalReason::GasConfigUpdate
+        );
+    }
+
+    #[test]
+    fn an_unknown_removal_reason_value_is_refused() {
+        assert!(matches!(
+            AutomationTaskRemovalReason::try_from(2),
+            Err(SupraExtensionError::InvalidAutomationTaskRemovalReasonValue(2))
+        ));
+    }
+
+    /// The node encodes removal records with this selector, and the registry's CoreFacet test
+    /// `testRemoveRegisteredTaskSelectorIsPinned` pins the same signature.
+    #[test]
+    fn remove_registered_task_selector_is_pinned() {
+        assert_eq!(
+            removeRegisteredTaskCall::SIGNATURE,
+            "removeRegisteredTask(uint64,uint64,uint8,string)"
+        );
+        assert_eq!(removeRegisteredTaskCall::SELECTOR, [0x25, 0x6e, 0x4e, 0x4d]);
     }
 
     #[test]
@@ -698,7 +831,12 @@ mod tests {
     #[test]
     fn get_action_tag_remove() {
         let record = base_builder()
-            .remove_task(CYCLE_INDEX, 5, "reason".to_string())
+            .remove_task(
+                CYCLE_INDEX,
+                5,
+                AutomationTaskRemovalReason::Error,
+                "reason".to_string(),
+            )
             .build()
             .unwrap();
         assert_eq!(
@@ -746,7 +884,8 @@ mod tests {
     fn action_into_task_indexes_remove() {
         let action = AutomationRecordAction::Remove(removeRegisteredTaskCall {
             _taskIndex: 7,
-            _reason: String::new(),
+            _reason: AutomationTaskRemovalReason::Error.into(),
+            _details: String::new(),
             _cycleIndex: 8,
         });
         assert_eq!(action.into_task_indexes(), vec![7]);
@@ -769,7 +908,8 @@ mod tests {
             AutomationRecordAction::Remove(removeRegisteredTaskCall {
                 _cycleIndex: 4,
                 _taskIndex: 2,
-                _reason: "".to_string(),
+                _reason: AutomationTaskRemovalReason::Error.into(),
+                _details: "".to_string(),
             })
             .task_count(),
             1
@@ -797,7 +937,8 @@ mod tests {
     fn action_flatten_remove_stays_single() {
         let action = AutomationRecordAction::Remove(removeRegisteredTaskCall {
             _taskIndex: 5,
-            _reason: "x".to_string(),
+            _reason: AutomationTaskRemovalReason::Error.into(),
+            _details: "x".to_string(),
             _cycleIndex: 7,
         });
         let flat = action.clone().flatten();
@@ -827,7 +968,8 @@ mod tests {
     fn action_task_range_remove() {
         let action = AutomationRecordAction::Remove(removeRegisteredTaskCall {
             _taskIndex: 42,
-            _reason: String::new(),
+            _reason: AutomationTaskRemovalReason::Error.into(),
+            _details: String::new(),
             _cycleIndex: 3,
         });
         assert_eq!(action.task_range(), (42, 42));
@@ -884,7 +1026,12 @@ mod tests {
 
     #[test]
     fn builder_flatten_remove_is_single_and_keeps_nonce_cleared() {
-        let builder = base_builder().remove_task(CYCLE_INDEX, 10, "r".to_string());
+        let builder = base_builder().remove_task(
+            CYCLE_INDEX,
+            10,
+            AutomationTaskRemovalReason::Error,
+            "r".to_string(),
+        );
         let parts = builder.flatten();
         assert_eq!(parts.len(), 1);
         assert!(parts[0].nonce.is_none());

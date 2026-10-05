@@ -4,6 +4,7 @@
 ```solidity
 library LibCommon {
     type CycleState is uint8;
+    type TaskRemovalReason is uint8;
     type TaskState is uint8;
     type TaskType is uint8;
     struct CycleDetails { uint64 index; uint64 startTime; uint64 durationSecs; CycleState state; uint64 nextTaskIndexPosition; uint64[] expectedTasksToBeProcessed; }
@@ -117,6 +118,127 @@ pub mod LibCommon {
         }
         #[automatically_derived]
         impl alloy_sol_types::EventTopic for CycleState {
+            #[inline]
+            fn topic_preimage_length(rust: &Self::RustType) -> usize {
+                <alloy::sol_types::sol_data::Uint<
+                    8,
+                > as alloy_sol_types::EventTopic>::topic_preimage_length(rust)
+            }
+            #[inline]
+            fn encode_topic_preimage(
+                rust: &Self::RustType,
+                out: &mut alloy_sol_types::private::Vec<u8>,
+            ) {
+                <alloy::sol_types::sol_data::Uint<
+                    8,
+                > as alloy_sol_types::EventTopic>::encode_topic_preimage(rust, out)
+            }
+            #[inline]
+            fn encode_topic(rust: &Self::RustType) -> alloy_sol_types::abi::token::WordToken {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::EventTopic>::encode_topic(
+                    rust,
+                )
+            }
+        }
+    };
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct TaskRemovalReason(u8);
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        #[automatically_derived]
+        impl alloy_sol_types::private::SolTypeValue<TaskRemovalReason> for u8 {
+            #[inline]
+            fn stv_to_tokens(
+                &self,
+            ) -> <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::Token<'_>
+            {
+                alloy_sol_types::private::SolTypeValue::<
+                    alloy::sol_types::sol_data::Uint<8>,
+                >::stv_to_tokens(self)
+            }
+            #[inline]
+            fn stv_eip712_data_word(&self) -> alloy_sol_types::Word {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::tokenize(self).0
+            }
+            #[inline]
+            fn stv_abi_encode_packed_to(&self, out: &mut alloy_sol_types::private::Vec<u8>) {
+                <alloy::sol_types::sol_data::Uint<
+                    8,
+                > as alloy_sol_types::SolType>::abi_encode_packed_to(self, out)
+            }
+            #[inline]
+            fn stv_abi_packed_encoded_size(&self) -> usize {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::abi_encoded_size(
+                    self,
+                )
+            }
+        }
+        impl TaskRemovalReason {
+            /// The Solidity type name.
+            pub const NAME: &'static str = stringify!(@ name);
+            /// Convert from the underlying value type.
+            #[inline]
+            pub const fn from_underlying(value: u8) -> Self {
+                Self(value)
+            }
+            /// Return the underlying value.
+            #[inline]
+            pub const fn into_underlying(self) -> u8 {
+                self.0
+            }
+            /// Return the single encoding of this value, delegating to the
+            /// underlying type.
+            #[inline]
+            pub fn abi_encode(&self) -> alloy_sol_types::private::Vec<u8> {
+                <Self as alloy_sol_types::SolType>::abi_encode(&self.0)
+            }
+            /// Return the packed encoding of this value, delegating to the
+            /// underlying type.
+            #[inline]
+            pub fn abi_encode_packed(&self) -> alloy_sol_types::private::Vec<u8> {
+                <Self as alloy_sol_types::SolType>::abi_encode_packed(&self.0)
+            }
+        }
+        #[automatically_derived]
+        impl From<u8> for TaskRemovalReason {
+            fn from(value: u8) -> Self {
+                Self::from_underlying(value)
+            }
+        }
+        #[automatically_derived]
+        impl From<TaskRemovalReason> for u8 {
+            fn from(value: TaskRemovalReason) -> Self {
+                value.into_underlying()
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolType for TaskRemovalReason {
+            type RustType = u8;
+            type Token<'a> =
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::Token<'a>;
+            const SOL_NAME: &'static str = Self::NAME;
+            const ENCODED_SIZE: Option<usize> =
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::ENCODED_SIZE;
+            const PACKED_ENCODED_SIZE: Option<usize> = <alloy::sol_types::sol_data::Uint<
+                8,
+            > as alloy_sol_types::SolType>::PACKED_ENCODED_SIZE;
+            #[inline]
+            fn valid_token(token: &Self::Token<'_>) -> bool {
+                Self::type_check(token).is_ok()
+            }
+            #[inline]
+            fn type_check(token: &Self::Token<'_>) -> alloy_sol_types::Result<()> {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::type_check(token)
+            }
+            #[inline]
+            fn detokenize(token: Self::Token<'_>) -> Self::RustType {
+                <alloy::sol_types::sol_data::Uint<8> as alloy_sol_types::SolType>::detokenize(token)
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::EventTopic for TaskRemovalReason {
             #[inline]
             fn topic_preimage_length(rust: &Self::RustType) -> usize {
                 <alloy::sol_types::sol_data::Uint<
@@ -807,6 +929,7 @@ Generated by the following Solidity interface...
 ```solidity
 library LibCommon {
     type CycleState is uint8;
+    type TaskRemovalReason is uint8;
     type TaskState is uint8;
     type TaskType is uint8;
     struct CycleDetails {
@@ -850,7 +973,7 @@ interface SupraContractsBindings {
     function isAutomationReadyEnabled() external view returns (bool);
     function isInitialized() external view returns (bool);
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
-    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
+    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, LibCommon.TaskRemovalReason _reason, string memory _details) external;
 }
 ```
 
@@ -1206,6 +1329,11 @@ interface SupraContractsBindings {
       },
       {
         "name": "_reason",
+        "type": "uint8",
+        "internalType": "enum LibCommon.TaskRemovalReason"
+      },
+      {
+        "name": "_details",
         "type": "string",
         "internalType": "string"
       }
@@ -3286,9 +3414,9 @@ pub mod SupraContractsBindings {
         }
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
-    /**Function with signature `removeRegisteredTask(uint64,uint64,string)` and selector `0x313fc5e5`.
+    /**Function with signature `removeRegisteredTask(uint64,uint64,uint8,string)` and selector `0x256e4e4d`.
     ```solidity
-    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
+    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, LibCommon.TaskRemovalReason _reason, string memory _details) external;
     ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -3298,9 +3426,11 @@ pub mod SupraContractsBindings {
         #[allow(missing_docs)]
         pub _taskIndex: u64,
         #[allow(missing_docs)]
-        pub _reason: alloy::sol_types::private::String,
+        pub _reason: <LibCommon::TaskRemovalReason as alloy::sol_types::SolType>::RustType,
+        #[allow(missing_docs)]
+        pub _details: alloy::sol_types::private::String,
     }
-    ///Container type for the return parameters of the [`removeRegisteredTask(uint64,uint64,string)`](removeRegisteredTaskCall) function.
+    ///Container type for the return parameters of the [`removeRegisteredTask(uint64,uint64,uint8,string)`](removeRegisteredTaskCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct removeRegisteredTaskReturn {}
@@ -3318,10 +3448,16 @@ pub mod SupraContractsBindings {
             type UnderlyingSolTuple<'a> = (
                 alloy::sol_types::sol_data::Uint<64>,
                 alloy::sol_types::sol_data::Uint<64>,
+                LibCommon::TaskRemovalReason,
                 alloy::sol_types::sol_data::String,
             );
             #[doc(hidden)]
-            type UnderlyingRustTuple<'a> = (u64, u64, alloy::sol_types::private::String);
+            type UnderlyingRustTuple<'a> = (
+                u64,
+                u64,
+                <LibCommon::TaskRemovalReason as alloy::sol_types::SolType>::RustType,
+                alloy::sol_types::private::String,
+            );
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
@@ -3335,7 +3471,12 @@ pub mod SupraContractsBindings {
             #[doc(hidden)]
             impl ::core::convert::From<removeRegisteredTaskCall> for UnderlyingRustTuple<'_> {
                 fn from(value: removeRegisteredTaskCall) -> Self {
-                    (value._cycleIndex, value._taskIndex, value._reason)
+                    (
+                        value._cycleIndex,
+                        value._taskIndex,
+                        value._reason,
+                        value._details,
+                    )
                 }
             }
             #[automatically_derived]
@@ -3346,6 +3487,7 @@ pub mod SupraContractsBindings {
                         _cycleIndex: tuple.0,
                         _taskIndex: tuple.1,
                         _reason: tuple.2,
+                        _details: tuple.3,
                     }
                 }
             }
@@ -3393,14 +3535,15 @@ pub mod SupraContractsBindings {
             type Parameters<'a> = (
                 alloy::sol_types::sol_data::Uint<64>,
                 alloy::sol_types::sol_data::Uint<64>,
+                LibCommon::TaskRemovalReason,
                 alloy::sol_types::sol_data::String,
             );
             type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = removeRegisteredTaskReturn;
             type ReturnTuple<'a> = ();
             type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
-            const SIGNATURE: &'static str = "removeRegisteredTask(uint64,uint64,string)";
-            const SELECTOR: [u8; 4] = [49u8, 63u8, 197u8, 229u8];
+            const SIGNATURE: &'static str = "removeRegisteredTask(uint64,uint64,uint8,string)";
+            const SELECTOR: [u8; 4] = [37u8, 110u8, 78u8, 77u8];
             #[inline]
             fn new<'a>(
                 tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
@@ -3416,8 +3559,11 @@ pub mod SupraContractsBindings {
                     <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
                         &self._taskIndex,
                     ),
-                    <alloy::sol_types::sol_data::String as alloy_sol_types::SolType>::tokenize(
+                    <LibCommon::TaskRemovalReason as alloy_sol_types::SolType>::tokenize(
                         &self._reason,
+                    ),
+                    <alloy::sol_types::sol_data::String as alloy_sol_types::SolType>::tokenize(
+                        &self._details,
                     ),
                 )
             }
@@ -3476,7 +3622,7 @@ pub mod SupraContractsBindings {
             [16u8, 81u8, 118u8, 206u8],
             [18u8, 247u8, 44u8, 244u8],
             [35u8, 33u8, 204u8, 163u8],
-            [49u8, 63u8, 197u8, 229u8],
+            [37u8, 110u8, 78u8, 77u8],
             [57u8, 46u8, 83u8, 205u8],
             [64u8, 183u8, 203u8, 198u8],
             [107u8, 93u8, 140u8, 86u8],
@@ -4224,12 +4370,14 @@ pub mod SupraContractsBindings {
             &self,
             _cycleIndex: u64,
             _taskIndex: u64,
-            _reason: alloy::sol_types::private::String,
+            _reason: <LibCommon::TaskRemovalReason as alloy::sol_types::SolType>::RustType,
+            _details: alloy::sol_types::private::String,
         ) -> alloy_contract::SolCallBuilder<&P, removeRegisteredTaskCall, N> {
             self.call_builder(&removeRegisteredTaskCall {
                 _cycleIndex,
                 _taskIndex,
                 _reason,
+                _details,
             })
         }
     }

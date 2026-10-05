@@ -23,8 +23,14 @@ interface SupraContractsBindings {
     // Entry function to be called by node runtime for bookkeeping
     function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
 
-    // Entry function to be called by node runtime to remove tasks with fatal errors
-    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, string memory _reason) external;
+    // Entry function to be called by node runtime to remove a task that failed at runtime or that
+    // the epoch's EVM gas config no longer admits
+    function removeRegisteredTask(
+        uint64 _cycleIndex,
+        uint64 _taskIndex,
+        LibCommon.TaskRemovalReason _reason,
+        string memory _details
+    ) external;
 
     // Entry function of the BlockMeta for block metadata transaction
     function blockPrologue() external;
