@@ -9,6 +9,7 @@ import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {IRegistryStatus} from "../src/interfaces/IRegistryStatus.sol";
+import {Config} from "../src/libraries/LibAppStorage.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
@@ -288,9 +289,9 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(logged, IRegistryViewFacet(diamondAddr).getActiveTaskIds(), "logged set equals activeTaskIds");
     }
 
-    /// @dev Test to ensure the 'TaskCycleFeeWithdraw' log carries the charged fee in its data
-    /// (#4285): taskIndex and owner are the only topics after topic0, and the fee decoded from the
-    /// data is the amount taken from the owner.
+    /// @dev Test to ensure the 'TaskCycleFeeWithdraw' log carries the cycle the fee pays for, the
+    /// task and the owner as topics and the charged fee in its data (#4285), and that the fee
+    /// decoded from the data is the amount taken from the owner.
     function testProcessTasksFeeWithdrawLogCarriesFeeInData() public {
         registerUst(diamondAddr, 2450); // task 0
 
@@ -309,17 +310,85 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
         vm.stopPrank();
 
-        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.TaskCycleFeeWithdraw.selector);
-        assertEq(log.topics.length, 3, "TaskCycleFeeWithdraw has topic0, taskIndex and owner");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.TaskCycleFeeWithdraw.selector);
+        assertEq(log.topics.length, 4, "TaskCycleFeeWithdraw has topic0, cycleIndex, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(index + 1)), "topic1 is the cycle the fee pays for");
+        assertEq(log.topics[2], bytes32(uint256(0)), "topic2 is taskIndex");
+        assertEq(log.topics[3], bytes32(uint256(uint160(alice))), "topic3 is owner");
+
+        // The same transition's ActiveTasks names the same cycle.
+        Vm.Log memory active = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
+        assertEq(active.topics[1], log.topics[1], "fee and ActiveTasks name the same cycle");
+
+        uint128 fee = abi.decode(log.data, (uint128));
+        assertGt(fee, 0, "an active UST is charged for the new cycle");
+        assertEq(balanceBefore - wsupra.balanceOf(alice), fee, "fee is the amount taken from the owner");
+    }
+
+    /// @dev Test to ensure the 'TaskCancelledCapacitySurpassed' log carries taskIndex and owner as
+    /// topics and the fee, the task's fee cap and its registration hash in its data (#4285). The
+    /// task registers with its cap at the estimated fee, and governance then raises the base fee,
+    /// which takes effect when the cycle ends, so the transition's fee exceeds the cap.
+    function testProcessTasksCapacitySurpassedLogIsFilterableByOwner() public {
+        uint128 feeCap = IRegistryFacet(diamondAddr).estimateAutomationFee(100_000);
+
+        bytes[] memory auxData;
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + 2450),
+            uint128(100_000),
+            uint128(4 gwei),
+            feeCap,
+            2,
+            auxData
+        );
+        vm.stopPrank();
+
+        // Raise the base fee tenfold; every other figure keeps its current value.
+        Config memory cfg = IConfigFacet(diamondAddr).getConfig();
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            cfg.taskDurationCapSecs,
+            cfg.registryMaxGasCap,
+            cfg.automationBaseFeeWeiPerSec * 10,
+            cfg.flatRegistrationFeeWei,
+            cfg.congestionThresholdPercentage,
+            cfg.congestionBaseFeeWeiPerSec,
+            cfg.congestionExponent,
+            cfg.maxCongestionExponent,
+            cfg.taskCapacity,
+            cfg.cycleDurationSecs,
+            cfg.sysTaskDurationCapSecs,
+            cfg.sysRegistryMaxGasCap,
+            cfg.sysTaskCapacity
+        );
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+        vm.recordLogs();
+        ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
+        vm.stopPrank();
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.TaskCancelledCapacitySurpassed.selector);
+        assertEq(log.topics.length, 3, "TaskCancelledCapacitySurpassed has topic0, taskIndex and owner");
         assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
         assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
 
-        (uint64 cycleIndex, uint128 fee) = abi.decode(log.data, (uint64, uint128));
-        // cycleIndex is the registry's index when processTasks charges the fee: the cycle that is
-        // ending, while the fee pays for the next one.
-        assertEq(cycleIndex, index, "cycleIndex is the registry's index at the charge");
-        assertGt(fee, 0, "an active UST is charged for the new cycle");
-        assertEq(balanceBefore - wsupra.balanceOf(alice), fee, "fee is the amount taken from the owner");
+        (uint128 fee, uint128 cap, bytes32 registrationHash) = abi.decode(log.data, (uint128, uint128, bytes32));
+        assertEq(cap, feeCap, "cap is the task's registered fee cap");
+        assertGt(fee, cap, "the fee exceeds the cap");
+        assertEq(registrationHash, keccak256("txHash"), "registrationHash");
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0), "the task is removed");
     }
 
     /// @dev Test to ensure the 'TaskDepositFeeRefund' log carries the refunded amount in its data
@@ -1641,7 +1710,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
 
-        vm.expectEmit(true, false, false, true, diamondAddr);
+        vm.expectEmit(true, true, false, true, diamondAddr);
         emit ICoreFacet.TaskCancelledInsufficientBalanceAllowance(0, alice, 3 ether, 38.9 ether, 0, keccak256("txHash"));
 
         vm.prank(LibUtils.VM_SIGNER);

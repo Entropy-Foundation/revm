@@ -8,8 +8,8 @@ interface ICoreFacet {
     //                          Events
     // =============================================================
     // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
-    // indexed. script/check_event_indexing.sh states the rule and fails the build on an indexed
-    // struct, array, string or bytes parameter (#4285).
+    // indexed. script/check_event_indexing.sh states the rule; the forge-tests CI job runs it
+    // after forge build and fails on an indexed struct, array, string or bytes parameter (#4285).
 
     /// @notice Emitted when automation is enabled.
     event AutomationEnabled(bool indexed status);
@@ -29,7 +29,9 @@ interface ICoreFacet {
     ///      FINISHED -> STARTED transition the cycle being entered, the same index ActiveTasks
     ///      carries for that transition, and for a suspension the cycle being suspended.
     ///      taskIndexes is ABI-encoded in the log data. It is emitted by each processTasks call
-    ///      that removed at least one task, and lists the tasks that call removed.
+    ///      that removed at least one task, and lists the tasks that call removed, so a
+    ///      transition processed in several batches emits several RemovedTasks logs with the
+    ///      same cycleIndex; the transition's removals are the union of their lists.
     event RemovedTasks(uint64 indexed cycleIndex, uint64[] taskIndexes);
 
     /// @notice Emitted when the cycle state transitions.
@@ -42,31 +44,33 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
-    /// @dev taskIndex and owner are topics 1 and 2; cycleIndex and fee are in the log data.
+    /// @dev cycleIndex, taskIndex and owner are topics 1, 2 and 3; fee is in the log data.
+    ///      cycleIndex is the cycle the fee pays for: the cycle a FINISHED -> STARTED
+    ///      transition enters, the same index ActiveTasks and RemovedTasks carry for it.
     event TaskCycleFeeWithdraw(
-        uint64 cycleIndex,
+        uint64 indexed cycleIndex,
         uint64 indexed taskIndex,
         address indexed owner,
         uint128 fee
     );
 
     /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
-    /// @dev taskIndex is topic 1; owner, fee, automationFeeCapForCycle and registrationHash
-    ///      are in the log data.
+    /// @dev taskIndex and owner are topics 1 and 2; fee, automationFeeCapForCycle and
+    ///      registrationHash are in the log data.
     event TaskCancelledCapacitySurpassed(
         uint64 indexed taskIndex,
-        address owner,
+        address indexed owner,
         uint128 fee,
         uint128 automationFeeCapForCycle,
         bytes32 registrationHash
     );
 
     /// @notice Emitted when a task is removed due to insufficient balance or allowance.
-    /// @dev taskIndex is topic 1; owner, fee, balance, allowance and registrationHash are in
-    ///      the log data.
+    /// @dev taskIndex and owner are topics 1 and 2; fee, balance, allowance and
+    ///      registrationHash are in the log data.
     event TaskCancelledInsufficientBalanceAllowance(
         uint64 indexed taskIndex,
-        address owner,
+        address indexed owner,
         uint128 fee,
         uint256 balance,
         uint256 allowance,

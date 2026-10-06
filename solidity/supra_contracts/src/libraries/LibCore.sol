@@ -520,8 +520,11 @@ library LibCore {
                     fees = _fee;
                 }
               
+                // The fee is charged during the FINISHED -> STARTED transition for the cycle it
+                // enters, s.index + 1 (onCycleTransition's _cycleIndex); s.index advances only
+                // when the transition is finalized, after every batch has been charged.
                 emit ICoreFacet.TaskCycleFeeWithdraw(
-                    s.index,
+                    s.index + 1,
                     _taskIndex,
                     _owner,
                     _fee

@@ -8,8 +8,8 @@ interface IConfigFacet {
     //                          Events
     // =============================================================
     // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
-    // indexed. script/check_event_indexing.sh states the rule and fails the build on an indexed
-    // struct, array, string or bytes parameter (#4285).
+    // indexed. script/check_event_indexing.sh states the rule; the forge-tests CI job runs it
+    // after forge build and fails on an indexed struct, array, string or bytes parameter (#4285).
 
     /// @notice Emitted when an account is authorized as submitter for system tasks.
     event AuthorizationGranted(address indexed account, uint256 indexed timestamp);
