@@ -19,10 +19,10 @@ interface ICoreFacet {
 
     /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
     /// @dev cycleIndex is topic 1 and is the index of the new cycle. taskIndexes is ABI-encoded
-    ///      in the log data and is the registry's activeTaskIds for that cycle. It is emitted
-    ///      once, by the processTasks call that finalizes a FINISHED -> STARTED transition, and
-    ///      only when at least one task is active.
-    event ActiveTasks(uint64 indexed cycleIndex, uint256[] taskIndexes);
+    ///      in the log data as uint64[] and is the registry's activeTaskIds for that cycle. It is
+    ///      emitted once, by the processTasks call that finalizes a FINISHED -> STARTED
+    ///      transition, and only when at least one task is active.
+    event ActiveTasks(uint64 indexed cycleIndex, uint64[] taskIndexes);
 
     /// @notice Event emitted on cycle transition containing removed task indexes.
     /// @dev cycleIndex is topic 1 and is the cycle index processTasks was called with: for a
@@ -138,7 +138,7 @@ interface ICoreFacet {
     //                  State update functions
     // =============================================================
     function monitorCycleEnd() external;
-    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
     function removeRegisteredTask(

@@ -1355,7 +1355,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCancelTasksSetsStateToCancelledForActiveTask() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
         assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
@@ -1476,7 +1476,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCancelSystemTasksSetsStateToCancelledForActiveTask() public {
         registerGst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
@@ -1577,7 +1577,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasks() public {
         testRegister();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1608,7 +1608,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasksEmitsEvent() public {
         testRegister();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1674,7 +1674,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopExpiredTask() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1715,7 +1715,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1749,7 +1749,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1793,7 +1793,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         // Cycle 1 -> 2: task's first transition, survives.
@@ -1884,7 +1884,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopSystemTasks() public {
         testRegisterSystemTask();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1907,7 +1907,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopSystemTasksEmitsEvent() public {
         testRegisterSystemTask();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1935,7 +1935,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCalculateAutomationFeeMultiplierForCurrentCycle() public {
         // Scenario 1. Register a 100_000-gas task and process first cycle transition
         registerUst(diamondAddr, 1250);
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1969,7 +1969,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).monitorCycleEnd();
         
         (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
-        uint256[] memory taskIds = new uint256[](2);
+        uint64[] memory taskIds = new uint64[](2);
         taskIds[0] = 0;
         taskIds[1] = 1;
         ICoreFacet(diamondAddr).processTasks(index + 1, taskIds);

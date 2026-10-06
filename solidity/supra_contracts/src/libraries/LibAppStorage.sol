@@ -38,13 +38,14 @@ struct TransitionState {
     // Plain array rather than EnumerableSet.UintSet: this field is only ever accessed
     // sequentially (push/length/index) and never via contains()/remove(), so the
     // EnumerableSet's second per-element SSTORE (the _positions membership mapping)
-    // is pure overhead here — see LibCore.updateExpectedTasks.
-    uint256[] expectedTasksToBeProcessed;
+    // is pure overhead here — see LibCore.updateExpectedTasks. Elements are uint64 task IDs
+    // (TaskMetadata.taskIndex), packed four per storage slot.
+    uint64[] expectedTasksToBeProcessed;
     // Task IDs confirmed to survive this transition (appended incrementally by
     // LibCore.dropOrChargeTasks, one batch at a time), consumed directly by
     // LibCore.updateRegistryState to seed the new cycle's activeTaskIds without
-    // re-scanning taskIdList from scratch at finalization.
-    uint256[] survivedTaskIds;
+    // re-scanning taskIdList from scratch at finalization. uint64 task IDs, four per slot.
+    uint64[] survivedTaskIds;
 }
 
 /// @notice Task metadata for individual automation tasks.
@@ -98,14 +99,18 @@ struct RegistryState {
     // arbitrary membership on this set anywhere in the codebase (only .add/.clear/
     // .length/.values previously), and it is now populated wholesale from
     // TransitionState.survivedTaskIds at cycle finalization — see LibCore.updateRegistryState.
-    uint256[] activeTaskIds;
+    // Elements are uint64 task IDs, packed four per storage slot. taskIdList, sysTaskIds and
+    // addressToTasks are EnumerableSet.UintSet, which holds uint256 values, so those lists and
+    // the views that return them stay uint256 (#4285).
+    uint64[] activeTaskIds;
     EnumerableSet.UintSet taskIdList;
     EnumerableSet.UintSet sysTaskIds;
     // Append-only mirror of taskIdList's insertion order (task IDs are assigned
     // strictly monotonically, so appending keeps this ascending by construction).
     // taskIdList's own iteration order is a separate, unrelated concern — see
     // LibCore.buildAliveOrderedTaskIds, which compacts this array at cycle end.
-    uint256[] orderedTaskIds;
+    // uint64 task IDs, four per slot.
+    uint64[] orderedTaskIds;
     mapping(uint64 => TaskMetadata) tasks;
     mapping(address => EnumerableSet.UintSet) addressToTasks;
 }

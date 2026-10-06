@@ -31,7 +31,7 @@ library LibCore {
     ///      something this contract silently corrects: it must fail loudly here rather
     ///      than mask an upstream ordering defect or pay to fix it up itself.
     /// @param arr The array to validate. Not modified.
-    function requireSortedAscending(uint256[] memory arr) private pure {
+    function requireSortedAscending(uint64[] memory arr) private pure {
         for (uint256 i = 1; i < arr.length; i++) {
             if (arr[i - 1] >= arr[i]) revert ICoreFacet.OutOfOrderTaskProcessingRequest();
         }
@@ -53,16 +53,16 @@ library LibCore {
     ///      letting this write directly into the final-size array instead of filtering into
     ///      a scratch buffer first and copying.
     /// @return alive The ascending list of currently-alive task IDs.
-    function buildAliveOrderedTaskIds() private returns (uint256[] memory alive) {
+    function buildAliveOrderedTaskIds() private returns (uint64[] memory alive) {
         RegistryState storage registryState = LibAppStorage.registryState();
-        uint256[] storage ordered = registryState.orderedTaskIds;
+        uint64[] storage ordered = registryState.orderedTaskIds;
         uint256 len = ordered.length;
 
-        alive = new uint256[](registryState.taskIdList.length());
+        alive = new uint64[](registryState.taskIdList.length());
         uint256 n;
         for (uint256 i = 0; i < len; i++) {
-            uint256 id = ordered[i];
-            if (registryState.tasks[uint64(id)].owner != address(0)) {
+            uint64 id = ordered[i];
+            if (registryState.tasks[id].owner != address(0)) {
                 alive[n] = id;
                 n++;
             }
@@ -111,7 +111,7 @@ library LibCore {
             // a transition is in progress (see the CycleTransitionInProgress guard), so
             // nothing can add to taskIdList/orderedTaskIds mid-transition, meaning
             // survivedTaskIds ends up exactly equal to taskIdList's remaining contents.
-            uint256[] memory survivedTaskIds = LibAppStorage.transitionState().survivedTaskIds;
+            uint64[] memory survivedTaskIds = LibAppStorage.transitionState().survivedTaskIds;
             // This single assignment both clears the previous cycle's activeTaskIds (any
             // leftover tail elements are zeroed by the compiler when the new array is
             // shorter) and writes the new one, without re-scanning taskIdList or paying
@@ -123,12 +123,12 @@ library LibCore {
             // point) instead of letting tombstones accumulate across cycle boundaries.
             registryState.orderedTaskIds = survivedTaskIds;
         } else {
-            registryState.activeTaskIds = new uint256[](0);
+            registryState.activeTaskIds = new uint64[](0);
             // Every task still in orderedTaskIds at this point was unconditionally
             // removed by onCycleSuspend's loop (SUSPENDED means all tasks are dropped),
             // so it's now 100% tombstones — clear it eagerly rather than letting the
             // next buildAliveOrderedTaskIds call filter through dead weight.
-            registryState.orderedTaskIds = new uint256[](0);
+            registryState.orderedTaskIds = new uint64[](0);
             registryState.sysTaskIds.clear();
         }
     }
@@ -169,9 +169,10 @@ library LibCore {
     /// @notice Helper function to update the expected tasks of the transition state.
     /// @dev A direct storage-array assignment from `_expectedTasks` both clears any
     ///      previous contents (the compiler zeroes out any leftover tail elements if
-    ///      the new list is shorter) and writes the new elements in a single pass —
-    ///      one SSTORE per task, field is ever read sequentially(see the declaration)
-    function updateExpectedTasks(uint256[] memory _expectedTasks) private {
+    ///      the new list is shorter) and writes the new elements in a single pass. The
+    ///      field is uint64[], so the copy writes one SSTORE per four tasks; the field is
+    ///      only ever read sequentially (see the declaration).
+    function updateExpectedTasks(uint64[] memory _expectedTasks) private {
         LibAppStorage.transitionState().expectedTasksToBeProcessed = _expectedTasks;
     }
 
@@ -251,7 +252,7 @@ library LibCore {
         uint64 nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
 
         if (nextTaskIndexPosition >= transitionState.expectedTasksToBeProcessed.length) { revert ICoreFacet.InconsistentTransitionState(); }
-        uint64 expectedTask = uint64(transitionState.expectedTasksToBeProcessed[nextTaskIndexPosition]);
+        uint64 expectedTask = transitionState.expectedTasksToBeProcessed[nextTaskIndexPosition];
 
         if (expectedTask != _taskIndex) { revert ICoreFacet.OutOfOrderTaskProcessingRequest(); } 
         transitionState.nextTaskIndexPosition = nextTaskIndexPosition + 1;  
@@ -283,7 +284,7 @@ library LibCore {
 
             RegistryState storage registryState = LibAppStorage.registryState();
             if (registryState.activeTaskIds.length > 0) {
-                uint256[] memory activeTasks = registryState.activeTaskIds;
+                uint64[] memory activeTasks = registryState.activeTaskIds;
                 // moveToStartedState has advanced s.index, so it is the new cycle's index.
                 emit ICoreFacet.ActiveTasks(s.index, activeTasks);
             }
@@ -297,7 +298,7 @@ library LibCore {
     /// @param _taskIndexes Input task indexes.
     /// @return intermediateState Returns the intermediate state.
     function dropOrChargeTasks(
-        uint256[] memory _taskIndexes
+        uint64[] memory _taskIndexes
     ) private returns (LibCommon.IntermediateStateOfCycleChange memory intermediateState) {
         uint64 currentTime = uint64(block.timestamp);
         TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -306,7 +307,7 @@ library LibCore {
         // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
         // NatSpec for why this contract does not sort them itself.
         requireSortedAscending(_taskIndexes);
-        uint256[] memory taskIndexes = _taskIndexes;
+        uint64[] memory taskIndexes = _taskIndexes;
 
         // The EVM gas config is the same for every transaction of a block, so it is read once per
         // batch rather than once per task.
@@ -318,7 +319,7 @@ library LibCore {
 
         // Process each active task and calculate fee for the cycle for the tasks
         for (uint256 i = 0; i < taskIndexes.length; i++) {
-            uint64 taskId = uint64(taskIndexes[i]); 
+            uint64 taskId = taskIndexes[i];
             LibCommon.TransitionResult memory result = dropOrChargeTask(
                 taskId,
                 currentTime,
@@ -562,7 +563,7 @@ library LibCore {
     /// In case if transition end is detected a start of the new cycle is given (if during transition period suspension is not requested) and corresponding event is emitted.
     /// @param _cycleIndex Cycle index of the new cycle to which the transition is being done.
     /// @param _taskIndexes Array of task indexes to be processed.
-    function onCycleTransition(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
+    function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
@@ -590,7 +591,7 @@ library LibCore {
     /// In case if end is identified, the registry state is update to READY and corresponding event is emitted.
     /// @param _cycleIndex Input cycle index of the cycle being suspended.
     /// @param _taskIndexes Array of task indexes to be processed.
-    function onCycleSuspend(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
+    function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert ICoreFacet.InvalidRegistryState(); }
@@ -603,12 +604,12 @@ library LibCore {
         // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
         // NatSpec for why this contract does not sort them itself.
         requireSortedAscending(_taskIndexes);
-        uint256[] memory taskIndexes = _taskIndexes;
+        uint64[] memory taskIndexes = _taskIndexes;
         uint64[] memory removedTasks = new uint64[](taskIndexes.length);
         
         uint64 removedCounter;
         for (uint i = 0; i < taskIndexes.length; i++) {
-            uint64 taskId = uint64(taskIndexes[i]);
+            uint64 taskId = taskIndexes[i];
             // Every task index submitted here is expected to come from the caller's own
             // tracking of expectedTasksToBeProcessed, so a missing task means the caller
             // has regressed or the registry is in an inconsistent state — surface that
@@ -754,7 +755,7 @@ library LibCore {
             } else {
                 // buildAliveOrderedTaskIds is O(n) regardless of removal history — see its
                 // NatSpec for why sorting a taskIdList-derived snapshot is not safe here.
-                uint256[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
+                uint64[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
                 // Updates transition state
                 TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -825,7 +826,7 @@ library LibCore {
             if (currentTime >= cycleEndTime) { revert ICoreFacet.InvalidRegistryState(); }
             if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
 
-            uint256[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
+            uint64[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
             transitionState.refundDuration = cycleEndTime - currentTime;
             transitionState.newCycleDuration = s.durationSecs;

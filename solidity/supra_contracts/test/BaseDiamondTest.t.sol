@@ -133,7 +133,7 @@ abstract contract BaseDiamondTest is Test {
     }
 
     /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
-    function processCycleTransition(address _diamond, uint256[] memory _taskIndexes) internal {
+    function processCycleTransition(address _diamond, uint64[] memory _taskIndexes) internal {
         (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore, ) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTimeBefore + durationBefore);
 
@@ -149,6 +149,16 @@ abstract contract BaseDiamondTest is Test {
 
         ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
         vm.stopPrank();
+    }
+
+    /// @dev Asserts that two uint64 arrays have the same length and elements, in order. forge-std's
+    /// assertEq has array overloads for uint256[] but not for uint64[], the type of the registry's
+    /// task-id lists. The message names the first differing position.
+    function assertEqUint64Array(uint64[] memory _left, uint64[] memory _right, string memory _err) internal pure {
+        assertEq(_left.length, _right.length, string.concat(_err, ": length"));
+        for (uint256 i; i < _left.length; i++) {
+            assertEq(_left[i], _right[i], string.concat(_err, ": element ", vm.toString(i)));
+        }
     }
 
     /// @dev Returns the one log `_emitter` emitted with `_topic0`, and fails unless there is

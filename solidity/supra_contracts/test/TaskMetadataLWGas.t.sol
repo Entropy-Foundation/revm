@@ -92,7 +92,7 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(_diamond).monitorCycleEnd();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);

@@ -20,10 +20,11 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     /// @notice Called by the VM Signer on `AutomationBookkeepingAction::Process` action emitted by native layer ahead of the cycle transition.
     /// @dev The node's off-chain VM-signer decoder hardcodes this function's selector and calls
     ///      it every cycle transition. Do not Remove this selector via diamondCut post-genesis;
-    ///      Replace (to ship a fix) is fine.
+    ///      Replace (to ship a fix) is fine. The selector is 0x7f69c35c,
+    ///      processTasks(uint64,uint64[]); the node's processTasksCall::SELECTOR must match it.
     /// @param _cycleIndex Index of the cycle.
     /// @param _taskIndexes Array of task index to be processed.
-    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external {
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external {
         // Check caller is VM Signer
         msg.sender.enforceIsVmSigner();
 
@@ -118,7 +119,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         details.state = s.cycleState;
         TransitionState storage transitionState = LibAppStorage.transitionState();
         details.nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
-        details.expectedTasksToBeProcessed = LibUtils.uint256ArrayToUint64Array(transitionState.expectedTasksToBeProcessed);
+        details.expectedTasksToBeProcessed = transitionState.expectedTasksToBeProcessed;
     }
 
     /// @notice Returns if automation is enabled.

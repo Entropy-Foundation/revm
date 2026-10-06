@@ -47,7 +47,7 @@ contract RegistryViewFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450);
         registerGst(diamondAddr, 2450);
         
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 
@@ -66,13 +66,13 @@ contract RegistryViewFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450);
         registerGst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        uint256[] memory activeIds = IRegistryViewFacet(diamondAddr).getActiveTaskIds();
+        uint64[] memory activeIds = IRegistryViewFacet(diamondAddr).getActiveTaskIds();
         assertEq(activeIds.length, 2);
         assertEq(activeIds[0], 0);
         assertEq(activeIds[1], 1);
@@ -94,7 +94,7 @@ contract RegistryViewFacetTest is BaseDiamondTest {
     function testHasActiveUserTask() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -114,7 +114,7 @@ contract RegistryViewFacetTest is BaseDiamondTest {
     function testHasActiveSystemTask() public {
         registerGst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -135,7 +135,7 @@ contract RegistryViewFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450);
         registerGst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 

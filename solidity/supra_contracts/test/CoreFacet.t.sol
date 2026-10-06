@@ -142,7 +142,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if caller is not VM Signer.
     function testProcessTasksRevertsIfNotVm() public {
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
@@ -153,7 +153,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if state is not FINISHED or SUSPENDED.
     function testProcessTasksRevertsIfInvalidState() public {
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(ICoreFacet.InvalidRegistryState.selector);
@@ -166,7 +166,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testProcessTasksWhenCycleStateFinished() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         processCycleTransition(diamondAddr, tasks);
@@ -177,7 +177,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(newDuration, 1200);
         assertEq(uint8(newState), uint8(LibCommon.CycleState.STARTED));
 
-        assertEq(IRegistryViewFacet(diamondAddr).getActiveTaskIds(), tasks);
+        assertEqUint64Array(IRegistryViewFacet(diamondAddr).getActiveTaskIds(), tasks, "activeTaskIds");
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
         assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 100000);
@@ -198,7 +198,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
@@ -221,7 +221,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 1;
 
         vm.expectRevert(ICoreFacet.OutOfOrderTaskProcessingRequest.selector);
@@ -246,7 +246,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
 
-        uint256[] memory tasks = new uint256[](2);
+        uint64[] memory tasks = new uint64[](2);
         tasks[0] = 1;
         tasks[1] = 0;
 
@@ -263,7 +263,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
 
@@ -284,9 +284,9 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 cycleAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(cycleAfter, index + 1, "the registry is in the cycle ActiveTasks names");
 
-        uint256[] memory logged = abi.decode(log.data, (uint256[]));
-        assertEq(logged, taskIndexes, "both tasks survive the transition");
-        assertEq(logged, IRegistryViewFacet(diamondAddr).getActiveTaskIds(), "logged set equals activeTaskIds");
+        uint64[] memory logged = abi.decode(log.data, (uint64[]));
+        assertEqUint64Array(logged, taskIndexes, "both tasks survive the transition");
+        assertEqUint64Array(logged, IRegistryViewFacet(diamondAddr).getActiveTaskIds(), "logged set equals activeTaskIds");
     }
 
     /// @dev Test to ensure the 'TaskCycleFeeWithdraw' log carries the cycle the fee pays for, the
@@ -295,7 +295,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testProcessTasksFeeWithdrawLogCarriesFeeInData() public {
         registerUst(diamondAddr, 2450); // task 0
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -368,7 +368,7 @@ contract CoreFacetTest is BaseDiamondTest {
             cfg.sysTaskCapacity
         );
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -407,7 +407,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint256 balanceBefore = wsupra.balanceOf(alice);
@@ -446,12 +446,12 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Process task 0 on its own first, advancing the expected-order position past it, so
         // the second batch below cannot be confused with a genuine removal of task 0.
-        uint256[] memory firstBatch = new uint256[](1);
+        uint64[] memory firstBatch = new uint64[](1);
         firstBatch[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
 
-        uint256[] memory secondBatch = new uint256[](1);
+        uint64[] memory secondBatch = new uint64[](1);
         secondBatch[0] = 1;
 
         uint64[] memory expectedRemoved = new uint64[](1);
@@ -480,7 +480,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 99; // never registered
 
         vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(99)));
@@ -510,7 +510,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         uint64[] memory tasksUint64 = new uint64[](1);
@@ -546,12 +546,12 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Process task 0 on its own first, advancing the expected-order position past it, so
         // the second batch below cannot be confused with a genuine removal of task 0.
-        uint256[] memory firstBatch = new uint256[](1);
+        uint64[] memory firstBatch = new uint64[](1);
         firstBatch[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
 
-        uint256[] memory secondBatch = new uint256[](2);
+        uint64[] memory secondBatch = new uint64[](2);
         secondBatch[0] = 1;
         secondBatch[1] = 999; // does not exist
 
@@ -580,7 +580,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         (uint64 indexAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
 
-        uint256[] memory batch = new uint256[](1);
+        uint64[] memory batch = new uint64[](1);
         batch[0] = 999; // does not exist
 
         vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(999)));
@@ -616,7 +616,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).enableAutomation();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         uint64[] memory tasksUint64 = new uint64[](1);
@@ -657,7 +657,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
@@ -838,7 +838,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
 
         // Process only task 0 — transition is now in progress
-        uint256[] memory partialTasks = new uint256[](1);
+        uint64[] memory partialTasks = new uint64[](1);
         partialTasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -926,7 +926,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// event echoes `_taskIndexes` verbatim — that assumption breaks when one of the processed
     /// tasks expires and gets removed during this very transition, since the real ActiveTasks
     /// list then only contains the tasks that survived.
-    function processCycleTransitionAllowingRemovals(address _diamond, uint256[] memory _taskIndexes) internal {
+    function processCycleTransitionAllowingRemovals(address _diamond, uint64[] memory _taskIndexes) internal {
         (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore,) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTimeBefore + durationBefore);
 
@@ -945,7 +945,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerGstWithGas(diamondAddr, 12_000, 100_000); // task 0: survives many cycles
         registerGstWithGas(diamondAddr, 1_800, 50_000); // task 1: expires partway through cycle 2
 
-        uint256[] memory bothTasks = new uint256[](2);
+        uint64[] memory bothTasks = new uint64[](2);
         bothTasks[0] = 0;
         bothTasks[1] = 1;
 
@@ -959,7 +959,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(1));
 
         // Cycle 3 -> 4: only task 0 remains.
-        uint256[] memory onlyTaskA = new uint256[](1);
+        uint64[] memory onlyTaskA = new uint64[](1);
         onlyTaskA[0] = 0;
         processCycleTransition(diamondAddr, onlyTaskA);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 100_000);
@@ -974,7 +974,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(1, taskIndexes);
@@ -1001,7 +1001,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(wsupra.balanceOf(diamondAddr), 122.2 ether);
         assertEq(wsupra.balanceOf(alice), 77.8 ether);
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
         uint64[] memory tasksUint64 = new uint64[](1);
@@ -1037,7 +1037,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 2);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 200_000);
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
         uint64[] memory tasksUint64 = new uint64[](1);
@@ -1061,7 +1061,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTasksEmitsEvent() public {
         registerUst(diamondAddr, 2450);
         
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         uint64[] memory tasksUint64 = new uint64[](1);
         tasksUint64[0] = 0;
@@ -1085,7 +1085,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTaskLogIsFilterableByTaskAndOwner() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
         (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -1188,7 +1188,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTaskRevertsIfInsufficientBalance() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1220,7 +1220,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
 
         // Process only task 0 — transition in progress
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexBefore + 1, taskIndexes);
@@ -1272,7 +1272,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testTransitionStateResetAfterFinishedToStartedTransition() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1295,7 +1295,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(1, taskIndexes);
@@ -1342,7 +1342,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testTransitionStateNoStalenessAfterPopulatedThenEmptyCycle() public {
         registerUst(diamondAddr, 1_300); // expires during cycle 2
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes); // cycle 1 -> 2, task still active
 
@@ -1380,9 +1380,11 @@ contract CoreFacetTest is BaseDiamondTest {
             registerUst(diamondAddr, 2450);
         }
 
-        uint256[] memory taskIndexes = new uint256[](n);
+        uint64[] memory taskIndexes = new uint64[](n);
         for (uint256 i = 0; i < n; i++) {
-            taskIndexes[i] = i;
+            // i is bounded by the test's task count, far below 2^64.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            taskIndexes[i] = uint64(i);
         }
 
         (uint64 indexBefore, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -1440,7 +1442,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         ICoreFacet(diamondAddr).processTasks(indexBefore + 1, tasks);
@@ -1465,7 +1467,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory empty;
+        uint64[] memory empty;
         ICoreFacet(diamondAddr).processTasks(index + 1, empty);
         vm.stopPrank();
 
@@ -1495,7 +1497,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER);
@@ -1524,7 +1526,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
@@ -1558,7 +1560,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.startPrank(LibUtils.VM_SIGNER);
@@ -1590,7 +1592,7 @@ contract CoreFacetTest is BaseDiamondTest {
         // Past task 0's expiry and before task 1's, as in testExpiredTaskRemovalInTransition.
         vm.warp(block.timestamp + 1250);
 
-        uint256[] memory tasks = new uint256[](2);
+        uint64[] memory tasks = new uint64[](2);
         tasks[0] = 0;
         tasks[1] = 1;
 
@@ -1605,7 +1607,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(active.topics[1], bytes32(uint256(index + 1)), "ActiveTasks names the cycle entered");
         assertEq(removed.topics[1], active.topics[1], "RemovedTasks names the same cycle");
 
-        uint256[] memory activeIds = abi.decode(active.data, (uint256[]));
+        uint64[] memory activeIds = abi.decode(active.data, (uint64[]));
         uint64[] memory removedIds = abi.decode(removed.data, (uint64[]));
         assertEq(activeIds.length, 1, "one task survives");
         assertEq(activeIds[0], 1, "task 1 survives");
@@ -1632,7 +1634,7 @@ contract CoreFacetTest is BaseDiamondTest {
         // Move time forward past task expiration
         vm.warp(block.timestamp + 1250);
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
         
         // Expect RemovedTasks event for the expired task
@@ -1674,7 +1676,7 @@ contract CoreFacetTest is BaseDiamondTest {
         // Move time forward past task expiration.
         vm.warp(block.timestamp + 1250);
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectEmit(true, true, true, true);
@@ -1707,7 +1709,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectEmit(true, true, false, true, diamondAddr);
@@ -1740,7 +1742,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).enableAutomation();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER);
@@ -1757,7 +1759,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRefundTaskFeesOnSuspendForActiveTaskRefundsFullCycleFees() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1792,7 +1794,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRefundTaskFeesOnSuspendForActiveTaskRefundsPartialCycleFees() public {
         registerUst(diamondAddr, 1250);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1827,7 +1829,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 1250);
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1922,7 +1924,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(customRegistry, 2450);
 
         // Perform cycle transition
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
         processCycleTransition(customRegistry, tasks);
 
@@ -1966,7 +1968,7 @@ contract CoreFacetTest is BaseDiamondTest {
     }
 
     /// @notice Bounded-cost check for LibCommon.removeFromActiveTaskIds: RegistryState.activeTaskIds
-    /// is a plain uint256[], so removing from it is an O(k) linear-scan swap-remove
+    /// is a plain uint64[], so removing from it is an O(k) linear-scan swap-remove
     /// (k = current activeTaskIds length) rather than EnumerableSet's O(1). A single
     /// stopTasks call spanning activeTaskIds' full length is therefore O(k^2), bounded by
     /// the governance-owned taskCapacity+sysTaskCapacity cap (200 by default), not unbounded.
@@ -1975,11 +1977,13 @@ contract CoreFacetTest is BaseDiamondTest {
     /// well within a realistic block gas limit — the bound is real, not just asymptotic.
     function testStopTasksBulkRemovalFromActiveTaskIdsStaysWithinGasBudget() public {
         uint256 n = 100;
-        uint256[] memory taskIndexes = new uint256[](n);
+        uint64[] memory taskIndexes = new uint64[](n);
         vm.deal(alice, n * 101 ether);
         for (uint256 i = 0; i < n; i++) {
             registerUst(diamondAddr, 2450);
-            taskIndexes[i] = i;
+            // i is bounded by the test's task count, far below 2^64.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            taskIndexes[i] = uint64(i);
         }
 
         processCycleTransition(diamondAddr, taskIndexes);

@@ -16,16 +16,14 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 /// the number of registered tasks, regardless of removal history, because
 /// `onCycleEndInternal` must:
 ///   1. Filter+compact RegistryState.orderedTaskIds into the alive-only ascending
-///      list (LibCore.buildAliveOrderedTaskIds — O(n), one SLOAD per task)
-///   2. Write the result into the transition state's `expectedTasksToBeProcessed` (SSTORE per task)
+///      list (LibCore.buildAliveOrderedTaskIds — O(n), one SLOAD per four tasks)
+///   2. Write the result into the transition state's `expectedTasksToBeProcessed` (one SSTORE
+///      per four tasks)
 ///
-/// Step 2 dominates. `expectedTasksToBeProcessed` used to be an EnumerableSet.UintSet,
-/// whose add() writes two 20,000-gas SSTOREs per task (one for the value array element,
-/// one for the O(1)-lookup index mapping entry) — ~40,000-45,000 gas/task. That mapping
-/// was never actually queried (the field is only ever read back sequentially via
-/// length/at), so the field was changed to a plain `uint256[]`: a single push() per task
-/// now costs one SSTORE instead of two, roughly halving the per-task cost to
-/// ~20,000-22,000 gas (see LibCore.updateExpectedTasks and its NatSpec).
+/// Both lists are plain `uint64[]` arrays of task IDs, which pack four per storage slot, so
+/// the storage traffic of both steps scales with ceil(n/4) slots (see
+/// LibCore.updateExpectedTasks and its NatSpec). `expectedTasksToBeProcessed` is read back
+/// only sequentially, so it carries no membership index.
 ///
 /// This test file answers two questions empirically:
 ///   A. What gas does monitorCycleEnd consume for a given task count?
@@ -42,8 +40,10 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      and by the BoundaryScan, which searches [1, LARGE_CAPACITY].
     ///      N200-N400 tests each deploy a diamond with a capacity matching their own N,
     ///      so they are unaffected by this constant.
-    ///      uint16 matches the type of InitParams.taskCapacity.
-    uint16 constant LARGE_CAPACITY = 1000;
+    ///      uint16 matches the type of InitParams.taskCapacity. The scan's upper bound must
+    ///      exceed the safe task limit, or the scan reports the bound itself; the limit is
+    ///      2,504 tasks with uint64[] task-ID lists (#4285).
+    uint16 constant LARGE_CAPACITY = 4000;
 
     // ────────────────────────────────────────────────────────────────────────
     // Helpers
@@ -168,7 +168,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      stale here, because nothing about them is repeated as a literal below.
     ///
     ///      The one number that IS a literal is `orderedTaskIds`'s offset *within* `RegistryState`
-    ///      (relative slot 11, plain `uint256[]`, confirmed via `forge inspect <probe contract
+    ///      (relative slot 11, `uint64[]` packed four per slot, confirmed via `forge inspect <probe contract
     ///      declaring AppStorage internal s;> storage-layout --json`, not hand-computed) -- this is
     ///      the one that moves if `RegistryState`'s own field order changes, and there's no per-field
     ///      accessor to derive it from, so it must be re-verified against `forge inspect ...
@@ -187,11 +187,20 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         uint256 dataBase = uint256(keccak256(abi.encode(lengthSlot)));
 
         vm.store(_diamond, bytes32(lengthSlot), bytes32(_n));
-        for (uint256 i = 0; i < _n; i++) {
-            // Registered task IDs are 0..n-1 (ascending); write them back descending
-            // (n-1, n-2, ..., 0) so the array holds exactly the same value set,
-            // just in the fully-reversed order.
-            vm.store(_diamond, bytes32(dataBase + i), bytes32((_n - 1) - i));
+        // Registered task IDs are 0..n-1 (ascending); write them back descending
+        // (n-1, n-2, ..., 0) so the array holds exactly the same value set, just in the
+        // fully-reversed order. orderedTaskIds is a uint64[], so element i lives in data slot
+        // i / 4, in the 64-bit lane i % 4 counted from the low-order end. Each slot is written
+        // as one whole word; _registerNTasks filled the same ceil(n/4) slots, so every lane
+        // is overwritten.
+        uint256 slots = (_n + 3) / 4;
+        for (uint256 s = 0; s < slots; s++) {
+            uint256 word;
+            for (uint256 j = 0; j < 4 && s * 4 + j < _n; j++) {
+                uint256 i = s * 4 + j;
+                word |= ((_n - 1) - i) << (64 * j);
+            }
+            vm.store(_diamond, bytes32(dataBase + s), bytes32(word));
         }
     }
 

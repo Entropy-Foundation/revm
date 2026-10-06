@@ -170,7 +170,7 @@ library LibCommon {
         task = LibAppStorage.registryState().tasks[_taskIndex];
     }
 
-    /// @notice Removes `_value` from a plain uint256[] by linear scan + swap-and-pop.
+    /// @notice Removes `_value` from a plain uint64[] by linear scan + swap-and-pop.
     /// @dev activeTaskIds is a plain array (see LibAppStorage.RegistryState), not an
     ///      EnumerableSet, because nothing reads it via contains() and it's rebuilt
     ///      wholesale each cycle from TransitionState.survivedTaskIds (see
@@ -180,7 +180,7 @@ library LibCommon {
     ///      swap-and-pop is safe. Bounded by taskCapacity+sysTaskCapacity, the
     ///      governance-owned system-wide task cap (see ConfigFacet.updateConfigBuffer).
     /// @return found True if `_value` was present and removed.
-    function removeFromActiveTaskIds(uint256[] storage _arr, uint256 _value) private returns (bool found) {
+    function removeFromActiveTaskIds(uint64[] storage _arr, uint64 _value) private returns (bool found) {
         uint256 len = _arr.length;
         for (uint256 i = 0; i < len; i++) {
             if (_arr[i] == _value) {
