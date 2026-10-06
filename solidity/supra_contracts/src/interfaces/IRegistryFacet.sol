@@ -8,13 +8,9 @@ interface IRegistryFacet {
     // =============================================================
     //                          Events
     // =============================================================
-    // A struct or array parameter of an event is not declared indexed: an indexed parameter of
-    // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
-    // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
-    // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
-    // value-typed parameters a reader filters on, such as a task index or an owner; a fee, refund
-    // or balance amount is not filtered on and is placed in the log data. Indexing is not part of
-    // the event signature, so it does not affect topic0.
+    // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
+    // indexed. script/check_event_indexing.sh states the rule and fails the build on an indexed
+    // struct, array, string or bytes parameter (#4285).
 
     /// @notice Emitted when a user task is registered.
     /// @dev taskIndex and owner are topics 1 and 2. registrationFee, lockedDepositFee and

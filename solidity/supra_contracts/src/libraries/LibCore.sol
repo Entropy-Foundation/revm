@@ -284,7 +284,8 @@ library LibCore {
             RegistryState storage registryState = LibAppStorage.registryState();
             if (registryState.activeTaskIds.length > 0) {
                 uint256[] memory activeTasks = registryState.activeTaskIds;
-                emit ICoreFacet.ActiveTasks(activeTasks);
+                // moveToStartedState has advanced s.index, so it is the new cycle's index.
+                emit ICoreFacet.ActiveTasks(s.index, activeTasks);
             }
             if (!s.automationEnabled) {
                 tryMoveToSuspendedState();
@@ -576,7 +577,7 @@ library LibCore {
 
         updateCycleTransitionStateFromFinished();
         if (intermediateState.removedTasks.length > 0) {
-            emit ICoreFacet.RemovedTasks(intermediateState.removedTasks);
+            emit ICoreFacet.RemovedTasks(_cycleIndex, intermediateState.removedTasks);
         }
     }
 
@@ -633,7 +634,7 @@ library LibCore {
 
         if (removedCounter > 0) {
             // Emit only the entries actually removed.
-            emit ICoreFacet.RemovedTasks(removedTasks);
+            emit ICoreFacet.RemovedTasks(_cycleIndex, removedTasks);
         }
     }
 
@@ -692,6 +693,8 @@ library LibCore {
             emitTaskRemovedByGasConfigUpdate(task, txGasLimitCap, minGasPrice, cycleFeeRefund, depositRefund);
         } else {
             emit ICoreFacet.TaskRemovedBySystem(
+                _taskId,
+                task.owner,
                 LibCommon.RemovedTask(_taskId, task.taskType, task.owner, task.txHash, _reason, _details)
             );
         }

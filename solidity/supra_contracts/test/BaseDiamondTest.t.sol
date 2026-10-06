@@ -145,7 +145,7 @@ abstract contract BaseDiamondTest is Test {
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
 
         vm.expectEmit(_diamond);
-        emit ICoreFacet.ActiveTasks(_taskIndexes);
+        emit ICoreFacet.ActiveTasks(indexBefore + 1, _taskIndexes);
 
         ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
         vm.stopPrank();

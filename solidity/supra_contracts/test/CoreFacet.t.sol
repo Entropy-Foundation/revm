@@ -256,8 +256,8 @@ contract CoreFacetTest is BaseDiamondTest {
     }
 
     /// @dev Test to ensure the 'ActiveTasks' log carries the new cycle's active task indexes in its
-    /// data, so a reader of the raw log decodes them with the event's ABI (#4285). The log has no
-    /// topic besides topic0.
+    /// data, so a reader of the raw log decodes them with the event's ABI (#4285). The new cycle's
+    /// index is topic 1.
     function testProcessTasksLogCarriesActiveTaskIndexesInData() public {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
@@ -278,7 +278,10 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.stopPrank();
 
         Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.ActiveTasks.selector);
-        assertEq(log.topics.length, 1, "ActiveTasks has only topic0");
+        assertEq(log.topics.length, 2, "ActiveTasks has topic0 and cycleIndex");
+        assertEq(log.topics[1], bytes32(uint256(index + 1)), "topic1 is the new cycle's index");
+        (uint64 cycleAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(cycleAfter, index + 1, "the registry is in the cycle ActiveTasks names");
 
         uint256[] memory logged = abi.decode(log.data, (uint256[]));
         assertEq(logged, taskIndexes, "both tasks survive the transition");
@@ -386,7 +389,7 @@ contract CoreFacetTest is BaseDiamondTest {
         expectedRemoved[0] = 1;
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(expectedRemoved);
+        emit ICoreFacet.RemovedTasks(indexAfter, expectedRemoved);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
@@ -445,7 +448,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(tasksUint64);
+        emit ICoreFacet.RemovedTasks(indexAfter, tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, tasks);
@@ -551,7 +554,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(tasksUint64);
+        emit ICoreFacet.RemovedTasks(indexAfter, tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, tasks);
@@ -1000,11 +1003,38 @@ contract CoreFacetTest is BaseDiamondTest {
         LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.TaskRemovedBySystem(removedTask);
+        emit ICoreFacet.TaskRemovedBySystem(0, alice, removedTask);
 
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], LibCommon.TaskRemovalReason.ERROR, reason);
+    }
+
+    /// @dev Test to ensure the 'TaskRemovedBySystem' log carries taskIndex and owner as topics 1
+    /// and 2, so a reader filters system removals by task or owner, and the RemovedTask in its
+    /// data (#4285).
+    function testRemoveRegisteredTaskLogIsFilterableByTaskAndOwner() public {
+        registerUst(diamondAddr, 2450);
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+        (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(index, 0, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.TaskRemovedBySystem.selector);
+        assertEq(log.topics.length, 3, "TaskRemovedBySystem has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        LibCommon.RemovedTask memory removed = abi.decode(log.data, (LibCommon.RemovedTask));
+        assertEq(removed.taskIndex, 0, "taskIndex");
+        assertEq(removed.owner, alice, "owner");
+        assertEq(uint8(removed.reason), uint8(LibCommon.TaskRemovalReason.ERROR), "reason");
+        assertEq(removed.details, "Predicate failed", "details");
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
@@ -1476,6 +1506,44 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(state), uint8(LibCommon.CycleState.READY));
     }
 
+    /// @dev Test to ensure the 'ActiveTasks' and 'RemovedTasks' logs of one FINISHED -> STARTED
+    /// transition carry the same cycle index as topic 1, so a reader matches the removals to the
+    /// cycle they were dropped from entering without relying on emit order (#4285).
+    function testTransitionLogsShareCycleIndex() public {
+        registerUst(diamondAddr, 2450);  // task 0, expires during the transition below
+        registerUst(diamondAddr, 10000); // task 1, survives it
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        // Past task 0's expiry and before task 1's, as in testExpiredTaskRemovalInTransition.
+        vm.warp(block.timestamp + 1250);
+
+        uint256[] memory tasks = new uint256[](2);
+        tasks[0] = 0;
+        tasks[1] = 1;
+
+        vm.recordLogs();
+        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
+        vm.stopPrank();
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        Vm.Log memory active = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
+        Vm.Log memory removed = findLog(logs, diamondAddr, ICoreFacet.RemovedTasks.selector);
+
+        assertEq(active.topics[1], bytes32(uint256(index + 1)), "ActiveTasks names the cycle entered");
+        assertEq(removed.topics[1], active.topics[1], "RemovedTasks names the same cycle");
+
+        uint256[] memory activeIds = abi.decode(active.data, (uint256[]));
+        uint64[] memory removedIds = abi.decode(removed.data, (uint64[]));
+        assertEq(activeIds.length, 1, "one task survives");
+        assertEq(activeIds[0], 1, "task 1 survives");
+        assertEq(removedIds.length, 1, "one task is removed");
+        assertEq(removedIds[0], 0, "task 0 is removed");
+    }
+
     /// @notice Test to ensure an expired task is removed from the registry and 'RemovedTasks' is emitted during cycle transition.
     function testExpiredTaskRemovalInTransition() public {
         registerUst(diamondAddr, 2450);
@@ -1503,7 +1571,7 @@ contract CoreFacetTest is BaseDiamondTest {
         expectedRemoved[0] = 0;
         
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(expectedRemoved);
+        emit ICoreFacet.RemovedTasks(index + 1, expectedRemoved);
 
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
         vm.stopPrank();

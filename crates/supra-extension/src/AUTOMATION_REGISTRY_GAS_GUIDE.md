@@ -188,12 +188,12 @@ The common case: automation stays enabled, no task expires mid-transition.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 4,683,192 |
-| `processTasks`, non-final batch (average of batches 1–7) | ~969,891 |
-| `processTasks`, **final batch (8/8)** | **5,441,472** |
-| Final-batch finalization premium (final − average) | ~4,471,581 |
-| Total `processTasks` (8 batches) | 12,230,709 |
-| **Grand total** (trigger + all batches) | **16,913,901** |
+| `monitorCycleEnd` (trigger) | 4,683,196 |
+| `processTasks`, non-final batch (average of batches 1–7) | ~969,632 |
+| `processTasks`, **final batch (8/8)** | **5,441,758** |
+| Final-batch finalization premium (final − average) | ~4,472,126 |
+| Total `processTasks` (8 batches) | 12,229,182 |
+| **Grand total** (trigger + all batches) | **16,912,378** |
 
 The final batch of a `FINISHED->STARTED` transition is ~5.6x a typical batch. That
 premium comes from four things landing on whichever call happens to finalize the
@@ -220,12 +220,12 @@ none survive into a next cycle, and the cycle index does not increment.
 
 | Call | Gas |
 | --- | --- |
-| `disableAutomation` (trigger) | 4,684,239 |
-| `processTasks` (`onCycleSuspend`), non-final batch (average) | ~557,942 |
-| `processTasks`, **final batch (8/8)** | **445,318** |
+| `disableAutomation` (trigger) | 4,684,243 |
+| `processTasks` (`onCycleSuspend`), non-final batch (average) | ~558,320 |
+| `processTasks`, **final batch (8/8)** | **445,696** |
 | Final-batch finalization premium | **0** (final batch is *cheaper* than typical) |
-| Total `processTasks` (8 batches) | 4,350,914 |
-| **Grand total** (trigger + all batches) | **9,035,153** |
+| Total `processTasks` (8 batches) | 4,353,938 |
+| **Grand total** (trigger + all batches) | **9,038,181** |
 
 Two things stand out relative to Scenario 1:
 - **No survivor bookkeeping**: `onCycleSuspend` never pushes to `survivedTaskIds` —
@@ -255,18 +255,18 @@ cycles: the 20 tasks are registered with an expiry inside cycle 2, survive cycle
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger, cycle 2) | 4,250,992 |
-| `processTasks`, non-final batch (average) | ~892,767 |
-| `processTasks`, **final batch (8/8)** | **989,269** |
-| Final-batch finalization premium | ~96,502 |
-| Total `processTasks` (8 batches) | 7,238,639 |
-| **Grand total** (trigger + all batches) | **11,489,631** |
+| `monitorCycleEnd` (trigger, cycle 2) | 4,250,996 |
+| `processTasks`, non-final batch (average) | ~892,547 |
+| `processTasks`, **final batch (8/8)** | **989,555** |
+| Final-batch finalization premium | ~97,008 |
+| Total `processTasks` (8 batches) | 7,237,386 |
+| **Grand total** (trigger + all batches) | **11,488,382** |
 
 With 180 survivors, cycle 2's finalization premium is ~97k gas, of which 43,872 is
 the `ActiveTasks` log data for the 180 survivors (measured against the list hashed
 into a topic). The premium is not proportional to survivor count: in the same
-benchmark, cycle 1's finalizing batch, with 200 survivors, measures 5,441,472 gas,
-the Scenario 1 figure, while cycle 2's measures 989,269. Size a final batch from the
+benchmark, cycle 1's finalizing batch, with 200 survivors, measures 5,441,758 gas,
+the Scenario 1 figure, while cycle 2's measures 989,555. Size a final batch from the
 Scenario 1 figure, not by scaling it down with the survivor count. The batches
 containing the 20 expiring tasks (batch 1, dominated by expired-task drops) are
 cheaper than a normal batch, since a refund-and-drop is less work than a full
@@ -285,8 +285,8 @@ There is no per-batch variable budget today, and no use of
 final batch.
 
 Measured against that flat cap, the worst case across all three scenarios is
-**Scenario 1's final batch at 5,441,472 gas** — about **3.1x headroom**
-(16,777,216 / 5,441,472) under the current 16,777,216 flat limit. **Given that
+**Scenario 1's final batch at 5,441,758 gas** — about **3.1x headroom**
+(16,777,216 / 5,441,758) under the current 16,777,216 flat limit. **Given that
 margin, the "an under-budget final batch cannot be fixed by splitting it further
 after the fact" hazard is not live today.** This section exists so that headroom
 has a documented, reproducible baseline: if `TX_GAS_LIMIT_CAP` is ever lowered, or
@@ -306,9 +306,9 @@ new scheme assigns non-final vs. final batches.
   transaction and needs its own explicit budget of similar size.
 - **`processTasks`**: comfortably covered by the current flat 16,777,216 cap at
   every batch size measured here (non-final batches average ~970k/~558k/~893k gas;
-  the worst-case final batch at 5,441,472 gas) — see the margin above. If a future
+  the worst-case final batch at 5,441,758 gas) — see the margin above. If a future
   change introduces a smaller or variable per-record budget instead of the flat
-  cap, use **~5.5M gas** (Scenario 1's measured worst case, 5,441,472) as the floor for
+  cap, use **~5.5M gas** (Scenario 1's measured worst case, 5,441,758) as the floor for
   whichever batch will finalize a `FINISHED->STARTED` transition, and ~1M gas for
   every other batch, including suspension-path finalization (Scenario 2's final
   batch is cheaper than typical, not more expensive — see Scenario 2 above for why

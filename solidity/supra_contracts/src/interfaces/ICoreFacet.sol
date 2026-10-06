@@ -7,13 +7,9 @@ interface ICoreFacet {
     // =============================================================
     //                          Events
     // =============================================================
-    // A struct or array parameter of an event is not declared indexed: an indexed parameter of
-    // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
-    // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
-    // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
-    // value-typed parameters a reader filters on, such as a task index or an owner; a fee, refund
-    // or balance amount is not filtered on and is placed in the log data. Indexing is not part of
-    // the event signature, so it does not affect topic0.
+    // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
+    // indexed. script/check_event_indexing.sh states the rule and fails the build on an indexed
+    // struct, array, string or bytes parameter (#4285).
 
     /// @notice Emitted when automation is enabled.
     event AutomationEnabled(bool indexed status);
@@ -22,19 +18,19 @@ interface ICoreFacet {
     event AutomationDisabled(bool indexed status);
 
     /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
-    /// @dev The log has no indexed parameter. taskIndexes is ABI-encoded in the log data and is
-    ///      the registry's activeTaskIds for the new cycle. It is emitted once, by the
-    ///      processTasks call that finalizes a FINISHED -> STARTED transition, and only when at
-    ///      least one task is active.
-    event ActiveTasks(uint256[] taskIndexes);
+    /// @dev cycleIndex is topic 1 and is the index of the new cycle. taskIndexes is ABI-encoded
+    ///      in the log data and is the registry's activeTaskIds for that cycle. It is emitted
+    ///      once, by the processTasks call that finalizes a FINISHED -> STARTED transition, and
+    ///      only when at least one task is active.
+    event ActiveTasks(uint64 indexed cycleIndex, uint256[] taskIndexes);
 
     /// @notice Event emitted on cycle transition containing removed task indexes.
-    /// @dev The log has no indexed parameter. taskIndexes is ABI-encoded in the log data. It is
-    ///      emitted by each processTasks call that removed at least one task, and lists the tasks
-    ///      that call removed. In the call that finalizes a FINISHED -> STARTED transition it is
-    ///      emitted after ActiveTasks and any AutomationCycleEvent of that call, and its entries
-    ///      are removals from the transition into the cycle that ActiveTasks lists.
-    event RemovedTasks(uint64[] taskIndexes);
+    /// @dev cycleIndex is topic 1 and is the cycle index processTasks was called with: for a
+    ///      FINISHED -> STARTED transition the cycle being entered, the same index ActiveTasks
+    ///      carries for that transition, and for a suspension the cycle being suspended.
+    ///      taskIndexes is ABI-encoded in the log data. It is emitted by each processTasks call
+    ///      that removed at least one task, and lists the tasks that call removed.
+    event RemovedTasks(uint64 indexed cycleIndex, uint64[] taskIndexes);
 
     /// @notice Emitted when the cycle state transitions.
     event AutomationCycleEvent(
@@ -78,11 +74,11 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when the VM signer removes a task for a runtime error (TaskRemovalReason.ERROR).
-    /// @dev The log has no indexed parameter. removedTask is ABI-encoded in the log data as
-    ///      (uint64 taskIndex, TaskType taskType, address owner, bytes32 txHash,
-    ///      TaskRemovalReason reason, string details), details being the VM signer's description
-    ///      of the reason.
-    event TaskRemovedBySystem(LibCommon.RemovedTask removedTask);
+    /// @dev taskIndex and owner are topics 1 and 2, so a reader filters system removals by task
+    ///      or by owner. removedTask is ABI-encoded in the log data as (uint64 taskIndex,
+    ///      TaskType taskType, address owner, bytes32 txHash, TaskRemovalReason reason,
+    ///      string details), details being the VM signer's description of the reason.
+    event TaskRemovedBySystem(uint64 indexed taskIndex, address indexed owner, LibCommon.RemovedTask removedTask);
 
     /// @notice Emitted when a task is removed because the EVM gas config of the executing block's
     /// epoch no longer admits its transaction: its maxGasAmount is above txGasLimitCap, or it is a

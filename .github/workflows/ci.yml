@@ -138,6 +138,10 @@ jobs:
       - name: Build forge project
         working-directory: ./solidity/supra_contracts
         run: forge build
+      # Reads the ABIs forge build just wrote to out/; see the script's header for the rule.
+      - name: Check no event indexes a struct, array, string or bytes parameter
+        working-directory: ./solidity/supra_contracts
+        run: ./script/check_event_indexing.sh
       - name: Run forge tests
         working-directory: ./solidity/supra_contracts
         run: forge test
