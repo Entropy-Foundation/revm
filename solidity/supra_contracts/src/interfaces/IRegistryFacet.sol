@@ -12,8 +12,9 @@ interface IRegistryFacet {
     // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
     // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
     // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
-    // value-typed parameters a reader filters on. Indexing is not part of the event signature,
-    // so it does not affect topic0.
+    // value-typed parameters a reader filters on, such as a task index or an owner; a fee, refund
+    // or balance amount is not filtered on and is placed in the log data. Indexing is not part of
+    // the event signature, so it does not affect topic0.
 
     /// @notice Emitted when a user task is registered.
     /// @dev taskIndex and owner are topics 1 and 2. registrationFee, lockedDepositFee and
@@ -56,20 +57,23 @@ interface IRegistryFacet {
 
     /// @notice Emitted when an automation fee is refunded for an automation task at the end of the cycle for excessive
     /// duration paid at the beginning of the cycle due to cycle duration reduction by governance.
+    /// @dev taskIndex and owner are topics 1 and 2; amount is in the log data.
     event TaskFeeRefund(
         uint64 indexed taskIndex,
         address indexed owner,
-        uint128 indexed amount
+        uint128 amount
     );
 
     /// @notice Emitted when a deposit fee is refunded for an automation task.
-    event TaskDepositFeeRefund(uint64 indexed taskIndex, address indexed owner, uint128 indexed amount);
+    /// @dev taskIndex and owner are topics 1 and 2; amount is in the log data.
+    event TaskDepositFeeRefund(uint64 indexed taskIndex, address indexed owner, uint128 amount);
 
     /// @notice Emitted when a task cycle fee is being refunded but locked cycle fees is less than the requested refund.
+    /// @dev taskIndex is topic 1; lockedCycleFees and refund are in the log data.
     event ErrorUnlockTaskCycleFee(
         uint64 indexed taskIndex,
-        uint256 indexed lockedCycleFees,
-        uint128 indexed refund
+        uint256 lockedCycleFees,
+        uint128 refund
     );
 
     /// @notice Emitted during cycle transition when refunds to be paid is not possible due to insufficient contract balance.
@@ -83,10 +87,12 @@ interface IRegistryFacet {
     );
 
     /// @notice Emitted when deposit fee is being refunded but total locked deposits is less than the locked deposit for the task.
+    /// @dev taskIndex is topic 1; totalDepositedAutomationFees and lockedDeposit are in the
+    ///      log data.
     event ErrorUnlockTaskDepositFee(
-        uint64 indexed taskIndex, 
-        uint256 indexed totalDepositedAutomationFees, 
-        uint128 indexed lockedDeposit
+        uint64 indexed taskIndex,
+        uint256 totalDepositedAutomationFees,
+        uint128 lockedDeposit
     );
 
 

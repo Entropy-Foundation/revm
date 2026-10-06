@@ -11,8 +11,9 @@ interface ICoreFacet {
     // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
     // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
     // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
-    // value-typed parameters a reader filters on. Indexing is not part of the event signature,
-    // so it does not affect topic0.
+    // value-typed parameters a reader filters on, such as a task index or an owner; a fee, refund
+    // or balance amount is not filtered on and is placed in the log data. Indexing is not part of
+    // the event signature, so it does not affect topic0.
 
     /// @notice Emitted when automation is enabled.
     event AutomationEnabled(bool indexed status);
@@ -45,28 +46,33 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
+    /// @dev taskIndex and owner are topics 1 and 2; cycleIndex and fee are in the log data.
     event TaskCycleFeeWithdraw(
         uint64 cycleIndex,
         uint64 indexed taskIndex,
         address indexed owner,
-        uint128 indexed fee
+        uint128 fee
     );
 
     /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
+    /// @dev taskIndex is topic 1; owner, fee, automationFeeCapForCycle and registrationHash
+    ///      are in the log data.
     event TaskCancelledCapacitySurpassed(
         uint64 indexed taskIndex,
         address owner,
-        uint128 indexed fee,
-        uint128 indexed automationFeeCapForCycle,
+        uint128 fee,
+        uint128 automationFeeCapForCycle,
         bytes32 registrationHash
     );
 
     /// @notice Emitted when a task is removed due to insufficient balance or allowance.
+    /// @dev taskIndex is topic 1; owner, fee, balance, allowance and registrationHash are in
+    ///      the log data.
     event TaskCancelledInsufficientBalanceAllowance(
         uint64 indexed taskIndex,
         address owner,
-        uint128 indexed fee,
-        uint256 indexed balance,
+        uint128 fee,
+        uint256 balance,
         uint256 allowance,
         bytes32 registrationHash
     );

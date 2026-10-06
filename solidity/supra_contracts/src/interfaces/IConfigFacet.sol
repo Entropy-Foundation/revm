@@ -11,8 +11,9 @@ interface IConfigFacet {
     // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
     // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
     // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
-    // value-typed parameters a reader filters on. Indexing is not part of the event signature,
-    // so it does not affect topic0.
+    // value-typed parameters a reader filters on, such as a task index or an owner; a fee, refund
+    // or balance amount is not filtered on and is placed in the log data. Indexing is not part of
+    // the event signature, so it does not affect topic0.
 
     /// @notice Emitted when an account is authorized as submitter for system tasks.
     event AuthorizationGranted(address indexed account, uint256 indexed timestamp);
@@ -27,7 +28,8 @@ interface IConfigFacet {
     event TaskRegistrationDisabled(bool indexed status);
 
     /// @notice Emitted when the registry fees is withdrawn by the admin.
-    event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
+    /// @dev recipient is topic 1; feesWithdrawn is in the log data.
+    event RegistryFeeWithdrawn(address indexed recipient, uint256 feesWithdrawn);
 
     /// @notice Emitted when a new config is added.
     /// @dev The log has no indexed parameter. pendingConfig is ABI-encoded in the log data and is

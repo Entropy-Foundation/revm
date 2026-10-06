@@ -234,7 +234,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     function testWithdrawFeesEmitsEvent() public {
         registerUst(diamondAddr, 2450);
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IConfigFacet.RegistryFeeWithdrawn(admin, 0.002 ether);
 
         vm.prank(admin);

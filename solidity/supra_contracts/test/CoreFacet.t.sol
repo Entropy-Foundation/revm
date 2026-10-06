@@ -285,6 +285,75 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(logged, IRegistryViewFacet(diamondAddr).getActiveTaskIds(), "logged set equals activeTaskIds");
     }
 
+    /// @dev Test to ensure the 'TaskCycleFeeWithdraw' log carries the charged fee in its data
+    /// (#4285): taskIndex and owner are the only topics after topic0, and the fee decoded from the
+    /// data is the amount taken from the owner.
+    function testProcessTasksFeeWithdrawLogCarriesFeeInData() public {
+        registerUst(diamondAddr, 2450); // task 0
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        // The new cycle's fee is charged inside processTasks, so measure the owner's balance
+        // around that call only.
+        uint256 balanceBefore = wsupra.balanceOf(alice);
+        vm.recordLogs();
+        ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
+        vm.stopPrank();
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.TaskCycleFeeWithdraw.selector);
+        assertEq(log.topics.length, 3, "TaskCycleFeeWithdraw has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        (uint64 cycleIndex, uint128 fee) = abi.decode(log.data, (uint64, uint128));
+        // cycleIndex is the registry's index when processTasks charges the fee: the cycle that is
+        // ending, while the fee pays for the next one.
+        assertEq(cycleIndex, index, "cycleIndex is the registry's index at the charge");
+        assertGt(fee, 0, "an active UST is charged for the new cycle");
+        assertEq(balanceBefore - wsupra.balanceOf(alice), fee, "fee is the amount taken from the owner");
+    }
+
+    /// @dev Test to ensure the 'TaskDepositFeeRefund' log carries the refunded amount in its data
+    /// (#4285): taskIndex and owner are the only topics after topic0, and the amount decoded from
+    /// the data is what the owner receives when a suspension removes the task.
+    function testOnCycleSuspendDepositRefundLogCarriesAmountInData() public {
+        registerUst(diamondAddr, 2450); // task 0, PENDING, so it has paid no cycle fee
+
+        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        // Disabling automation in FINISHED moves the registry to SUSPENDED, where processTasks
+        // removes every task and refunds it.
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        uint256[] memory taskIndexes = new uint256[](1);
+        taskIndexes[0] = 0;
+
+        uint256 balanceBefore = wsupra.balanceOf(alice);
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index, taskIndexes);
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, IRegistryFacet.TaskDepositFeeRefund.selector);
+        assertEq(log.topics.length, 3, "TaskDepositFeeRefund has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        uint128 amount = abi.decode(log.data, (uint128));
+        assertGt(amount, 0, "the deposit is refunded");
+        // A PENDING task paid no cycle fee, so the deposit refund is the whole balance change.
+        assertEq(wsupra.balanceOf(alice) - balanceBefore, amount, "amount is what the owner receives");
+    }
+
     /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
     /// containing only the indexes actually removed, even when the input batch also contains
     /// non-existent indexes.
@@ -1504,7 +1573,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256[] memory tasks = new uint256[](1);
         tasks[0] = 0;
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit ICoreFacet.TaskCancelledInsufficientBalanceAllowance(0, alice, 3 ether, 38.9 ether, 0, keccak256("txHash"));
 
         vm.prank(LibUtils.VM_SIGNER);
