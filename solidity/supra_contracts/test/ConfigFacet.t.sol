@@ -315,7 +315,7 @@ contract ConfigFacetTest is BaseDiamondTest {
     function testUpdateConfigBufferEmitsEvent() public {
         Config memory cfg = validConfig();
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(diamondAddr);
         emit IConfigFacet.ConfigBufferUpdated(cfg);
         
         vm.prank(admin);

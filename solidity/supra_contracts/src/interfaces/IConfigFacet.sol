@@ -5,8 +5,15 @@ import {Config} from "../libraries/LibAppStorage.sol";
 
 interface IConfigFacet {
     // =============================================================
-    //                          Events 
+    //                          Events
     // =============================================================
+    // A struct or array parameter of an event is not declared indexed: an indexed parameter of
+    // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
+    // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
+    // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
+    // value-typed parameters a reader filters on. Indexing is not part of the event signature,
+    // so it does not affect topic0.
+
     /// @notice Emitted when an account is authorized as submitter for system tasks.
     event AuthorizationGranted(address indexed account, uint256 indexed timestamp);
 
@@ -23,7 +30,9 @@ interface IConfigFacet {
     event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
 
     /// @notice Emitted when a new config is added.
-    event ConfigBufferUpdated(Config indexed pendingConfig);
+    /// @dev The log has no indexed parameter. pendingConfig is ABI-encoded in the log data and is
+    ///      the Config that takes effect at the start of the next cycle.
+    event ConfigBufferUpdated(Config pendingConfig);
 
     /// @notice Emitted when the task registration input size caps are updated.
     event DataLengthCapsUpdated(uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);

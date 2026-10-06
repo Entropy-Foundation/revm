@@ -255,6 +255,36 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
     }
 
+    /// @dev Test to ensure the 'ActiveTasks' log carries the new cycle's active task indexes in its
+    /// data, so a reader of the raw log decodes them with the event's ABI (#4285). The log has no
+    /// topic besides topic0.
+    function testProcessTasksLogCarriesActiveTaskIndexesInData() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        uint256[] memory taskIndexes = new uint256[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+
+        // End the cycle the way processCycleTransition does, but record only processTasks' logs,
+        // which is where the finalizing batch emits ActiveTasks.
+        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + duration);
+        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+
+        vm.recordLogs();
+        ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
+        vm.stopPrank();
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.ActiveTasks.selector);
+        assertEq(log.topics.length, 1, "ActiveTasks has only topic0");
+
+        uint256[] memory logged = abi.decode(log.data, (uint256[]));
+        assertEq(logged, taskIndexes, "both tasks survive the transition");
+        assertEq(logged, IRegistryViewFacet(diamondAddr).getActiveTaskIds(), "logged set equals activeTaskIds");
+    }
+
     /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
     /// containing only the indexes actually removed, even when the input batch also contains
     /// non-existent indexes.
@@ -286,7 +316,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory expectedRemoved = new uint64[](1);
         expectedRemoved[0] = 1;
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(diamondAddr);
         emit ICoreFacet.RemovedTasks(expectedRemoved);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -345,7 +375,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory tasksUint64 = new uint64[](1);
         tasksUint64[0] = 0;
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(diamondAddr);
         emit ICoreFacet.RemovedTasks(tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -449,9 +479,9 @@ contract CoreFacetTest is BaseDiamondTest {
         tasks[0] = 0;
 
         uint64[] memory tasksUint64 = new uint64[](1);
-        tasks[0] = 0;
+        tasksUint64[0] = 0;
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(diamondAddr);
         emit ICoreFacet.RemovedTasks(tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -900,7 +930,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(diamondAddr);
         emit ICoreFacet.TaskRemovedBySystem(removedTask);
 
         // Remove task due to predicate failure
@@ -1403,7 +1433,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory expectedRemoved = new uint64[](1);
         expectedRemoved[0] = 0;
         
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(diamondAddr);
         emit ICoreFacet.RemovedTasks(expectedRemoved);
 
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);

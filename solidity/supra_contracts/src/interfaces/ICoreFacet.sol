@@ -7,6 +7,13 @@ interface ICoreFacet {
     // =============================================================
     //                          Events
     // =============================================================
+    // A struct or array parameter of an event is not declared indexed: an indexed parameter of
+    // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
+    // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
+    // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
+    // value-typed parameters a reader filters on. Indexing is not part of the event signature,
+    // so it does not affect topic0.
+
     /// @notice Emitted when automation is enabled.
     event AutomationEnabled(bool indexed status);
     
@@ -14,10 +21,19 @@ interface ICoreFacet {
     event AutomationDisabled(bool indexed status);
 
     /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
-    event ActiveTasks(uint256[] indexed taskIndexes);
+    /// @dev The log has no indexed parameter. taskIndexes is ABI-encoded in the log data and is
+    ///      the registry's activeTaskIds for the new cycle. It is emitted once, by the
+    ///      processTasks call that finalizes a FINISHED -> STARTED transition, and only when at
+    ///      least one task is active.
+    event ActiveTasks(uint256[] taskIndexes);
 
     /// @notice Event emitted on cycle transition containing removed task indexes.
-    event RemovedTasks(uint64[] indexed taskIndexes);
+    /// @dev The log has no indexed parameter. taskIndexes is ABI-encoded in the log data. It is
+    ///      emitted by each processTasks call that removed at least one task, and lists the tasks
+    ///      that call removed. In the call that finalizes a FINISHED -> STARTED transition it is
+    ///      emitted after ActiveTasks and any AutomationCycleEvent of that call, and its entries
+    ///      are removals from the transition into the cycle that ActiveTasks lists.
+    event RemovedTasks(uint64[] taskIndexes);
 
     /// @notice Emitted when the cycle state transitions.
     event AutomationCycleEvent(
@@ -56,7 +72,11 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when the VM signer removes a task for a runtime error (TaskRemovalReason.ERROR).
-    event TaskRemovedBySystem(LibCommon.RemovedTask indexed removedTask);
+    /// @dev The log has no indexed parameter. removedTask is ABI-encoded in the log data as
+    ///      (uint64 taskIndex, TaskType taskType, address owner, bytes32 txHash,
+    ///      TaskRemovalReason reason, string details), details being the VM signer's description
+    ///      of the reason.
+    event TaskRemovedBySystem(LibCommon.RemovedTask removedTask);
 
     /// @notice Emitted when a task is removed because the EVM gas config of the executing block's
     /// epoch no longer admits its transaction: its maxGasAmount is above txGasLimitCap, or it is a

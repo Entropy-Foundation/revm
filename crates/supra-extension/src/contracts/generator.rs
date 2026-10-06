@@ -651,15 +651,15 @@ mod tests {
             ),
             (
                 "BlockMeta",
-                b256!("c52e1a412125c99d96a9bf17f882d05c620f88e28ed0153d72603684bc43e132"),
+                b256!("6a5ca2b9ef23d1f0244c247266f0dda07518d23d0db648a1c803d39f67d59ed5"),
             ),
             (
                 "ConfigFacet",
-                b256!("bb332d6a2e8abe4636530f5c4f1c9bf93f73ff8c5309f86ddde34901796f9594"),
+                b256!("a192c82916f99f3b8f7be126763f74c53a7a057cfc51cbe238af79a887d30220"),
             ),
             (
                 "CoreFacet",
-                b256!("6636e124f374635dbf4c6d765f1c115e16295e099b44c80ab52e807acfefd8c3"),
+                b256!("75238ebb8ccc4b80842de894f75b7bd947239e2b407c3ab5160782b1a16d3403"),
             ),
             (
                 "Diamond",
@@ -695,7 +695,7 @@ mod tests {
             ),
             (
                 "RegistryFacet",
-                b256!("1835d3f31de62065fc9df9d10236afea44c2fb489500a271651465065d2b1f46"),
+                b256!("80b39fc8807f8104d4b30a9bddb645c2a934e712c012e28d917c22b5ec1f50b9"),
             ),
             (
                 "RegistryViewFacet",

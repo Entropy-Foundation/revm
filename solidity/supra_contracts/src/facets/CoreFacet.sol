@@ -158,7 +158,9 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     /// @param _taskIndex index of the task to remove.
     /// @param _reason why the task is removed; selects the refund policy.
     /// @param _details human-readable description of the reason. It is carried in the record's
-    ///      call data; TaskRemovedBySystem indexes its struct, so the event holds only its hash.
+    ///      call data. For reason ERROR it is also logged, as the details field of the ABI-encoded
+    ///      RemovedTask in TaskRemovedBySystem's log data; TaskRemovedByGasConfigUpdate does not
+    ///      carry it.
     function removeRegisteredTask(
         uint64 _cycleIndex,
         uint64 _taskIndex,

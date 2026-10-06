@@ -8,32 +8,49 @@ interface IRegistryFacet {
     // =============================================================
     //                          Events
     // =============================================================
+    // A struct or array parameter of an event is not declared indexed: an indexed parameter of
+    // such a type is logged as the keccak256 of its ABI encoding, which carries none of its
+    // fields. The value is ABI-encoded in the log data instead, where a reader decodes it with
+    // the event's ABI (Entropy-Foundation/smr-moonshot#4285). Indexing is reserved for the
+    // value-typed parameters a reader filters on. Indexing is not part of the event signature,
+    // so it does not affect topic0.
+
     /// @notice Emitted when a user task is registered.
+    /// @dev taskIndex and owner are topics 1 and 2. registrationFee, lockedDepositFee and
+    ///      taskMetadata are ABI-encoded in the log data; taskMetadata is the task record as
+    ///      stored at registration, including payloadTx, predicate and auxData.
     event TaskRegistered(
-        uint64 indexed taskIndex, 
-        address indexed owner, 
-        uint128 registrationFee, 
-        uint128 lockedDepositFee, 
-        TaskMetadata indexed taskMetadata
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 registrationFee,
+        uint128 lockedDepositFee,
+        TaskMetadata taskMetadata
     );
 
     /// @notice Emitted when a system task is registered.
+    /// @dev taskIndex and owner are topics 1 and 2. timestamp and taskMetadata are ABI-encoded
+    ///      in the log data; taskMetadata is the task record as stored at registration.
     event SystemTaskRegistered(
-        uint64 indexed taskIndex, 
-        address indexed owner, 
-        uint256 timestamp, 
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint256 timestamp,
         TaskMetadata taskMetadata
     );
-    
-    /// @notice Emitted when a task is cancelled.
+
+    /// @notice Emitted when tasks are cancelled, with one entry per task actually cancelled.
+    /// @dev owner is topic 1. cancelledTasks is ABI-encoded in the log data as
+    ///      (uint64 taskIndex, TaskType taskType, bytes32 txHash)[].
     event TasksCancelled(
-        LibCommon.TaskCancelled[] indexed cancelledTasks,
+        LibCommon.TaskCancelled[] cancelledTasks,
         address indexed owner
     );
 
-    /// @notice Emitted when a task is stopped.
+    /// @notice Emitted when tasks are stopped, with one entry per task actually stopped.
+    /// @dev owner is topic 1. stoppedTasks is ABI-encoded in the log data as
+    ///      (uint64 taskIndex, uint128 depositRefund, uint128 cycleFeeRefund, bytes32 txHash)[],
+    ///      the refunds being the amounts paid back for that task.
     event TasksStopped(
-        LibCommon.TaskStopped[] indexed stoppedTasks,
+        LibCommon.TaskStopped[] stoppedTasks,
         address indexed owner
     );
 

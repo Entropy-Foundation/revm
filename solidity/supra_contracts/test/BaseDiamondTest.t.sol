@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -143,11 +144,33 @@ abstract contract BaseDiamondTest is Test {
         assertEq(indexAfter, indexBefore);
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(_diamond);
         emit ICoreFacet.ActiveTasks(_taskIndexes);
 
         ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
         vm.stopPrank();
+    }
+
+    /// @dev Returns the one log `_emitter` emitted with `_topic0`, and fails unless there is
+    /// exactly one. Tests use it to read a log the way an indexer reads `eth_getLogs` output:
+    /// select by emitter and topic0, then decode `data` with the event's ABI.
+    function findLog(Vm.Log[] memory _logs, address _emitter, bytes32 _topic0)
+        internal
+        pure
+        returns (Vm.Log memory found)
+    {
+        uint256 matches;
+        for (uint256 i; i < _logs.length; i++) {
+            // A log with no topics is anonymous and cannot carry the event's topic0.
+            if (_logs[i].emitter != _emitter || _logs[i].topics.length == 0 || _logs[i].topics[0] != _topic0) {
+                continue;
+            }
+            found = _logs[i];
+            matches++;
+        }
+        // Zero matches means the event was not emitted; more than one means the caller's
+        // selection is ambiguous. Both make a decode assertion meaningless, so fail here.
+        require(matches == 1, "findLog: expected exactly one matching log");
     }
 
     /// @dev Helper function to deploy a custom AutomationRegistry with:

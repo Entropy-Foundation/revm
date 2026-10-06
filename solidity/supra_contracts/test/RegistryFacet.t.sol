@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
+import {Vm} from "forge-std/Vm.sol";
 import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
@@ -776,7 +777,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData: auxData
         });
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, false, true, diamondAddr);
         emit IRegistryFacet.TaskRegistered(0, alice, 1 ether, 60.1 ether, taskMetadata);
 
         IRegistryFacet(diamondAddr).register(
@@ -790,6 +791,57 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData
         );
         vm.stopPrank();
+    }
+
+    /// @dev Test to ensure the 'TaskRegistered' log carries the task record in its data, so a
+    /// reader of the raw log decodes the task with the event's ABI (#4285). taskIndex and owner are
+    /// the only topics after topic0; the fees and the TaskMetadata are ABI-encoded in the data.
+    function testRegisterLogCarriesTaskMetadataInData() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+
+        // Record only the registration's logs, so findLog sees exactly one TaskRegistered.
+        vm.recordLogs();
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            0,
+            auxData
+        );
+        vm.stopPrank();
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, IRegistryFacet.TaskRegistered.selector);
+
+        // Topics: the event signature, then the two value-typed indexed parameters.
+        assertEq(log.topics.length, 3, "TaskRegistered has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        (uint128 registrationFee, uint128 lockedDepositFee, TaskMetadata memory logged) =
+            abi.decode(log.data, (uint128, uint128, TaskMetadata));
+        assertEq(registrationFee, 1 ether, "registrationFee");
+        assertEq(lockedDepositFee, 60.1 ether, "lockedDepositFee");
+
+        // Named fields first, so a mismatch reports which field differs.
+        assertEq(logged.taskIndex, 0, "taskIndex");
+        assertEq(logged.owner, alice, "owner");
+        assertEq(logged.txHash, keccak256("txHash"), "txHash");
+        assertEq(logged.payloadTx, payload, "payloadTx");
+        assertEq(logged.predicate, predicate, "predicate");
+        assertEq(logged.auxData.length, 0, "auxData");
+
+        // The decoded record equals the stored one in every field.
+        TaskMetadata memory stored = IRegistryViewFacet(diamondAddr).getTaskDetails(0);
+        assertEq(keccak256(abi.encode(logged)), keccak256(abi.encode(stored)), "logged record equals stored record");
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateDataLengthCaps' :::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1268,7 +1320,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](1);
         cancelledTasks[0] = LibCommon.TaskCancelled(0, LibCommon.TaskType.UST, keccak256("txHash"));
         
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksCancelled(cancelledTasks, alice);
 
         vm.prank(alice);
@@ -1288,7 +1340,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskCancelled[] memory expectedCancelledTasks = new LibCommon.TaskCancelled[](1);
         expectedCancelledTasks[0] = LibCommon.TaskCancelled(1, LibCommon.TaskType.UST, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksCancelled(expectedCancelledTasks, alice);
 
         vm.prank(alice);
@@ -1411,7 +1463,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](1);
         cancelledTasks[0] = LibCommon.TaskCancelled(0, LibCommon.TaskType.GST, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksCancelled(cancelledTasks, bob);
 
         vm.prank(bob);
@@ -1571,7 +1623,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 0.0625 ether, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksStopped(stoppedTasks, alice);
 
         vm.prank(alice);
@@ -1591,7 +1643,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskStopped[] memory expectedStoppedTasks = new LibCommon.TaskStopped[](1);
         expectedStoppedTasks[0] = LibCommon.TaskStopped(1, 30.05 ether, 0, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksStopped(expectedStoppedTasks, alice);
 
         vm.prank(alice);
@@ -1866,7 +1918,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 0, 0, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksStopped(stoppedTasks, bob);
 
         vm.prank(bob);
