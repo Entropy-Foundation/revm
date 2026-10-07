@@ -243,7 +243,9 @@ impl TryFrom<u8> for AutomationTaskRemovalReason {
 ///
 /// The policy binds from the first release that ships EVM automation. `removeRegisteredTask`
 /// took its `_reason` and `_details` parameters in place before that release (#4087), when no
-/// released node or persisted state carried the earlier signature.
+/// released node or persisted state carried the earlier signature. `processTasks` changed
+/// `_taskIndexes` from `uint256[]` to `uint64[]` in place under the same condition (#4285);
+/// state persisted with the earlier type is discarded with the devnet reset that ships it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumKind)]
 #[enum_kind(AutomationRecordActionTag)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -260,7 +262,7 @@ impl AutomationRecordAction {
     pub fn process(cycle_index: u64, task_indexes: Vec<u64>) -> Self {
         Self::Process(processTasksCall {
             _cycleIndex: cycle_index,
-            _taskIndexes: task_indexes.into_iter().map(U256::from).collect(),
+            _taskIndexes: task_indexes,
         })
     }
 
@@ -286,11 +288,7 @@ impl AutomationRecordAction {
     /// Converts to vector of task indexes to be handled by action.
     pub fn into_task_indexes(self) -> Vec<u64> {
         match self {
-            AutomationRecordAction::Process(task) => task
-                ._taskIndexes
-                .iter()
-                .map(|t| t.saturating_to::<u64>())
-                .collect(),
+            AutomationRecordAction::Process(task) => task._taskIndexes,
             AutomationRecordAction::Remove(task) => vec![task._taskIndex],
         }
     }
@@ -326,16 +324,8 @@ impl AutomationRecordAction {
     pub fn task_range(&self) -> (u64, u64) {
         match self {
             AutomationRecordAction::Process(task) => (
-                task._taskIndexes
-                    .iter()
-                    .min()
-                    .map(|t| t.saturating_to::<u64>())
-                    .unwrap_or(u64::MAX),
-                task._taskIndexes
-                    .iter()
-                    .max()
-                    .map(|t| t.saturating_to::<u64>())
-                    .unwrap_or(u64::MAX),
+                task._taskIndexes.iter().min().copied().unwrap_or(u64::MAX),
+                task._taskIndexes.iter().max().copied().unwrap_or(u64::MAX),
             ),
             AutomationRecordAction::Remove(task) => (task._taskIndex, task._taskIndex),
         }
@@ -500,7 +490,7 @@ mod tests {
     fn get_process_tasks_payload(_cycle_index: u64, _task_indexes: Vec<u64>) -> Bytes {
         let process_task_call = processTasksCall {
             _cycleIndex: _cycle_index,
-            _taskIndexes: _task_indexes.into_iter().map(U256::from).collect(),
+            _taskIndexes: _task_indexes,
         };
         Bytes::from(process_task_call.abi_encode())
     }
@@ -684,10 +674,7 @@ mod tests {
             panic!("Expected Process action, got {action:?}");
         };
         assert_eq!(process._cycleIndex, CYCLE_INDEX);
-        assert_eq!(
-            process._taskIndexes,
-            task_indexes.into_iter().map(U256::from).collect::<Vec<_>>()
-        );
+        assert_eq!(process._taskIndexes, task_indexes);
     }
 
     #[test]
@@ -776,6 +763,21 @@ mod tests {
             "removeRegisteredTask(uint64,uint64,uint8,string)"
         );
         assert_eq!(removeRegisteredTaskCall::SELECTOR, [0x25, 0x6e, 0x4e, 0x4d]);
+    }
+
+    /// The node encodes cycle-transition records with this selector and decodes persisted ones
+    /// by it, and the registry's test `testProcessTasksSelectorIsPinned` pins the same
+    /// signature. Task indexes are uint64 (#4285). getActiveTaskIds keeps its selector; its
+    /// return type is uint64[].
+    #[test]
+    fn process_tasks_and_get_active_task_ids_selectors_are_pinned() {
+        assert_eq!(processTasksCall::SIGNATURE, "processTasks(uint64,uint64[])");
+        assert_eq!(processTasksCall::SELECTOR, [0x7f, 0x69, 0xc3, 0x5c]);
+        assert_eq!(crate::getActiveTaskIdsCall::SIGNATURE, "getActiveTaskIds()");
+        assert_eq!(
+            crate::getActiveTaskIdsCall::SELECTOR,
+            [0x23, 0x21, 0xcc, 0xa3]
+        );
     }
 
     #[test]
@@ -875,7 +877,7 @@ mod tests {
     fn action_into_task_indexes_process() {
         let action = AutomationRecordAction::Process(processTasksCall {
             _cycleIndex: 0,
-            _taskIndexes: vec![U256::from(10), U256::from(20), U256::from(30)],
+            _taskIndexes: vec![10, 20, 30],
         });
         assert_eq!(action.into_task_indexes(), vec![10, 20, 30]);
     }
@@ -895,7 +897,7 @@ mod tests {
     fn action_task_count() {
         let action = AutomationRecordAction::Process(processTasksCall {
             _cycleIndex: 0,
-            _taskIndexes: vec![U256::from(10), U256::from(20), U256::from(30)],
+            _taskIndexes: vec![10, 20, 30],
         });
         assert_eq!(action.task_count(), 3);
 
@@ -920,7 +922,7 @@ mod tests {
     fn action_flatten_process_produces_single_task_actions() {
         let action = AutomationRecordAction::Process(processTasksCall {
             _cycleIndex: 2,
-            _taskIndexes: vec![U256::from(1), U256::from(2), U256::from(3)],
+            _taskIndexes: vec![1, 2, 3],
         });
         let flat = action.flatten();
         assert_eq!(flat.len(), 3);
@@ -929,7 +931,7 @@ mod tests {
                 panic!("Expected Process action, got {item:?}");
             };
             assert_eq!(process._cycleIndex, 2);
-            assert_eq!(process._taskIndexes, vec![U256::from(idx + 1)]);
+            assert_eq!(process._taskIndexes, vec![idx as u64 + 1]);
         });
     }
 
@@ -950,7 +952,7 @@ mod tests {
     fn action_task_range_process() {
         let action = AutomationRecordAction::Process(processTasksCall {
             _cycleIndex: 0,
-            _taskIndexes: vec![U256::from(3), U256::from(1), U256::from(4), U256::from(5)],
+            _taskIndexes: vec![3, 1, 4, 5],
         });
         assert_eq!(action.task_range(), (1, 5));
     }

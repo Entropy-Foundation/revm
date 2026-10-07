@@ -31,7 +31,7 @@ library LibCore {
     ///      something this contract silently corrects: it must fail loudly here rather
     ///      than mask an upstream ordering defect or pay to fix it up itself.
     /// @param arr The array to validate. Not modified.
-    function requireSortedAscending(uint256[] memory arr) private pure {
+    function requireSortedAscending(uint64[] memory arr) private pure {
         for (uint256 i = 1; i < arr.length; i++) {
             if (arr[i - 1] >= arr[i]) revert ICoreFacet.OutOfOrderTaskProcessingRequest();
         }
@@ -53,16 +53,16 @@ library LibCore {
     ///      letting this write directly into the final-size array instead of filtering into
     ///      a scratch buffer first and copying.
     /// @return alive The ascending list of currently-alive task IDs.
-    function buildAliveOrderedTaskIds() private returns (uint256[] memory alive) {
+    function buildAliveOrderedTaskIds() private returns (uint64[] memory alive) {
         RegistryState storage registryState = LibAppStorage.registryState();
-        uint256[] storage ordered = registryState.orderedTaskIds;
+        uint64[] storage ordered = registryState.orderedTaskIds;
         uint256 len = ordered.length;
 
-        alive = new uint256[](registryState.taskIdList.length());
+        alive = new uint64[](registryState.taskIdList.length());
         uint256 n;
         for (uint256 i = 0; i < len; i++) {
-            uint256 id = ordered[i];
-            if (registryState.tasks[uint64(id)].owner != address(0)) {
+            uint64 id = ordered[i];
+            if (registryState.tasks[id].owner != address(0)) {
                 alive[n] = id;
                 n++;
             }
@@ -82,13 +82,16 @@ library LibCore {
     /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
     /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
     /// @param _state Cycle transition state executing the update.
+    /// @return activeTaskIds The new cycle's active task IDs as written to storage: the transition's
+    ///         survivors for FINISHED, empty for SUSPENDED. Returned so a caller that logs them
+    ///         does not read the list back from storage.
     function updateRegistryState(
         uint256 _lockedFees,
         uint128 _sysGasCommittedForNextCycle,
         uint128 _gasCommittedForNextCycle,
         uint128 _gasCommittedForNewCycle,
         LibCommon.CycleState _state
-    ) private {
+    ) private returns (uint64[] memory activeTaskIds) {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         registryState.cycleLockedFees  = _lockedFees;
@@ -111,7 +114,7 @@ library LibCore {
             // a transition is in progress (see the CycleTransitionInProgress guard), so
             // nothing can add to taskIdList/orderedTaskIds mid-transition, meaning
             // survivedTaskIds ends up exactly equal to taskIdList's remaining contents.
-            uint256[] memory survivedTaskIds = LibAppStorage.transitionState().survivedTaskIds;
+            uint64[] memory survivedTaskIds = LibAppStorage.transitionState().survivedTaskIds;
             // This single assignment both clears the previous cycle's activeTaskIds (any
             // leftover tail elements are zeroed by the compiler when the new array is
             // shorter) and writes the new one, without re-scanning taskIdList or paying
@@ -122,13 +125,14 @@ library LibCore {
             // filter pass to just this cycle's churn (registrations/removals since this
             // point) instead of letting tombstones accumulate across cycle boundaries.
             registryState.orderedTaskIds = survivedTaskIds;
+            activeTaskIds = survivedTaskIds;
         } else {
-            registryState.activeTaskIds = new uint256[](0);
+            registryState.activeTaskIds = new uint64[](0);
             // Every task still in orderedTaskIds at this point was unconditionally
             // removed by onCycleSuspend's loop (SUSPENDED means all tasks are dropped),
             // so it's now 100% tombstones — clear it eagerly rather than letting the
             // next buildAliveOrderedTaskIds call filter through dead weight.
-            registryState.orderedTaskIds = new uint256[](0);
+            registryState.orderedTaskIds = new uint64[](0);
             registryState.sysTaskIds.clear();
         }
     }
@@ -169,9 +173,10 @@ library LibCore {
     /// @notice Helper function to update the expected tasks of the transition state.
     /// @dev A direct storage-array assignment from `_expectedTasks` both clears any
     ///      previous contents (the compiler zeroes out any leftover tail elements if
-    ///      the new list is shorter) and writes the new elements in a single pass —
-    ///      one SSTORE per task, field is ever read sequentially(see the declaration)
-    function updateExpectedTasks(uint256[] memory _expectedTasks) private {
+    ///      the new list is shorter) and writes the new elements in a single pass. The
+    ///      field is uint64[], so the copy writes one SSTORE per four tasks; the field is
+    ///      only ever read sequentially (see the declaration).
+    function updateExpectedTasks(uint64[] memory _expectedTasks) private {
         LibAppStorage.transitionState().expectedTasksToBeProcessed = _expectedTasks;
     }
 
@@ -251,7 +256,7 @@ library LibCore {
         uint64 nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
 
         if (nextTaskIndexPosition >= transitionState.expectedTasksToBeProcessed.length) { revert ICoreFacet.InconsistentTransitionState(); }
-        uint64 expectedTask = uint64(transitionState.expectedTasksToBeProcessed[nextTaskIndexPosition]);
+        uint64 expectedTask = transitionState.expectedTasksToBeProcessed[nextTaskIndexPosition];
 
         if (expectedTask != _taskIndex) { revert ICoreFacet.OutOfOrderTaskProcessingRequest(); } 
         transitionState.nextTaskIndexPosition = nextTaskIndexPosition + 1;  
@@ -269,7 +274,7 @@ library LibCore {
 
         if (isTransitionFinalized()) {
             TransitionState storage transitionState = LibAppStorage.transitionState();
-            updateRegistryState(
+            uint64[] memory activeTasks = updateRegistryState(
                 transitionState.lockedFees,
                 transitionState.sysGasCommittedForNextCycle,
                 transitionState.gasCommittedForNextCycle,
@@ -281,10 +286,9 @@ library LibCore {
             // Increment the cycle and update the state to STARTED
             moveToStartedState();
 
-            RegistryState storage registryState = LibAppStorage.registryState();
-            if (registryState.activeTaskIds.length > 0) {
-                uint256[] memory activeTasks = registryState.activeTaskIds;
-                emit ICoreFacet.ActiveTasks(activeTasks);
+            if (activeTasks.length > 0) {
+                // moveToStartedState has advanced s.index, so it is the new cycle's index.
+                emit ICoreFacet.ActiveTasks(s.index, activeTasks);
             }
             if (!s.automationEnabled) {
                 tryMoveToSuspendedState();
@@ -293,10 +297,12 @@ library LibCore {
     }
 
     /// @notice Traverses all input task indexes and either drops or tries to charge automation fee if possible.
+    /// @param _cycleIndex Index of the cycle the transition enters; the cycle the charged fees pay for.
     /// @param _taskIndexes Input task indexes.
     /// @return intermediateState Returns the intermediate state.
     function dropOrChargeTasks(
-        uint256[] memory _taskIndexes
+        uint64 _cycleIndex,
+        uint64[] memory _taskIndexes
     ) private returns (LibCommon.IntermediateStateOfCycleChange memory intermediateState) {
         uint64 currentTime = uint64(block.timestamp);
         TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -305,7 +311,7 @@ library LibCore {
         // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
         // NatSpec for why this contract does not sort them itself.
         requireSortedAscending(_taskIndexes);
-        uint256[] memory taskIndexes = _taskIndexes;
+        uint64[] memory taskIndexes = _taskIndexes;
 
         // The EVM gas config is the same for every transaction of a block, so it is read once per
         // batch rather than once per task.
@@ -317,8 +323,9 @@ library LibCore {
 
         // Process each active task and calculate fee for the cycle for the tasks
         for (uint256 i = 0; i < taskIndexes.length; i++) {
-            uint64 taskId = uint64(taskIndexes[i]); 
+            uint64 taskId = taskIndexes[i];
             LibCommon.TransitionResult memory result = dropOrChargeTask(
+                _cycleIndex,
                 taskId,
                 currentTime,
                 currentCycleEndTime,
@@ -354,6 +361,7 @@ library LibCore {
     ///      `expectedTasksToBeProcessed`, so a missing task means the caller has regressed
     ///      or the registry is in an inconsistent state, and either should be surfaced
     ///      immediately rather than silently treated as a no-op.
+    /// @param _cycleIndex Index of the cycle the transition enters; the cycle a charged fee pays for.
     /// @param _taskIndex Task index to be dropped or charged.
     /// @param _currentTime Current time.
     /// @param _currentCycleEndTime End time of the current cycle.
@@ -361,6 +369,7 @@ library LibCore {
     /// @param _minGasPrice Minimum gas price of the executing block's epoch.
     /// @return result Returns the TransitionResult.
     function dropOrChargeTask(
+        uint64 _cycleIndex,
         uint64 _taskIndex,
         uint64 _currentTime,
         uint64 _currentCycleEndTime,
@@ -430,6 +439,7 @@ library LibCore {
 
             registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
             (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
+                _cycleIndex,
                 _taskIndex,
                 task.owner,
                 task.maxGasAmount,
@@ -444,6 +454,7 @@ library LibCore {
     }
 
     /// @notice Helper function to withdraw automation task fees for an active task.
+    /// @param _cycleIndex Index of the cycle the fee pays for, reported by TaskCycleFeeWithdraw.
     /// @param _taskIndex Index of the task.
     /// @param _owner Owner of the task.
     /// @param _maxGasAmount Max gas amount of the task.
@@ -457,6 +468,7 @@ library LibCore {
     /// @return Amount to add to gasCommittedForNextCycle 
     /// @return Amount to add to cycleLockedFees 
     function tryWithdrawTaskAutomationFee(
+        uint64 _cycleIndex,
         uint64 _taskIndex,
         address _owner,
         uint128 _maxGasAmount,
@@ -519,8 +531,10 @@ library LibCore {
                     fees = _fee;
                 }
               
+                // The fee pays for the cycle the transition enters: onCycleTransition's validated
+                // _cycleIndex, passed down rather than derived from s.index here.
                 emit ICoreFacet.TaskCycleFeeWithdraw(
-                    s.index,
+                    _cycleIndex,
                     _taskIndex,
                     _owner,
                     _fee
@@ -558,7 +572,7 @@ library LibCore {
     /// In case if transition end is detected a start of the new cycle is given (if during transition period suspension is not requested) and corresponding event is emitted.
     /// @param _cycleIndex Cycle index of the new cycle to which the transition is being done.
     /// @param _taskIndexes Array of task indexes to be processed.
-    function onCycleTransition(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
+    function onCycleTransition(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (s.cycleState != LibCommon.CycleState.FINISHED) { revert ICoreFacet.InvalidRegistryState(); }
@@ -567,17 +581,20 @@ library LibCore {
         if (!s.ifTransitionStateExists) { revert ICoreFacet.InvalidRegistryState(); }
         if (s.index + 1 != _cycleIndex) { revert ICoreFacet.InvalidInputCycleIndex(); }
 
-        LibCommon.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
+        LibCommon.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_cycleIndex, _taskIndexes);
         
         TransitionState storage transitionState = LibAppStorage.transitionState();
         transitionState.lockedFees += intermediateState.cycleLockedFees;
         transitionState.gasCommittedForNextCycle += intermediateState.gasCommittedForNextCycle;        
         transitionState.sysGasCommittedForNextCycle += intermediateState.sysGasCommittedForNextCycle;
 
-        updateCycleTransitionStateFromFinished();
+        // The drops are logged before finalizing, so they precede this call's ActiveTasks and
+        // AutomationCycleEvent logs, in the order the state changes.
         if (intermediateState.removedTasks.length > 0) {
-            emit ICoreFacet.RemovedTasks(intermediateState.removedTasks);
+            emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.FINISHED, intermediateState.removedTasks);
         }
+
+        updateCycleTransitionStateFromFinished();
     }
 
     /// @notice Traverses the list of the tasks and refunds automation(if not PENDING) and deposit fees for all tasks and removes from registry.
@@ -586,7 +603,7 @@ library LibCore {
     /// In case if end is identified, the registry state is update to READY and corresponding event is emitted.
     /// @param _cycleIndex Input cycle index of the cycle being suspended.
     /// @param _taskIndexes Array of task indexes to be processed.
-    function onCycleSuspend(uint64 _cycleIndex, uint256[] memory _taskIndexes) internal {
+    function onCycleSuspend(uint64 _cycleIndex, uint64[] memory _taskIndexes) internal {
         AppStorage storage s = LibAppStorage.appStorage();
 
         if (s.cycleState != LibCommon.CycleState.SUSPENDED) { revert ICoreFacet.InvalidRegistryState(); }
@@ -599,12 +616,11 @@ library LibCore {
         // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
         // NatSpec for why this contract does not sort them itself.
         requireSortedAscending(_taskIndexes);
-        uint256[] memory taskIndexes = _taskIndexes;
-        uint64[] memory removedTasks = new uint64[](taskIndexes.length);
-        
-        uint64 removedCounter;
-        for (uint i = 0; i < taskIndexes.length; i++) {
-            uint64 taskId = uint64(taskIndexes[i]);
+
+        // Every task in the batch is removed or the call reverts, so the batch itself is the list
+        // of removed tasks that RemovedTasks reports below.
+        for (uint i = 0; i < _taskIndexes.length; i++) {
+            uint64 taskId = _taskIndexes[i];
             // Every task index submitted here is expected to come from the caller's own
             // tracking of expectedTasksToBeProcessed, so a missing task means the caller
             // has regressed or the registry is in an inconsistent state — surface that
@@ -613,8 +629,6 @@ library LibCore {
             TaskMetadataLW memory task = LibCommon.getTaskLW(taskId);
 
             LibCommon.removeTask(taskId, task.owner, false, false);
-
-            removedTasks[removedCounter++] = taskId;
             markTaskProcessed(taskId);
 
             // Nothing to refund for GST tasks
@@ -629,12 +643,14 @@ library LibCore {
             }
         }
 
-        updateCycleTransitionStateFromSuspended();
-
-        if (removedCounter > 0) {
-            // Emit only the entries actually removed.
-            emit ICoreFacet.RemovedTasks(removedTasks);
+        // processTasks returns early on an empty batch, so the guard only protects direct callers.
+        // The removals are logged before finalizing, ahead of the AutomationCycleEvent that the
+        // batch completing the suspension emits (READY, or STARTED if automation was re-enabled).
+        if (_taskIndexes.length > 0) {
+            emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.SUSPENDED, _taskIndexes);
         }
+
+        updateCycleTransitionStateFromSuspended();
     }
 
     /// @notice Removes a registered task on the VM signer's request; see
@@ -691,9 +707,7 @@ library LibCore {
         if (isGasConfigUpdate) {
             emitTaskRemovedByGasConfigUpdate(task, txGasLimitCap, minGasPrice, cycleFeeRefund, depositRefund);
         } else {
-            emit ICoreFacet.TaskRemovedBySystem(
-                LibCommon.RemovedTask(_taskId, task.taskType, task.owner, task.txHash, _reason, _details)
-            );
+            emit ICoreFacet.TaskRemovedBySystem(_taskId, task.owner, task.taskType, task.txHash, _reason, _details);
         }
     }
 
@@ -748,7 +762,7 @@ library LibCore {
             } else {
                 // buildAliveOrderedTaskIds is O(n) regardless of removal history — see its
                 // NatSpec for why sorting a taskIdList-derived snapshot is not safe here.
-                uint256[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
+                uint64[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
                 // Updates transition state
                 TransitionState storage transitionState = LibAppStorage.transitionState();
@@ -819,7 +833,7 @@ library LibCore {
             if (currentTime >= cycleEndTime) { revert ICoreFacet.InvalidRegistryState(); }
             if (!LibCommon.isCycleStarted()) { revert ICoreFacet.InvalidRegistryState(); }
 
-            uint256[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
+            uint64[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
             transitionState.refundDuration = cycleEndTime - currentTime;
             transitionState.newCycleDuration = s.durationSecs;

@@ -212,7 +212,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     function _measureProcessTasksBatch(
         address _diamond,
         uint64 _cycleIndex,
-        uint256[] memory _indexes
+        uint64[] memory _indexes
     ) internal returns (uint256 gasUsed) {
         vm.prank(LibUtils.VM_SIGNER);
 
@@ -222,10 +222,12 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     }
 
     /// @dev Builds the contiguous range of task indexes `[_start, _start + _count)`.
-    function _buildRangeIndexes(uint256 _start, uint256 _count) internal pure returns (uint256[] memory indexes) {
-        indexes = new uint256[](_count);
+    function _buildRangeIndexes(uint256 _start, uint256 _count) internal pure returns (uint64[] memory indexes) {
+        indexes = new uint64[](_count);
         for (uint256 i = 0; i < _count; i++) {
-            indexes[i] = _start + i;
+            // Task indexes are bounded by the registry's task capacity, far below 2^64.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            indexes[i] = uint64(_start + i);
         }
     }
 

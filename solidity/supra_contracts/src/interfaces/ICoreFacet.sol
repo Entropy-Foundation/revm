@@ -7,6 +7,10 @@ interface ICoreFacet {
     // =============================================================
     //                          Events
     // =============================================================
+    // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
+    // indexed. script/check_event_indexing.sh states the rule; the forge-tests CI job runs it
+    // after forge build and fails on an indexed struct, array, string or bytes parameter (#4285).
+
     /// @notice Emitted when automation is enabled.
     event AutomationEnabled(bool indexed status);
     
@@ -14,10 +18,32 @@ interface ICoreFacet {
     event AutomationDisabled(bool indexed status);
 
     /// @notice Event emitted on cycle transition containing active task indexes for the new cycle.
-    event ActiveTasks(uint256[] indexed taskIndexes);
+    /// @dev cycleIndex is topic 1 and is the index of the new cycle. taskIndexes is ABI-encoded
+    ///      in the log data as uint64[] and is the registry's activeTaskIds for that cycle. It is
+    ///      emitted once, by the processTasks call that finalizes a FINISHED -> STARTED
+    ///      transition, and only when at least one task is active. taskIndexes are the tasks the
+    ///      transition renewed. If automation was disabled during the transition, the same call
+    ///      then moves the registry to SUSPENDED, emitting AutomationCycleEvent(SUSPENDED), and
+    ///      the suspension removes every listed task under the same cycleIndex
+    ///      (RemovedTasks with state SUSPENDED); none of them executes in that cycle.
+    event ActiveTasks(uint64 indexed cycleIndex, uint64[] taskIndexes);
 
     /// @notice Event emitted on cycle transition containing removed task indexes.
-    event RemovedTasks(uint64[] indexed taskIndexes);
+    /// @dev cycleIndex is topic 1 and is the cycle index processTasks was called with: for a
+    ///      FINISHED -> STARTED transition the cycle being entered, the same index ActiveTasks
+    ///      carries for that transition, and for a suspension the cycle being suspended.
+    ///      state is topic 2 and names the processing that removed the tasks: FINISHED for a
+    ///      FINISHED -> STARTED transition (expired, cancelled or unaffordable tasks dropped
+    ///      instead of renewed) and SUSPENDED for a suspension (every task removed and
+    ///      refunded). Both kinds can share a cycleIndex when automation is disabled during a
+    ///      transition, and the state topic tells them apart. RemovedTasks is emitted before the
+    ///      call finalizes the transition or suspension, so it precedes that call's ActiveTasks
+    ///      and AutomationCycleEvent logs.
+    ///      taskIndexes is ABI-encoded in the log data. It is emitted by each processTasks call
+    ///      that removed at least one task, and lists the tasks that call removed, so a
+    ///      transition or suspension processed in several batches emits several RemovedTasks
+    ///      logs with the same cycleIndex and state; its removals are the union of their lists.
+    event RemovedTasks(uint64 indexed cycleIndex, LibCommon.CycleState indexed state, uint64[] taskIndexes);
 
     /// @notice Emitted when the cycle state transitions.
     event AutomationCycleEvent(
@@ -29,34 +55,51 @@ interface ICoreFacet {
     );
 
     /// @notice Emitted when an automation fee is charged for an automation task for the cycle.
+    /// @dev cycleIndex, taskIndex and owner are topics 1, 2 and 3; fee is in the log data.
+    ///      cycleIndex is the cycle the fee pays for: the cycle a FINISHED -> STARTED
+    ///      transition enters, the same index ActiveTasks and RemovedTasks carry for it.
     event TaskCycleFeeWithdraw(
-        uint64 cycleIndex,
+        uint64 indexed cycleIndex,
         uint64 indexed taskIndex,
         address indexed owner,
-        uint128 indexed fee
+        uint128 fee
     );
 
     /// @notice Emitted when a task is removed as fee exceeds task's automation fee cap for the cycle.
+    /// @dev taskIndex and owner are topics 1 and 2; fee, automationFeeCapForCycle and
+    ///      registrationHash are in the log data.
     event TaskCancelledCapacitySurpassed(
         uint64 indexed taskIndex,
-        address owner,
-        uint128 indexed fee,
-        uint128 indexed automationFeeCapForCycle,
+        address indexed owner,
+        uint128 fee,
+        uint128 automationFeeCapForCycle,
         bytes32 registrationHash
     );
 
     /// @notice Emitted when a task is removed due to insufficient balance or allowance.
+    /// @dev taskIndex and owner are topics 1 and 2; fee, balance, allowance and
+    ///      registrationHash are in the log data.
     event TaskCancelledInsufficientBalanceAllowance(
         uint64 indexed taskIndex,
-        address owner,
-        uint128 indexed fee,
-        uint256 indexed balance,
+        address indexed owner,
+        uint128 fee,
+        uint256 balance,
         uint256 allowance,
         bytes32 registrationHash
     );
 
     /// @notice Emitted when the VM signer removes a task for a runtime error (TaskRemovalReason.ERROR).
-    event TaskRemovedBySystem(LibCommon.RemovedTask indexed removedTask);
+    /// @dev taskIndex and owner are topics 1 and 2, so a reader filters system removals by task
+    ///      or by owner; each appears only there. taskType, txHash, reason and details are
+    ///      ABI-encoded in the log data, details being the VM signer's description of the reason.
+    event TaskRemovedBySystem(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        LibCommon.TaskType taskType,
+        bytes32 txHash,
+        LibCommon.TaskRemovalReason reason,
+        string details
+    );
 
     /// @notice Emitted when a task is removed because the EVM gas config of the executing block's
     /// epoch no longer admits its transaction: its maxGasAmount is above txGasLimitCap, or it is a
@@ -112,7 +155,7 @@ interface ICoreFacet {
     //                  State update functions
     // =============================================================
     function monitorCycleEnd() external;
-    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
     function enableAutomation() external;
     function disableAutomation() external;
     function removeRegisteredTask(

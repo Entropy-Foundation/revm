@@ -9,6 +9,7 @@ import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {IRegistryStatus} from "../src/interfaces/IRegistryStatus.sol";
+import {Config} from "../src/libraries/LibAppStorage.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
@@ -141,7 +142,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if caller is not VM Signer.
     function testProcessTasksRevertsIfNotVm() public {
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
@@ -152,7 +153,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'processTasks' reverts if state is not FINISHED or SUSPENDED.
     function testProcessTasksRevertsIfInvalidState() public {
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(ICoreFacet.InvalidRegistryState.selector);
@@ -165,7 +166,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testProcessTasksWhenCycleStateFinished() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         processCycleTransition(diamondAddr, tasks);
@@ -176,7 +177,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(newDuration, 1200);
         assertEq(uint8(newState), uint8(LibCommon.CycleState.STARTED));
 
-        assertEq(IRegistryViewFacet(diamondAddr).getActiveTaskIds(), tasks);
+        assertEqUint64Array(IRegistryViewFacet(diamondAddr).getActiveTaskIds(), tasks, "activeTaskIds");
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 0);
         assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 100000);
@@ -197,7 +198,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
@@ -220,7 +221,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 1;
 
         vm.expectRevert(ICoreFacet.OutOfOrderTaskProcessingRequest.selector);
@@ -245,7 +246,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
 
-        uint256[] memory tasks = new uint256[](2);
+        uint64[] memory tasks = new uint64[](2);
         tasks[0] = 1;
         tasks[1] = 0;
 
@@ -255,10 +256,158 @@ contract CoreFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
     }
 
-    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
-    /// containing only the indexes actually removed, even when the input batch also contains
-    /// non-existent indexes.
-    function testOnCycleSuspendEmitsOnlyRemovedTasks() public {
+    /// @dev Test to ensure the 'ActiveTasks' log carries the new cycle's active task indexes in its
+    /// data, so a reader of the raw log decodes them with the event's ABI (#4285). The new cycle's
+    /// index is topic 1.
+    function testProcessTasksLogCarriesActiveTaskIndexesInData() public {
+        registerUst(diamondAddr, 2450); // task 0
+        registerUst(diamondAddr, 2450); // task 1
+
+        uint64[] memory taskIndexes = new uint64[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+
+        // End the cycle the way processCycleTransition does, but record only processTasks' logs,
+        // which is where the finalizing batch emits ActiveTasks.
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, taskIndexes);
+
+        Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
+        assertEq(log.topics.length, 2, "ActiveTasks has topic0 and cycleIndex");
+        assertEq(log.topics[1], bytes32(uint256(index + 1)), "topic1 is the new cycle's index");
+        (uint64 cycleAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(cycleAfter, index + 1, "the registry is in the cycle ActiveTasks names");
+
+        uint64[] memory logged = abi.decode(log.data, (uint64[]));
+        assertEqUint64Array(logged, taskIndexes, "both tasks survive the transition");
+        assertEqUint64Array(logged, IRegistryViewFacet(diamondAddr).getActiveTaskIds(), "logged set equals activeTaskIds");
+    }
+
+    /// @dev Test to ensure the 'TaskCycleFeeWithdraw' log carries the cycle the fee pays for, the
+    /// task and the owner as topics and the charged fee in its data (#4285), and that the fee
+    /// decoded from the data is the amount taken from the owner.
+    function testProcessTasksFeeWithdrawLogCarriesFeeInData() public {
+        registerUst(diamondAddr, 2450); // task 0
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+
+        // The new cycle's fee is charged inside processTasks, so measure the owner's balance
+        // around that call only.
+        uint256 balanceBefore = wsupra.balanceOf(alice);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, taskIndexes);
+        Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.TaskCycleFeeWithdraw.selector);
+        assertEq(log.topics.length, 4, "TaskCycleFeeWithdraw has topic0, cycleIndex, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(index + 1)), "topic1 is the cycle the fee pays for");
+        assertEq(log.topics[2], bytes32(uint256(0)), "topic2 is taskIndex");
+        assertEq(log.topics[3], bytes32(uint256(uint160(alice))), "topic3 is owner");
+
+        // The same transition's ActiveTasks names the same cycle.
+        Vm.Log memory active = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
+        assertEq(active.topics[1], log.topics[1], "fee and ActiveTasks name the same cycle");
+
+        uint128 fee = abi.decode(log.data, (uint128));
+        assertGt(fee, 0, "an active UST is charged for the new cycle");
+        assertEq(balanceBefore - wsupra.balanceOf(alice), fee, "fee is the amount taken from the owner");
+    }
+
+    /// @dev Test to ensure the 'TaskCancelledCapacitySurpassed' log carries taskIndex and owner as
+    /// topics and the fee, the task's fee cap and its registration hash in its data (#4285). The
+    /// task registers with its cap at the estimated fee, and governance then raises the base fee,
+    /// which takes effect when the cycle ends, so the transition's fee exceeds the cap.
+    function testProcessTasksCapacitySurpassedLogIsFilterableByOwner() public {
+        uint128 feeCap = IRegistryFacet(diamondAddr).estimateAutomationFee(100_000);
+
+        bytes[] memory auxData;
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + 2450),
+            uint128(100_000),
+            uint128(4 gwei),
+            feeCap,
+            2,
+            auxData
+        );
+        vm.stopPrank();
+
+        // Raise the base fee tenfold; every other figure keeps its current value.
+        Config memory cfg = IConfigFacet(diamondAddr).getConfig();
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateConfigBuffer(
+            cfg.taskDurationCapSecs,
+            cfg.registryMaxGasCap,
+            cfg.automationBaseFeeWeiPerSec * 10,
+            cfg.flatRegistrationFeeWei,
+            cfg.congestionThresholdPercentage,
+            cfg.congestionBaseFeeWeiPerSec,
+            cfg.congestionExponent,
+            cfg.maxCongestionExponent,
+            cfg.taskCapacity,
+            cfg.cycleDurationSecs,
+            cfg.sysTaskDurationCapSecs,
+            cfg.sysRegistryMaxGasCap,
+            cfg.sysTaskCapacity
+        );
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, taskIndexes);
+
+        Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.TaskCancelledCapacitySurpassed.selector);
+        assertEq(log.topics.length, 3, "TaskCancelledCapacitySurpassed has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        (uint128 fee, uint128 cap, bytes32 registrationHash) = abi.decode(log.data, (uint128, uint128, bytes32));
+        assertEq(cap, feeCap, "cap is the task's registered fee cap");
+        assertGt(fee, cap, "the fee exceeds the cap");
+        assertEq(registrationHash, keccak256("txHash"), "registrationHash");
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0), "the task is removed");
+    }
+
+    /// @dev Test to ensure the 'TaskDepositFeeRefund' log carries the refunded amount in its data
+    /// (#4285): taskIndex and owner are the only topics after topic0, and the amount decoded from
+    /// the data is what the owner receives when a suspension removes the task.
+    function testOnCycleSuspendDepositRefundLogCarriesAmountInData() public {
+        registerUst(diamondAddr, 2450); // task 0, PENDING, so it has paid no cycle fee
+
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+
+        // Disabling automation in FINISHED moves the registry to SUSPENDED, where processTasks
+        // removes every task and refunds it.
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+
+        uint256 balanceBefore = wsupra.balanceOf(alice);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index, taskIndexes);
+
+        Vm.Log memory log = findLog(logs, diamondAddr, IRegistryFacet.TaskDepositFeeRefund.selector);
+        assertEq(log.topics.length, 3, "TaskDepositFeeRefund has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        uint128 amount = abi.decode(log.data, (uint128));
+        assertGt(amount, 0, "the deposit is refunded");
+        // A PENDING task paid no cycle fee, so the deposit refund is the whole balance change.
+        assertEq(wsupra.balanceOf(alice) - balanceBefore, amount, "amount is what the owner receives");
+    }
+
+    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks with
+    /// exactly the tasks of its own batch: the second batch's log lists task 1 only, not task 0
+    /// removed by the first batch. (An index outside the expected set reverts instead; see
+    /// UnknownTaskToProcess.)
+    function testOnCycleSuspendEmitsEachBatchsRemovedTasks() public {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
 
@@ -275,19 +424,19 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Process task 0 on its own first, advancing the expected-order position past it, so
         // the second batch below cannot be confused with a genuine removal of task 0.
-        uint256[] memory firstBatch = new uint256[](1);
+        uint64[] memory firstBatch = new uint64[](1);
         firstBatch[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
 
-        uint256[] memory secondBatch = new uint256[](1);
+        uint64[] memory secondBatch = new uint64[](1);
         secondBatch[0] = 1;
 
         uint64[] memory expectedRemoved = new uint64[](1);
         expectedRemoved[0] = 1;
 
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.RemovedTasks(expectedRemoved);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.RemovedTasks(indexAfter, LibCommon.CycleState.SUSPENDED, expectedRemoved);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
@@ -309,7 +458,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 99; // never registered
 
         vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(99)));
@@ -339,14 +488,14 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         uint64[] memory tasksUint64 = new uint64[](1);
         tasksUint64[0] = 0;
 
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.RemovedTasks(tasksUint64);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.RemovedTasks(indexAfter, LibCommon.CycleState.SUSPENDED, tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, tasks);
@@ -375,12 +524,12 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Process task 0 on its own first, advancing the expected-order position past it, so
         // the second batch below cannot be confused with a genuine removal of task 0.
-        uint256[] memory firstBatch = new uint256[](1);
+        uint64[] memory firstBatch = new uint64[](1);
         firstBatch[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, firstBatch);
 
-        uint256[] memory secondBatch = new uint256[](2);
+        uint64[] memory secondBatch = new uint64[](2);
         secondBatch[0] = 1;
         secondBatch[1] = 999; // does not exist
 
@@ -409,7 +558,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         (uint64 indexAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
 
-        uint256[] memory batch = new uint256[](1);
+        uint64[] memory batch = new uint64[](1);
         batch[0] = 999; // does not exist
 
         vm.expectRevert(abi.encodeWithSelector(ICoreFacet.UnknownTaskToProcess.selector, uint64(999)));
@@ -445,14 +594,14 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).enableAutomation();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         uint64[] memory tasksUint64 = new uint64[](1);
-        tasks[0] = 0;
+        tasksUint64[0] = 0;
 
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.RemovedTasks(tasksUint64);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.RemovedTasks(indexAfter, LibCommon.CycleState.SUSPENDED, tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, tasks);
@@ -486,7 +635,7 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
@@ -667,7 +816,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
 
         // Process only task 0 — transition is now in progress
-        uint256[] memory partialTasks = new uint256[](1);
+        uint64[] memory partialTasks = new uint64[](1);
         partialTasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -755,7 +904,7 @@ contract CoreFacetTest is BaseDiamondTest {
     /// event echoes `_taskIndexes` verbatim — that assumption breaks when one of the processed
     /// tasks expires and gets removed during this very transition, since the real ActiveTasks
     /// list then only contains the tasks that survived.
-    function processCycleTransitionAllowingRemovals(address _diamond, uint256[] memory _taskIndexes) internal {
+    function processCycleTransitionAllowingRemovals(address _diamond, uint64[] memory _taskIndexes) internal {
         (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore,) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTimeBefore + durationBefore);
 
@@ -774,7 +923,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerGstWithGas(diamondAddr, 12_000, 100_000); // task 0: survives many cycles
         registerGstWithGas(diamondAddr, 1_800, 50_000); // task 1: expires partway through cycle 2
 
-        uint256[] memory bothTasks = new uint256[](2);
+        uint64[] memory bothTasks = new uint64[](2);
         bothTasks[0] = 0;
         bothTasks[1] = 1;
 
@@ -788,7 +937,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(1));
 
         // Cycle 3 -> 4: only task 0 remains.
-        uint256[] memory onlyTaskA = new uint256[](1);
+        uint64[] memory onlyTaskA = new uint64[](1);
         onlyTaskA[0] = 0;
         processCycleTransition(diamondAddr, onlyTaskA);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForCurrentCycle(), 100_000);
@@ -803,7 +952,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(1, taskIndexes);
@@ -830,7 +979,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(wsupra.balanceOf(diamondAddr), 122.2 ether);
         assertEq(wsupra.balanceOf(alice), 77.8 ether);
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
         uint64[] memory tasksUint64 = new uint64[](1);
@@ -866,7 +1015,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).totalSystemTasks(), 2);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 200_000);
 
-        uint256[] memory taskIndexes = new uint256[](2);
+        uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 0;
         taskIndexes[1] = 1;
         uint64[] memory tasksUint64 = new uint64[](1);
@@ -890,7 +1039,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTasksEmitsEvent() public {
         registerUst(diamondAddr, 2450);
         
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         uint64[] memory tasksUint64 = new uint64[](1);
         tasksUint64[0] = 0;
@@ -898,14 +1047,42 @@ contract CoreFacetTest is BaseDiamondTest {
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
-
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.TaskRemovedBySystem(removedTask);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.TaskRemovedBySystem(
+            0, alice, LibCommon.TaskType.UST, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed"
+        );
 
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], LibCommon.TaskRemovalReason.ERROR, reason);
+    }
+
+    /// @dev Test to ensure the 'TaskRemovedBySystem' log carries taskIndex and owner as topics 1
+    /// and 2, so a reader filters system removals by task or owner, and the remaining fields in its
+    /// data without repeating the topics (#4285).
+    function testRemoveRegisteredTaskLogIsFilterableByTaskAndOwner() public {
+        registerUst(diamondAddr, 2450);
+
+        uint64[] memory taskIndexes = new uint64[](1);
+        taskIndexes[0] = 0;
+        processCycleTransition(diamondAddr, taskIndexes);
+        (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(index, 0, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.TaskRemovedBySystem.selector);
+        assertEq(log.topics.length, 3, "TaskRemovedBySystem has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        (LibCommon.TaskType taskType, bytes32 txHash, LibCommon.TaskRemovalReason reason, string memory details) =
+            abi.decode(log.data, (LibCommon.TaskType, bytes32, LibCommon.TaskRemovalReason, string));
+        assertEq(uint8(taskType), uint8(LibCommon.TaskType.UST), "taskType");
+        assertEq(txHash, keccak256("txHash"), "txHash");
+        assertEq(uint8(reason), uint8(LibCommon.TaskRemovalReason.ERROR), "reason");
+        assertEq(details, "Predicate failed", "details");
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
@@ -990,7 +1167,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRemoveRegisteredTaskRevertsIfInsufficientBalance() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1022,7 +1199,7 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.FINISHED));
 
         // Process only task 0 — transition in progress
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexBefore + 1, taskIndexes);
@@ -1074,7 +1251,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testTransitionStateResetAfterFinishedToStartedTransition() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1097,7 +1274,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(1, taskIndexes);
@@ -1144,7 +1321,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testTransitionStateNoStalenessAfterPopulatedThenEmptyCycle() public {
         registerUst(diamondAddr, 1_300); // expires during cycle 2
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes); // cycle 1 -> 2, task still active
 
@@ -1182,9 +1359,11 @@ contract CoreFacetTest is BaseDiamondTest {
             registerUst(diamondAddr, 2450);
         }
 
-        uint256[] memory taskIndexes = new uint256[](n);
+        uint64[] memory taskIndexes = new uint64[](n);
         for (uint256 i = 0; i < n; i++) {
-            taskIndexes[i] = i;
+            // i is bounded by the test's task count, far below 2^64.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            taskIndexes[i] = uint64(i);
         }
 
         (uint64 indexBefore, uint64 start, uint64 duration,) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -1242,7 +1421,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         ICoreFacet(diamondAddr).processTasks(indexBefore + 1, tasks);
@@ -1267,7 +1446,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory empty;
+        uint64[] memory empty;
         ICoreFacet(diamondAddr).processTasks(index + 1, empty);
         vm.stopPrank();
 
@@ -1297,7 +1476,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState stateBefore) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateBefore), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER);
@@ -1326,7 +1505,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
@@ -1360,7 +1539,7 @@ contract CoreFacetTest is BaseDiamondTest {
         ( , , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.SUSPENDED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.startPrank(LibUtils.VM_SIGNER);
@@ -1375,6 +1554,112 @@ contract CoreFacetTest is BaseDiamondTest {
 
         ( , , , state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.READY));
+    }
+
+    /// @dev Test to ensure the 'ActiveTasks' and 'RemovedTasks' logs of one FINISHED -> STARTED
+    /// transition carry the same cycle index as topic 1, so a reader matches the removals to the
+    /// cycle they were dropped from entering without relying on emit order (#4285).
+    function testTransitionLogsShareCycleIndex() public {
+        registerUst(diamondAddr, 2450);  // task 0, expires during the transition below
+        registerUst(diamondAddr, 10000); // task 1, survives it
+
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+
+        // Past task 0's expiry and before task 1's, as in testExpiredTaskRemovalInTransition.
+        vm.warp(block.timestamp + 1250);
+
+        uint64[] memory tasks = new uint64[](2);
+        tasks[0] = 0;
+        tasks[1] = 1;
+
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, tasks);
+        Vm.Log memory active = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
+        Vm.Log memory removed = findLog(logs, diamondAddr, ICoreFacet.RemovedTasks.selector);
+
+        assertEq(active.topics[1], bytes32(uint256(index + 1)), "ActiveTasks names the cycle entered");
+        assertEq(removed.topics[1], active.topics[1], "RemovedTasks names the same cycle");
+        assertEq(removed.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.FINISHED))), "the transition removed them");
+
+        uint64[] memory activeIds = abi.decode(active.data, (uint64[]));
+        uint64[] memory removedIds = abi.decode(removed.data, (uint64[]));
+        assertEq(activeIds.length, 1, "one task survives");
+        assertEq(activeIds[0], 1, "task 1 survives");
+        assertEq(removedIds.length, 1, "one task is removed");
+        assertEq(removedIds[0], 0, "task 0 is removed");
+    }
+
+    /// @dev Test to ensure RemovedTasks' state topic tells a transition's drops from a suspension's
+    /// removals when automation is disabled during a FINISHED -> STARTED transition (#4285). The
+    /// batch that finalizes the transition logs RemovedTasks(FINISHED) for the task it dropped,
+    /// then ActiveTasks, then AutomationCycleEvent(SUSPENDED) as it moves the registry to STARTED
+    /// and SUSPENDED. The suspension's own batch then removes the surviving tasks under the same
+    /// cycleIndex and carries SUSPENDED.
+    function testRemovedTasksStateSeparatesTransitionDropsFromSuspension() public {
+        registerUst(diamondAddr, 10000); // task 0, survives the transition
+        registerUst(diamondAddr, 2450);  // task 1, expires during the transition
+        registerUst(diamondAddr, 10000); // task 2, survives the transition
+
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+        // Past task 1's expiry and before the others', as in testExpiredTaskRemovalInTransition.
+        vm.warp(block.timestamp + 1250);
+
+        // First batch: the transition is now in progress, so disabling automation only clears
+        // the flag and leaves the transition to finish (CoreFacet.disableAutomation).
+        uint64[] memory firstBatch = new uint64[](1);
+        firstBatch[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, firstBatch);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        // Final batch: drops task 1, finalizes the transition into cycle index + 1, then suspends.
+        uint64[] memory finalBatch = new uint64[](2);
+        finalBatch[0] = 1;
+        finalBatch[1] = 2;
+        Vm.Log[] memory finalLogs = processTasksRecordingLogs(diamondAddr, index + 1, finalBatch);
+
+        (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED), "the final batch suspends");
+
+        // Locate the RemovedTasks, ActiveTasks and SUSPENDED cycle-event logs in emission order.
+        uint256 removedAt = type(uint256).max;
+        uint256 activeAt = type(uint256).max;
+        uint256 suspendedAt = type(uint256).max;
+        for (uint256 i; i < finalLogs.length; i++) {
+            if (finalLogs[i].emitter != diamondAddr) continue;
+            if (finalLogs[i].topics[0] == ICoreFacet.RemovedTasks.selector) {
+                removedAt = i;
+            }
+            if (finalLogs[i].topics[0] == ICoreFacet.ActiveTasks.selector) {
+                activeAt = i;
+            }
+            if (finalLogs[i].topics[0] == ICoreFacet.AutomationCycleEvent.selector
+                && finalLogs[i].topics[2] == bytes32(uint256(uint8(LibCommon.CycleState.SUSPENDED)))) {
+                suspendedAt = i;
+            }
+        }
+        assertLt(removedAt, activeAt, "the transition's drop is logged before ActiveTasks");
+        assertLt(activeAt, suspendedAt, "ActiveTasks is logged before the SUSPENDED cycle event");
+        assertLt(suspendedAt, type(uint256).max, "the final batch logs the SUSPENDED cycle event");
+
+        Vm.Log memory dropped = findLog(finalLogs, diamondAddr, ICoreFacet.RemovedTasks.selector);
+        assertEq(dropped.topics[1], bytes32(uint256(index + 1)), "the drop names the cycle entered");
+        assertEq(dropped.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.FINISHED))), "the transition dropped it");
+        uint64[] memory droppedIds = abi.decode(dropped.data, (uint64[]));
+        assertEq(droppedIds.length, 1, "one task dropped");
+        assertEq(droppedIds[0], 1, "task 1 dropped");
+
+        // Suspension batch: removes the survivors under the same cycle index.
+        uint64[] memory survivors = new uint64[](2);
+        survivors[0] = 0;
+        survivors[1] = 2;
+        Vm.Log memory suspended = findLog(
+            processTasksRecordingLogs(diamondAddr, index + 1, survivors), diamondAddr, ICoreFacet.RemovedTasks.selector
+        );
+        assertEq(suspended.topics[1], dropped.topics[1], "the suspension shares the cycle index");
+        assertEq(suspended.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.SUSPENDED))), "the suspension removed them");
+        assertEqUint64Array(abi.decode(suspended.data, (uint64[])), survivors, "the survivors are removed");
     }
 
     /// @notice Test to ensure an expired task is removed from the registry and 'RemovedTasks' is emitted during cycle transition.
@@ -1396,15 +1681,15 @@ contract CoreFacetTest is BaseDiamondTest {
         // Move time forward past task expiration
         vm.warp(block.timestamp + 1250);
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
         
         // Expect RemovedTasks event for the expired task
         uint64[] memory expectedRemoved = new uint64[](1);
         expectedRemoved[0] = 0;
         
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.RemovedTasks(expectedRemoved);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.RemovedTasks(index + 1, LibCommon.CycleState.FINISHED, expectedRemoved);
 
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
         vm.stopPrank();
@@ -1438,7 +1723,7 @@ contract CoreFacetTest is BaseDiamondTest {
         // Move time forward past task expiration.
         vm.warp(block.timestamp + 1250);
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.expectEmit(true, true, true, true);
@@ -1471,10 +1756,10 @@ contract CoreFacetTest is BaseDiamondTest {
         (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.FINISHED));
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit(true, true, false, true, diamondAddr);
         emit ICoreFacet.TaskCancelledInsufficientBalanceAllowance(0, alice, 3 ether, 38.9 ether, 0, keccak256("txHash"));
 
         vm.prank(LibUtils.VM_SIGNER);
@@ -1504,7 +1789,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).enableAutomation();
 
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
 
         vm.prank(LibUtils.VM_SIGNER);
@@ -1521,7 +1806,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRefundTaskFeesOnSuspendForActiveTaskRefundsFullCycleFees() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1556,7 +1841,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testRefundTaskFeesOnSuspendForActiveTaskRefundsPartialCycleFees() public {
         registerUst(diamondAddr, 1250);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1591,7 +1876,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 1250);
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1686,7 +1971,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(customRegistry, 2450);
 
         // Perform cycle transition
-        uint256[] memory tasks = new uint256[](1);
+        uint64[] memory tasks = new uint64[](1);
         tasks[0] = 0;
         processCycleTransition(customRegistry, tasks);
 
@@ -1730,7 +2015,7 @@ contract CoreFacetTest is BaseDiamondTest {
     }
 
     /// @notice Bounded-cost check for LibCommon.removeFromActiveTaskIds: RegistryState.activeTaskIds
-    /// is a plain uint256[], so removing from it is an O(k) linear-scan swap-remove
+    /// is a plain uint64[], so removing from it is an O(k) linear-scan swap-remove
     /// (k = current activeTaskIds length) rather than EnumerableSet's O(1). A single
     /// stopTasks call spanning activeTaskIds' full length is therefore O(k^2), bounded by
     /// the governance-owned taskCapacity+sysTaskCapacity cap (200 by default), not unbounded.
@@ -1739,11 +2024,13 @@ contract CoreFacetTest is BaseDiamondTest {
     /// well within a realistic block gas limit — the bound is real, not just asymptotic.
     function testStopTasksBulkRemovalFromActiveTaskIdsStaysWithinGasBudget() public {
         uint256 n = 100;
-        uint256[] memory taskIndexes = new uint256[](n);
+        uint64[] memory taskIndexes = new uint64[](n);
         vm.deal(alice, n * 101 ether);
         for (uint256 i = 0; i < n; i++) {
             registerUst(diamondAddr, 2450);
-            taskIndexes[i] = i;
+            // i is bounded by the test's task count, far below 2^64.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            taskIndexes[i] = uint64(i);
         }
 
         processCycleTransition(diamondAddr, taskIndexes);

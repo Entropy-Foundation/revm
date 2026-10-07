@@ -156,8 +156,9 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     /// @notice Updates the task-registration input size caps. Takes effect immediately (unlike
     /// updateConfigBuffer) since these only gate new registrations, which are already blocked
     /// outside cycle state STARTED, so there's no mid-cycle-fairness reason to defer them.
-    /// @param _maxPayloadLength Max length in bytes of a task's payloadTx.
-    /// @param _maxPredicateLength Max length in bytes of a task's predicate.
+    /// @param _maxPayloadLength Max length in bytes of a task's payloadTx; a multiple of 32
+    /// (LibCommon.validateDataLengthCaps).
+    /// @param _maxPredicateLength Max length in bytes of a task's predicate; a multiple of 32.
     /// @param _maxAuxDataLength Max combined length in bytes across all of a task's auxData entries.
     /// @param _maxAuxDataEntries Max number of entries in a task's auxData array, bounded
     /// independently of _maxAuxDataLength.
@@ -168,6 +169,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         uint16 _maxAuxDataEntries
     ) external {
         LibDiamond.enforceIsContractOwner();
+        LibCommon.validateDataLengthCaps(_maxPayloadLength, _maxPredicateLength);
 
         AppStorage storage s = LibAppStorage.appStorage();
         s.maxPayloadLength = _maxPayloadLength;

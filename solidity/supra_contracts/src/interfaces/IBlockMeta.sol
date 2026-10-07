@@ -34,8 +34,11 @@ interface IBlockMeta {
     event SelectorDeregistered(address indexed targetContract, bytes4 indexed selector, uint64 gasLimit);
 
     /// @notice Emitted when the full execution order is replaced.
+    /// @dev The log has no indexed parameter. executionOrder is ABI-encoded in the log data,
+    ///      where a reader decodes it; an indexed array would be logged only as the keccak256 of
+    ///      its encoding (Entropy-Foundation/smr-moonshot#4285).
     /// @param executionOrder Updated array of packed execution entries.
-    event ExecutionOrderUpdated(uint256[] indexed executionOrder);
+    event ExecutionOrderUpdated(uint256[] executionOrder);
 
     /// @notice Emitted when a per-block call to a registered function fails.
     /// @param targetContract Address of the target contract.

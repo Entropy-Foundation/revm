@@ -47,15 +47,4 @@ library LibUtils {
         uint160 addr = uint160(_addr);
         return addr >= uint160(VM_SIGNER) && addr <= uint160(0x535550FF);
     }
-
-    /// @notice Converts a uint256 storage array to a uint64 memory array.
-    /// @param arr The storage array to convert.
-    /// @return result The values as a uint64 array.
-    function uint256ArrayToUint64Array(uint256[] storage arr) internal view returns (uint64[] memory result) {
-        uint256 length = arr.length;
-        result = new uint64[](length);
-        for (uint256 i = 0; i < length; i++) {
-            result[i] = uint64(arr[i]);
-        }
-    }
 }

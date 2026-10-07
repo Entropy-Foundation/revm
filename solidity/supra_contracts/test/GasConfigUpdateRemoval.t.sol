@@ -52,7 +52,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
 
     /// @dev Ends the current cycle and processes `_taskIndexes` in one batch, without expecting any
     /// particular survivor set.
-    function transition(uint256[] memory _taskIndexes) internal {
+    function transition(uint64[] memory _taskIndexes) internal {
         uint64 nextIndex = endCycle();
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(nextIndex, _taskIndexes);
@@ -74,8 +74,8 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         );
     }
 
-    function twoIndexes() internal pure returns (uint256[] memory indexes) {
-        indexes = new uint256[](2);
+    function twoIndexes() internal pure returns (uint64[] memory indexes) {
+        indexes = new uint64[](2);
         indexes[0] = 0;
         indexes[1] = 1;
     }
@@ -344,7 +344,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         assertEq(countLogs(logs, ICoreFacet.TaskCycleFeeWithdraw.selector, false, 0), 1);
         assertEq(countLogs(logs, ICoreFacet.RemovedTasks.selector, false, 0), 1);
 
-        uint256[] memory active = IRegistryViewFacet(diamondAddr).getActiveTaskIds();
+        uint64[] memory active = IRegistryViewFacet(diamondAddr).getActiveTaskIds();
         assertEq(active.length, 1);
         assertEq(active[0], 1);
         // Task 0's whole deposit comes back; task 1 is charged its fee for the new cycle.
@@ -442,8 +442,15 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         );
     }
 
-    function singleIndex(uint256 _index) internal pure returns (uint256[] memory indexes) {
-        indexes = new uint256[](1);
+    /// @dev The node encodes this selector from its bindings and decodes persisted processTasks
+    /// records by it; a change here must be matched there. Task indexes are uint64 (#4285).
+    function testProcessTasksSelectorIsPinned() public pure {
+        assertEq(ICoreFacet.processTasks.selector, bytes4(keccak256("processTasks(uint64,uint64[])")));
+        assertEq(ICoreFacet.processTasks.selector, bytes4(0x7f69c35c));
+    }
+
+    function singleIndex(uint64 _index) internal pure returns (uint64[] memory indexes) {
+        indexes = new uint64[](1);
         indexes[0] = _index;
     }
 }

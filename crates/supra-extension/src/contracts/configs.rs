@@ -24,28 +24,29 @@ use std::collections::HashSet;
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤
-//   │ 50        │ 1,217,207                    │
+//   │ 50        │ 426,201                      │
 //   ├───────────┼──────────────────────────────┤
-//   │ 100       │ 2,372,173                    │
+//   │ 100       │ 747,596                      │
 //   ├───────────┼──────────────────────────────┤
-//   │ 150       │ 3,527,149                    │
+//   │ 150       │ 1,091,593                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 200       │ 4,683,155                    │
+//   │ 200       │ 1,414,028                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 250       │ 5,838,151                    │
+//   │ 250       │ 1,758,045                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 300       │ 6,993,156                    │
+//   │ 300       │ 2,079,479                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 350       │ 8,148,171                    │
+//   │ 350       │ 2,423,515                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 800       │ 18,543,746 ⚠️ exceeds budget  │
+//   │ 800       │ 5,407,319                    │
 //   └───────────┴──────────────────────────────┘
 //
 // (Figures from `forge test --match-contract MonitorCycleEndGasTest -vv` in
-// solidity/supra_contracts/test/MonitorCycleEndGas.t.sol. That same run's
-// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: 723 tasks
-// stay under BLOCK_METADATA_GAS_LIMIT, 724 exceeds it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
-// confirms the same 723/724 boundary holds regardless of task ordering.
+// solidity/supra_contracts/test/MonitorCycleEndGas.t.sol, with the registry's task-ID lists
+// stored as uint64[] packed four per slot (#4285). That same run's
+// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: 2,504 tasks
+// stay under BLOCK_METADATA_GAS_LIMIT, 2,505 exceed it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
+// reports 2,505 for a fully reverse-sorted orderedTaskIds, one task apart.
 // 200 is kept far below that ceiling deliberately, as buffer for other future
 // `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
 // applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).

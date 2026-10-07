@@ -5,8 +5,12 @@ import {Config} from "../libraries/LibAppStorage.sol";
 
 interface IConfigFacet {
     // =============================================================
-    //                          Events 
+    //                          Events
     // =============================================================
+    // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
+    // indexed. script/check_event_indexing.sh states the rule; the forge-tests CI job runs it
+    // after forge build and fails on an indexed struct, array, string or bytes parameter (#4285).
+
     /// @notice Emitted when an account is authorized as submitter for system tasks.
     event AuthorizationGranted(address indexed account, uint256 indexed timestamp);
 
@@ -20,10 +24,13 @@ interface IConfigFacet {
     event TaskRegistrationDisabled(bool indexed status);
 
     /// @notice Emitted when the registry fees is withdrawn by the admin.
-    event RegistryFeeWithdrawn(address indexed recipient, uint256 indexed feesWithdrawn);
+    /// @dev recipient is topic 1; feesWithdrawn is in the log data.
+    event RegistryFeeWithdrawn(address indexed recipient, uint256 feesWithdrawn);
 
     /// @notice Emitted when a new config is added.
-    event ConfigBufferUpdated(Config indexed pendingConfig);
+    /// @dev The log has no indexed parameter. pendingConfig is ABI-encoded in the log data and is
+    ///      the Config that takes effect at the start of the next cycle.
+    event ConfigBufferUpdated(Config pendingConfig);
 
     /// @notice Emitted when the task registration input size caps are updated.
     event DataLengthCapsUpdated(uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);

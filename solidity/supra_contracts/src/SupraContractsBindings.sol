@@ -11,7 +11,7 @@ interface SupraContractsBindings {
 
     // View functions of RegistryViewFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-    function getActiveTaskIds() external view returns (uint256[] memory);
+    function getActiveTaskIds() external view returns (uint64[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
@@ -21,7 +21,7 @@ interface SupraContractsBindings {
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
 
     // Entry function to be called by node runtime for bookkeeping
-    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
 
     // Entry function to be called by node runtime to remove a task that failed at runtime or that
     // the epoch's EVM gas config no longer admits

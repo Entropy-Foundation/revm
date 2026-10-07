@@ -651,15 +651,15 @@ mod tests {
             ),
             (
                 "BlockMeta",
-                b256!("c52e1a412125c99d96a9bf17f882d05c620f88e28ed0153d72603684bc43e132"),
+                b256!("6a5ca2b9ef23d1f0244c247266f0dda07518d23d0db648a1c803d39f67d59ed5"),
             ),
             (
                 "ConfigFacet",
-                b256!("bb332d6a2e8abe4636530f5c4f1c9bf93f73ff8c5309f86ddde34901796f9594"),
+                b256!("d5661974490df49ae326aee306e7076de70f7c4c2f8bedc391d0ba877ae3b3fa"),
             ),
             (
                 "CoreFacet",
-                b256!("6636e124f374635dbf4c6d765f1c115e16295e099b44c80ab52e807acfefd8c3"),
+                b256!("67860fafe9906084d0d20c158211d447dd018d9b2ce0da304d970febacca611d"),
             ),
             (
                 "Diamond",
@@ -671,7 +671,7 @@ mod tests {
             ),
             (
                 "DiamondInit",
-                b256!("59a19ef73c12e0cb2029c57066a0807866bc0bd7707a9a97e80ebbf4c2035524"),
+                b256!("2ce9c764d8a2fa9dbcffcd0fa6c0229e907021fcc44eb491b6f4c9ff7ea741c2"),
             ),
             (
                 "DiamondLoupeFacet",
@@ -695,11 +695,11 @@ mod tests {
             ),
             (
                 "RegistryFacet",
-                b256!("1835d3f31de62065fc9df9d10236afea44c2fb489500a271651465065d2b1f46"),
+                b256!("519be2e6799e3fae1116945522dda463d1492898b01037f9190e6e3c14cd42f7"),
             ),
             (
                 "RegistryViewFacet",
-                b256!("d55f358aed517b4058a5643ea2b0de57552133612451ed1e94d827a7c5f964c8"),
+                b256!("256b3377a53f1d1b41a4295daa49d69bbabe741c13191b70492a7ff561bdb7b2"),
             ),
             (
                 "WrappedSupra",

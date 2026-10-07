@@ -964,7 +964,7 @@ interface SupraContractsBindings {
     event AutomationCycleEvent(uint64 indexed index, LibCommon.CycleState indexed state, uint64 startTime, uint64 durationSecs, LibCommon.CycleState indexed oldState);
 
     function blockPrologue() external;
-    function getActiveTaskIds() external view returns (uint256[] memory);
+    function getActiveTaskIds() external view returns (uint64[] memory);
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
@@ -972,7 +972,7 @@ interface SupraContractsBindings {
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function isAutomationReadyEnabled() external view returns (bool);
     function isInitialized() external view returns (bool);
-    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
     function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, LibCommon.TaskRemovalReason _reason, string memory _details) external;
 }
 ```
@@ -994,8 +994,8 @@ interface SupraContractsBindings {
     "outputs": [
       {
         "name": "",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
+        "type": "uint64[]",
+        "internalType": "uint64[]"
       }
     ],
     "stateMutability": "view"
@@ -1306,8 +1306,8 @@ interface SupraContractsBindings {
       },
       {
         "name": "_taskIndexes",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
+        "type": "uint64[]",
+        "internalType": "uint64[]"
       }
     ],
     "outputs": [],
@@ -2180,7 +2180,7 @@ pub mod SupraContractsBindings {
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getActiveTaskIds()` and selector `0x2321cca3`.
     ```solidity
-    function getActiveTaskIds() external view returns (uint256[] memory);
+    function getActiveTaskIds() external view returns (uint64[] memory);
     ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -2191,8 +2191,7 @@ pub mod SupraContractsBindings {
     #[derive(Clone)]
     pub struct getActiveTaskIdsReturn {
         #[allow(missing_docs)]
-        pub _0:
-            alloy::sol_types::private::Vec<alloy::sol_types::private::primitives::aliases::U256>,
+        pub _0: alloy::sol_types::private::Vec<u64>,
     }
     #[allow(
         non_camel_case_types,
@@ -2236,13 +2235,9 @@ pub mod SupraContractsBindings {
             #[doc(hidden)]
             #[allow(dead_code)]
             type UnderlyingSolTuple<'a> =
-                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,);
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,);
             #[doc(hidden)]
-            type UnderlyingRustTuple<'a> = (
-                alloy::sol_types::private::Vec<
-                    alloy::sol_types::private::primitives::aliases::U256,
-                >,
-            );
+            type UnderlyingRustTuple<'a> = (alloy::sol_types::private::Vec<u64>,);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
@@ -2271,11 +2266,9 @@ pub mod SupraContractsBindings {
         impl alloy_sol_types::SolCall for getActiveTaskIdsCall {
             type Parameters<'a> = ();
             type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
-            type Return = alloy::sol_types::private::Vec<
-                alloy::sol_types::private::primitives::aliases::U256,
-            >;
+            type Return = alloy::sol_types::private::Vec<u64>;
             type ReturnTuple<'a> =
-                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,);
+                (alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,);
             type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
             const SIGNATURE: &'static str = "getActiveTaskIds()";
             const SELECTOR: [u8; 4] = [35u8, 33u8, 204u8, 163u8];
@@ -2292,7 +2285,7 @@ pub mod SupraContractsBindings {
             #[inline]
             fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
                 (<alloy::sol_types::sol_data::Array<
-                    alloy::sol_types::sol_data::Uint<256>,
+                    alloy::sol_types::sol_data::Uint<64>,
                 > as alloy_sol_types::SolType>::tokenize(ret),)
             }
             #[inline]
@@ -3265,9 +3258,9 @@ pub mod SupraContractsBindings {
         }
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
-    /**Function with signature `processTasks(uint64,uint256[])` and selector `0x40b7cbc6`.
+    /**Function with signature `processTasks(uint64,uint64[])` and selector `0x7f69c35c`.
     ```solidity
-    function processTasks(uint64 _cycleIndex, uint256[] memory _taskIndexes) external;
+    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
     ```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
@@ -3275,10 +3268,9 @@ pub mod SupraContractsBindings {
         #[allow(missing_docs)]
         pub _cycleIndex: u64,
         #[allow(missing_docs)]
-        pub _taskIndexes:
-            alloy::sol_types::private::Vec<alloy::sol_types::private::primitives::aliases::U256>,
+        pub _taskIndexes: alloy::sol_types::private::Vec<u64>,
     }
-    ///Container type for the return parameters of the [`processTasks(uint64,uint256[])`](processTasksCall) function.
+    ///Container type for the return parameters of the [`processTasks(uint64,uint64[])`](processTasksCall) function.
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct processTasksReturn {}
@@ -3295,15 +3287,10 @@ pub mod SupraContractsBindings {
             #[allow(dead_code)]
             type UnderlyingSolTuple<'a> = (
                 alloy::sol_types::sol_data::Uint<64>,
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,
+                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
             );
             #[doc(hidden)]
-            type UnderlyingRustTuple<'a> = (
-                u64,
-                alloy::sol_types::private::Vec<
-                    alloy::sol_types::private::primitives::aliases::U256,
-                >,
-            );
+            type UnderlyingRustTuple<'a> = (u64, alloy::sol_types::private::Vec<u64>);
             #[cfg(test)]
             #[allow(dead_code, unreachable_patterns)]
             fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
@@ -3370,14 +3357,14 @@ pub mod SupraContractsBindings {
         impl alloy_sol_types::SolCall for processTasksCall {
             type Parameters<'a> = (
                 alloy::sol_types::sol_data::Uint<64>,
-                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<256>>,
+                alloy::sol_types::sol_data::Array<alloy::sol_types::sol_data::Uint<64>>,
             );
             type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
             type Return = processTasksReturn;
             type ReturnTuple<'a> = ();
             type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
-            const SIGNATURE: &'static str = "processTasks(uint64,uint256[])";
-            const SELECTOR: [u8; 4] = [64u8, 183u8, 203u8, 198u8];
+            const SIGNATURE: &'static str = "processTasks(uint64,uint64[])";
+            const SELECTOR: [u8; 4] = [127u8, 105u8, 195u8, 92u8];
             #[inline]
             fn new<'a>(
                 tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
@@ -3391,7 +3378,7 @@ pub mod SupraContractsBindings {
                         64,
                     > as alloy_sol_types::SolType>::tokenize(&self._cycleIndex),
                     <alloy::sol_types::sol_data::Array<
-                        alloy::sol_types::sol_data::Uint<256>,
+                        alloy::sol_types::sol_data::Uint<64>,
                     > as alloy_sol_types::SolType>::tokenize(&self._taskIndexes),
                 )
             }
@@ -3624,9 +3611,9 @@ pub mod SupraContractsBindings {
             [35u8, 33u8, 204u8, 163u8],
             [37u8, 110u8, 78u8, 77u8],
             [57u8, 46u8, 83u8, 205u8],
-            [64u8, 183u8, 203u8, 198u8],
             [107u8, 93u8, 140u8, 86u8],
             [125u8, 237u8, 9u8, 27u8],
+            [127u8, 105u8, 195u8, 92u8],
             [138u8, 170u8, 64u8, 78u8],
             [178u8, 239u8, 104u8, 150u8],
             [236u8, 130u8, 180u8, 41u8],
@@ -3638,9 +3625,9 @@ pub mod SupraContractsBindings {
             ::core::stringify!(getActiveTaskIds),
             ::core::stringify!(removeRegisteredTask),
             ::core::stringify!(isInitialized),
-            ::core::stringify!(processTasks),
             ::core::stringify!(getCycleStateDetails),
             ::core::stringify!(blockPrologue),
+            ::core::stringify!(processTasks),
             ::core::stringify!(ifTaskExists),
             ::core::stringify!(getTaskDetails),
             ::core::stringify!(getTaskIdList),
@@ -3652,9 +3639,9 @@ pub mod SupraContractsBindings {
             <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <removeRegisteredTaskCall as alloy_sol_types::SolCall>::SIGNATURE,
             <isInitializedCall as alloy_sol_types::SolCall>::SIGNATURE,
-            <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
             <ifTaskExistsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskIdListCall as alloy_sol_types::SolCall>::SIGNATURE,
@@ -3774,15 +3761,6 @@ pub mod SupraContractsBindings {
                     isInitialized
                 },
                 {
-                    fn processTasks(
-                        data: &[u8],
-                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
-                            .map(SupraContractsBindingsCalls::processTasks)
-                    }
-                    processTasks
-                },
-                {
                     fn getCycleStateDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3799,6 +3777,15 @@ pub mod SupraContractsBindings {
                             .map(SupraContractsBindingsCalls::blockPrologue)
                     }
                     blockPrologue
+                },
+                {
+                    fn processTasks(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
+                            .map(SupraContractsBindingsCalls::processTasks)
+                    }
+                    processTasks
                 },
                 {
                     fn ifTaskExists(
@@ -3903,17 +3890,6 @@ pub mod SupraContractsBindings {
                     isInitialized
                 },
                 {
-                    fn processTasks(
-                        data: &[u8],
-                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
-                        <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
-                            data,
-                        )
-                        .map(SupraContractsBindingsCalls::processTasks)
-                    }
-                    processTasks
-                },
-                {
                     fn getCycleStateDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3934,6 +3910,17 @@ pub mod SupraContractsBindings {
                         .map(SupraContractsBindingsCalls::blockPrologue)
                     }
                     blockPrologue
+                },
+                {
+                    fn processTasks(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <processTasksCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::processTasks)
+                    }
+                    processTasks
                 },
                 {
                     fn ifTaskExists(
@@ -4356,9 +4343,7 @@ pub mod SupraContractsBindings {
         pub fn processTasks(
             &self,
             _cycleIndex: u64,
-            _taskIndexes: alloy::sol_types::private::Vec<
-                alloy::sol_types::private::primitives::aliases::U256,
-            >,
+            _taskIndexes: alloy::sol_types::private::Vec<u64>,
         ) -> alloy_contract::SolCallBuilder<&P, processTasksCall, N> {
             self.call_builder(&processTasksCall {
                 _cycleIndex,

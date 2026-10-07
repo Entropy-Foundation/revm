@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -132,7 +133,7 @@ abstract contract BaseDiamondTest is Test {
     }
 
     /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
-    function processCycleTransition(address _diamond, uint256[] memory _taskIndexes) internal {
+    function processCycleTransition(address _diamond, uint64[] memory _taskIndexes) internal {
         (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore, ) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTimeBefore + durationBefore);
 
@@ -143,11 +144,67 @@ abstract contract BaseDiamondTest is Test {
         assertEq(indexAfter, indexBefore);
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
 
-        vm.expectEmit(true, false, false, false);
-        emit ICoreFacet.ActiveTasks(_taskIndexes);
+        vm.expectEmit(_diamond);
+        emit ICoreFacet.ActiveTasks(indexBefore + 1, _taskIndexes);
 
         ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
         vm.stopPrank();
+    }
+
+    /// @dev Warps to the end of `_diamond`'s current cycle and calls monitorCycleEnd as the VM
+    /// signer, which moves a STARTED registry to FINISHED. Returns the index of the cycle that
+    /// ended; processTasks for the transition takes `index + 1`.
+    function endCycleAsVmSigner(address _diamond) internal returns (uint64 index) {
+        uint64 startTime;
+        uint64 duration;
+        (index, startTime, duration, ) = ICoreFacet(_diamond).getCycleInfo();
+        vm.warp(startTime + duration);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(_diamond).monitorCycleEnd();
+    }
+
+    /// @dev Calls processTasks on `_diamond` as the VM signer and returns only the logs that call
+    /// emitted, the way an indexer reads one transaction's receipt.
+    function processTasksRecordingLogs(address _diamond, uint64 _cycleIndex, uint64[] memory _taskIndexes)
+        internal
+        returns (Vm.Log[] memory logs)
+    {
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(_diamond).processTasks(_cycleIndex, _taskIndexes);
+        logs = vm.getRecordedLogs();
+    }
+
+    /// @dev Asserts that two uint64 arrays have the same length and elements, in order. forge-std's
+    /// assertEq has array overloads for uint256[] but not for uint64[], the type of the registry's
+    /// task-id lists. The message names the first differing position.
+    function assertEqUint64Array(uint64[] memory _left, uint64[] memory _right, string memory _err) internal pure {
+        assertEq(_left.length, _right.length, string.concat(_err, ": length"));
+        for (uint256 i; i < _left.length; i++) {
+            assertEq(_left[i], _right[i], string.concat(_err, ": element ", vm.toString(i)));
+        }
+    }
+
+    /// @dev Returns the one log `_emitter` emitted with `_topic0`, and fails unless there is
+    /// exactly one. Tests use it to read a log the way an indexer reads `eth_getLogs` output:
+    /// select by emitter and topic0, then decode `data` with the event's ABI.
+    function findLog(Vm.Log[] memory _logs, address _emitter, bytes32 _topic0)
+        internal
+        pure
+        returns (Vm.Log memory found)
+    {
+        uint256 matches;
+        for (uint256 i; i < _logs.length; i++) {
+            // A log with no topics is anonymous and cannot carry the event's topic0.
+            if (_logs[i].emitter != _emitter || _logs[i].topics.length == 0 || _logs[i].topics[0] != _topic0) {
+                continue;
+            }
+            found = _logs[i];
+            matches++;
+        }
+        // Zero matches means the event was not emitted; more than one means the caller's
+        // selection is ambiguous. Both make a decode assertion meaningless, so fail here.
+        require(matches == 1, "findLog: expected exactly one matching log");
     }
 
     /// @dev Helper function to deploy a custom AutomationRegistry with:

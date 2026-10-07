@@ -47,6 +47,12 @@ import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable
 /// to have a successful outcome.
 contract DiamondInit is Initializable {
 
+    /// @dev Default task-registration input size caps, in bytes. The payload and predicate caps
+    ///      are multiples of 32, the length granularity of an ABI-encoded payloadTx or predicate
+    ///      (LibCommon.validateDataLengthCaps); init validates and stores these same constants.
+    uint16 internal constant DEFAULT_MAX_PAYLOAD_LENGTH = 4096;
+    uint16 internal constant DEFAULT_MAX_PREDICATE_LENGTH = 2048;
+
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
     /// @param _erc20Supra Address of the WrappedSupra contract.
@@ -109,8 +115,11 @@ contract DiamondInit is Initializable {
         // Default task-registration input size caps. Generous relative to real CALL-only
         // payloads (CREATE payloads are not supported) — see ConfigFacet.updateDataLengthCaps
         // for the owner-only path to raise them later without a contract upgrade.
-        s.maxPayloadLength = 4096;
-        s.maxPredicateLength = 2048;
+        // validateDataLengthCaps enforces word alignment here as in
+        // ConfigFacet.updateDataLengthCaps, on the same constants that are stored.
+        LibCommon.validateDataLengthCaps(DEFAULT_MAX_PAYLOAD_LENGTH, DEFAULT_MAX_PREDICATE_LENGTH);
+        s.maxPayloadLength = DEFAULT_MAX_PAYLOAD_LENGTH;
+        s.maxPredicateLength = DEFAULT_MAX_PREDICATE_LENGTH;
         s.maxAuxDataLength = 0;
         s.maxAuxDataEntries = 0;
 

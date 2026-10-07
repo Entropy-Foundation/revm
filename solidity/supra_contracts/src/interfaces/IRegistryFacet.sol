@@ -8,51 +8,68 @@ interface IRegistryFacet {
     // =============================================================
     //                          Events
     // =============================================================
+    // Struct, array, string and bytes parameters, and amounts, are carried in the log data, not
+    // indexed. script/check_event_indexing.sh states the rule; the forge-tests CI job runs it
+    // after forge build and fails on an indexed struct, array, string or bytes parameter (#4285).
+
     /// @notice Emitted when a user task is registered.
+    /// @dev taskIndex and owner are topics 1 and 2. registrationFee, lockedDepositFee and
+    ///      taskMetadata are ABI-encoded in the log data; taskMetadata is the task record as
+    ///      stored at registration, including payloadTx, predicate and auxData.
     event TaskRegistered(
-        uint64 indexed taskIndex, 
-        address indexed owner, 
-        uint128 registrationFee, 
-        uint128 lockedDepositFee, 
-        TaskMetadata indexed taskMetadata
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint128 registrationFee,
+        uint128 lockedDepositFee,
+        TaskMetadata taskMetadata
     );
 
     /// @notice Emitted when a system task is registered.
+    /// @dev taskIndex and owner are topics 1 and 2. timestamp and taskMetadata are ABI-encoded
+    ///      in the log data; taskMetadata is the task record as stored at registration.
     event SystemTaskRegistered(
-        uint64 indexed taskIndex, 
-        address indexed owner, 
-        uint256 timestamp, 
+        uint64 indexed taskIndex,
+        address indexed owner,
+        uint256 timestamp,
         TaskMetadata taskMetadata
     );
-    
-    /// @notice Emitted when a task is cancelled.
+
+    /// @notice Emitted when tasks are cancelled, with one entry per task actually cancelled.
+    /// @dev owner is topic 1. cancelledTasks is ABI-encoded in the log data as
+    ///      (uint64 taskIndex, TaskType taskType, bytes32 txHash)[].
     event TasksCancelled(
-        LibCommon.TaskCancelled[] indexed cancelledTasks,
+        LibCommon.TaskCancelled[] cancelledTasks,
         address indexed owner
     );
 
-    /// @notice Emitted when a task is stopped.
+    /// @notice Emitted when tasks are stopped, with one entry per task actually stopped.
+    /// @dev owner is topic 1. stoppedTasks is ABI-encoded in the log data as
+    ///      (uint64 taskIndex, uint128 depositRefund, uint128 cycleFeeRefund, bytes32 txHash)[],
+    ///      the refunds being the amounts paid back for that task.
     event TasksStopped(
-        LibCommon.TaskStopped[] indexed stoppedTasks,
+        LibCommon.TaskStopped[] stoppedTasks,
         address indexed owner
     );
 
     /// @notice Emitted when an automation fee is refunded for an automation task at the end of the cycle for excessive
     /// duration paid at the beginning of the cycle due to cycle duration reduction by governance.
+    /// @dev taskIndex and owner are topics 1 and 2; amount is in the log data.
     event TaskFeeRefund(
         uint64 indexed taskIndex,
         address indexed owner,
-        uint128 indexed amount
+        uint128 amount
     );
 
     /// @notice Emitted when a deposit fee is refunded for an automation task.
-    event TaskDepositFeeRefund(uint64 indexed taskIndex, address indexed owner, uint128 indexed amount);
+    /// @dev taskIndex and owner are topics 1 and 2; amount is in the log data.
+    event TaskDepositFeeRefund(uint64 indexed taskIndex, address indexed owner, uint128 amount);
 
     /// @notice Emitted when a task cycle fee is being refunded but locked cycle fees is less than the requested refund.
+    /// @dev taskIndex is topic 1; lockedCycleFees and refund are in the log data.
     event ErrorUnlockTaskCycleFee(
         uint64 indexed taskIndex,
-        uint256 indexed lockedCycleFees,
-        uint128 indexed refund
+        uint256 lockedCycleFees,
+        uint128 refund
     );
 
     /// @notice Emitted during cycle transition when refunds to be paid is not possible due to insufficient contract balance.
@@ -66,10 +83,12 @@ interface IRegistryFacet {
     );
 
     /// @notice Emitted when deposit fee is being refunded but total locked deposits is less than the locked deposit for the task.
+    /// @dev taskIndex is topic 1; totalDepositedAutomationFees and lockedDeposit are in the
+    ///      log data.
     event ErrorUnlockTaskDepositFee(
-        uint64 indexed taskIndex, 
-        uint256 indexed totalDepositedAutomationFees, 
-        uint128 indexed lockedDeposit
+        uint64 indexed taskIndex,
+        uint256 totalDepositedAutomationFees,
+        uint128 lockedDeposit
     );
 
 
@@ -95,6 +114,8 @@ interface IRegistryFacet {
     error InvalidPayloadLength();
     error PayloadTooLarge();
     error PredicateTooLarge();
+    error PayloadNotWordAligned();
+    error PredicateNotWordAligned();
     error AuxDataTooLarge();
     error InvalidReturnLengthOfPredicate();
     error InvalidReturnTypeOfPredicate();

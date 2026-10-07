@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
+import {Vm} from "forge-std/Vm.sol";
 import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
@@ -776,7 +777,7 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData: auxData
         });
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, false, true, diamondAddr);
         emit IRegistryFacet.TaskRegistered(0, alice, 1 ether, 60.1 ether, taskMetadata);
 
         IRegistryFacet(diamondAddr).register(
@@ -790,6 +791,57 @@ contract RegistryFacetTest is BaseDiamondTest {
             auxData
         );
         vm.stopPrank();
+    }
+
+    /// @dev Test to ensure the 'TaskRegistered' log carries the task record in its data, so a
+    /// reader of the raw log decodes the task with the event's ABI (#4285). taskIndex and owner are
+    /// the only topics after topic0; the fees and the TaskMetadata are ABI-encoded in the data.
+    function testRegisterLogCarriesTaskMetadataInData() public {
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+        bytes memory predicate = createPredicate(diamondAddr);
+
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+
+        // Record only the registration's logs, so findLog sees exactly one TaskRegistered.
+        vm.recordLogs();
+        IRegistryFacet(diamondAddr).register(
+            payload,
+            predicate,
+            uint64(block.timestamp + 1250),
+            uint128(100_000),
+            uint128(4 gwei),
+            uint128(60.1 ether),
+            0,
+            auxData
+        );
+        vm.stopPrank();
+
+        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, IRegistryFacet.TaskRegistered.selector);
+
+        // Topics: the event signature, then the two value-typed indexed parameters.
+        assertEq(log.topics.length, 3, "TaskRegistered has topic0, taskIndex and owner");
+        assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
+        assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
+
+        (uint128 registrationFee, uint128 lockedDepositFee, TaskMetadata memory logged) =
+            abi.decode(log.data, (uint128, uint128, TaskMetadata));
+        assertEq(registrationFee, 1 ether, "registrationFee");
+        assertEq(lockedDepositFee, 60.1 ether, "lockedDepositFee");
+
+        // Named fields first, so a mismatch reports which field differs.
+        assertEq(logged.taskIndex, 0, "taskIndex");
+        assertEq(logged.owner, alice, "owner");
+        assertEq(logged.txHash, keccak256("txHash"), "txHash");
+        assertEq(logged.payloadTx, payload, "payloadTx");
+        assertEq(logged.predicate, predicate, "predicate");
+        assertEq(logged.auxData.length, 0, "auxData");
+
+        // The decoded record equals the stored one in every field.
+        TaskMetadata memory stored = IRegistryViewFacet(diamondAddr).getTaskDetails(0);
+        assertEq(keccak256(abi.encode(logged)), keccak256(abi.encode(stored)), "logged record equals stored record");
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to 'updateDataLengthCaps' :::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -834,6 +886,67 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(maxPredicateLength, 4096);
         assertEq(maxAuxDataLength, 100);
         assertEq(maxAuxDataEntries, 10);
+    }
+
+    /// @dev Test to ensure 'updateDataLengthCaps' rejects a payload cap that is not a multiple of 32:
+    /// an ABI-encoded payloadTx is always a whole number of 32-byte words.
+    function testUpdateDataLengthCapsRevertsIfPayloadCapNotWordAligned() public {
+        vm.expectRevert(LibCommon.PayloadLengthCapNotWordAligned.selector);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(2000, 2048, 0, 0);
+    }
+
+    /// @dev Test to ensure 'updateDataLengthCaps' rejects a predicate cap that is not a multiple of 32.
+    function testUpdateDataLengthCapsRevertsIfPredicateCapNotWordAligned() public {
+        vm.expectRevert(LibCommon.PredicateLengthCapNotWordAligned.selector);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2047, 0, 0);
+    }
+
+    /// @dev Test to ensure 'register' rejects a payloadTx whose length is not a whole number of
+    /// 32-byte words, although abi.decode would accept its trailing byte.
+    function testRegisterRevertsIfPayloadNotWordAligned() public {
+        bytes[] memory auxData;
+        bytes memory payload = abi.encodePacked(createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)), hex"01");
+
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        vm.expectRevert(IRegistryFacet.PayloadNotWordAligned.selector);
+        IRegistryFacet(diamondAddr).register(
+            payload, createPredicate(diamondAddr), uint64(block.timestamp + 2450), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev Test to ensure 'register' rejects a predicate whose length is not a whole number of
+    /// 32-byte words.
+    function testRegisterRevertsIfPredicateNotWordAligned() public {
+        bytes[] memory auxData;
+        bytes memory predicate = abi.encodePacked(createPredicate(diamondAddr), hex"01");
+
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        vm.expectRevert(IRegistryFacet.PredicateNotWordAligned.selector);
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)), predicate, uint64(block.timestamp + 2450), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev Test to ensure the auxData caps are not constrained to multiples of 32, and that the
+    /// default payload and predicate caps set at deployment are multiples of 32.
+    function testDataLengthCapsAlignmentAppliesToPayloadAndPredicateOnly() public {
+        (uint16 maxPayloadLength, uint16 maxPredicateLength, , ) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        assertEq(maxPayloadLength % 32, 0, "default payload cap is word-aligned");
+        assertEq(maxPredicateLength % 32, 0, "default predicate cap is word-aligned");
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2048, 101, 3);
+        (, , uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        assertEq(maxAuxDataLength, 101, "auxData length cap is not constrained");
+        assertEq(maxAuxDataEntries, 3);
     }
 
     /// @dev Test to ensure the default data length caps set at init match the documented defaults.
@@ -1268,7 +1381,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](1);
         cancelledTasks[0] = LibCommon.TaskCancelled(0, LibCommon.TaskType.UST, keccak256("txHash"));
         
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksCancelled(cancelledTasks, alice);
 
         vm.prank(alice);
@@ -1288,7 +1401,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskCancelled[] memory expectedCancelledTasks = new LibCommon.TaskCancelled[](1);
         expectedCancelledTasks[0] = LibCommon.TaskCancelled(1, LibCommon.TaskType.UST, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksCancelled(expectedCancelledTasks, alice);
 
         vm.prank(alice);
@@ -1303,7 +1416,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCancelTasksSetsStateToCancelledForActiveTask() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
         assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), 100_000);
@@ -1411,7 +1524,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskCancelled[] memory cancelledTasks = new LibCommon.TaskCancelled[](1);
         cancelledTasks[0] = LibCommon.TaskCancelled(0, LibCommon.TaskType.GST, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksCancelled(cancelledTasks, bob);
 
         vm.prank(bob);
@@ -1424,7 +1537,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCancelSystemTasksSetsStateToCancelledForActiveTask() public {
         registerGst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
@@ -1525,7 +1638,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasks() public {
         testRegister();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1556,7 +1669,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasksEmitsEvent() public {
         testRegister();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1571,7 +1684,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 60.1 ether, 0.0625 ether, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksStopped(stoppedTasks, alice);
 
         vm.prank(alice);
@@ -1591,7 +1704,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskStopped[] memory expectedStoppedTasks = new LibCommon.TaskStopped[](1);
         expectedStoppedTasks[0] = LibCommon.TaskStopped(1, 30.05 ether, 0, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksStopped(expectedStoppedTasks, alice);
 
         vm.prank(alice);
@@ -1622,7 +1735,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopExpiredTask() public {
         registerUst(diamondAddr, 2450);
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         
         processCycleTransition(diamondAddr, taskIndexes);
@@ -1663,7 +1776,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1697,7 +1810,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1741,7 +1854,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         );
         vm.stopPrank();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         // Cycle 1 -> 2: task's first transition, survives.
@@ -1832,7 +1945,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopSystemTasks() public {
         testRegisterSystemTask();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1855,7 +1968,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopSystemTasksEmitsEvent() public {
         testRegisterSystemTask();
 
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
         uint64[] memory taskUint64 = new uint64[](1);
@@ -1866,7 +1979,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         LibCommon.TaskStopped[] memory stoppedTasks = new LibCommon.TaskStopped[](1);
         stoppedTasks[0] = LibCommon.TaskStopped(0, 0, 0, keccak256("txHash"));
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, false, false, true, diamondAddr);
         emit IRegistryFacet.TasksStopped(stoppedTasks, bob);
 
         vm.prank(bob);
@@ -1883,7 +1996,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCalculateAutomationFeeMultiplierForCurrentCycle() public {
         // Scenario 1. Register a 100_000-gas task and process first cycle transition
         registerUst(diamondAddr, 1250);
-        uint256[] memory taskIndexes = new uint256[](1);
+        uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
         processCycleTransition(diamondAddr, taskIndexes);
 
@@ -1917,7 +2030,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).monitorCycleEnd();
         
         (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
-        uint256[] memory taskIds = new uint256[](2);
+        uint64[] memory taskIds = new uint64[](2);
         taskIds[0] = 0;
         taskIds[1] = 1;
         ICoreFacet(diamondAddr).processTasks(index + 1, taskIds);

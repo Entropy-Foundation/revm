@@ -109,7 +109,9 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
     /// @notice Returns all the active task indexes.
     /// @dev Node's off-chain automation registry manager relies on existence of it.
     /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
-    function getActiveTaskIds() external view returns (uint256[] memory) {
+    /// Returns uint64 task IDs; getTaskIdList, getSystemTaskIds and getTasksByAddress return
+    /// the uint256 values of their EnumerableSets.
+    function getActiveTaskIds() external view returns (uint64[] memory) {
         return LibAppStorage.registryState().activeTaskIds;
     }
 

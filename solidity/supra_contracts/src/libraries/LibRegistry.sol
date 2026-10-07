@@ -36,6 +36,11 @@ library LibRegistry {
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
         if (_payloadTx.length > LibAppStorage.appStorage().maxPayloadLength) revert IRegistryFacet.PayloadTooLarge();
+        // payloadTx is the ABI encoding of (uint128, address, bytes, AccessListEntry[]), a whole
+        // number of 32-byte words. abi.decode below tolerates trailing bytes, so the length is
+        // checked here; this also makes the word-aligned maxPayloadLength the largest admitted
+        // length (LibCommon.validateDataLengthCaps).
+        if (_payloadTx.length % 32 != 0) revert IRegistryFacet.PayloadNotWordAligned();
 
         ( , address payloadTarget, bytes memory payload, ) = abi.decode(_payloadTx, (uint128, address, bytes, LibCommon.AccessListEntry[]));
         payloadTarget.validateContractAddress();
@@ -89,6 +94,9 @@ library LibRegistry {
     /// @param gasAmount Gas amount to use for the static call
     function validatePredicate(bytes memory _predicate, uint128 gasAmount) private view {
         if (_predicate.length > LibAppStorage.appStorage().maxPredicateLength) revert IRegistryFacet.PredicateTooLarge();
+        // predicate is the ABI encoding of (address, bytes), a whole number of 32-byte words;
+        // abi.decode below tolerates trailing bytes, so the length is checked here.
+        if (_predicate.length % 32 != 0) revert IRegistryFacet.PredicateNotWordAligned();
 
         (address payloadTarget, bytes memory payload) = abi.decode(_predicate, (address, bytes));
         payloadTarget.validateContractAddress();

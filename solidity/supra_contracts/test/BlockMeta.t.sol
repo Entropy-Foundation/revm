@@ -296,7 +296,7 @@ contract BlockMetaTest is Test {
 
         uint256[] memory executionOrder = createExecutionOrder();
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(address(blockMeta));
         emit IBlockMeta.ExecutionOrderUpdated(executionOrder);
 
         vm.prank(admin);

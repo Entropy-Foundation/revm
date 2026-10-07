@@ -84,16 +84,6 @@ library LibCommon {
         bytes32 txHash;
     }
 
-    /// @notice Struct representing a task removed by the VM signer for a runtime error.
-    struct RemovedTask {
-        uint64 taskIndex;
-        TaskType taskType;
-        address owner;
-        bytes32 txHash;
-        TaskRemovalReason reason;
-        string details;
-    }
-
     /// @notice Struct representing an entry in access list.
     struct AccessListEntry {
         address addr;
@@ -113,10 +103,24 @@ library LibCommon {
     error InvalidSysTaskDuration();
     error InvalidSysRegistryMaxGasCap();
     error InvalidSysTaskCapacity();
+    error PayloadLengthCapNotWordAligned();
+    error PredicateLengthCapNotWordAligned();
     error TaskDoesNotExist();
     error TaskIndexNotFound();
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @notice Validates the payload and predicate length caps for task registration.
+    /// @dev Registration admits a payloadTx or predicate only if its length is a multiple of 32
+    ///      bytes, the length of an ABI encoding (LibRegistry.validateInputs, validatePredicate).
+    ///      A cap that is not a multiple of 32 is never reached exactly: the largest admitted input
+    ///      is the cap rounded down to a multiple of 32. Each cap is therefore required to be a
+    ///      multiple of 32, so the stored cap is the largest admitted length. The auxData cap is not
+    ///      constrained, since auxData entries are not required to be ABI-encoded.
+    function validateDataLengthCaps(uint16 _maxPayloadLength, uint16 _maxPredicateLength) internal pure {
+        if (_maxPayloadLength % 32 != 0) { revert PayloadLengthCapNotWordAligned(); }
+        if (_maxPredicateLength % 32 != 0) { revert PredicateLengthCapNotWordAligned(); }
+    }
 
     /// @notice Helper function to validate the registry configuration parameters.
     function validateConfigParameters(
@@ -170,7 +174,7 @@ library LibCommon {
         task = LibAppStorage.registryState().tasks[_taskIndex];
     }
 
-    /// @notice Removes `_value` from a plain uint256[] by linear scan + swap-and-pop.
+    /// @notice Removes `_value` from a plain uint64[] by linear scan + swap-and-pop.
     /// @dev activeTaskIds is a plain array (see LibAppStorage.RegistryState), not an
     ///      EnumerableSet, because nothing reads it via contains() and it's rebuilt
     ///      wholesale each cycle from TransitionState.survivedTaskIds (see
@@ -180,7 +184,7 @@ library LibCommon {
     ///      swap-and-pop is safe. Bounded by taskCapacity+sysTaskCapacity, the
     ///      governance-owned system-wide task cap (see ConfigFacet.updateConfigBuffer).
     /// @return found True if `_value` was present and removed.
-    function removeFromActiveTaskIds(uint256[] storage _arr, uint256 _value) private returns (bool found) {
+    function removeFromActiveTaskIds(uint64[] storage _arr, uint64 _value) private returns (bool found) {
         uint256 len = _arr.length;
         for (uint256 i = 0; i < len; i++) {
             if (_arr[i] == _value) {

@@ -10,7 +10,7 @@ interface IRegistryViewFacet {
     // =============================================================
     function ifTaskExists(uint64 _taskIndex) external view  returns (bool);
     function ifSysTaskExists(uint64 _taskIndex) external view returns (bool);
-    function getActiveTaskIds() external view returns (uint256[] memory);
+    function getActiveTaskIds() external view returns (uint64[] memory);
     function getCycleLockedFees() external view returns (uint256);
     function getGasCommittedForCurrentCycle() external view returns (uint128);
     function getGasCommittedForNextCycle() external view returns (uint128);
