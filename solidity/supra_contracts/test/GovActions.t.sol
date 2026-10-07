@@ -9,8 +9,16 @@ import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {MultisigBeacon} from "../src/MultisigBeacon.sol";
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {IERC173} from "../src/interfaces/IERC173.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {Counter} from "./Counter.sol";
-import {InitializeCycleMonitoring, EnableDisableAutomation, ExecuteTxn} from "../script/GovActions.s.sol";
+import {
+    InitializeCycleMonitoring,
+    AuthorizeAccount,
+    EnableDisableAutomation,
+    ExecuteTxn
+} from "../script/GovActions.s.sol";
 
 // The scripts read their inputs from environment variables in setUp(). vm.setEnv changes the
 // environment of the whole test process, and forge runs test functions in parallel, so tests
@@ -30,6 +38,19 @@ contract InitializeCycleMonitoringHarness is InitializeCycleMonitoring {
 
     function inputs() external view returns (address, address, address, bytes4, uint64, uint64) {
         return (multisigWalletAddr, blockMetadata, registry, selector, selectorGasLimit, timeout);
+    }
+}
+
+contract AuthorizeAccountHarness is AuthorizeAccount {
+    function configure(address payable _wallet, address _registry, address _account) external {
+        multisigWalletAddr = _wallet;
+        automationRegistry = _registry;
+        account = _account;
+        timeout = 1 hours;
+    }
+
+    function inputs() external view returns (address, address, address, uint64) {
+        return (multisigWalletAddr, automationRegistry, account, timeout);
     }
 }
 
@@ -54,6 +75,23 @@ contract ExecuteTxnHarness is ExecuteTxn {
     }
 }
 
+/// @dev Owned by the wallet like a real BlockMeta, but getExecutionIndex reverts with an error
+/// other than SelectorNotRegistered, as a contract that is not a BlockMeta, or a failing call,
+/// would.
+contract UnexpectedRevertBlockMeta {
+    error UnexpectedFailure(uint256 code);
+
+    address public owner;
+
+    constructor(address _owner) {
+        owner = _owner;
+    }
+
+    function getExecutionIndex(address, bytes4) external pure returns (uint256) {
+        revert UnexpectedFailure(42);
+    }
+}
+
 contract GovActionsTest is Test {
     uint64 constant GAS_CAP = 16_777_216;
     uint64 constant CALLABLE_CAP = (GAS_CAP * 63) / 64;
@@ -61,8 +99,9 @@ contract GovActionsTest is Test {
 
     MultiSignatureWallet wallet;
     BlockMeta blockMeta;
-    // Stands in for the automation registry: BlockMeta.register only requires the target to
-    // have code, and the scripts under test never call into it.
+    // Stands in for the automation registry. BlockMeta.register only requires the target to have
+    // code; the registry views the action scripts read (owner, isAutomationEnabled,
+    // isAuthorizedSubmitter) are mocked per test.
     address registry;
     address secondOwner = address(0xB0B);
 
@@ -86,6 +125,9 @@ contract GovActionsTest is Test {
         blockMeta = BlockMeta(address(blockMetaProxy));
 
         registry = address(new Counter());
+        // Owned by the wallet, as genesis deploys the registry Diamond. A test that needs another
+        // owner mocks it again; the latest mock for the same call wins.
+        vm.mockCall(registry, abi.encodeCall(IERC173.owner, ()), abi.encode(address(wallet)));
     }
 
     function cycleMonitoring(uint64 gasLimit) internal returns (InitializeCycleMonitoringHarness script) {
@@ -192,13 +234,77 @@ contract GovActionsTest is Test {
         script.run();
     }
 
-    /// @dev A BlockMetadata address that is not a BlockMeta reverts getExecutionIndex with
-    /// something other than SelectorNotRegistered. That revert is passed through, not read as
-    /// "not registered", so nothing is submitted.
+    /// @dev A getExecutionIndex revert other than SelectorNotRegistered is passed through
+    /// unchanged, not read as "not registered" (which would go on to submit) nor as "already
+    /// registered".
     function test_passesThroughARevertThatIsNotSelectorNotRegistered() public {
+        UnexpectedRevertBlockMeta stub = new UnexpectedRevertBlockMeta(address(wallet));
         InitializeCycleMonitoringHarness script = new InitializeCycleMonitoringHarness();
-        script.configure(payable(address(wallet)), registry, registry, SELECTOR_GAS_LIMIT);
-        vm.expectRevert();
+        script.configure(payable(address(wallet)), address(stub), registry, SELECTOR_GAS_LIMIT);
+
+        vm.expectRevert(abi.encodeWithSelector(UnexpectedRevertBlockMeta.UnexpectedFailure.selector, 42));
+        script.run();
+        assertEq(wallet.txCount(), 0);
+    }
+
+    /// @dev BlockMeta.register is owner-only: a BlockMeta the wallet does not own would refuse the
+    /// registration at execution.
+    function test_refusesABlockMetaTheWalletDoesNotOwn() public {
+        ERC1967Proxy otherProxy =
+            new ERC1967Proxy(address(new BlockMeta()), abi.encodeCall(BlockMeta.initialize, (address(this), GAS_CAP)));
+        InitializeCycleMonitoringHarness script = new InitializeCycleMonitoringHarness();
+        script.configure(payable(address(wallet)), address(otherProxy), registry, SELECTOR_GAS_LIMIT);
+
+        vm.expectRevert(bytes("BlockMetadata is not owned by FoundationWallet"));
+        script.run();
+        assertEq(wallet.txCount(), 0);
+    }
+
+    function test_refusesABlockMetaAddressWithoutCode() public {
+        InitializeCycleMonitoringHarness script = new InitializeCycleMonitoringHarness();
+        script.configure(payable(address(wallet)), address(0xDEAD), registry, SELECTOR_GAS_LIMIT);
+        vm.expectRevert(bytes("BlockMetadata has no code at the given address"));
+        script.run();
+    }
+
+    function authorizeAccount(address account) internal returns (AuthorizeAccountHarness script) {
+        script = new AuthorizeAccountHarness();
+        script.configure(payable(address(wallet)), registry, account);
+    }
+
+    function test_authorizationIsSubmittedForANewAccount() public {
+        address account = address(0xACC);
+        vm.mockCall(registry, abi.encodeCall(IRegistryFacet.isAuthorizedSubmitter, (account)), abi.encode(false));
+
+        authorizeAccount(account).run();
+
+        (address to,,,, bytes memory data) = wallet.getTransaction(0);
+        assertEq(to, registry);
+        assertEq(data, abi.encodeCall(IConfigFacet.grantAuthorization, (account)));
+    }
+
+    /// @dev grantAuthorization reverts with AddressAlreadyExists for an authorized account.
+    function test_refusesToAuthorizeAnAlreadyAuthorizedAccount() public {
+        address account = address(0xACC);
+        vm.mockCall(registry, abi.encodeCall(IRegistryFacet.isAuthorizedSubmitter, (account)), abi.encode(true));
+
+        AuthorizeAccountHarness script = authorizeAccount(account);
+        vm.expectRevert(bytes("AccountToAuthorize is already authorized"));
+        script.run();
+        assertEq(wallet.txCount(), 0);
+    }
+
+    function test_refusesToAuthorizeTheZeroAddress() public {
+        AuthorizeAccountHarness script = authorizeAccount(address(0));
+        vm.expectRevert(bytes("AccountToAuthorize must not be the zero address"));
+        script.run();
+    }
+
+    function test_refusesToAuthorizeOnARegistryTheWalletDoesNotOwn() public {
+        vm.mockCall(registry, abi.encodeCall(IERC173.owner, ()), abi.encode(address(this)));
+
+        AuthorizeAccountHarness script = authorizeAccount(address(0xACC));
+        vm.expectRevert(bytes("AutomationRegistry is not owned by FoundationWallet"));
         script.run();
         assertEq(wallet.txCount(), 0);
     }
@@ -226,6 +332,17 @@ contract GovActionsTest is Test {
         assertEq(data, abi.encodeCall(ICoreFacet.disableAutomation, ()));
     }
 
+    function test_refusesToEnableOnARegistryTheWalletDoesNotOwn() public {
+        vm.mockCall(registry, abi.encodeCall(IERC173.owner, ()), abi.encode(address(this)));
+        vm.mockCall(registry, abi.encodeCall(ICoreFacet.isAutomationEnabled, ()), abi.encode(false));
+        EnableDisableAutomationHarness script = new EnableDisableAutomationHarness();
+        script.configure(payable(address(wallet)), registry, true);
+
+        vm.expectRevert(bytes("AutomationRegistry is not owned by FoundationWallet"));
+        script.run();
+        assertEq(wallet.txCount(), 0);
+    }
+
     function test_refusesToRequestTheStateAutomationIsAlreadyIn() public {
         vm.mockCall(registry, abi.encodeCall(ICoreFacet.isAutomationEnabled, ()), abi.encode(true));
         EnableDisableAutomationHarness script = new EnableDisableAutomationHarness();
@@ -246,6 +363,7 @@ contract GovActionsTest is Test {
         vm.setEnv("SelectorGasLimit", "9000000");
         vm.setEnv("Timeout", "360");
         vm.setEnv("EnableAutomation", "true");
+        vm.setEnv("AccountToAuthorize", vm.toString(address(0xACC)));
 
         InitializeCycleMonitoringHarness monitoring = new InitializeCycleMonitoringHarness();
         monitoring.setUp();
@@ -264,5 +382,13 @@ contract GovActionsTest is Test {
         assertEq(reg2, registry);
         assertEq(timeout2, 360);
         assertTrue(enable);
+
+        AuthorizeAccountHarness authorization = new AuthorizeAccountHarness();
+        authorization.setUp();
+        (address w3, address reg3, address account, uint64 timeout3) = authorization.inputs();
+        assertEq(w3, address(wallet));
+        assertEq(reg3, registry);
+        assertEq(account, address(0xACC));
+        assertEq(timeout3, 360);
     }
 }

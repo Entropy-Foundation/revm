@@ -6,15 +6,24 @@ import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {IERC173} from "../src/interfaces/IERC173.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 
 // Governance actions on the genesis-deployed EVM system contracts, each submitted through the
 // foundation MultiSignatureWallet that owns them. submit_governance_action.sh drives one action
-// end to end: owner 0 submits it with the action's script below, the remaining owners confirm it
-// with VoteForTxn, and owner 0 executes it with ExecuteTxn.
+// end to end: owner 0 submits it with the action's script below, other owners confirm it with
+// VoteForTxn until the wallet's threshold is met, and owner 0 executes it with ExecuteTxn.
 //
 // Every script reads its addresses from environment variables named after the keys of the
 // on-chain `0x1::evm_config::EvmContractsDetails` resource (FoundationWallet, BlockMetadata,
 // AutomationRegistry), so the values can be exported straight from that resource.
+//
+// Each action script checks, before submitting, the conditions under which the call it submits
+// would revert when the owners execute it: that the wallet owns the target contract, and the
+// target function's own checks. The multisig makes the call only at execution, so an action that
+// fails there has already cost the submitter and every confirming owner a transaction. The checks
+// read the chain's committed state, so an identical action still pending in the wallet is not
+// seen; submit_governance_action.sh resumes a pending action instead of submitting it again.
 
 /// @dev Shared by the governance action scripts below: each one submits a single action to the
 /// foundation multisig wallet. Factored out so the three submitters can't drift apart on how
@@ -23,6 +32,18 @@ import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 abstract contract GovSubmitAction is Script {
     address payable multisigWalletAddr;
     uint64 timeout;
+
+    /// @dev Reverts unless the foundation wallet owns `_target`. Both target kinds expose an
+    /// ERC-173 owner(): BlockMeta through OwnableUpgradeable, the automation registry Diamond
+    /// through its OwnershipFacet. Their owner-only functions revert for any other caller, so an
+    /// address of a contract the wallet does not own (another network's, or a stale value) would
+    /// otherwise pass every other check and fail only at execution.
+    function requireOwnedByWallet(address _target, string memory _name) internal view {
+        require(_target.code.length > 0, string.concat(_name, " has no code at the given address"));
+        address owner = IERC173(_target).owner();
+        console.log(string.concat(_name, " owner: "), owner);
+        require(owner == multisigWalletAddr, string.concat(_name, " is not owned by FoundationWallet"));
+    }
 
     /// @dev Submits a governance action and prints the digest that VoteForTxn and ExecuteTxn
     /// must be given to confirm/execute it. The transaction index this submission is assigned
@@ -70,9 +91,6 @@ contract InitializeCycleMonitoring is GovSubmitAction {
     }
 
     function run() public {
-        // Every condition BlockMeta.register enforces is checked here first. The multisig only
-        // runs register when the owners execute the action, so a registration that BlockMeta
-        // would refuse otherwise fails after a quorum of owners has already paid to confirm it.
         checkRegistrable();
 
         vm.startBroadcast();
@@ -84,8 +102,11 @@ contract InitializeCycleMonitoring is GovSubmitAction {
     }
 
     /// @dev Reverts, with the reason BlockMeta.register would give, when the registration this
-    /// script is about to submit cannot succeed against the chain's current state.
+    /// script is about to submit cannot succeed against the chain's current state: register is
+    /// owner-only, and it refuses a zero gas limit, a target without code, a pair that is already
+    /// registered, and a total allocation over the callable share of the block prologue gas cap.
     function checkRegistrable() internal view {
+        requireOwnedByWallet(blockMetadata, "BlockMetadata");
         require(selectorGasLimit > 0, "SelectorGasLimit must be greater than zero");
         require(registry.code.length > 0, "AutomationRegistry has no code at the given address");
 
@@ -117,6 +138,7 @@ contract InitializeCycleMonitoring is GovSubmitAction {
         console.log("Block prologue gas cap: ", gasCap);
         console.log("Gas already allocated to other entries: ", allocated);
         console.log("Selector gas limit: ", selectorGasLimit);
+        console.log("Largest selector gas limit that fits: ", callableCap > allocated ? callableCap - allocated : 0);
         require(
             uint256(allocated) + selectorGasLimit <= callableCap,
             "SelectorGasLimit exceeds the callable share of the block prologue gas cap"
@@ -137,6 +159,15 @@ contract AuthorizeAccount is GovSubmitAction {
     }
 
     function run() public {
+        // grantAuthorization is owner-only and reverts with AddressAlreadyExists for an account
+        // that is already authorized.
+        requireOwnedByWallet(automationRegistry, "AutomationRegistry");
+        require(account != address(0), "AccountToAuthorize must not be the zero address");
+        require(
+            !IRegistryFacet(automationRegistry).isAuthorizedSubmitter(account),
+            "AccountToAuthorize is already authorized"
+        );
+
         vm.startBroadcast();
 
         bytes memory data = abi.encodeCall(IConfigFacet.grantAuthorization, (account));
@@ -159,8 +190,9 @@ contract EnableDisableAutomation is GovSubmitAction {
     }
 
     function run() public {
-        // enableAutomation and disableAutomation each revert when the feature is already in the
-        // requested state, which would only surface when the owners execute the action.
+        // enableAutomation and disableAutomation are owner-only, and each reverts when the
+        // feature is already in the requested state.
+        requireOwnedByWallet(automationRegistry, "AutomationRegistry");
         bool enabled = ICoreFacet(automationRegistry).isAutomationEnabled();
         console.log("Automation enabled: ", enabled);
         require(enabled != enable, "Automation is already in the requested state");

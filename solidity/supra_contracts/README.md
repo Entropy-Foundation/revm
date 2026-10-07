@@ -52,19 +52,22 @@ registration is a governance action of the foundation wallet, as are the other o
 below.
 
 `submit_governance_action.sh <action>` runs one action through the wallet: the first owner submits
-it, the next owners confirm it until the wallet's `numConfirmationsRequired` is met, and the first
-owner executes it. Each step is a `forge script` from `script/GovActions.s.sol`, signed with an
-owner's keystore.
+it, the listed owners that have not confirmed it yet confirm it until the wallet's
+`numConfirmationsRequired` is met, and the first owner executes it. Each step is a `forge script`
+from `script/GovActions.s.sol`, signed with an owner's keystore. Before signing anything, the
+driver prints the chain id and checks that every listed keystore belongs to a wallet owner.
 
-| Action | Effect |
-|---|---|
-| `InitializeCycleMonitoring` | `BlockMeta.register(AutomationRegistry, monitorCycleEnd.selector, SelectorGasLimit)` |
-| `EnableDisableAutomation` | `CoreFacet.enableAutomation()` or `disableAutomation()`, per `EnableAutomation` |
-| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks |
+| Action | Effect | Refused before submitting when |
+|---|---|---|
+| `InitializeCycleMonitoring` | `BlockMeta.register(AutomationRegistry, monitorCycleEnd.selector, SelectorGasLimit)` | `BlockMetadata` is not owned by the wallet; `AutomationRegistry` has no code; `SelectorGasLimit` is zero; `monitorCycleEnd` is already registered; the allocated total would exceed 63/64 of the block prologue gas cap |
+| `EnableDisableAutomation` | `CoreFacet.enableAutomation()` or `disableAutomation()`, per `EnableAutomation` | `AutomationRegistry` is not owned by the wallet; automation is already in the requested state |
+| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks | `AutomationRegistry` is not owned by the wallet; `AccountToAuthorize` is the zero address or already authorized |
 
-Each action script checks, before submitting, that the action can succeed against the chain's
-current state, and stops with the reason when it cannot. A refused submission costs nothing; an
-action that fails only at execution has already cost every confirming owner a transaction.
+These are the conditions under which the submitted call would revert when the owners execute it.
+A refused submission costs nothing and prints the values it compared; an action that fails only at
+execution has already cost the submitter and every confirming owner a transaction. The checks read
+committed state, so they do not see an identical action that is still pending in the wallet: resume
+that one (below) rather than submitting it again.
 
 ### Prerequisites
 
@@ -80,7 +83,10 @@ funding, is in smr-moonshot `docs/operations/evm-automation-bring-up-runbook.md`
 
 ### Environment
 
-Exported, or written to a `.env` file in this directory (git ignores it):
+Exported, or written to a `.env` file in this directory (git ignores it). A variable already set in
+the environment takes precedence over the same name in `.env`, and the driver says when it does, so
+a leftover `.env` cannot redirect an explicitly configured run. `.env` lines are `NAME=value`, read
+literally, without shell expansion.
 
 | Variable | Used by | Value |
 |---|---|---|
@@ -131,6 +137,23 @@ export Timeout=1800 SelectorGasLimit=9000000
 
 ./submit_governance_action.sh InitializeCycleMonitoring
 ```
+
+### Resuming a pending action
+
+A run that stops after the submission, for example because a confirming owner has no balance or an
+RPC call failed, leaves the action pending in the wallet until its `Timeout` passes. Running the
+same command again would submit a second, identical action, which reverts at execution once the
+first has run. Resume the pending one instead, with the index and content hash the first run
+printed (`Confirming transaction <index> (content hash <hash>)`):
+
+```shell
+GOV_TXN_INDEX=<index> GOV_TXN_CONTENT_HASH=<hash> ./submit_governance_action.sh InitializeCycleMonitoring
+```
+
+The driver checks that the wallet holds a live action with that content hash at that index, skips
+the owners that have already confirmed it, collects the remaining confirmations from the listed
+owners and executes it. `EVM_FOUNDATION_OWNERS` may then list fewer than
+`numConfirmationsRequired` keystores, as long as they cover the confirmations still missing.
 
 ### Verifying
 
