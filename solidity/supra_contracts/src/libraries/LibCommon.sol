@@ -84,16 +84,6 @@ library LibCommon {
         bytes32 txHash;
     }
 
-    /// @notice Struct representing a task removed by the VM signer for a runtime error.
-    struct RemovedTask {
-        uint64 taskIndex;
-        TaskType taskType;
-        address owner;
-        bytes32 txHash;
-        TaskRemovalReason reason;
-        string details;
-    }
-
     /// @notice Struct representing an entry in access list.
     struct AccessListEntry {
         address addr;

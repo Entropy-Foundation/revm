@@ -659,7 +659,7 @@ mod tests {
             ),
             (
                 "CoreFacet",
-                b256!("6616d8c7788e3e403f5b758206bcccfe011a19ae174a34659b3d455aa9ef56d5"),
+                b256!("e8ad89c37a286e8b3f3981dd3f5f58d60888cbf95afeb8a06a4e3dd70f0cc91b"),
             ),
             (
                 "Diamond",

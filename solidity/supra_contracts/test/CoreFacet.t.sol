@@ -1069,10 +1069,10 @@ contract CoreFacetTest is BaseDiamondTest {
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
-
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.TaskRemovedBySystem(0, alice, removedTask);
+        emit ICoreFacet.TaskRemovedBySystem(
+            0, alice, LibCommon.TaskType.UST, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed"
+        );
 
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
@@ -1080,8 +1080,8 @@ contract CoreFacetTest is BaseDiamondTest {
     }
 
     /// @dev Test to ensure the 'TaskRemovedBySystem' log carries taskIndex and owner as topics 1
-    /// and 2, so a reader filters system removals by task or owner, and the RemovedTask in its
-    /// data (#4285).
+    /// and 2, so a reader filters system removals by task or owner, and the remaining fields in its
+    /// data without repeating the topics (#4285).
     function testRemoveRegisteredTaskLogIsFilterableByTaskAndOwner() public {
         registerUst(diamondAddr, 2450);
 
@@ -1099,11 +1099,12 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
         assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
 
-        LibCommon.RemovedTask memory removed = abi.decode(log.data, (LibCommon.RemovedTask));
-        assertEq(removed.taskIndex, 0, "taskIndex");
-        assertEq(removed.owner, alice, "owner");
-        assertEq(uint8(removed.reason), uint8(LibCommon.TaskRemovalReason.ERROR), "reason");
-        assertEq(removed.details, "Predicate failed", "details");
+        (LibCommon.TaskType taskType, bytes32 txHash, LibCommon.TaskRemovalReason reason, string memory details) =
+            abi.decode(log.data, (LibCommon.TaskType, bytes32, LibCommon.TaskRemovalReason, string));
+        assertEq(uint8(taskType), uint8(LibCommon.TaskType.UST), "taskType");
+        assertEq(txHash, keccak256("txHash"), "txHash");
+        assertEq(uint8(reason), uint8(LibCommon.TaskRemovalReason.ERROR), "reason");
+        assertEq(details, "Predicate failed", "details");
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.

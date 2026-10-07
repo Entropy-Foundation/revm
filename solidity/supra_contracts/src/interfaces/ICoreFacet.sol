@@ -79,10 +79,16 @@ interface ICoreFacet {
 
     /// @notice Emitted when the VM signer removes a task for a runtime error (TaskRemovalReason.ERROR).
     /// @dev taskIndex and owner are topics 1 and 2, so a reader filters system removals by task
-    ///      or by owner. removedTask is ABI-encoded in the log data as (uint64 taskIndex,
-    ///      TaskType taskType, address owner, bytes32 txHash, TaskRemovalReason reason,
-    ///      string details), details being the VM signer's description of the reason.
-    event TaskRemovedBySystem(uint64 indexed taskIndex, address indexed owner, LibCommon.RemovedTask removedTask);
+    ///      or by owner; each appears only there. taskType, txHash, reason and details are
+    ///      ABI-encoded in the log data, details being the VM signer's description of the reason.
+    event TaskRemovedBySystem(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        LibCommon.TaskType taskType,
+        bytes32 txHash,
+        LibCommon.TaskRemovalReason reason,
+        string details
+    );
 
     /// @notice Emitted when a task is removed because the EVM gas config of the executing block's
     /// epoch no longer admits its transaction: its maxGasAmount is above txGasLimitCap, or it is a

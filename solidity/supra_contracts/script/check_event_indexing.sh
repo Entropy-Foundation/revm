@@ -33,6 +33,13 @@ cd "$SCRIPT_DIR"
 
 OUT_DIR="${1:-out}"
 
+# jq reads the artifacts. Without it every check below would fail for a reason unrelated to the
+# contracts, so its absence is reported as such.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "FAIL: jq is required to read the compiled ABIs and was not found on PATH."
+    exit 1
+fi
+
 if [[ ! -d "$OUT_DIR" ]]; then
     echo "FAIL: artifact directory '$OUT_DIR' does not exist; run 'forge build' first."
     exit 1
@@ -40,13 +47,20 @@ fi
 
 # Every artifact whose compilation target is a source under src/. compilationTarget maps the
 # source path to the contract name; an artifact without metadata is not a compiled contract.
+# out/build-info holds the compiler's raw input and output, not per-contract artifacts, so it is
+# not read. An artifact jq cannot parse fails the check, naming the file: skipping it would leave
+# its events unchecked while the check still passed.
 src_artifacts=()
 while IFS= read -r -d '' artifact; do
-    if jq -e '(.metadata.settings.compilationTarget // {}) | keys | any(startswith("src/"))' \
-        "$artifact" >/dev/null 2>&1; then
+    if ! is_src="$(jq -r '(.metadata.settings.compilationTarget // {}) | keys | any(startswith("src/"))' \
+        "$artifact" 2>&1)"; then
+        echo "FAIL: cannot parse artifact '$artifact': $is_src"
+        exit 1
+    fi
+    if [[ "$is_src" == "true" ]]; then
         src_artifacts+=("$artifact")
     fi
-done < <(find "$OUT_DIR" -name '*.json' -print0)
+done < <(find "$OUT_DIR" -path "$OUT_DIR/build-info" -prune -o -name '*.json' -print0)
 
 # An empty set means the build did not produce what this script expects (a different out/
 # layout, or no build at all); passing would hide that, so it fails.
@@ -60,9 +74,12 @@ fi
 #
 # A type is hashed when indexed if it is a tuple (struct), any array (it contains '['), or
 # exactly "string" or "bytes"; "bytes32" and the other bytesN types are value types.
-violations="$(
-    for artifact in "${src_artifacts[@]}"; do
-        jq -r '
+#
+# Each artifact is read in the loop body rather than inside one command substitution, so a jq
+# failure stops the script with a message instead of being lost in the substitution.
+all_violations=""
+for artifact in "${src_artifacts[@]}"; do
+    if ! found="$(jq -r '
             ((.metadata.settings.compilationTarget | to_entries[0]) | "\(.key):\(.value)") as $where
             | .abi[]
             | select(.type == "event")
@@ -72,9 +89,15 @@ violations="$(
             | select((.type | startswith("tuple")) or (.type | contains("["))
                      or .type == "string" or .type == "bytes")
             | "\($where) \($event)(\(.name) \(.internalType // .type))"
-        ' "$artifact"
-    done | sort -u
-)"
+        ' "$artifact" 2>&1)"; then
+        echo "FAIL: cannot read the ABI of '$artifact': $found"
+        exit 1
+    fi
+    if [[ -n "$found" ]]; then
+        all_violations+="$found"$'\n'
+    fi
+done
+violations="$(printf '%s' "$all_violations" | sort -u | sed '/^$/d')"
 
 if [[ -n "$violations" ]]; then
     echo "FAIL: indexed event parameters that are logged only as a keccak256 hash."

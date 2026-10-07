@@ -696,11 +696,7 @@ library LibCore {
         if (isGasConfigUpdate) {
             emitTaskRemovedByGasConfigUpdate(task, txGasLimitCap, minGasPrice, cycleFeeRefund, depositRefund);
         } else {
-            emit ICoreFacet.TaskRemovedBySystem(
-                _taskId,
-                task.owner,
-                LibCommon.RemovedTask(_taskId, task.taskType, task.owner, task.txHash, _reason, _details)
-            );
+            emit ICoreFacet.TaskRemovedBySystem(_taskId, task.owner, task.taskType, task.txHash, _reason, _details);
         }
     }
 
