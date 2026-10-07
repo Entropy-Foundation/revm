@@ -1,48 +1,171 @@
-## Supra EVM Automation Registry
+## Supra EVM system contracts
 
-**This repository includes following smart contracts:**
-- MultiSignatureWallet and MultisigBeacon
-- WrappedSupra
-- BlockMeta
-- Automation Registry smart contracts
-    - AutomationCore: manages configuration, refunds, fee accounting and other helper functions 
-    - AutomationRegistry: user facing contract to register/cancel/stop a task
-    - AutomationController: manages cycle transition and processing of tasks
+The contracts the Supra EVM deploys at genesis (`crates/supra-extension/src/contracts/generator.rs`):
 
-Foundry consists of:
+- `MultiSignatureWallet`, behind a `BeaconProxy` whose beacon is `MultisigBeacon`. Genesis deploys
+  one instance, the foundation wallet (`FoundationWallet`), which owns the other system contracts.
+- `WrappedSupra`.
+- `BlockMeta`, behind an `ERC1967Proxy`. Runs its registered `(target, selector, gasLimit)` entries
+  once per block from the `BlockMetadata` system transaction (`blockPrologue`).
+- The automation registry, an EIP-2535 `Diamond` (`AutomationRegistry`) with `DiamondCutFacet`,
+  `DiamondLoupeFacet`, `OwnershipFacet`, `ConfigFacet`, `RegistryFacet`, `RegistryViewFacet` and
+  `CoreFacet`.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
+The tooling is [Foundry](https://book.getfoundry.sh/).
 
 ## Usage
 
 ### Install dependencies
 
-```
-forge install OpenZeppelin/openzeppelin-contracts
-forge install OpenZeppelin/openzeppelin-contracts-upgradeable
+The dependencies are git submodules under `lib/`:
+
+```shell
+git submodule update --init --recursive
 ```
 
 ### Build
 
 ```shell
-$ forge build
+forge build
 ```
 
 ### Test
 
 ```shell
-$ forge test
+forge test
 ```
 
-### Deploying Automation Registry smart contracts
+### Deploying the automation registry on a chain without it
+
+`deploy_automation_registry.sh` deploys `WrappedSupra` and the automation registry `Diamond` with
+`script/DeployWrappedSupra.s.sol` and `script/DeployDiamond.s.sol`, reading `RPC_URL`,
+`PRIVATE_KEY` and the registry's initial parameters from `.env`. `script/DeployBlockMeta.s.sol`
+and `script/DeployMultisig.s.sol` deploy the other two system contracts the same way. A Supra
+chain does not need any of these: genesis deploys all of them.
+
+## Post-genesis governance actions
+
+Genesis deploys `BlockMeta` and the automation registry with the foundation wallet as their owner,
+and leaves `BlockMeta` with no registered entries. Until the registry's `monitorCycleEnd()` is
+registered there, the automation cycle never ends and every registered task stays pending. The
+registration is a governance action of the foundation wallet, as are the other owner-only calls
+below.
+
+`submit_governance_action.sh <action>` runs one action through the wallet: the first owner submits
+it, the listed owners that have not confirmed it yet confirm it until the wallet's
+`numConfirmationsRequired` is met, and the first owner executes it. Each step is a `forge script`
+from `script/GovActions.s.sol`, signed with an owner's keystore. Before signing anything, the
+driver prints the chain id and checks that every listed keystore belongs to a wallet owner.
+
+| Action | Effect | Refused before submitting when |
+|---|---|---|
+| `InitializeCycleMonitoring` | `BlockMeta.register(AutomationRegistry, monitorCycleEnd.selector, SelectorGasLimit)` | `BlockMetadata` is not owned by the wallet; `AutomationRegistry` has no code; `SelectorGasLimit` is zero; `monitorCycleEnd` is already registered; the allocated total would exceed 63/64 of the block prologue gas cap |
+| `EnableDisableAutomation` | `CoreFacet.enableAutomation()` or `disableAutomation()`, per `EnableAutomation` | `AutomationRegistry` is not owned by the wallet; automation is already in the requested state |
+| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks | `AutomationRegistry` is not owned by the wallet; `AccountToAuthorize` is the zero address or already authorized |
+
+These are the conditions under which the submitted call would revert when the owners execute it.
+A refused submission costs nothing and prints the values it compared; an action that fails only at
+execution has already cost the submitter and every confirming owner a transaction. The checks read
+committed state, so they do not see an identical action that is still pending in the wallet: resume
+that one (below) rather than submitting it again.
+
+### Prerequisites
+
+- `forge` and `cast`, and `forge build` run once in this directory.
+- Keystores (Web3 Secret Storage JSON, as written by `cast wallet new` or `cast wallet import`) of
+  at least `numConfirmationsRequired` owners of the foundation wallet, all with one password.
+- An EVM balance on each signing owner. Genesis credits no EVM balance, so on a new chain the
+  owners have to be funded first, by crossing SUPRA from the Move side
+  (`supra move account transfer-to-evm`). 100 SUPRA per owner covers many actions.
+
+The full sequence for bringing a newly genesised Supra chain to running automation, including the
+funding, is in smr-moonshot `docs/operations/evm-automation-bring-up-runbook.md`.
+
+### Environment
+
+Exported, or written to a `.env` file in this directory (git ignores it). A variable already set in
+the environment takes precedence over the same name in `.env`, and the driver says when it does, so
+a leftover `.env` cannot redirect an explicitly configured run. `.env` lines are `NAME=value`, read
+literally, without shell expansion.
+
+| Variable | Used by | Value |
+|---|---|---|
+| `EVM_RPC_URL` | all | EVM JSON-RPC endpoint, e.g. `https://rpc-devnet.supra.com/rpc/v1/eth` |
+| `EVM_FOUNDATION_OWNERS` | all | Signing owners' keystore paths, space separated; the first submits and executes |
+| `CLI_PROFILE_PASSWORD` | all | The keystores' password; handed to Foundry as a private temporary file, never on the command line |
+| `FoundationWallet` | all | Foundation wallet address |
+| `Timeout` | all | Seconds the submitted action stays executable, at most the wallet's maximum (30 days unless changed) |
+| `BlockMetadata` | `InitializeCycleMonitoring` | `BlockMeta` proxy address |
+| `AutomationRegistry` | all three actions | Automation registry `Diamond` address |
+| `SelectorGasLimit` | `InitializeCycleMonitoring` | Gas `blockPrologue` gives `monitorCycleEnd` in every block |
+| `EnableAutomation` | `EnableDisableAutomation` | `true` or `false` |
+| `AccountToAuthorize` | `AuthorizeAccount` | Account to authorize |
+
+`FoundationWallet`, `BlockMetadata` and `AutomationRegistry` are the keys of the on-chain
+`0x1::evm_config::EvmContractsDetails` resource, which holds the addresses genesis deployed:
 
 ```shell
-$ forge script script/DeployAutomationRegistry.s.sol:DeployAutomationRegistry --rpc-url <your_rpc_url> --private-key <your_private_key>
+curl -s <rest-url>/rpc/v3/accounts/0x1/resources/0x1%3A%3Aevm_config%3A%3AEvmContractsDetails
+```
+
+The resource drops leading zero bytes from an address, so a value shorter than 40 hex digits is
+left-padded with zeros.
+
+### Sizing `SelectorGasLimit`
+
+- **Upper bound.** The gas limits of all registered entries together must stay within 63/64 of
+  `BlockMeta.blockPrologueGasCap()`, the share the EVM's forwarding rule leaves callable.
+  `BlockMeta.register` refuses a registration over it, and `InitializeCycleMonitoring` refuses to
+  submit one. With the default cap of 16,777,216 and no other entries, the bound is 16,515,072.
+- **Lower bound.** The worst-case cost of `monitorCycleEnd` at the registry's current
+  `taskCapacity + sysTaskCapacity`, from `crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md`
+  (about 1.5M gas at the 200-task cap). An entry that runs out of gas emits `CallFailed` and
+  nothing else: the cycle stops advancing without any error.
+- The smr-moonshot localnet end-to-end tests register 9,000,000.
+
+Nothing checks the registered limit when the task capacities change later. Re-check it whenever
+either capacity is raised.
+
+### Running an action
+
+```shell
+export EVM_RPC_URL=https://rpc-devnet.supra.com/rpc/v1/eth
+export EVM_FOUNDATION_OWNERS="owner0.json owner1.json owner2.json"
+export CLI_PROFILE_PASSWORD=...
+export FoundationWallet=0x... BlockMetadata=0x... AutomationRegistry=0x...
+export Timeout=1800 SelectorGasLimit=9000000
+
+./submit_governance_action.sh InitializeCycleMonitoring
+```
+
+### Resuming a pending action
+
+A run that stops after the submission, for example because a confirming owner has no balance or an
+RPC call failed, leaves the action pending in the wallet until its `Timeout` passes. Running the
+same command again would submit a second, identical action, which reverts at execution once the
+first has run. Resume the pending one instead, with the index and content hash the first run
+printed (`Confirming transaction <index> (content hash <hash>)`):
+
+```shell
+GOV_TXN_INDEX=<index> GOV_TXN_CONTENT_HASH=<hash> ./submit_governance_action.sh InitializeCycleMonitoring
+```
+
+The driver checks that the wallet holds a live action with that content hash at that index, skips
+the owners that have already confirmed it, collects the remaining confirmations from the listed
+owners and executes it. `EVM_FOUNDATION_OWNERS` may then list fewer than
+`numConfirmationsRequired` keystores, as long as they cover the confirmations still missing.
+
+### Verifying
+
+```shell
+# The registered entries, in execution order.
+cast call ${BlockMetadata} "getExecutions()(address[],bytes4[])" --rpc-url ${EVM_RPC_URL}
+
+# The gas registered for monitorCycleEnd. Reverts with SelectorNotRegistered when it is not registered.
+cast call ${BlockMetadata} "getExecutionGasLimit(address,bytes4)(uint64)" \
+  ${AutomationRegistry} "$(cast sig 'monitorCycleEnd()')" --rpc-url ${EVM_RPC_URL}
+
+# The automation feature's state, and the cycle (index, start time, duration, state).
+cast call ${AutomationRegistry} "isAutomationEnabled()(bool)" --rpc-url ${EVM_RPC_URL}
+cast call ${AutomationRegistry} "getCycleInfo()(uint64,uint64,uint64,uint8)" --rpc-url ${EVM_RPC_URL}
 ```

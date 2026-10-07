@@ -98,10 +98,10 @@ function blockPrologue() external {
 
 `monitorCycleEnd` was added to that list via a governance/multisig action
 (`InitializeCycleMonitoring` in `solidity/supra_contracts/script/GovActions.s.sol`,
-submitted through `run_steps.sh`), which calls
+submitted through `solidity/supra_contracts/submit_governance_action.sh`), which calls
 `BlockMeta.register(registry, monitorCycleEnd.selector, selectorGasLimit)`.
 **`selectorGasLimit` is an operator-chosen value, not hardcoded anywhere in this
-repo** — whoever submits that governance action sets it via the `SELECTOR_GAS_LIMIT`
+repo** — whoever submits that governance action sets it via the `SelectorGasLimit`
 env var. This is the actual `monitorCycleEnd` gas budget the guidance in this
 document is sizing against.
 

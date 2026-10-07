@@ -2,10 +2,28 @@
 pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
-import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
-import {BlockMeta} from "../src/BlockMeta.sol";
+import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
+import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {IERC173} from "../src/interfaces/IERC173.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+
+// Governance actions on the genesis-deployed EVM system contracts, each submitted through the
+// foundation MultiSignatureWallet that owns them. submit_governance_action.sh drives one action
+// end to end: owner 0 submits it with the action's script below, other owners confirm it with
+// VoteForTxn until the wallet's threshold is met, and owner 0 executes it with ExecuteTxn.
+//
+// Every script reads its addresses from environment variables named after the keys of the
+// on-chain `0x1::evm_config::EvmContractsDetails` resource (FoundationWallet, BlockMetadata,
+// AutomationRegistry), so the values can be exported straight from that resource.
+//
+// Each action script checks, before submitting, the conditions under which the call it submits
+// would revert when the owners execute it: that the wallet owns the target contract, and the
+// target function's own checks. The multisig makes the call only at execution, so an action that
+// fails there has already cost the submitter and every confirming owner a transaction. The checks
+// read the chain's committed state, so an identical action still pending in the wallet is not
+// seen; submit_governance_action.sh resumes a pending action instead of submitting it again.
 
 /// @dev Shared by the governance action scripts below: each one submits a single action to the
 /// foundation multisig wallet. Factored out so the three submitters can't drift apart on how
@@ -15,13 +33,25 @@ abstract contract GovSubmitAction is Script {
     address payable multisigWalletAddr;
     uint64 timeout;
 
+    /// @dev Reverts unless the foundation wallet owns `_target`. Both target kinds expose an
+    /// ERC-173 owner(): BlockMeta through OwnableUpgradeable, the automation registry Diamond
+    /// through its OwnershipFacet. Their owner-only functions revert for any other caller, so an
+    /// address of a contract the wallet does not own (another network's, or a stale value) would
+    /// otherwise pass every other check and fail only at execution.
+    function requireOwnedByWallet(address _target, string memory _name) internal view {
+        require(_target.code.length > 0, string.concat(_name, " has no code at the given address"));
+        address owner = IERC173(_target).owner();
+        console.log(string.concat(_name, " owner: "), owner);
+        require(owner == multisigWalletAddr, string.concat(_name, " is not owned by FoundationWallet"));
+    }
+
     /// @dev Submits a governance action and prints the digest that VoteForTxn and ExecuteTxn
     /// must be given to confirm/execute it. The transaction index this submission is assigned
     /// becomes known only from the SubmitTransaction event in this run's own broadcast receipt,
     /// once the submission has landed. Do not read it from getNextTransactionIndex: a
     /// different submission landing first would misattribute the index.
     function submit(address _to, uint256 _value, bytes memory _data) internal {
-        MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
+        IMultiSignatureWallet wallet = IMultiSignatureWallet(multisigWalletAddr);
         bytes32 contentHash = wallet.hashTransactionContent(_to, _value, _data);
 
         console.log("Submitting governance action:");
@@ -38,6 +68,9 @@ abstract contract GovSubmitAction is Script {
     }
 }
 
+/// @dev Registers the automation registry's monitorCycleEnd() as a BlockMeta block-prologue
+/// entry. Until it is registered, the automation cycle never leaves the state genesis put it in
+/// and every registered task stays pending: genesis deploys BlockMeta with an empty entry list.
 contract InitializeCycleMonitoring is GovSubmitAction {
     address blockMetadata;
     address registry;
@@ -45,43 +78,98 @@ contract InitializeCycleMonitoring is GovSubmitAction {
     uint64 selectorGasLimit;
 
     function setUp() public {
-        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        blockMetadata = vm.envAddress("BLOCK_METADATA_ADDRESS");
-        registry = vm.envAddress("REGISTRY");
-        selector = bytes4(keccak256("monitorCycleEnd()"));
-        // if gas-selectorGasLimit is greater than the block prologue gas cap,
-        // the transaction will fail and the cycle monitoring will not be registered
-        selectorGasLimit = uint64(vm.envUint("SELECTOR_GAS_LIMIT"));
-        timeout = uint64(vm.envUint("TIMEOUT"));
+        multisigWalletAddr = payable(vm.envAddress("FoundationWallet"));
+        blockMetadata = vm.envAddress("BlockMetadata");
+        registry = vm.envAddress("AutomationRegistry");
+        selector = ICoreFacet.monitorCycleEnd.selector;
+        // Gas the block prologue allots to this entry in every block. It has to cover the
+        // worst-case cost of monitorCycleEnd at the registry's current task capacities (see
+        // crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md): an entry that runs out of
+        // gas fails silently, with only a CallFailed event, and the cycle stops advancing.
+        selectorGasLimit = uint64(vm.envUint("SelectorGasLimit"));
+        timeout = uint64(vm.envUint("Timeout"));
     }
 
     function run() public {
+        checkRegistrable();
+
         vm.startBroadcast();
 
-        // Submit a foundation/gov action to register registry::monitor_cycle_event
-        // to be executed for each block
-        bytes memory data = abi.encodeCall(BlockMeta.register, (registry, selector, selectorGasLimit));
+        bytes memory data = abi.encodeCall(IBlockMeta.register, (registry, selector, selectorGasLimit));
         submit(blockMetadata, 0, data);
 
         vm.stopBroadcast();
     }
+
+    /// @dev Reverts, with the reason BlockMeta.register would give, when the registration this
+    /// script is about to submit cannot succeed against the chain's current state: register is
+    /// owner-only, and it refuses a zero gas limit, a target without code, a pair that is already
+    /// registered, and a total allocation over the callable share of the block prologue gas cap.
+    function checkRegistrable() internal view {
+        requireOwnedByWallet(blockMetadata, "BlockMetadata");
+        require(selectorGasLimit > 0, "SelectorGasLimit must be greater than zero");
+        require(registry.code.length > 0, "AutomationRegistry has no code at the given address");
+
+        IBlockMeta blockMeta = IBlockMeta(blockMetadata);
+
+        // getExecutionIndex returns for a registered pair and reverts with SelectorNotRegistered
+        // for an unregistered one. Any other revert means the address is not a BlockMeta, or the
+        // call itself failed, and is passed through rather than read as "not registered".
+        try blockMeta.getExecutionIndex(registry, selector) returns (uint256 index) {
+            console.log("monitorCycleEnd is already registered at execution index: ", index);
+            revert("monitorCycleEnd is already registered in BlockMetadata");
+        } catch (bytes memory reason) {
+            // Truncating to the first four bytes is the point: they are the custom error's
+            // selector, and a shorter reason pads with zeros, which matches no selector.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (bytes4(reason) != IBlockMeta.SelectorNotRegistered.selector) {
+                assembly {
+                    revert(add(reason, 32), mload(reason))
+                }
+            }
+        }
+
+        // The same bound BlockMeta.register applies: the sum of every registered entry's gas
+        // limit must stay within the share of the block prologue gas cap that the 63/64
+        // forwarding rule leaves callable.
+        uint64 gasCap = blockMeta.blockPrologueGasCap();
+        uint64 allocated = blockMeta.totalGasAllocated();
+        uint256 callableCap = (uint256(gasCap) * 63) / 64;
+        console.log("Block prologue gas cap: ", gasCap);
+        console.log("Gas already allocated to other entries: ", allocated);
+        console.log("Selector gas limit: ", selectorGasLimit);
+        console.log("Largest selector gas limit that fits: ", callableCap > allocated ? callableCap - allocated : 0);
+        require(
+            uint256(allocated) + selectorGasLimit <= callableCap,
+            "SelectorGasLimit exceeds the callable share of the block prologue gas cap"
+        );
+    }
 }
 
+/// @dev Authorizes an account to register system automation tasks.
 contract AuthorizeAccount is GovSubmitAction {
     address automationRegistry;
     address account;
 
     function setUp() public {
-        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        automationRegistry = vm.envAddress("REGISTRY");
-        account = vm.envAddress("ACCOUNT_TO_AUTHORIZE");
-        timeout = uint64(vm.envUint("TIMEOUT"));
+        multisigWalletAddr = payable(vm.envAddress("FoundationWallet"));
+        automationRegistry = vm.envAddress("AutomationRegistry");
+        account = vm.envAddress("AccountToAuthorize");
+        timeout = uint64(vm.envUint("Timeout"));
     }
 
     function run() public {
+        // grantAuthorization is owner-only and reverts with AddressAlreadyExists for an account
+        // that is already authorized.
+        requireOwnedByWallet(automationRegistry, "AutomationRegistry");
+        require(account != address(0), "AccountToAuthorize must not be the zero address");
+        require(
+            !IRegistryFacet(automationRegistry).isAuthorizedSubmitter(account),
+            "AccountToAuthorize is already authorized"
+        );
+
         vm.startBroadcast();
 
-        // Submit a foundation/gov action to grant authorization for gst task registration
         bytes memory data = abi.encodeCall(IConfigFacet.grantAuthorization, (account));
         submit(automationRegistry, 0, data);
 
@@ -89,31 +177,30 @@ contract AuthorizeAccount is GovSubmitAction {
     }
 }
 
+/// @dev Turns the automation feature on (EnableAutomation=true) or off (EnableAutomation=false).
 contract EnableDisableAutomation is GovSubmitAction {
     address automationRegistry;
-    address account;
     bool enable;
 
     function setUp() public {
-        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
-        automationRegistry = vm.envAddress("REGISTRY");
-        account = vm.envAddress("ACCOUNT_TO_AUTHORIZE");
-        timeout = uint64(vm.envUint("TIMEOUT"));
-        enable = bool(vm.envBool("ENABLE_AUTOMATION"));
+        multisigWalletAddr = payable(vm.envAddress("FoundationWallet"));
+        automationRegistry = vm.envAddress("AutomationRegistry");
+        timeout = uint64(vm.envUint("Timeout"));
+        enable = vm.envBool("EnableAutomation");
     }
 
     function run() public {
+        // enableAutomation and disableAutomation are owner-only, and each reverts when the
+        // feature is already in the requested state.
+        requireOwnedByWallet(automationRegistry, "AutomationRegistry");
+        bool enabled = ICoreFacet(automationRegistry).isAutomationEnabled();
+        console.log("Automation enabled: ", enabled);
+        require(enabled != enable, "Automation is already in the requested state");
+
         vm.startBroadcast();
 
-        console.log("Automation Flag: ", ICoreFacet(automationRegistry).isAutomationEnabled());
-
-        // Submit a foundation/gov action to enable/disable automation
-        bytes memory data = hex"";
-        if (enable) {
-            data = abi.encodeCall(ICoreFacet.enableAutomation, ());
-        } else {
-            data = abi.encodeCall(ICoreFacet.disableAutomation, ());
-        }
+        bytes memory data =
+            enable ? abi.encodeCall(ICoreFacet.enableAutomation, ()) : abi.encodeCall(ICoreFacet.disableAutomation, ());
         submit(automationRegistry, 0, data);
 
         vm.stopBroadcast();
@@ -126,13 +213,13 @@ contract VoteForTxn is Script {
     bytes32 contentHash;
 
     function setUp() public {
-        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
+        multisigWalletAddr = payable(vm.envAddress("FoundationWallet"));
         txIndex = uint256(vm.envUint("GOV_TXN_INDEX"));
         contentHash = vm.envBytes32("GOV_TXN_CONTENT_HASH");
     }
 
     function run() public {
-        MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
+        IMultiSignatureWallet wallet = IMultiSignatureWallet(multisigWalletAddr);
         console.log("Txn count", wallet.txCount());
 
         // getTransaction reverts if txIndex does not exist or has expired, the same conditions
@@ -165,13 +252,13 @@ contract ExecuteTxn is Script {
     bytes32 contentHash;
 
     function setUp() public {
-        multisigWalletAddr = payable(vm.envAddress("MULTISIG_WALLET_ADDRESS"));
+        multisigWalletAddr = payable(vm.envAddress("FoundationWallet"));
         txIndex = uint256(vm.envUint("GOV_TXN_INDEX"));
         contentHash = vm.envBytes32("GOV_TXN_CONTENT_HASH");
     }
 
     function run() public {
-        MultiSignatureWallet wallet = MultiSignatureWallet(multisigWalletAddr);
+        IMultiSignatureWallet wallet = IMultiSignatureWallet(multisigWalletAddr);
 
         // getTransaction reverts if txIndex does not exist or has expired, the same conditions
         // executeTransaction itself checks. Caught here only so the operator sees that
