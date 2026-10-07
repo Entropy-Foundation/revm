@@ -35,10 +35,10 @@ interface ICoreFacet {
     ///      state is topic 2 and names the processing that removed the tasks: FINISHED for a
     ///      FINISHED -> STARTED transition (expired, cancelled or unaffordable tasks dropped
     ///      instead of renewed) and SUSPENDED for a suspension (every task removed and
-    ///      refunded). It is the state processTasks ran in, not the state after it: the batch
-    ///      that finalizes a transition can move the registry to STARTED and then SUSPENDED
-    ///      before it emits RemovedTasks, and still emits FINISHED. Both kinds can share a
-    ///      cycleIndex when automation is disabled during a transition.
+    ///      refunded). Both kinds can share a cycleIndex when automation is disabled during a
+    ///      transition, and the state topic tells them apart. RemovedTasks is emitted before the
+    ///      call finalizes the transition or suspension, so it precedes that call's ActiveTasks
+    ///      and AutomationCycleEvent logs.
     ///      taskIndexes is ABI-encoded in the log data. It is emitted by each processTasks call
     ///      that removed at least one task, and lists the tasks that call removed, so a
     ///      transition or suspension processed in several batches emits several RemovedTasks

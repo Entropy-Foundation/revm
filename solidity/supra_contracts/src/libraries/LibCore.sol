@@ -588,12 +588,13 @@ library LibCore {
         transitionState.gasCommittedForNextCycle += intermediateState.gasCommittedForNextCycle;        
         transitionState.sysGasCommittedForNextCycle += intermediateState.sysGasCommittedForNextCycle;
 
-        updateCycleTransitionStateFromFinished();
+        // The drops are logged before finalizing, so they precede this call's ActiveTasks and
+        // AutomationCycleEvent logs, in the order the state changes.
         if (intermediateState.removedTasks.length > 0) {
-            // FINISHED names the transition that dropped these tasks, even when finalizing it
-            // above has already moved the registry on to STARTED or SUSPENDED.
             emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.FINISHED, intermediateState.removedTasks);
         }
+
+        updateCycleTransitionStateFromFinished();
     }
 
     /// @notice Traverses the list of the tasks and refunds automation(if not PENDING) and deposit fees for all tasks and removes from registry.
@@ -615,12 +616,11 @@ library LibCore {
         // Task indexes must arrive pre-sorted ascending — see requireSortedAscending's
         // NatSpec for why this contract does not sort them itself.
         requireSortedAscending(_taskIndexes);
-        uint64[] memory taskIndexes = _taskIndexes;
-        uint64[] memory removedTasks = new uint64[](taskIndexes.length);
-        
-        uint64 removedCounter;
-        for (uint i = 0; i < taskIndexes.length; i++) {
-            uint64 taskId = taskIndexes[i];
+
+        // Every task in the batch is removed or the call reverts, so the batch itself is the list
+        // of removed tasks that RemovedTasks reports below.
+        for (uint i = 0; i < _taskIndexes.length; i++) {
+            uint64 taskId = _taskIndexes[i];
             // Every task index submitted here is expected to come from the caller's own
             // tracking of expectedTasksToBeProcessed, so a missing task means the caller
             // has regressed or the registry is in an inconsistent state — surface that
@@ -629,8 +629,6 @@ library LibCore {
             TaskMetadataLW memory task = LibCommon.getTaskLW(taskId);
 
             LibCommon.removeTask(taskId, task.owner, false, false);
-
-            removedTasks[removedCounter++] = taskId;
             markTaskProcessed(taskId);
 
             // Nothing to refund for GST tasks
@@ -645,12 +643,14 @@ library LibCore {
             }
         }
 
-        updateCycleTransitionStateFromSuspended();
-
-        if (removedCounter > 0) {
-            // Emit only the entries actually removed.
-            emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.SUSPENDED, removedTasks);
+        // processTasks returns early on an empty batch, so the guard only protects direct callers.
+        // The removals are logged before finalizing, ahead of the AutomationCycleEvent that the
+        // batch completing the suspension emits (READY, or STARTED if automation was re-enabled).
+        if (_taskIndexes.length > 0) {
+            emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.SUSPENDED, _taskIndexes);
         }
+
+        updateCycleTransitionStateFromSuspended();
     }
 
     /// @notice Removes a registered task on the VM signer's request; see

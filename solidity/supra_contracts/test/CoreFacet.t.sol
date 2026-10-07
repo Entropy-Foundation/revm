@@ -403,10 +403,11 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(wsupra.balanceOf(alice) - balanceBefore, amount, "amount is what the owner receives");
     }
 
-    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks
-    /// containing only the indexes actually removed, even when the input batch also contains
-    /// non-existent indexes.
-    function testOnCycleSuspendEmitsOnlyRemovedTasks() public {
+    /// @dev Test to ensure 'processTasks' (SUSPENDED branch, onCycleSuspend) emits RemovedTasks with
+    /// exactly the tasks of its own batch: the second batch's log lists task 1 only, not task 0
+    /// removed by the first batch. (An index outside the expected set reverts instead; see
+    /// UnknownTaskToProcess.)
+    function testOnCycleSuspendEmitsEachBatchsRemovedTasks() public {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
 
@@ -1589,10 +1590,10 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure RemovedTasks' state topic tells a transition's drops from a suspension's
     /// removals when automation is disabled during a FINISHED -> STARTED transition (#4285). The
-    /// batch that finalizes the transition moves the registry to STARTED and then SUSPENDED, and
-    /// emits AutomationCycleEvent(SUSPENDED) before the RemovedTasks for the task that batch
-    /// dropped; that RemovedTasks still carries FINISHED. The suspension's own batch then removes
-    /// the surviving tasks with the same cycleIndex and carries SUSPENDED.
+    /// batch that finalizes the transition logs RemovedTasks(FINISHED) for the task it dropped,
+    /// then ActiveTasks, then AutomationCycleEvent(SUSPENDED) as it moves the registry to STARTED
+    /// and SUSPENDED. The suspension's own batch then removes the surviving tasks under the same
+    /// cycleIndex and carries SUSPENDED.
     function testRemovedTasksStateSeparatesTransitionDropsFromSuspension() public {
         registerUst(diamondAddr, 10000); // task 0, survives the transition
         registerUst(diamondAddr, 2450);  // task 1, expires during the transition
@@ -1621,20 +1622,26 @@ contract CoreFacetTest is BaseDiamondTest {
         (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED), "the final batch suspends");
 
-        // Locate the SUSPENDED cycle event and the RemovedTasks log in emission order.
-        uint256 suspendedAt = type(uint256).max;
+        // Locate the RemovedTasks, ActiveTasks and SUSPENDED cycle-event logs in emission order.
         uint256 removedAt = type(uint256).max;
+        uint256 activeAt = type(uint256).max;
+        uint256 suspendedAt = type(uint256).max;
         for (uint256 i; i < finalLogs.length; i++) {
             if (finalLogs[i].emitter != diamondAddr) continue;
+            if (finalLogs[i].topics[0] == ICoreFacet.RemovedTasks.selector) {
+                removedAt = i;
+            }
+            if (finalLogs[i].topics[0] == ICoreFacet.ActiveTasks.selector) {
+                activeAt = i;
+            }
             if (finalLogs[i].topics[0] == ICoreFacet.AutomationCycleEvent.selector
                 && finalLogs[i].topics[2] == bytes32(uint256(uint8(LibCommon.CycleState.SUSPENDED)))) {
                 suspendedAt = i;
             }
-            if (finalLogs[i].topics[0] == ICoreFacet.RemovedTasks.selector) {
-                removedAt = i;
-            }
         }
-        assertLt(suspendedAt, removedAt, "the transition's drop is logged after the SUSPENDED cycle event");
+        assertLt(removedAt, activeAt, "the transition's drop is logged before ActiveTasks");
+        assertLt(activeAt, suspendedAt, "ActiveTasks is logged before the SUSPENDED cycle event");
+        assertLt(suspendedAt, type(uint256).max, "the final batch logs the SUSPENDED cycle event");
 
         Vm.Log memory dropped = findLog(finalLogs, diamondAddr, ICoreFacet.RemovedTasks.selector);
         assertEq(dropped.topics[1], bytes32(uint256(index + 1)), "the drop names the cycle entered");
