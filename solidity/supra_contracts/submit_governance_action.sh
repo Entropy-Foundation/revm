@@ -215,7 +215,7 @@ else
     export GOV_TXN_CONTENT_HASH
 
     # The index this submission was actually assigned, read from the SubmitTransaction event in its
-    # own broadcast receipt rather than predicted beforehand: a prediction can be pre-empted by
+    # own broadcast receipt rather than predicted beforehand: a prediction can be overtaken by
     # another submission landing first. forge writes the receipt to
     # broadcast/GovActions.s.sol/<chainId>/run-latest.json, and the submit step above is the most
     # recently written one whichever chain this runs against.
