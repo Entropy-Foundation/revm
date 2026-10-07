@@ -888,6 +888,35 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(maxAuxDataEntries, 10);
     }
 
+    /// @dev Test to ensure 'updateDataLengthCaps' rejects a payload cap that is not a multiple of 32:
+    /// an ABI-encoded payloadTx is always a whole number of 32-byte words.
+    function testUpdateDataLengthCapsRevertsIfPayloadCapNotWordAligned() public {
+        vm.expectRevert(LibCommon.PayloadLengthCapNotWordAligned.selector);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(2000, 2048, 0, 0);
+    }
+
+    /// @dev Test to ensure 'updateDataLengthCaps' rejects a predicate cap that is not a multiple of 32.
+    function testUpdateDataLengthCapsRevertsIfPredicateCapNotWordAligned() public {
+        vm.expectRevert(LibCommon.PredicateLengthCapNotWordAligned.selector);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2047, 0, 0);
+    }
+
+    /// @dev Test to ensure the auxData caps are not constrained to multiples of 32, and that the
+    /// default payload and predicate caps set at deployment are multiples of 32.
+    function testDataLengthCapsAlignmentAppliesToPayloadAndPredicateOnly() public {
+        (uint16 maxPayloadLength, uint16 maxPredicateLength, , ) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        assertEq(maxPayloadLength % 32, 0, "default payload cap is word-aligned");
+        assertEq(maxPredicateLength % 32, 0, "default predicate cap is word-aligned");
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2048, 101, 3);
+        (, , uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        assertEq(maxAuxDataLength, 101, "auxData length cap is not constrained");
+        assertEq(maxAuxDataEntries, 3);
+    }
+
     /// @dev Test to ensure the default data length caps set at init match the documented defaults.
     function testGetDataLengthCapsReturnsDefaults() public view {
         (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();

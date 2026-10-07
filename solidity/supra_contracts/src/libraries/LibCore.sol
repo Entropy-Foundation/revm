@@ -581,7 +581,9 @@ library LibCore {
 
         updateCycleTransitionStateFromFinished();
         if (intermediateState.removedTasks.length > 0) {
-            emit ICoreFacet.RemovedTasks(_cycleIndex, intermediateState.removedTasks);
+            // FINISHED names the transition that dropped these tasks, even when finalizing it
+            // above has already moved the registry on to STARTED or SUSPENDED.
+            emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.FINISHED, intermediateState.removedTasks);
         }
     }
 
@@ -638,7 +640,7 @@ library LibCore {
 
         if (removedCounter > 0) {
             // Emit only the entries actually removed.
-            emit ICoreFacet.RemovedTasks(_cycleIndex, removedTasks);
+            emit ICoreFacet.RemovedTasks(_cycleIndex, LibCommon.CycleState.SUSPENDED, removedTasks);
         }
     }
 

@@ -57,7 +57,9 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
         Deployment memory dep = LibDiamondUtils.deploy(admin, address(wsupra), defaultParams);
         // Raise the default input-size caps so this diamond can accept the intentionally
         // oversized heavyPayload()/heavyAuxData() fixtures used to prove gas-independence.
-        IConfigFacet(dep.diamond).updateDataLengthCaps(type(uint16).max, type(uint16).max, type(uint16).max, type(uint16).max);
+        // 65,504 is the largest multiple of 32 a uint16 holds; payload and predicate caps must
+        // be multiples of 32 (LibCommon.validateDataLengthCaps).
+        IConfigFacet(dep.diamond).updateDataLengthCaps(65_504, 65_504, type(uint16).max, type(uint16).max);
         vm.stopPrank();
         return dep.diamond;
     }

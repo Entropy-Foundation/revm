@@ -238,12 +238,19 @@ contract RegistrationGasTest is BaseDiamondTest {
         assertLt(second.txTotal, TX_GAS_LIMIT_CAP, "second registration fits the transaction gas cap");
     }
 
-    /// @dev The configured payload and predicate caps, rounded down to the builders' 32-byte grid.
+    /// @dev The configured payload and predicate caps. ConfigFacet keeps both multiples of 32
+    ///      (LibCommon.validateDataLengthCaps), the grid the builders below require.
     function _capLengths() internal view returns (uint256 payloadLength, uint256 predicateLength) {
         (uint16 maxPayload, uint16 maxPredicate,,) = IConfigFacet(diamondAddr).getDataLengthCaps();
-        // Round down to a multiple of 32 so the builders' padded encodings stay within the caps.
-        payloadLength = uint256(maxPayload) - (uint256(maxPayload) % 32);
-        predicateLength = uint256(maxPredicate) - (uint256(maxPredicate) % 32);
+        payloadLength = maxPayload;
+        predicateLength = maxPredicate;
+    }
+
+    /// @dev `_cap / _divisor` rounded down to a multiple of 32. A word-aligned cap divided by 2 or 4
+    ///      is not always word-aligned (2,016 / 4 = 504), and the builders require it to be.
+    function _fractionOfCap(uint256 _cap, uint256 _divisor) internal pure returns (uint256) {
+        uint256 length = _cap / _divisor;
+        return length - (length % 32);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -263,13 +270,21 @@ contract RegistrationGasTest is BaseDiamondTest {
     /// @dev A quarter of the default caps.
     function testRegistrationGas_Ust_QuarterCaps() public {
         (uint256 payloadLength, uint256 predicateLength) = _capLengths();
-        _runUst("UST 1/4 caps", _payloadOfLength(payloadLength / 4), _predicateOfLength(predicateLength / 4));
+        _runUst(
+            "UST 1/4 caps",
+            _payloadOfLength(_fractionOfCap(payloadLength, 4)),
+            _predicateOfLength(_fractionOfCap(predicateLength, 4))
+        );
     }
 
     /// @dev Half of the default caps.
     function testRegistrationGas_Ust_HalfCaps() public {
         (uint256 payloadLength, uint256 predicateLength) = _capLengths();
-        _runUst("UST 1/2 caps", _payloadOfLength(payloadLength / 2), _predicateOfLength(predicateLength / 2));
+        _runUst(
+            "UST 1/2 caps",
+            _payloadOfLength(_fractionOfCap(payloadLength, 2)),
+            _predicateOfLength(_fractionOfCap(predicateLength, 2))
+        );
     }
 
     /// @dev The largest payload and predicate the default caps admit.

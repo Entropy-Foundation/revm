@@ -655,11 +655,11 @@ mod tests {
             ),
             (
                 "ConfigFacet",
-                b256!("02ef55dca0efcb94ca8decd7c676edce4491de365716e2e10a51f24dd48e764e"),
+                b256!("d5661974490df49ae326aee306e7076de70f7c4c2f8bedc391d0ba877ae3b3fa"),
             ),
             (
                 "CoreFacet",
-                b256!("e8ad89c37a286e8b3f3981dd3f5f58d60888cbf95afeb8a06a4e3dd70f0cc91b"),
+                b256!("823e03d15f3df7c978002580bfe7a3f6f34cd7902b8a5bd381f67e6511414680"),
             ),
             (
                 "Diamond",
@@ -671,7 +671,7 @@ mod tests {
             ),
             (
                 "DiamondInit",
-                b256!("59a19ef73c12e0cb2029c57066a0807866bc0bd7707a9a97e80ebbf4c2035524"),
+                b256!("2ce9c764d8a2fa9dbcffcd0fa6c0229e907021fcc44eb491b6f4c9ff7ea741c2"),
             ),
             (
                 "DiamondLoupeFacet",

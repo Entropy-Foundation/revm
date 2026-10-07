@@ -458,7 +458,7 @@ contract CoreFacetTest is BaseDiamondTest {
         expectedRemoved[0] = 1;
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(indexAfter, expectedRemoved);
+        emit ICoreFacet.RemovedTasks(indexAfter, LibCommon.CycleState.SUSPENDED, expectedRemoved);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, secondBatch);
@@ -517,7 +517,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(indexAfter, tasksUint64);
+        emit ICoreFacet.RemovedTasks(indexAfter, LibCommon.CycleState.SUSPENDED, tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, tasks);
@@ -623,7 +623,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasksUint64[0] = 0;
 
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(indexAfter, tasksUint64);
+        emit ICoreFacet.RemovedTasks(indexAfter, LibCommon.CycleState.SUSPENDED, tasksUint64);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).processTasks(indexAfter, tasks);
@@ -1607,6 +1607,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         assertEq(active.topics[1], bytes32(uint256(index + 1)), "ActiveTasks names the cycle entered");
         assertEq(removed.topics[1], active.topics[1], "RemovedTasks names the same cycle");
+        assertEq(removed.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.FINISHED))), "the transition removed them");
 
         uint64[] memory activeIds = abi.decode(active.data, (uint64[]));
         uint64[] memory removedIds = abi.decode(removed.data, (uint64[]));
@@ -1614,6 +1615,82 @@ contract CoreFacetTest is BaseDiamondTest {
         assertEq(activeIds[0], 1, "task 1 survives");
         assertEq(removedIds.length, 1, "one task is removed");
         assertEq(removedIds[0], 0, "task 0 is removed");
+    }
+
+    /// @dev Test to ensure RemovedTasks' state topic tells a transition's drops from a suspension's
+    /// removals when automation is disabled during a FINISHED -> STARTED transition (#4285). The
+    /// batch that finalizes the transition moves the registry to STARTED and then SUSPENDED, and
+    /// emits AutomationCycleEvent(SUSPENDED) before the RemovedTasks for the task that batch
+    /// dropped; that RemovedTasks still carries FINISHED. The suspension's own batch then removes
+    /// the surviving tasks with the same cycleIndex and carries SUSPENDED.
+    function testRemovedTasksStateSeparatesTransitionDropsFromSuspension() public {
+        registerUst(diamondAddr, 10000); // task 0, survives the transition
+        registerUst(diamondAddr, 2450);  // task 1, expires during the transition
+        registerUst(diamondAddr, 10000); // task 2, survives the transition
+
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(start + duration);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+        // Past task 1's expiry and before the others', as in testExpiredTaskRemovalInTransition.
+        vm.warp(block.timestamp + 1250);
+
+        // First batch: the transition is now in progress, so disabling automation only clears
+        // the flag and leaves the transition to finish (CoreFacet.disableAutomation).
+        uint64[] memory firstBatch = new uint64[](1);
+        firstBatch[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, firstBatch);
+
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+
+        // Final batch: drops task 1, finalizes the transition into cycle index + 1, then suspends.
+        uint64[] memory finalBatch = new uint64[](2);
+        finalBatch[0] = 1;
+        finalBatch[1] = 2;
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, finalBatch);
+        Vm.Log[] memory finalLogs = vm.getRecordedLogs();
+
+        (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED), "the final batch suspends");
+
+        // Locate the SUSPENDED cycle event and the RemovedTasks log in emission order.
+        uint256 suspendedAt = type(uint256).max;
+        uint256 removedAt = type(uint256).max;
+        for (uint256 i; i < finalLogs.length; i++) {
+            if (finalLogs[i].emitter != diamondAddr) continue;
+            if (finalLogs[i].topics[0] == ICoreFacet.AutomationCycleEvent.selector
+                && finalLogs[i].topics[2] == bytes32(uint256(uint8(LibCommon.CycleState.SUSPENDED)))) {
+                suspendedAt = i;
+            }
+            if (finalLogs[i].topics[0] == ICoreFacet.RemovedTasks.selector) {
+                removedAt = i;
+            }
+        }
+        assertLt(suspendedAt, removedAt, "the transition's drop is logged after the SUSPENDED cycle event");
+
+        Vm.Log memory dropped = findLog(finalLogs, diamondAddr, ICoreFacet.RemovedTasks.selector);
+        assertEq(dropped.topics[1], bytes32(uint256(index + 1)), "the drop names the cycle entered");
+        assertEq(dropped.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.FINISHED))), "the transition dropped it");
+        uint64[] memory droppedIds = abi.decode(dropped.data, (uint64[]));
+        assertEq(droppedIds.length, 1, "one task dropped");
+        assertEq(droppedIds[0], 1, "task 1 dropped");
+
+        // Suspension batch: removes the survivors under the same cycle index.
+        uint64[] memory survivors = new uint64[](2);
+        survivors[0] = 0;
+        survivors[1] = 2;
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).processTasks(index + 1, survivors);
+
+        Vm.Log memory suspended = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.RemovedTasks.selector);
+        assertEq(suspended.topics[1], dropped.topics[1], "the suspension shares the cycle index");
+        assertEq(suspended.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.SUSPENDED))), "the suspension removed them");
+        assertEqUint64Array(abi.decode(suspended.data, (uint64[])), survivors, "the survivors are removed");
     }
 
     /// @notice Test to ensure an expired task is removed from the registry and 'RemovedTasks' is emitted during cycle transition.
@@ -1643,7 +1720,7 @@ contract CoreFacetTest is BaseDiamondTest {
         expectedRemoved[0] = 0;
         
         vm.expectEmit(diamondAddr);
-        emit ICoreFacet.RemovedTasks(index + 1, expectedRemoved);
+        emit ICoreFacet.RemovedTasks(index + 1, LibCommon.CycleState.FINISHED, expectedRemoved);
 
         ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
         vm.stopPrank();

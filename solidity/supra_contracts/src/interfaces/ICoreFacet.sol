@@ -28,11 +28,18 @@ interface ICoreFacet {
     /// @dev cycleIndex is topic 1 and is the cycle index processTasks was called with: for a
     ///      FINISHED -> STARTED transition the cycle being entered, the same index ActiveTasks
     ///      carries for that transition, and for a suspension the cycle being suspended.
+    ///      state is topic 2 and names the processing that removed the tasks: FINISHED for a
+    ///      FINISHED -> STARTED transition (expired, cancelled or unaffordable tasks dropped
+    ///      instead of renewed) and SUSPENDED for a suspension (every task removed and
+    ///      refunded). It is the state processTasks ran in, not the state after it: the batch
+    ///      that finalizes a transition can move the registry to STARTED and then SUSPENDED
+    ///      before it emits RemovedTasks, and still emits FINISHED. Both kinds can share a
+    ///      cycleIndex when automation is disabled during a transition.
     ///      taskIndexes is ABI-encoded in the log data. It is emitted by each processTasks call
     ///      that removed at least one task, and lists the tasks that call removed, so a
-    ///      transition processed in several batches emits several RemovedTasks logs with the
-    ///      same cycleIndex; the transition's removals are the union of their lists.
-    event RemovedTasks(uint64 indexed cycleIndex, uint64[] taskIndexes);
+    ///      transition or suspension processed in several batches emits several RemovedTasks
+    ///      logs with the same cycleIndex and state; its removals are the union of their lists.
+    event RemovedTasks(uint64 indexed cycleIndex, LibCommon.CycleState indexed state, uint64[] taskIndexes);
 
     /// @notice Emitted when the cycle state transitions.
     event AutomationCycleEvent(

@@ -109,6 +109,9 @@ contract DiamondInit is Initializable {
         // Default task-registration input size caps. Generous relative to real CALL-only
         // payloads (CREATE payloads are not supported) — see ConfigFacet.updateDataLengthCaps
         // for the owner-only path to raise them later without a contract upgrade.
+        // Each is a multiple of 32, the granularity of an ABI-encoded payloadTx or predicate;
+        // validateDataLengthCaps enforces it here as in ConfigFacet.updateDataLengthCaps.
+        LibCommon.validateDataLengthCaps(4096, 2048);
         s.maxPayloadLength = 4096;
         s.maxPredicateLength = 2048;
         s.maxAuxDataLength = 0;
