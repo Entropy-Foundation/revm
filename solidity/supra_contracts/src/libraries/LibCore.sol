@@ -82,13 +82,16 @@ library LibCore {
     /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
     /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
     /// @param _state Cycle transition state executing the update.
+    /// @return activeTaskIds The new cycle's active task IDs as written to storage: the transition's
+    ///         survivors for FINISHED, empty for SUSPENDED. Returned so a caller that logs them
+    ///         does not read the list back from storage.
     function updateRegistryState(
         uint256 _lockedFees,
         uint128 _sysGasCommittedForNextCycle,
         uint128 _gasCommittedForNextCycle,
         uint128 _gasCommittedForNewCycle,
         LibCommon.CycleState _state
-    ) private {
+    ) private returns (uint64[] memory activeTaskIds) {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         registryState.cycleLockedFees  = _lockedFees;
@@ -122,6 +125,7 @@ library LibCore {
             // filter pass to just this cycle's churn (registrations/removals since this
             // point) instead of letting tombstones accumulate across cycle boundaries.
             registryState.orderedTaskIds = survivedTaskIds;
+            activeTaskIds = survivedTaskIds;
         } else {
             registryState.activeTaskIds = new uint64[](0);
             // Every task still in orderedTaskIds at this point was unconditionally
@@ -270,7 +274,7 @@ library LibCore {
 
         if (isTransitionFinalized()) {
             TransitionState storage transitionState = LibAppStorage.transitionState();
-            updateRegistryState(
+            uint64[] memory activeTasks = updateRegistryState(
                 transitionState.lockedFees,
                 transitionState.sysGasCommittedForNextCycle,
                 transitionState.gasCommittedForNextCycle,
@@ -282,9 +286,7 @@ library LibCore {
             // Increment the cycle and update the state to STARTED
             moveToStartedState();
 
-            RegistryState storage registryState = LibAppStorage.registryState();
-            if (registryState.activeTaskIds.length > 0) {
-                uint64[] memory activeTasks = registryState.activeTaskIds;
+            if (activeTasks.length > 0) {
                 // moveToStartedState has advanced s.index, so it is the new cycle's index.
                 emit ICoreFacet.ActiveTasks(s.index, activeTasks);
             }
@@ -295,9 +297,11 @@ library LibCore {
     }
 
     /// @notice Traverses all input task indexes and either drops or tries to charge automation fee if possible.
+    /// @param _cycleIndex Index of the cycle the transition enters; the cycle the charged fees pay for.
     /// @param _taskIndexes Input task indexes.
     /// @return intermediateState Returns the intermediate state.
     function dropOrChargeTasks(
+        uint64 _cycleIndex,
         uint64[] memory _taskIndexes
     ) private returns (LibCommon.IntermediateStateOfCycleChange memory intermediateState) {
         uint64 currentTime = uint64(block.timestamp);
@@ -321,6 +325,7 @@ library LibCore {
         for (uint256 i = 0; i < taskIndexes.length; i++) {
             uint64 taskId = taskIndexes[i];
             LibCommon.TransitionResult memory result = dropOrChargeTask(
+                _cycleIndex,
                 taskId,
                 currentTime,
                 currentCycleEndTime,
@@ -356,6 +361,7 @@ library LibCore {
     ///      `expectedTasksToBeProcessed`, so a missing task means the caller has regressed
     ///      or the registry is in an inconsistent state, and either should be surfaced
     ///      immediately rather than silently treated as a no-op.
+    /// @param _cycleIndex Index of the cycle the transition enters; the cycle a charged fee pays for.
     /// @param _taskIndex Task index to be dropped or charged.
     /// @param _currentTime Current time.
     /// @param _currentCycleEndTime End time of the current cycle.
@@ -363,6 +369,7 @@ library LibCore {
     /// @param _minGasPrice Minimum gas price of the executing block's epoch.
     /// @return result Returns the TransitionResult.
     function dropOrChargeTask(
+        uint64 _cycleIndex,
         uint64 _taskIndex,
         uint64 _currentTime,
         uint64 _currentCycleEndTime,
@@ -432,6 +439,7 @@ library LibCore {
 
             registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
             (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
+                _cycleIndex,
                 _taskIndex,
                 task.owner,
                 task.maxGasAmount,
@@ -446,6 +454,7 @@ library LibCore {
     }
 
     /// @notice Helper function to withdraw automation task fees for an active task.
+    /// @param _cycleIndex Index of the cycle the fee pays for, reported by TaskCycleFeeWithdraw.
     /// @param _taskIndex Index of the task.
     /// @param _owner Owner of the task.
     /// @param _maxGasAmount Max gas amount of the task.
@@ -459,6 +468,7 @@ library LibCore {
     /// @return Amount to add to gasCommittedForNextCycle 
     /// @return Amount to add to cycleLockedFees 
     function tryWithdrawTaskAutomationFee(
+        uint64 _cycleIndex,
         uint64 _taskIndex,
         address _owner,
         uint128 _maxGasAmount,
@@ -521,11 +531,10 @@ library LibCore {
                     fees = _fee;
                 }
               
-                // The fee is charged during the FINISHED -> STARTED transition for the cycle it
-                // enters, s.index + 1 (onCycleTransition's _cycleIndex); s.index advances only
-                // when the transition is finalized, after every batch has been charged.
+                // The fee pays for the cycle the transition enters: onCycleTransition's validated
+                // _cycleIndex, passed down rather than derived from s.index here.
                 emit ICoreFacet.TaskCycleFeeWithdraw(
-                    s.index + 1,
+                    _cycleIndex,
                     _taskIndex,
                     _owner,
                     _fee
@@ -572,7 +581,7 @@ library LibCore {
         if (!s.ifTransitionStateExists) { revert ICoreFacet.InvalidRegistryState(); }
         if (s.index + 1 != _cycleIndex) { revert ICoreFacet.InvalidInputCycleIndex(); }
 
-        LibCommon.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_taskIndexes);
+        LibCommon.IntermediateStateOfCycleChange memory intermediateState = dropOrChargeTasks(_cycleIndex, _taskIndexes);
         
         TransitionState storage transitionState = LibAppStorage.transitionState();
         transitionState.lockedFees += intermediateState.cycleLockedFees;

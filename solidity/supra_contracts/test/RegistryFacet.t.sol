@@ -903,6 +903,38 @@ contract RegistryFacetTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2047, 0, 0);
     }
 
+    /// @dev Test to ensure 'register' rejects a payloadTx whose length is not a whole number of
+    /// 32-byte words, although abi.decode would accept its trailing byte.
+    function testRegisterRevertsIfPayloadNotWordAligned() public {
+        bytes[] memory auxData;
+        bytes memory payload = abi.encodePacked(createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)), hex"01");
+
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        vm.expectRevert(IRegistryFacet.PayloadNotWordAligned.selector);
+        IRegistryFacet(diamondAddr).register(
+            payload, createPredicate(diamondAddr), uint64(block.timestamp + 2450), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev Test to ensure 'register' rejects a predicate whose length is not a whole number of
+    /// 32-byte words.
+    function testRegisterRevertsIfPredicateNotWordAligned() public {
+        bytes[] memory auxData;
+        bytes memory predicate = abi.encodePacked(createPredicate(diamondAddr), hex"01");
+
+        vm.startPrank(alice);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        vm.expectRevert(IRegistryFacet.PredicateNotWordAligned.selector);
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)), predicate, uint64(block.timestamp + 2450), uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData
+        );
+        vm.stopPrank();
+    }
+
     /// @dev Test to ensure the auxData caps are not constrained to multiples of 32, and that the
     /// default payload and predicate caps set at deployment are multiples of 32.
     function testDataLengthCapsAlignmentAppliesToPayloadAndPredicateOnly() public {

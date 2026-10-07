@@ -114,6 +114,8 @@ interface IRegistryFacet {
     error InvalidPayloadLength();
     error PayloadTooLarge();
     error PredicateTooLarge();
+    error PayloadNotWordAligned();
+    error PredicateNotWordAligned();
     error AuxDataTooLarge();
     error InvalidReturnLengthOfPredicate();
     error InvalidReturnTypeOfPredicate();

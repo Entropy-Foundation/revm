@@ -269,16 +269,10 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // End the cycle the way processCycleTransition does, but record only processTasks' logs,
         // which is where the finalizing batch emits ActiveTasks.
-        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(startTime + duration);
-        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, taskIndexes);
 
-        vm.recordLogs();
-        ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
-        vm.stopPrank();
-
-        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.ActiveTasks.selector);
+        Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
         assertEq(log.topics.length, 2, "ActiveTasks has topic0 and cycleIndex");
         assertEq(log.topics[1], bytes32(uint256(index + 1)), "topic1 is the new cycle's index");
         (uint64 cycleAfter, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -298,19 +292,12 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(startTime + duration);
-        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
+        uint64 index = endCycleAsVmSigner(diamondAddr);
 
         // The new cycle's fee is charged inside processTasks, so measure the owner's balance
         // around that call only.
         uint256 balanceBefore = wsupra.balanceOf(alice);
-        vm.recordLogs();
-        ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
-        vm.stopPrank();
-
-        Vm.Log[] memory logs = vm.getRecordedLogs();
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, taskIndexes);
         Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.TaskCycleFeeWithdraw.selector);
         assertEq(log.topics.length, 4, "TaskCycleFeeWithdraw has topic0, cycleIndex, taskIndex and owner");
         assertEq(log.topics[1], bytes32(uint256(index + 1)), "topic1 is the cycle the fee pays for");
@@ -371,15 +358,10 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(startTime + duration);
-        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
-        vm.recordLogs();
-        ICoreFacet(diamondAddr).processTasks(index + 1, taskIndexes);
-        vm.stopPrank();
+        uint64 index = endCycleAsVmSigner(diamondAddr);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, taskIndexes);
 
-        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.TaskCancelledCapacitySurpassed.selector);
+        Vm.Log memory log = findLog(logs, diamondAddr, ICoreFacet.TaskCancelledCapacitySurpassed.selector);
         assertEq(log.topics.length, 3, "TaskCancelledCapacitySurpassed has topic0, taskIndex and owner");
         assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
         assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
@@ -397,10 +379,7 @@ contract CoreFacetTest is BaseDiamondTest {
     function testOnCycleSuspendDepositRefundLogCarriesAmountInData() public {
         registerUst(diamondAddr, 2450); // task 0, PENDING, so it has paid no cycle fee
 
-        (uint64 index, uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(startTime + duration);
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
+        uint64 index = endCycleAsVmSigner(diamondAddr);
 
         // Disabling automation in FINISHED moves the registry to SUSPENDED, where processTasks
         // removes every task and refunds it.
@@ -411,11 +390,9 @@ contract CoreFacetTest is BaseDiamondTest {
         taskIndexes[0] = 0;
 
         uint256 balanceBefore = wsupra.balanceOf(alice);
-        vm.recordLogs();
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).processTasks(index, taskIndexes);
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index, taskIndexes);
 
-        Vm.Log memory log = findLog(vm.getRecordedLogs(), diamondAddr, IRegistryFacet.TaskDepositFeeRefund.selector);
+        Vm.Log memory log = findLog(logs, diamondAddr, IRegistryFacet.TaskDepositFeeRefund.selector);
         assertEq(log.topics.length, 3, "TaskDepositFeeRefund has topic0, taskIndex and owner");
         assertEq(log.topics[1], bytes32(uint256(0)), "topic1 is taskIndex");
         assertEq(log.topics[2], bytes32(uint256(uint160(alice))), "topic2 is owner");
@@ -1585,10 +1562,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450);  // task 0, expires during the transition below
         registerUst(diamondAddr, 10000); // task 1, survives it
 
-        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(start + duration);
-        vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
+        uint64 index = endCycleAsVmSigner(diamondAddr);
 
         // Past task 0's expiry and before task 1's, as in testExpiredTaskRemovalInTransition.
         vm.warp(block.timestamp + 1250);
@@ -1597,11 +1571,7 @@ contract CoreFacetTest is BaseDiamondTest {
         tasks[0] = 0;
         tasks[1] = 1;
 
-        vm.recordLogs();
-        ICoreFacet(diamondAddr).processTasks(index + 1, tasks);
-        vm.stopPrank();
-
-        Vm.Log[] memory logs = vm.getRecordedLogs();
+        Vm.Log[] memory logs = processTasksRecordingLogs(diamondAddr, index + 1, tasks);
         Vm.Log memory active = findLog(logs, diamondAddr, ICoreFacet.ActiveTasks.selector);
         Vm.Log memory removed = findLog(logs, diamondAddr, ICoreFacet.RemovedTasks.selector);
 
@@ -1628,10 +1598,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450);  // task 1, expires during the transition
         registerUst(diamondAddr, 10000); // task 2, survives the transition
 
-        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
-        vm.warp(start + duration);
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).monitorCycleEnd();
+        uint64 index = endCycleAsVmSigner(diamondAddr);
         // Past task 1's expiry and before the others', as in testExpiredTaskRemovalInTransition.
         vm.warp(block.timestamp + 1250);
 
@@ -1649,10 +1616,7 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory finalBatch = new uint64[](2);
         finalBatch[0] = 1;
         finalBatch[1] = 2;
-        vm.recordLogs();
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).processTasks(index + 1, finalBatch);
-        Vm.Log[] memory finalLogs = vm.getRecordedLogs();
+        Vm.Log[] memory finalLogs = processTasksRecordingLogs(diamondAddr, index + 1, finalBatch);
 
         (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.SUSPENDED), "the final batch suspends");
@@ -1683,11 +1647,9 @@ contract CoreFacetTest is BaseDiamondTest {
         uint64[] memory survivors = new uint64[](2);
         survivors[0] = 0;
         survivors[1] = 2;
-        vm.recordLogs();
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).processTasks(index + 1, survivors);
-
-        Vm.Log memory suspended = findLog(vm.getRecordedLogs(), diamondAddr, ICoreFacet.RemovedTasks.selector);
+        Vm.Log memory suspended = findLog(
+            processTasksRecordingLogs(diamondAddr, index + 1, survivors), diamondAddr, ICoreFacet.RemovedTasks.selector
+        );
         assertEq(suspended.topics[1], dropped.topics[1], "the suspension shares the cycle index");
         assertEq(suspended.topics[2], bytes32(uint256(uint8(LibCommon.CycleState.SUSPENDED))), "the suspension removed them");
         assertEqUint64Array(abi.decode(suspended.data, (uint64[])), survivors, "the survivors are removed");

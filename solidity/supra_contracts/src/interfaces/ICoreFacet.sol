@@ -21,7 +21,11 @@ interface ICoreFacet {
     /// @dev cycleIndex is topic 1 and is the index of the new cycle. taskIndexes is ABI-encoded
     ///      in the log data as uint64[] and is the registry's activeTaskIds for that cycle. It is
     ///      emitted once, by the processTasks call that finalizes a FINISHED -> STARTED
-    ///      transition, and only when at least one task is active.
+    ///      transition, and only when at least one task is active. taskIndexes are the tasks the
+    ///      transition renewed. If automation was disabled during the transition, the same call
+    ///      then moves the registry to SUSPENDED, emitting AutomationCycleEvent(SUSPENDED), and
+    ///      the suspension removes every listed task under the same cycleIndex
+    ///      (RemovedTasks with state SUSPENDED); none of them executes in that cycle.
     event ActiveTasks(uint64 indexed cycleIndex, uint64[] taskIndexes);
 
     /// @notice Event emitted on cycle transition containing removed task indexes.

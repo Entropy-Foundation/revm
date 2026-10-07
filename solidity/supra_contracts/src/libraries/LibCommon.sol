@@ -111,12 +111,12 @@ library LibCommon {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Validates the payload and predicate length caps for task registration.
-    /// @dev A task's payloadTx and predicate are ABI-encoded (abi.encode), so their lengths are
-    ///      always multiples of 32 bytes. A cap that is not a multiple of 32 is never reached
-    ///      exactly: the largest admitted input is the cap rounded down to a multiple of 32. Each
-    ///      cap is therefore required to be a multiple of 32, so the stored cap is the largest
-    ///      admitted length. The auxData cap is not constrained, since auxData entries are not
-    ///      required to be ABI-encoded.
+    /// @dev Registration admits a payloadTx or predicate only if its length is a multiple of 32
+    ///      bytes, the length of an ABI encoding (LibRegistry.validateInputs, validatePredicate).
+    ///      A cap that is not a multiple of 32 is never reached exactly: the largest admitted input
+    ///      is the cap rounded down to a multiple of 32. Each cap is therefore required to be a
+    ///      multiple of 32, so the stored cap is the largest admitted length. The auxData cap is not
+    ///      constrained, since auxData entries are not required to be ABI-encoded.
     function validateDataLengthCaps(uint16 _maxPayloadLength, uint16 _maxPredicateLength) internal pure {
         if (_maxPayloadLength % 32 != 0) { revert PayloadLengthCapNotWordAligned(); }
         if (_maxPredicateLength % 32 != 0) { revert PredicateLengthCapNotWordAligned(); }

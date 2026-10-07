@@ -151,6 +151,30 @@ abstract contract BaseDiamondTest is Test {
         vm.stopPrank();
     }
 
+    /// @dev Warps to the end of `_diamond`'s current cycle and calls monitorCycleEnd as the VM
+    /// signer, which moves a STARTED registry to FINISHED. Returns the index of the cycle that
+    /// ended; processTasks for the transition takes `index + 1`.
+    function endCycleAsVmSigner(address _diamond) internal returns (uint64 index) {
+        uint64 startTime;
+        uint64 duration;
+        (index, startTime, duration, ) = ICoreFacet(_diamond).getCycleInfo();
+        vm.warp(startTime + duration);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(_diamond).monitorCycleEnd();
+    }
+
+    /// @dev Calls processTasks on `_diamond` as the VM signer and returns only the logs that call
+    /// emitted, the way an indexer reads one transaction's receipt.
+    function processTasksRecordingLogs(address _diamond, uint64 _cycleIndex, uint64[] memory _taskIndexes)
+        internal
+        returns (Vm.Log[] memory logs)
+    {
+        vm.recordLogs();
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(_diamond).processTasks(_cycleIndex, _taskIndexes);
+        logs = vm.getRecordedLogs();
+    }
+
     /// @dev Asserts that two uint64 arrays have the same length and elements, in order. forge-std's
     /// assertEq has array overloads for uint256[] but not for uint64[], the type of the registry's
     /// task-id lists. The message names the first differing position.

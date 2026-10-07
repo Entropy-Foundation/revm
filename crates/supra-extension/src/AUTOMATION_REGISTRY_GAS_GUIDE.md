@@ -189,11 +189,11 @@ The common case: automation stays enabled, no task expires mid-transition.
 | Call | Gas |
 | --- | --- |
 | `monitorCycleEnd` (trigger) | 1,414,028 |
-| `processTasks`, non-final batch (average of batches 1–7) | ~569,997 |
-| `processTasks`, **final batch (8/8)** | **1,673,934** |
-| Final-batch finalization premium (final − average) | ~1,103,937 |
-| Total `processTasks` (8 batches) | 5,663,914 |
-| **Grand total** (trigger + all batches) | **7,077,942** |
+| `processTasks`, non-final batch (average of batches 1–7) | ~566,139 |
+| `processTasks`, **final batch (8/8)** | **1,652,546** |
+| Final-batch finalization premium (final − average) | ~1,086,407 |
+| Total `processTasks` (8 batches) | 5,615,521 |
+| **Grand total** (trigger + all batches) | **7,029,549** |
 
 The registry's task-ID lists (`activeTaskIds`, `orderedTaskIds`, `survivedTaskIds`,
 `expectedTasksToBeProcessed`) are `uint64[]` arrays, which pack four task IDs per
@@ -228,11 +228,11 @@ none survive into a next cycle, and the cycle index does not increment.
 | Call | Gas |
 | --- | --- |
 | `disableAutomation` (trigger) | 1,415,082 |
-| `processTasks` (`onCycleSuspend`), non-final batch (average) | ~559,570 |
-| `processTasks`, **final batch (8/8)** | **402,738** |
+| `processTasks` (`onCycleSuspend`), non-final batch (average) | ~559,606 |
+| `processTasks`, **final batch (8/8)** | **402,786** |
 | Final-batch finalization premium | **0** (final batch is *cheaper* than typical) |
-| Total `processTasks` (8 batches) | 4,319,734 |
-| **Grand total** (trigger + all batches) | **5,734,816** |
+| Total `processTasks` (8 batches) | 4,320,034 |
+| **Grand total** (trigger + all batches) | **5,735,116** |
 
 Two things stand out relative to Scenario 1:
 - **No survivor bookkeeping**: `onCycleSuspend` never pushes to `survivedTaskIds` —
@@ -265,18 +265,18 @@ cycles: the 20 tasks are registered with an expiry inside cycle 2, survive cycle
 | Call | Gas |
 | --- | --- |
 | `monitorCycleEnd` (trigger, cycle 2) | 1,296,828 |
-| `processTasks`, non-final batch (average) | ~569,477 |
-| `processTasks`, **final batch (8/8)** | **497,313** |
+| `processTasks`, non-final batch (average) | ~566,014 |
+| `processTasks`, **final batch (8/8)** | **479,717** |
 | Final-batch finalization premium | **0** (final batch is *cheaper* than typical) |
-| Total `processTasks` (8 batches) | 4,483,655 |
-| **Grand total** (trigger + all batches) | **5,780,483** |
+| Total `processTasks` (8 batches) | 4,441,816 |
+| **Grand total** (trigger + all batches) | **5,738,644** |
 
 With 180 survivors, cycle 2's finalizing batch costs less than its average batch,
 although it carries the `ActiveTasks` log data for the 180 survivors (43,872 gas,
 measured against the list hashed into a topic). The finalization cost is not
 proportional to survivor count: in the same benchmark, cycle 1's finalizing batch,
-with 200 survivors, measures 1,673,934 gas, the Scenario 1 figure, while cycle 2's
-measures 497,313. Size a final batch from the Scenario 1 figure, not by scaling it
+with 200 survivors, measures 1,652,546 gas, the Scenario 1 figure, while cycle 2's
+measures 479,717. Size a final batch from the Scenario 1 figure, not by scaling it
 down with the survivor count. The batches
 containing the 20 expiring tasks (batch 1, dominated by expired-task drops) are
 cheaper than a normal batch, since a refund-and-drop is less work than a full
@@ -295,8 +295,8 @@ There is no per-batch variable budget today, and no use of
 final batch.
 
 Measured against that flat cap, the worst case across all three scenarios is
-**Scenario 1's final batch at 1,673,934 gas** — about **10x headroom**
-(16,777,216 / 1,673,934) under the current 16,777,216 flat limit. **Given that
+**Scenario 1's final batch at 1,652,546 gas** — about **10x headroom**
+(16,777,216 / 1,652,546) under the current 16,777,216 flat limit. **Given that
 margin, the "an under-budget final batch cannot be fixed by splitting it further
 after the fact" hazard is not live today.** This section exists so that headroom
 has a documented, reproducible baseline: if `TX_GAS_LIMIT_CAP` is ever lowered, or
@@ -315,10 +315,10 @@ new scheme assigns non-final vs. final batches.
   specifically whenever either capacity changes. `disableAutomation` is a regular
   transaction and needs its own explicit budget of similar size.
 - **`processTasks`**: comfortably covered by the current flat 16,777,216 cap at
-  every batch size measured here (non-final batches average ~570k/~560k/~569k gas;
-  the worst-case final batch at 1,673,934 gas) — see the margin above. If a future
+  every batch size measured here (non-final batches average ~566k/~560k/~566k gas;
+  the worst-case final batch at 1,652,546 gas) — see the margin above. If a future
   change introduces a smaller or variable per-record budget instead of the flat
-  cap, use **~1.7M gas** (Scenario 1's measured worst case, 1,673,934) as the floor for
+  cap, use **~1.7M gas** (Scenario 1's measured worst case, 1,652,546) as the floor for
   whichever batch will finalize a `FINISHED->STARTED` transition, and ~0.6M gas for
   every other batch, including suspension-path finalization (Scenario 2's final
   batch is cheaper than typical, not more expensive — see Scenario 2 above for why
@@ -360,17 +360,17 @@ How the figures are produced:
 
 | Payload / predicate (bytes) | First task, tx total | Next task, tx total | Event LOG gas |
 | --- | --- | --- | --- |
-| 640 / 128 (suite fixture) | 938,374 | 848,774 | 13,020 |
-| 1,024 / 512 (1/4 of caps) | 1,515,600 | 1,428,500 | 19,164 |
-| 2,048 / 1,024 (1/2 of caps) | 2,627,586 | 2,540,486 | 31,452 |
-| **4,096 / 2,048 (at caps)** | **4,851,834** | **4,764,734** | 56,028 |
+| 640 / 128 (suite fixture) | 938,424 | 848,824 | 13,020 |
+| 1,024 / 512 (1/4 of caps) | 1,515,650 | 1,428,550 | 19,164 |
+| 2,048 / 1,024 (1/2 of caps) | 2,627,636 | 2,540,536 | 31,452 |
+| **4,096 / 2,048 (at caps)** | **4,851,884** | **4,764,784** | 56,028 |
 
 ### GST (`registerSystemTask`)
 
 | Payload / predicate (bytes) | First task, tx total | Next task, tx total | Event LOG gas |
 | --- | --- | --- | --- |
-| 640 / 128 (suite fixture) | 910,519 | 858,219 | 12,764 |
-| **4,096 / 2,048 (at caps)** | **4,823,972** | **4,774,172** | 55,772 |
+| 640 / 128 (suite fixture) | 910,569 | 858,269 | 12,764 |
+| **4,096 / 2,048 (at caps)** | **4,824,022** | **4,774,222** | 55,772 |
 
 ### Reading the figures
 
@@ -400,7 +400,8 @@ How the figures are produced:
   | 4,096 / 2,048 | 4,795,747 | 4,851,793 | +56,046 |
 
   These two columns were measured before the task-ID lists became `uint64[]`; the
-  tables above, measured after, are 41 gas higher in every row.
+  tables above are 91 gas higher in every row: 41 from the packed lists and 50 from the
+  word-alignment checks on `payloadTx` and `predicate`.
 
 - **Every size fits the per-transaction cap.** The largest registration, a UST at the
   caps, is ~4.85M gas, about 3.5x below `TX_GAS_LIMIT_CAP` (16,777,216). The benchmark

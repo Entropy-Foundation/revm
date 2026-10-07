@@ -32,6 +32,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 OUT_DIR="${1:-out}"
+# Strip trailing slashes so "$OUT_DIR/build-info" matches the paths find prints for it.
+while [[ "$OUT_DIR" == */ && "$OUT_DIR" != "/" ]]; do
+    OUT_DIR="${OUT_DIR%/}"
+done
 
 # jq reads the artifacts. Without it every check below would fail for a reason unrelated to the
 # contracts, so its absence is reported as such.
@@ -45,6 +49,11 @@ if [[ ! -d "$OUT_DIR" ]]; then
     exit 1
 fi
 
+# jq's stderr goes to this file, not into the captured result: a warning printed by a jq run that
+# succeeds must not change the value the script tests. It is shown only when jq fails.
+JQ_ERR="$(mktemp)"
+trap 'rm -f "$JQ_ERR"' EXIT
+
 # Every artifact whose compilation target is a source under src/. compilationTarget maps the
 # source path to the contract name; an artifact without metadata is not a compiled contract.
 # out/build-info holds the compiler's raw input and output, not per-contract artifacts, so it is
@@ -53,8 +62,8 @@ fi
 src_artifacts=()
 while IFS= read -r -d '' artifact; do
     if ! is_src="$(jq -r '(.metadata.settings.compilationTarget // {}) | keys | any(startswith("src/"))' \
-        "$artifact" 2>&1)"; then
-        echo "FAIL: cannot parse artifact '$artifact': $is_src"
+        "$artifact" 2>"$JQ_ERR")"; then
+        echo "FAIL: cannot parse artifact '$artifact': $(cat "$JQ_ERR")"
         exit 1
     fi
     if [[ "$is_src" == "true" ]]; then
@@ -89,8 +98,8 @@ for artifact in "${src_artifacts[@]}"; do
             | select((.type | startswith("tuple")) or (.type | contains("["))
                      or .type == "string" or .type == "bytes")
             | "\($where) \($event)(\(.name) \(.internalType // .type))"
-        ' "$artifact" 2>&1)"; then
-        echo "FAIL: cannot read the ABI of '$artifact': $found"
+        ' "$artifact" 2>"$JQ_ERR")"; then
+        echo "FAIL: cannot read the ABI of '$artifact': $(cat "$JQ_ERR")"
         exit 1
     fi
     if [[ -n "$found" ]]; then
