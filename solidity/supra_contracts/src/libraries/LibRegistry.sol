@@ -373,7 +373,8 @@ library LibRegistry {
             task.depositFee,
             task.owner,
             task.taskState,
-            _isGst
+            _isGst,
+            false
         );
 
         refund = cycleFeeRefund + depositRefund;
@@ -390,7 +391,8 @@ library LibRegistry {
         uint128 _depositFee,
         address _owner,
         LibCommon.TaskState _taskState,
-        bool _isGst
+        bool _isGst,
+        bool _fullRefund
     ) internal returns (uint128 cycleFeeRefund, uint128 depositRefund) {
         // Remove task from the registry and active tasks
         LibCommon.removeTask(_taskId, _owner, _isGst, _taskState != LibCommon.TaskState.PENDING);
@@ -411,7 +413,8 @@ library LibRegistry {
                 _maxGasAmount,
                 _residualInterval,
                 _currentTime,
-                _depositFee
+                _depositFee,
+                _fullRefund
             );
         }
     }

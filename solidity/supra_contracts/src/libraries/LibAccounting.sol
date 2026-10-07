@@ -21,6 +21,10 @@ library LibAccounting {
     /// Factor of `2` suggests that `1/2` of the deposit will be refunded.
     uint8 constant REFUND_FACTOR = 2;
 
+    /// @dev Divisor for refunds without penalty: the whole amount is refunded. Applied to a task
+    /// removed because the EVM gas config no longer admits it (#4087).
+    uint8 constant FULL_REFUND_FACTOR = 1;
+
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Refunds fee paid by the task for the cycle to the task owner.
@@ -269,12 +273,14 @@ library LibAccounting {
     /// @param _taskOwner Owner of the task.
     /// @param _refundableDeposit Refundable amount of deposit.
     /// @param _lockedDeposit Total locked deposit.
+    /// @return refunded Whether the deposit was unlocked and transferred; when it was not, an error
+    /// event of {safeDepositRefund} records why.
     function refundDepositAndDrop(
         uint64 _taskIndex,
         address _taskOwner,
         uint128 _refundableDeposit,
         uint128 _lockedDeposit
-    ) internal {
+    ) internal returns (bool refunded) {
         // Check if task is UST
         if (LibAppStorage.registryState().tasks[_taskIndex].taskType == LibCommon.TaskType.GST) { revert ICoreFacet.RegisteredTaskInvalidType(); }
 
@@ -282,7 +288,7 @@ library LibAccounting {
         LibCommon.removeTask(_taskIndex, _taskOwner, false, false);
 
         // Refund
-        safeDepositRefund(
+        refunded = safeDepositRefund(
             _taskIndex,
             _taskOwner,
             _refundableDeposit,
@@ -352,9 +358,15 @@ library LibAccounting {
         return calculateAutomationFeeForInterval(s.durationSecs, _taskOccupancy, automationFeePerSec, registryState.nextCycleRegistryMaxGasCap);
     }
 
-    /// @notice Helper function to unlock locked deposit and cycle fees when stopTasks is called. Calculates cycle fee and 
-    /// deposit fee that needs to be refunded. Tries to unlock the same from corresponding counters and returns the refund amounts. 
-    /// Function reverts if unlocking fails. Note that this function does not do actual refund, but only unlocking.
+    /// @notice Helper function to unlock locked deposit and cycle fees when a task is stopped by its owner or removed by
+    /// the VM signer. Calculates cycle fee and deposit fee that needs to be refunded. Tries to unlock the same from
+    /// corresponding counters and returns the refund amounts. Function reverts if unlocking fails. Note that this
+    /// function does not do actual refund, but only unlocking.
+    /// @dev The amount unlocked from `cycleLockedFees` is the task's whole fee for the current cycle whatever the refund
+    /// policy; only the share of it paid back to the owner depends on `_fullRefund`.
+    /// @param _fullRefund False: the owner gets half of the fee for the remaining cycle time and the deposit (half of the
+    /// deposit for a PENDING task), which `stopTasks` and an ERROR removal apply. True: the owner gets the whole fee for
+    /// the remaining cycle time and the whole deposit, which a GAS_CONFIG_UPDATE removal applies (#4087).
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         LibCommon.TaskState _taskState,
@@ -362,7 +374,8 @@ library LibAccounting {
         uint128 _maxGasAmount,
         uint64 _residualInterval,
         uint64 _currentTime,
-        uint128 _depositFee
+        uint128 _depositFee,
+        bool _fullRefund
     )  internal returns (uint128, uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -370,6 +383,10 @@ library LibAccounting {
         uint128 cycleLockedFeeForTask;
         uint128 cycleFeeRefund;
         uint128 depositRefund;
+        // The residual-time fee never exceeds the fee charged for the cycle, since the residual
+        // window is a suffix of the charged one, so the InvalidCycleRefundFee invariant below holds
+        // for FULL_REFUND_FACTOR as well.
+        uint8 refundDivisor = _fullRefund ? FULL_REFUND_FACTOR : REFUND_FACTOR;
 
         if (_taskState != LibCommon.TaskState.PENDING) {
             // Compute the automation fee multiplier for cycle
@@ -393,14 +410,15 @@ library LibAccounting {
                 automationFeePerSec
             );
 
-            // Refund full deposit and half of the remaining run-time fee when a task is in active or cancelled stage
+            // Refund the full deposit and the remaining run-time fee divided by refundDivisor when a task is in active
+            // or cancelled stage.
             cycleLockedFeeForTask = taskFeeForCurrentCycle;
-            cycleFeeRefund = taskFeeForResidualTime / REFUND_FACTOR; 
+            cycleFeeRefund = taskFeeForResidualTime / refundDivisor;
             depositRefund = _depositFee;
         } else {
             cycleLockedFeeForTask = 0;
             cycleFeeRefund = 0;
-            depositRefund = _depositFee / REFUND_FACTOR;
+            depositRefund = _depositFee / refundDivisor;
         }
 
         bool result = safeUnlockLockedDeposit(_taskIndex, _depositFee);

@@ -71,6 +71,7 @@ struct TaskMetadata {
 /// TaskMetadata avoids copying those dynamic byte blobs from storage to memory.
 struct TaskMetadataLW {
     uint128 maxGasAmount;
+    uint128 gasPriceCap;
     uint128 automationFeeCapForCycle;
     uint128 depositFee;
     bytes32 txHash;

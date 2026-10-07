@@ -842,7 +842,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Remove only task 0 due to predicate failure, cycle index is 2
         vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], LibCommon.TaskRemovalReason.ERROR, reason);
 
         // Verify only task 0 is removed; task 1 remains with its gas committed
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
@@ -877,7 +877,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         // Remove only task 0 due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], LibCommon.TaskRemovalReason.ERROR, reason);
 
         // Verify only task 0 is removed; task 1 remains with its gas committed
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
@@ -898,14 +898,14 @@ contract CoreFacetTest is BaseDiamondTest {
 
         processCycleTransition(diamondAddr, taskIndexes);
 
-        LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), "Predicate failed");
+        LibCommon.RemovedTask memory removedTask = LibCommon.RemovedTask(0, LibCommon.TaskType.UST, alice, keccak256("txHash"), LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
 
         vm.expectEmit(true, false, false, false);
         emit ICoreFacet.TaskRemovedBySystem(removedTask);
 
         // Remove task due to predicate failure
         vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, tasksUint64[0], LibCommon.TaskRemovalReason.ERROR, reason);
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if caller is not VM Signer.
@@ -918,7 +918,7 @@ contract CoreFacetTest is BaseDiamondTest {
         string memory reason = "Predicate failed";
 
         vm.prank(alice);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, taskIndex, reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, taskIndex, LibCommon.TaskRemovalReason.ERROR, reason);
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
@@ -931,7 +931,7 @@ contract CoreFacetTest is BaseDiamondTest {
         string memory reason = "Predicate failed";
 
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, taskIndex, reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, taskIndex, LibCommon.TaskRemovalReason.ERROR, reason);
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts if cycle index is incorrect.
@@ -944,7 +944,7 @@ contract CoreFacetTest is BaseDiamondTest {
         string memory reason = "Predicate failed";
 
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(0, taskIndex, reason);
+        ICoreFacet(diamondAddr).removeRegisteredTask(0, taskIndex, LibCommon.TaskRemovalReason.ERROR, reason);
     }
 
     /// @dev Test to ensure 'removeRegisteredTask' reverts when automation is disabled (cycle not STARTED).
@@ -958,7 +958,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.expectRevert(ICoreFacet.InvalidOperationForCurrentCycleState.selector);
         vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(1, 0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTask(1, 0, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
 
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
@@ -981,7 +981,7 @@ contract CoreFacetTest is BaseDiamondTest {
 
         vm.expectRevert(ICoreFacet.InvalidOperationForCurrentCycleState.selector);
         vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(indexBefore, 0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTask(indexBefore, 0, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
 
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
@@ -1003,7 +1003,7 @@ contract CoreFacetTest is BaseDiamondTest {
         vm.expectRevert(ICoreFacet.InsufficientBalanceForRefund.selector);
 
         vm.prank(LibUtils.VM_SIGNER);
-        ICoreFacet(diamondAddr).removeRegisteredTask(2, 0, "Predicate failed");
+        ICoreFacet(diamondAddr).removeRegisteredTask(2, 0, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
     }
 
     /// @notice Test to ensure that when automation is disabled mid-transition (FINISHED, some tasks

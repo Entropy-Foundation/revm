@@ -5,6 +5,7 @@ import {LibAccounting} from "./LibAccounting.sol";
 import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {LibRegistry} from "./LibRegistry.sol";
+import {LibEvmGasConfig} from "./LibEvmGasConfig.sol";
 import {AppStorage, LibAppStorage, RegistryState, TaskMetadataLW, TransitionState} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -306,6 +307,11 @@ library LibCore {
         requireSortedAscending(_taskIndexes);
         uint256[] memory taskIndexes = _taskIndexes;
 
+        // The EVM gas config is the same for every transaction of a block, so it is read once per
+        // batch rather than once per task.
+        uint64 txGasLimitCap = LibEvmGasConfig.txGasLimitCap();
+        uint256 minGasPrice = LibEvmGasConfig.minGasPrice();
+
         uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
         uint256 removedCount;
 
@@ -315,7 +321,9 @@ library LibCore {
             LibCommon.TransitionResult memory result = dropOrChargeTask(
                 taskId,
                 currentTime,
-                currentCycleEndTime
+                currentCycleEndTime,
+                txGasLimitCap,
+                minGasPrice
             );
 
             if (result.isRemoved) {
@@ -349,11 +357,15 @@ library LibCore {
     /// @param _taskIndex Task index to be dropped or charged.
     /// @param _currentTime Current time.
     /// @param _currentCycleEndTime End time of the current cycle.
+    /// @param _txGasLimitCap Per-transaction gas cap of the executing block's epoch.
+    /// @param _minGasPrice Minimum gas price of the executing block's epoch.
     /// @return result Returns the TransitionResult.
     function dropOrChargeTask(
         uint64 _taskIndex,
         uint64 _currentTime,
-        uint64 _currentCycleEndTime
+        uint64 _currentCycleEndTime,
+        uint64 _txGasLimitCap,
+        uint256 _minGasPrice
     ) private returns (LibCommon.TransitionResult memory result) {
         require(LibCommon.ifTaskExists(_taskIndex), ICoreFacet.UnknownTaskToProcess(_taskIndex));
         markTaskProcessed(_taskIndex);
@@ -371,6 +383,24 @@ library LibCore {
                 // Remove the task from registry and system registry
                 LibCommon.removeTask(_taskIndex, task.owner, true, false);
             }
+            result.isRemoved = true;
+        } else if (!isAdmittedByGasConfig(task, _txGasLimitCap, _minGasPrice)) {
+            // The EVM gas config changed at an epoch boundary since the task was registered, and
+            // the chain can no longer build an admissible transaction for it. The task is dropped
+            // before it is charged for the new cycle, and a UST's whole deposit is refunded. This
+            // covers PENDING tasks, which the node never schedules, and ACTIVE tasks for which a
+            // GAS_CONFIG_UPDATE removal had not executed when the cycle ended (#4087).
+            uint128 depositRefund;
+            if (isUst) {
+                bool refunded =
+                    LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
+                // The event reports what was paid: a deposit the registry could not transfer is
+                // reported as 0, alongside the error event safeDepositRefund emits.
+                depositRefund = refunded ? task.depositFee : 0;
+            } else {
+                LibCommon.removeTask(_taskIndex, task.owner, true, false);
+            }
+            emitTaskRemovedByGasConfigUpdate(task, _txGasLimitCap, _minGasPrice, 0, depositRefund);
             result.isRemoved = true;
         } else if (!isUst) {
             // Active GST
@@ -607,42 +637,101 @@ library LibCore {
         }
     }
 
-    /// @notice Removes a registered task when predicate validation fails during runtime.
-    /// @param _taskId Task index that failed predicate validation.
+    /// @notice Removes a registered task on the VM signer's request; see
+    /// {CoreFacet.removeRegisteredTask} for the two policies.
+    /// @param _taskId Task index to remove.
     /// @param _cycleEndTime Cycle end time.
     /// @param _currentTime Current time.
-    /// @param _residualInterval Residual interval.
-    /// @param _reason Reason for task removal.
+    /// @param _residualInterval Remaining time of the current cycle.
+    /// @param _reason Why the task is removed; selects the refund policy.
+    /// @param _details Human-readable description of the reason, carried in the record's call data.
     function handleTasksRemoval(
-        uint64 _taskId, 
-        uint64 _cycleEndTime, 
-        uint64 _currentTime, 
+        uint64 _taskId,
+        uint64 _cycleEndTime,
+        uint64 _currentTime,
         uint64 _residualInterval,
-        string memory _reason
-    ) internal returns (LibCommon.RemovedTask memory removedTask) {
-        RegistryState storage registryState = LibAppStorage.registryState();
-            
-        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
+        LibCommon.TaskRemovalReason _reason,
+        string memory _details
+    ) internal {
+        bool isGasConfigUpdate = _reason == LibCommon.TaskRemovalReason.GAS_CONFIG_UPDATE;
+        uint64 txGasLimitCap;
+        uint256 minGasPrice;
+        if (isGasConfigUpdate) {
+            // A GAS_CONFIG_UPDATE removal is a no-op for a task that no longer exists (removed by
+            // its owner or by an earlier record) and for a task the current figures admit. The
+            // whole-refund policy therefore applies only to a task this block's EVM gas config
+            // actually excludes, whatever the node that scheduled the record observed.
+            if (!LibCommon.ifTaskExists(_taskId)) { return; }
+            txGasLimitCap = LibEvmGasConfig.txGasLimitCap();
+            minGasPrice = LibEvmGasConfig.minGasPrice();
+        }
+
+        TaskMetadataLW memory task = LibCommon.toLW(LibAppStorage.registryState().tasks[_taskId]);
+        if (isGasConfigUpdate && isAdmittedByGasConfig(task, txGasLimitCap, minGasPrice)) { return; }
         bool isGst = task.taskType == LibCommon.TaskType.GST;
 
         (uint128 cycleFeeRefund, uint128 depositRefund) = LibRegistry.removeTaskAndComputeRefund(
-            _taskId, 
-            _cycleEndTime, 
-            _currentTime, 
+            _taskId,
+            _cycleEndTime,
+            _currentTime,
             _residualInterval,
             task.expiryTime,
             task.maxGasAmount,
             task.depositFee,
             task.owner,
             task.taskState,
-            isGst
+            isGst,
+            isGasConfigUpdate
         );
-        
+
         if (!isGst) {
             LibAccounting.refund(task.owner, (cycleFeeRefund + depositRefund));
         }
 
-        removedTask = LibCommon.RemovedTask(_taskId, task.taskType, task.owner, task.txHash, _reason);
+        if (isGasConfigUpdate) {
+            emitTaskRemovedByGasConfigUpdate(task, txGasLimitCap, minGasPrice, cycleFeeRefund, depositRefund);
+        } else {
+            emit ICoreFacet.TaskRemovedBySystem(
+                LibCommon.RemovedTask(_taskId, task.taskType, task.owner, task.txHash, _reason, _details)
+            );
+        }
+    }
+
+    /// @notice Whether the EVM gas config admits the transaction the chain builds for a task.
+    /// @dev The transaction carries the task's maxGasAmount as its gas limit, which the chain
+    ///      refuses above the per-transaction cap, for user and system tasks alike. A UST's
+    ///      transaction is priced no higher than its gasPriceCap, which the chain refuses below the
+    ///      minimum gas price; a GST runs at a gas price of 0 and is exempt from the price bound.
+    ///      The same two bounds {LibRegistry} applies at registration.
+    function isAdmittedByGasConfig(
+        TaskMetadataLW memory _task,
+        uint64 _txGasLimitCap,
+        uint256 _minGasPrice
+    ) private pure returns (bool) {
+        if (_task.maxGasAmount > _txGasLimitCap) { return false; }
+        return _task.taskType != LibCommon.TaskType.UST || _task.gasPriceCap >= _minGasPrice;
+    }
+
+    /// @notice Emits {ICoreFacet.TaskRemovedByGasConfigUpdate} for a removed task.
+    function emitTaskRemovedByGasConfigUpdate(
+        TaskMetadataLW memory _task,
+        uint64 _txGasLimitCap,
+        uint256 _minGasPrice,
+        uint128 _cycleFeeRefund,
+        uint128 _depositRefund
+    ) private {
+        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+            _task.taskIndex,
+            _task.owner,
+            _task.taskType,
+            _task.maxGasAmount,
+            _task.gasPriceCap,
+            _txGasLimitCap,
+            _minGasPrice,
+            _cycleFeeRefund,
+            _depositRefund,
+            _task.txHash
+        );
     }
 
     /// @notice Helper function called when cycle end is identified.
