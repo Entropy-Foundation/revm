@@ -224,13 +224,26 @@ impl Transaction for AutomatedTransaction {
     /// priority fee is the ceiling itself (see [`Self::max_priority_fee_per_gas`]). It is returned
     /// directly so the rule is stated rather than derived.
     ///
-    /// A base fee above the scheduled price does not lower the result. The registry schedules at or
-    /// above the chain's minimum gas price, which is the block's base fee, so that case cannot
-    /// arise for a scheduled task; the accessor still answers it with the price the transaction
-    /// offers rather than a figure it never agreed to.
+    /// The base fee never changes the result, including a base fee above the scheduled price. This
+    /// type does not require the scheduled price to cover the base fee. The executor that sets the
+    /// block's base fee is responsible for that, by keeping it at or below the price the registry
+    /// schedules at.
     #[inline]
     fn effective_gas_price(&self, _base_fee: Option<u64>) -> u128 {
         self.max_fee_per_gas
+    }
+
+    /// The part of the scheduled price above `base_fee`, or zero when the base fee is at or above
+    /// the scheduled price.
+    ///
+    /// This is the per-gas amount revm pays the block beneficiary for this transaction: the
+    /// effective price minus the base fee, floored at zero. It is always `Some`, because an
+    /// automated transaction is charged its scheduled price at any base fee rather than being
+    /// refused, so the trait's default, which returns `None` once the base fee exceeds the
+    /// ceiling, would describe a transaction that cannot run.
+    #[inline]
+    fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
+        Some(self.max_fee_per_gas.saturating_sub(u128::from(base_fee)))
     }
 
     #[inline]
@@ -948,7 +961,7 @@ mod tests {
     #[test]
     fn effective_gas_price_base_fee_below_scheduled_price_is_scheduled_price() {
         // A base fee below the scheduled price does not lower it: the chain charges the scheduled
-        // price, not the base fee a zero tip would yield.
+        // price.
         assert_eq!(
             scheduled_txn().effective_gas_price(Some(100)),
             SCHEDULED_PRICE
@@ -965,8 +978,8 @@ mod tests {
 
     #[test]
     fn effective_gas_price_base_fee_above_scheduled_price_is_scheduled_price() {
-        // Unreachable for a scheduled task, which is priced at or above the block's base fee, but
-        // the accessor is total and answers with the price the transaction offers.
+        // A base fee above the scheduled price does not raise it: the transaction is charged the
+        // price it was scheduled at.
         assert_eq!(
             scheduled_txn().effective_gas_price(Some(9_999)),
             SCHEDULED_PRICE
@@ -1020,14 +1033,38 @@ mod tests {
 
     #[test]
     fn effective_tip_per_gas_is_scheduled_price_above_base_fee() {
-        // The trait's default tip is `min(max_fee - base_fee, priority)`; with the priority equal
-        // to the ceiling it is the part of the scheduled price above the base fee, and `None` once
-        // the base fee exceeds the ceiling.
+        // The tip is the part of the scheduled price above the base fee, floored at zero, and is
+        // always `Some` because the transaction runs at any base fee.
         let txn = scheduled_txn();
         assert_eq!(txn.effective_tip_per_gas(0), Some(SCHEDULED_PRICE));
         assert_eq!(txn.effective_tip_per_gas(100), Some(SCHEDULED_PRICE - 100));
         assert_eq!(txn.effective_tip_per_gas(SCHEDULED_PRICE as u64), Some(0));
-        assert_eq!(txn.effective_tip_per_gas(9_999), None);
+        assert_eq!(txn.effective_tip_per_gas(9_999), Some(0));
+        assert_eq!(txn.effective_tip_per_gas(u64::MAX), Some(0));
+    }
+
+    #[test]
+    fn effective_tip_per_gas_matches_revm_beneficiary_tip() {
+        // revm pays the beneficiary `effective_gas_price - base_fee`, saturating at zero, per gas
+        // unit. The reported tip must be that figure at every base fee, so that the price and the
+        // tip a reader derives from this type agree with what was paid.
+        let txn = scheduled_txn();
+        let env = TxEnv {
+            tx_type: txn.ty(),
+            gas_price: txn.max_fee_per_gas(),
+            gas_priority_fee: txn.max_priority_fee_per_gas(),
+            ..Default::default()
+        };
+        for base_fee in BASE_FEES.into_iter().flatten() {
+            let paid_tip = env
+                .effective_gas_price(u128::from(base_fee))
+                .saturating_sub(u128::from(base_fee));
+            assert_eq!(
+                txn.effective_tip_per_gas(base_fee),
+                Some(paid_tip),
+                "base_fee={base_fee}"
+            );
+        }
     }
 
     #[test]
@@ -1036,8 +1073,7 @@ mod tests {
         // own `Transaction::effective_gas_price`, `min(gas_price, base_fee + gas_priority_fee)`.
         // Two envs are checked against the transaction's own figure:
         // - `charged`: the scheduled price as both ceiling and tip, the env the chain executes an
-        //   automated transaction with. The transaction disagreeing with it is the defect this
-        //   guards against.
+        //   automated transaction with (smr-moonshot#3879).
         // - `from_accessors`: an env built purely from the transaction's fee accessors, so a caller
         //   converting the type generically gets the same price without restating the rule.
         for (txn, label) in [
