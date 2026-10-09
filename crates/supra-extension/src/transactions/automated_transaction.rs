@@ -691,8 +691,13 @@ mod tests {
     use crate::{errors::SupraExtensionError, TaskMetadata};
     use alloy::hex;
     use alloy::primitives::{address, b256, Address, Bytes, B256, U256};
-    use alloy_consensus::transaction::Transaction;
+    // Both alloy and revm's `context` crate define a `Transaction` trait. `context` is local to
+    // this workspace, so the foreign alloy trait is the one aliased.
+    use alloy_consensus::transaction::Transaction as AlloyTransaction;
+    use alloy_eips::eip1559::calc_effective_gas_price;
     use alloy_sol_types::SolType;
+    use context::transaction::Transaction;
+    use context::TxEnv;
 
     type PredicateType = (
         alloy_sol_types::sol_data::Address,
@@ -924,6 +929,17 @@ mod tests {
         }
     }
 
+    /// Builds a transaction from a builder the test configured completely, so the build cannot
+    /// fail or be refused; a panic here means the shared builder fixtures above changed.
+    fn built_txn(builder: AutomatedTransactionBuilder) -> AutomatedTransaction {
+        unwrap_success(
+            builder
+                .build()
+                .expect("a fully configured builder within its gas price cap builds"),
+        )
+        .txn
+    }
+
     #[test]
     fn effective_gas_price_no_base_fee_is_scheduled_price() {
         assert_eq!(scheduled_txn().effective_gas_price(None), SCHEDULED_PRICE);
@@ -968,11 +984,7 @@ mod tests {
         for base_fee in BASE_FEES {
             assert_eq!(
                 txn.effective_gas_price(base_fee),
-                alloy_eips::eip1559::calc_effective_gas_price(
-                    SCHEDULED_PRICE,
-                    SCHEDULED_PRICE,
-                    base_fee
-                ),
+                calc_effective_gas_price(SCHEDULED_PRICE, SCHEDULED_PRICE, base_fee),
                 "base_fee={base_fee:?}"
             );
         }
@@ -982,7 +994,7 @@ mod tests {
     fn fee_accessors_gst_report_zero_at_any_base_fee() {
         // A gasless transaction is built with a zero price, so every fee accessor reports zero
         // and no base fee changes that.
-        let txn = unwrap_success(base_gst_builder().build().unwrap()).txn;
+        let txn = built_txn(base_gst_builder());
         assert!(txn.is_gasless());
         assert_eq!(txn.max_fee_per_gas(), 0);
         assert_eq!(txn.max_priority_fee_per_gas(), Some(0));
@@ -999,7 +1011,7 @@ mod tests {
     #[test]
     fn fee_accessors_ust_built_report_scheduled_price() {
         // The builder's gas price is the scheduled price; the accessors must carry it through.
-        let txn = unwrap_success(base_ust_builder().build().unwrap()).txn;
+        let txn = built_txn(base_ust_builder());
         assert_eq!(txn.max_fee_per_gas(), GAS_PRICE);
         assert_eq!(txn.max_priority_fee_per_gas(), Some(GAS_PRICE));
         assert_eq!(txn.priority_fee_or_price(), GAS_PRICE);
@@ -1028,22 +1040,17 @@ mod tests {
         //   guards against.
         // - `from_accessors`: an env built purely from the transaction's fee accessors, so a caller
         //   converting the type generically gets the same price without restating the rule.
-        use context::transaction::Transaction as RevmTransaction;
-
         for (txn, label) in [
             (scheduled_txn(), "UST"),
-            (
-                unwrap_success(base_gst_builder().build().unwrap()).txn,
-                "GST",
-            ),
+            (built_txn(base_gst_builder()), "GST"),
         ] {
-            let charged = context::TxEnv {
+            let charged = TxEnv {
                 tx_type: txn.ty(),
                 gas_price: txn.max_fee_per_gas,
                 gas_priority_fee: Some(txn.max_fee_per_gas),
                 ..Default::default()
             };
-            let from_accessors = context::TxEnv {
+            let from_accessors = TxEnv {
                 tx_type: txn.ty(),
                 gas_price: txn.max_fee_per_gas(),
                 gas_priority_fee: txn.max_priority_fee_per_gas(),
@@ -1054,12 +1061,12 @@ mod tests {
                 let revm_base_fee = u128::from(base_fee.unwrap_or_default());
                 let reported = txn.effective_gas_price(base_fee);
                 assert_eq!(
-                    RevmTransaction::effective_gas_price(&charged, revm_base_fee),
+                    charged.effective_gas_price(revm_base_fee),
                     reported,
                     "{label} charged env, base_fee={base_fee:?}"
                 );
                 assert_eq!(
-                    RevmTransaction::effective_gas_price(&from_accessors, revm_base_fee),
+                    from_accessors.effective_gas_price(revm_base_fee),
                     reported,
                     "{label} accessor-built env, base_fee={base_fee:?}"
                 );
