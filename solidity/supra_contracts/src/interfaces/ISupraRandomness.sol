@@ -29,7 +29,8 @@ interface ISupraRandomness {
     /// transaction boundary and the read. See rule 2 on {next}.
     error CallerNotTransactionRoot();
     /// @notice Thrown when the transaction's sender account has code, which would run at the root
-    /// context and could revert on the outcome. This refuses EIP-7702 delegated senders.
+    /// context and could revert on the outcome. Every EIP-7702 delegated sender is refused,
+    /// including a self-sponsored one.
     error OriginHasCode();
     /// @notice Thrown when the transaction is of a kind that may not read randomness. Ordinary
     /// user transactions, automation task actions and automation task predicates all may;
@@ -59,7 +60,8 @@ interface ISupraRandomness {
     ///    context. A call the root context makes to itself is served. A contract reached by `CALL`
     ///    from another contract is refused, and so is a read in any frame with such a contract's
     ///    frame beneath it, including a call from that contract back into the root context.
-    /// 3. The transaction's sender is an account with no code.
+    /// 3. The transaction's sender is an account with no code. Every EIP-7702 delegated account is
+    ///    refused as the sender, a self-sponsored one included.
     /// 4. The transaction is one that may read: an ordinary user transaction, an automation
     ///    task's action, an automation task's predicate, or a simulated call (`eth_call`,
     ///    `eth_estimateGas`). The chain's own internal transactions may not read.
@@ -68,17 +70,30 @@ interface ISupraRandomness {
     /// the reading contract's own author chose to run, so nothing can wrap the reader, observe the
     /// outcome and revert on it.
     ///
-    /// # Cost of failure
+    /// Call this function with `CALL` or `STATICCALL`. A `DELEGATECALL` to it is decided on the
+    /// calling frame's `msg.sender` instead of its context, so it is served from a self-call frame
+    /// and refused from the root frame. Do not send ETH with a call to this address: value sent
+    /// there stays at the address, which no key controls, and is not recoverable.
     ///
-    /// **A transaction that reads a value and then fails is charged its whole gas limit**, not the
-    /// gas it used. Reverting after seeing the outcome cannot be prevented - the reading contract
-    /// can always revert - so instead it is made to cost what the sender was willing to spend,
-    /// which removes the cheap retry that would otherwise make grinding an outcome free.
-    /// `eth_estimateGas` estimates the success path and is unaffected.
+    /// # Cost of an undone read
     ///
-    /// The charge raises the price of an abort without preventing it, and the price is the limit
-    /// the sender chose. That is what leaves the second item under "What the rules do not cover"
-    /// below.
+    /// **A transaction is charged its whole gas limit, not the gas it used, whenever a frame in
+    /// which a {next} value is served is reverted or halts**, running out of gas included,
+    /// whether or not the transaction fails. A read is undone when the call it was made in reverts
+    /// or halts, or when any call between that call and the transaction does, wherever the failure
+    /// is caught. A batch entry point that tolerates a failing entry (`tryMulticall`, Multicall3
+    /// `allowFailure`, `try this.f(data)`) and catches an inner frame that holds a read pays the
+    /// full limit. A read stands, and the transaction pays the gas it used, when every call from
+    /// the read back to the transaction returns successfully: a reader that catches the failure of
+    /// a callee it calls after the read is not charged.
+    ///
+    /// The reading contract can always revert after seeing the outcome, so the abort costs what
+    /// the sender was willing to spend instead. The price is the limit the sender chose. That is
+    /// what leaves the second item under "What the rules do not cover" below.
+    ///
+    /// Simulation (`eth_call`, `eth_estimateGas`, `debug_traceCall`) does not apply the charge. An
+    /// estimate is the gas the transaction uses to execute; on chain, a transaction that undoes a
+    /// read costs the gas limit the sender set.
     ///
     /// **This charge does not reach an automation task's predicate**, which is executed free of
     /// charge. A predicate that reads and then *reverts* pays no gas, but its task is removed from
@@ -110,6 +125,10 @@ interface ISupraRandomness {
     /// everything else. A low-level call whose boolean result you handle, or `try`/`catch` around a
     /// high-level one, keeps the frame alive.
     ///
+    /// Recording the outcome and settling in a later transaction closes this only when the
+    /// settlement cannot run in the same transaction as the read, after it: a transaction that
+    /// calls both the reading function and the settlement runs the settlement after the read.
+    ///
     /// The second needs no external call, so a contract that never calls out is exposed to it too:
     /// **the sender chooses the transaction's gas limit**, and running out of gas unwinds the frame
     /// exactly as a revert does.
@@ -127,17 +146,39 @@ interface ISupraRandomness {
     /// expensive one, never the reverse.
     ///
     /// The check before the read is `require(gasleft() >= N)` immediately before calling this
-    /// function, in the same function, where `N` is the gas the most expensive outcome uses from
-    /// the read to the end of the transaction, including this call and any calls made after it.
-    /// When the check passes every outcome can complete, so the gas limit selects nothing; when it
-    /// fails, nothing has been read. Rule 2 is what makes `gasleft()` reliable here: the reading
-    /// frame runs in the transaction's root context, so its remaining gas is the transaction's,
-    /// not a share passed down by another contract. Behind a proxy, a `DELEGATECALL` library or a
-    /// self-call the reading frame holds less gas than the frame that called it, so the check
-    /// refuses early rather than late. {LibRandomness-valueWithGasLeft} performs the check and the
-    /// read together. Measure `N` with a margin, and measure again after a gas repricing.
+    /// function, in the same function. `N` is the gas at which the most expensive outcome
+    /// *succeeds* when it is started at the read, through to the end of the function and including
+    /// this call and every call made after it. That is more than the gas the outcome uses: under
+    /// EIP-150 each call keeps back 1/64 of the gas available to it, so `N` covers that 1/64 at
+    /// every call level on the outcome's path, and gas refunds do not reduce it. Measure `N` as
+    /// the lowest gas limit at which the most expensive outcome completes, add a margin, and
+    /// measure again after a gas repricing. When the check passes every outcome can complete, so
+    /// the gas limit selects nothing; when it fails, nothing has been read.
     ///
-    /// Recording the outcome and settling in a later transaction closes both.
+    /// `gasleft()` is the reading function's own remaining gas, and the check covers that
+    /// function's work only. Behind a batch, a self-call or a `DELEGATECALL` the reading
+    /// function's `gasleft()` is a share of the transaction's gas, not the transaction's gas, and
+    /// work that runs after it returns can still run out of gas or revert.
+    /// {LibRandomness-valueWithGasLeft} performs the check and the read together.
+    ///
+    /// # Batching
+    ///
+    /// **A reading function must not be reachable from a batch whose other entries the sender
+    /// chooses**, a strict self-delegating `multicall` included. Every frame of such a batch runs
+    /// in the transaction's root context, so the read is served, and an entry the sender adds can
+    /// revert the whole batch on an outcome the sender does not want, which undoes the read.
+    /// Exclude a function that reads from the selectors a `multicall` the contract exposes
+    /// forwards. An automation task's gas limit is chosen by whoever registered the task.
+    ///
+    /// Recording the outcome and settling in a later transaction closes both ways only when the
+    /// settlement cannot run in the same transaction as the read, after it.
+    ///
+    /// # Visibility
+    ///
+    /// A {next} value cannot be known by anyone before its transaction is ordered. Once the block
+    /// commits, anyone can compute it: the seed is published with the block's commit certificate
+    /// and the transaction hash is public. Do not use a {next} value as a secret, such as hidden
+    /// cards, a sealed draw, a salt or a key.
     ///
     /// `STATICCALL` to this function is permitted.
     ///
@@ -178,7 +219,8 @@ interface ISupraRandomness {
     ///    and not sending the losing transaction. So *anyone* must be able to settle, and the
     ///    design must not need the loser's cooperation.
     ///
-    /// {next} does not have this problem. Its value is not public, and not predictable by anyone.
+    /// {next} does not have this problem: its value cannot be known before its transaction is
+    /// ordered. Once the block commits, anyone can compute it, so it is not a secret either.
     ///
     /// @param height The block height whose seed is wanted.
     /// @return `keccak256` of that block's raw seed.
