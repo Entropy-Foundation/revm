@@ -101,11 +101,11 @@ interface ISupraRandomness {
     /// the sender was willing to spend instead. The price is the limit the sender chose. That is
     /// what leaves the second item under "What the rules do not cover" below.
     ///
-    /// A successful transaction that is charged carries {UndoneReadCharged} as its last log,
-    /// emitted by this address. A failed transaction carries no logs; its receipt's `error` field
-    /// ends with `; gas limit charged for an undone randomness read`. The charge is reported only
-    /// when it raised the gas used: a transaction that halts already costs its gas limit, so its
-    /// receipt does not report the charge.
+    /// A successful transaction whose cost the charge raised carries {UndoneReadCharged} as its
+    /// last log, emitted by this address. A successful transaction whose gas used already equals
+    /// its gas limit carries no such log. A failed transaction carries no logs: a reverted or
+    /// halted transaction that undid a read shows a failed status and `gasUsed` equal to its gas
+    /// limit, and its receipt does not otherwise mark the charge.
     ///
     /// Simulation (`eth_call`, `eth_estimateGas`, `debug_traceCall`) does not apply the charge. An
     /// estimate is the gas the transaction uses to execute; on chain, a transaction that undoes a
