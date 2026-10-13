@@ -39,6 +39,13 @@ interface ISupraRandomness {
     /// @notice Thrown when the requested height is outside the window {seedAt} serves.
     error HeightOutOfWindow();
 
+    /// @notice Emitted by this address as the last log of a successful transaction that is charged
+    /// its gas limit for an undone {next} read (see "Cost of an undone read" on {next}).
+    /// @param gasCharged The transaction's gas limit, which is also its receipt's `gasUsed`.
+    /// @param gasUsedBeforeCharge The gas the transaction used, after the refund and the EIP-7623
+    /// floor are applied, before the charge replaced it.
+    event UndoneReadCharged(uint256 gasCharged, uint256 gasUsedBeforeCharge);
+
     /// @notice Fresh randomness for this transaction.
     ///
     /// Returns 32 bytes derived as `keccak256(seed || tx_hash || domain || counter)`, where `seed`
@@ -93,6 +100,12 @@ interface ISupraRandomness {
     /// The reading contract can always revert after seeing the outcome, so the abort costs what
     /// the sender was willing to spend instead. The price is the limit the sender chose. That is
     /// what leaves the second item under "What the rules do not cover" below.
+    ///
+    /// A successful transaction that is charged carries {UndoneReadCharged} as its last log,
+    /// emitted by this address. A failed transaction carries no logs; its receipt's `error` field
+    /// ends with `; gas limit charged for an undone randomness read`. The charge is reported only
+    /// when it raised the gas used: a transaction that halts already costs its gas limit, so its
+    /// receipt does not report the charge.
     ///
     /// Simulation (`eth_call`, `eth_estimateGas`, `debug_traceCall`) does not apply the charge. An
     /// estimate is the gas the transaction uses to execute; on chain, a transaction that undoes a
