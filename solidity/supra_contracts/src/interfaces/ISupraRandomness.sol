@@ -41,10 +41,13 @@ interface ISupraRandomness {
 
     /// @notice Fresh randomness for this transaction.
     ///
-    /// Returns 32 bytes derived as `keccak256(seed || tx_hash || counter)`, where `seed` is the
-    /// block's seed, `tx_hash` is this transaction's hash and `counter` counts the reads this
-    /// transaction has already made. Every read on the chain therefore has a distinct value, and
-    /// two reads in one transaction differ.
+    /// Returns 32 bytes derived as `keccak256(seed || tx_hash || domain || counter)`, where `seed`
+    /// is the block's seed, `tx_hash` is this transaction's hash, `domain` is one byte (`0x01`
+    /// when the read is made in an automation task's predicate, `0x00` otherwise) and `counter`
+    /// is the 8-byte big-endian count of values this execution of the transaction has already
+    /// been served, starting at 0. Every read on the chain therefore has a distinct value, two
+    /// reads in one transaction differ, and executing the same transaction again serves the same
+    /// values.
     ///
     /// # Rules
     ///
@@ -99,9 +102,10 @@ interface ISupraRandomness {
     /// charge. A predicate that reads and then *reverts* pays no gas, but its task is removed from
     /// the registry, so it cannot be repeated. A predicate that reads and returns `false` pays
     /// nothing and keeps its task - and is prevented from gaming its own action by a different
-    /// mechanism: reads are counted per transaction and the count carries across a predicate and
-    /// the action it gates, so the action reads the *next* value and the predicate cannot compute
-    /// it. A predicate therefore learns nothing about what its action will be given.
+    /// mechanism: a predicate's reads are derived under a different `domain` byte from its
+    /// action's, so the two are served different values, and a predicate sees only hashes of the
+    /// seed, never the seed, so it cannot compute the action's. A predicate therefore learns
+    /// nothing about what its action will be given.
     ///
     /// That protection is specific to {next}. See the warning on {seedAt} about automation tasks.
     ///
