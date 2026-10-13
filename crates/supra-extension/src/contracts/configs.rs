@@ -58,19 +58,18 @@ pub const DEFAULT_TASK_DURATION_CAP_SECS: u64 = 604800;
 /// Default maximum gas allocation for automation tasks per cycle.
 pub const DEFAULT_REGISTRY_MAX_GAS_CAP: u128 = 8_000_000;
 /// Default base fee per second for the full capacity of the automation registry, measured in
-/// wei/sec. Equivalent to 0.004 SUPRA normalized based on the supra denominator between move
-/// and evm currency.
-pub const DEFAULT_AUTOMATION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
-/// Default flat registration fee charged for each task. Equivalent to 0.05 SUPRA normalized
-/// based on the supra denominator between move and evm currency.
-pub const DEFAULT_FLAT_REGISTRATION_FEE_WEI: u128 = 21_431_633_000_000;
+/// wei/sec: 0.004 SUPRA/sec, at 10^18 wei per SUPRA.
+pub const DEFAULT_AUTOMATION_BASE_FEE_WEI_PER_SEC: u128 = 4_000_000_000_000_000;
+/// Default flat registration fee charged for each task, measured in wei: 0.05 SUPRA, at 10^18
+/// wei per SUPRA.
+pub const DEFAULT_FLAT_REGISTRATION_FEE_WEI: u128 = 50_000_000_000_000_000;
 /// Default percentage representing the acceptable upper limit of committed gas amount relative
 /// to `registry_max_gas_cap`.
 pub const DEFAULT_CONGESTION_THRESHOLD_PERCENTAGE: u8 = 50;
 /// Default base fee per second for the full capacity of the automation registry when the
-/// congestion threshold is exceeded. Equivalent to 0.004 SUPRA normalized based on the supra
-/// denominator between move and evm currency.
-pub const DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC: u128 = 1_714_530_600_000;
+/// congestion threshold is exceeded, measured in wei/sec: 0.004 SUPRA/sec, at 10^18 wei per
+/// SUPRA.
+pub const DEFAULT_CONGESTION_BASE_FEE_WEI_PER_SEC: u128 = 4_000_000_000_000_000;
 /// Default exponent that the congestion fee increases by exponentially.
 pub const DEFAULT_CONGESTION_EXPONENT: u8 = 6;
 /// Default governance-owned ceiling on `congestion_exponent`. Raising `congestion_exponent`
