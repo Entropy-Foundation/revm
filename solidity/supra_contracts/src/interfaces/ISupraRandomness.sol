@@ -24,9 +24,9 @@ interface ISupraRandomness {
     /// @notice Thrown when the seed exists but is biasable - the block's proposer knew it while
     /// building the block - so it is refused rather than served weaker.
     error SeedBiasable();
-    /// @notice Thrown when the calling contract is not the transaction's root context, so code its
-    /// author did not choose sits between the transaction boundary and the read. See rule 2 on
-    /// {next}.
+    /// @notice Thrown when a frame between the transaction boundary and the read runs in a context
+    /// other than the transaction's root, so code its author did not choose sits between the
+    /// transaction boundary and the read. See rule 2 on {next}.
     error CallerNotTransactionRoot();
     /// @notice Thrown when the transaction's sender account has code, which would run at the root
     /// context and could revert on the outcome. This refuses EIP-7702 delegated senders.
@@ -51,11 +51,14 @@ interface ISupraRandomness {
     ///
     /// 1. The block's seed exists and is unbiasable. Early in a chain's life, before the first
     ///    threshold-signed block, it is neither.
-    /// 2. **The calling contract is the transaction's root context** - the contract the
-    ///    transaction itself invoked, or the contract being deployed if the transaction is a
-    ///    deployment. A contract reached by `CALL` from another contract is refused. Code reached
-    ///    by `DELEGATECALL` runs *as* its caller, so a proxy's implementation, a Diamond facet and
-    ///    an external library are all served: the read happens at the proxy's own context.
+    /// 2. **Every frame from the transaction's root to the read runs in the root context** - the
+    ///    contract the transaction itself invoked, or the contract being deployed if the
+    ///    transaction is a deployment. Code reached by `DELEGATECALL` runs *as* its caller, so a
+    ///    proxy's implementation, a Diamond facet, an external library and a `Multicall` that
+    ///    delegatecalls its own contract are all served: the read happens at the proxy's own
+    ///    context. A call the root context makes to itself is served. A contract reached by `CALL`
+    ///    from another contract is refused, and so is a read in any frame with such a contract's
+    ///    frame beneath it, including a call from that contract back into the root context.
     /// 3. The transaction's sender is an account with no code.
     /// 4. The transaction is one that may read: an ordinary user transaction, an automation
     ///    task's action, an automation task's predicate, or a simulated call (`eth_call`,
@@ -129,10 +132,10 @@ interface ISupraRandomness {
     /// When the check passes every outcome can complete, so the gas limit selects nothing; when it
     /// fails, nothing has been read. Rule 2 is what makes `gasleft()` reliable here: the reading
     /// frame runs in the transaction's root context, so its remaining gas is the transaction's,
-    /// not a share passed down by a caller. Behind a proxy or a `DELEGATECALL` library the reading
-    /// frame holds less gas than the frame that called it, so the check refuses early rather than
-    /// late. {LibRandomness-valueWithGasLeft} performs the check and the read together. Measure
-    /// `N` with a margin, and measure again after a gas repricing.
+    /// not a share passed down by another contract. Behind a proxy, a `DELEGATECALL` library or a
+    /// self-call the reading frame holds less gas than the frame that called it, so the check
+    /// refuses early rather than late. {LibRandomness-valueWithGasLeft} performs the check and the
+    /// read together. Measure `N` with a margin, and measure again after a gas repricing.
     ///
     /// Recording the outcome and settling in a later transaction closes both.
     ///
