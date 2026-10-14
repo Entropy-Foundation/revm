@@ -63,9 +63,12 @@ impl Transaction for BlockMetadata {
         self.gas_limit
     }
 
+    /// `Some(0)`: a block-metadata transaction is a gasless system transaction with a fixed price of zero. It is
+    /// reported the way a fixed-price (EIP-2930) transaction is, which is the shape the RPC
+    /// presents it in.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
-        None
+        Some(0)
     }
 
     #[inline]
@@ -344,7 +347,7 @@ mod tests {
         assert_eq!(meta.chain_id(), Some(CHAIN_ID));
         assert_eq!(meta.nonce(), HEIGHT); // nonce == height
         assert_eq!(meta.gas_limit(), GAS_LIMIT);
-        assert_eq!(meta.gas_price(), None);
+        assert_eq!(meta.gas_price(), Some(0));
         assert_eq!(meta.max_fee_per_gas(), 0);
         assert_eq!(meta.max_priority_fee_per_gas(), Some(0));
         assert_eq!(meta.max_fee_per_blob_gas(), None);
