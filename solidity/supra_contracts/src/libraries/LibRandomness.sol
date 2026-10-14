@@ -24,12 +24,24 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// > cheap branch's cost completes only the outcomes that fit it. This needs no external call, so
 /// > a contract that never calls out is exposed too.
 ///
-/// Recording the outcome and settling in a later transaction satisfies both. {valueWithGasLeft}
-/// satisfies the second when the gas after the read cannot be made independent of the value.
+/// Recording the outcome and settling in a later transaction satisfies both when the settlement
+/// cannot run in the same transaction as the read, after it. {valueWithGasLeft} satisfies the
+/// second when the gas after the read cannot be made independent of the value.
 ///
-/// A transaction that reads and then fails is charged its whole gas limit, except an automation
-/// task's predicate, which is executed free of charge. See {ISupraRandomness-next} for what
-/// protects a predicate's action instead.
+/// A reading function must not be reachable from a batch whose other entries the sender chooses,
+/// a strict self-delegating `multicall` included.
+///
+/// A transaction is charged its whole gas limit whenever a frame in which a value is served is
+/// reverted or halts, whether or not the transaction fails, except for an automation task's
+/// predicate, which is executed free of charge. A reader that catches the failure of a callee it
+/// calls after the read is not charged. Simulation does not apply the charge. See
+/// {ISupraRandomness-next} for the rule and for what protects a predicate's action instead.
+///
+/// A {value} cannot be known before its transaction is ordered, and anyone can compute it once its
+/// block commits. Do not use it as a secret.
+///
+/// The precompile is called with `CALL` or `STATICCALL`, and ETH is never sent to it: value sent
+/// to `0x53555003` is not recoverable.
 ///
 /// {seedAt} carries a different obligation, which applies to every kind of transaction: the value
 /// is public, so anyone can compute what your contract will derive from it. A design that settles
@@ -56,12 +68,13 @@ library LibRandomness {
     /// @notice 32 fresh random bytes, read only if at least `minGasAfterRead` gas remains.
     ///
     /// @dev Reverts with {InsufficientGasForRead} before the read when `gasleft()` is below
-    /// `minGasAfterRead`. Pass the gas the most expensive outcome uses from the read to the end of
-    /// the transaction, including this read and any calls made after it, with a margin. When the
-    /// check passes every outcome can complete, so the sender's gas limit cannot select between
-    /// them. Call it from the function that acts on the value: an internal library function runs
-    /// in the caller's frame, so `gasleft()` here is that frame's remaining gas. See
-    /// {ISupraRandomness-next} for why that is the transaction's remaining gas.
+    /// `minGasAfterRead`. Pass the gas at which the most expensive outcome succeeds when started
+    /// at the read, covering the 1/64 each call keeps back (EIP-150) and not reduced by refunds:
+    /// the lowest gas limit at which that outcome completes, with a margin. When the check passes
+    /// every outcome can complete, so the sender's gas limit cannot select between them. Call it
+    /// from the function that acts on the value: an internal library function runs in the caller's
+    /// frame, so `gasleft()` here is that frame's remaining gas. Behind a batch, a self-call or a
+    /// `DELEGATECALL` that is a share of the transaction's gas. See {ISupraRandomness-next}.
     function valueWithGasLeft(uint256 minGasAfterRead) internal returns (bytes32) {
         uint256 gasLeft = gasleft();
         if (gasLeft < minGasAfterRead) revert InsufficientGasForRead(gasLeft, minGasAfterRead);
