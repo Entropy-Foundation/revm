@@ -15,14 +15,14 @@ import {WrappedSupra} from "../src/WrappedSupra.sol";
 ///
 /// A task is admitted while its maxGasAmount is at most the per-transaction gas cap and, for a
 /// UST, its gasPriceCap is at least the minimum gas price. Such a task is removed either by the VM
-/// signer's removeRegisteredTask record with reason GAS_CONFIG_UPDATE, which refunds the whole
+/// signer's removeRegisteredTask record with reason CONFIG_UPDATE, which refunds the whole
 /// remaining current-cycle fee and the whole deposit, or by processTasks at a cycle transition,
 /// which refunds the whole deposit and charges nothing for the new cycle.
 ///
 /// Fixture figures: registerUst registers 100,000 gas at a 4 gwei gasPriceCap with a 60.1 ether
 /// deposit and a 1 ether flat fee. With two such tasks committed, each is charged 3 ether for a
 /// cycle, so a removal at the very start of a cycle has a 3 ether residual fee.
-contract GasConfigUpdateRemovalTest is BaseDiamondTest {
+contract ConfigUpdateRemovalTest is BaseDiamondTest {
     uint128 constant DEPOSIT = 60.1 ether;
     uint128 constant CYCLE_FEE = 3 ether;
     uint128 constant TASK_GAS = 100_000;
@@ -67,10 +67,10 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         nextIndex = index + 1;
     }
 
-    function removeForGasConfigUpdate(uint64 _cycleIndex, uint64 _taskIndex) internal {
+    function removeForConfigUpdate(uint64 _cycleIndex, uint64 _taskIndex) internal {
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(
-            _cycleIndex, _taskIndex, LibCommon.TaskRemovalReason.GAS_CONFIG_UPDATE, ""
+            _cycleIndex, _taskIndex, LibCommon.TaskRemovalReason.CONFIG_UPDATE, ""
         );
     }
 
@@ -98,7 +98,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         }
     }
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::: removeRegisteredTask(GAS_CONFIG_UPDATE) :::::::::::::::::::::::::::::::::::::::::::::::::::
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::: removeRegisteredTask(CONFIG_UPDATE) :::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev An active UST whose maxGasAmount is above a lowered cap is removed with the whole
     /// residual cycle fee and the whole deposit refunded, from the locked balances.
@@ -114,11 +114,11 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         uint256 diamondBefore = wsupra.balanceOf(diamondAddr);
 
         vm.expectEmit(true, true, true, true, diamondAddr);
-        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+        emit ICoreFacet.TaskRemovedByConfigUpdate(
             0, alice, LibCommon.TaskType.UST, TASK_GAS, 4 gwei, cap,
             EvmGasConfigMock.DEFAULT_MIN_GAS_PRICE, CYCLE_FEE, DEPOSIT, TX_HASH
         );
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(1));
@@ -140,11 +140,11 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         uint256 aliceBefore = wsupra.balanceOf(alice);
 
         vm.expectEmit(true, true, true, true, diamondAddr);
-        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+        emit ICoreFacet.TaskRemovedByConfigUpdate(
             1, alice, LibCommon.TaskType.UST, TASK_GAS, 4 gwei,
             EvmGasConfigMock.DEFAULT_TX_GAS_LIMIT_CAP, 5 gwei, CYCLE_FEE, DEPOSIT, TX_HASH
         );
-        removeForGasConfigUpdate(2, 1);
+        removeForConfigUpdate(2, 1);
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(1));
         assertEq(wsupra.balanceOf(alice) - aliceBefore, DEPOSIT + CYCLE_FEE);
@@ -152,9 +152,9 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
     }
 
     /// @dev The two removal reasons apply different refund policies to identical tasks at the
-    /// same instant: ERROR refunds half of the residual cycle fee, GAS_CONFIG_UPDATE all of it.
+    /// same instant: ERROR refunds half of the residual cycle fee, CONFIG_UPDATE all of it.
     /// Both refund the whole deposit of an active task and unlock the same locked fee.
-    function testErrorAndGasConfigUpdateRemovalsRefundDifferently() public {
+    function testErrorAndConfigUpdateRemovalsRefundDifferently() public {
         registerUst(diamondAddr, 2450);
         registerUst(diamondAddr, 2450);
         processCycleTransition(diamondAddr, twoIndexes());
@@ -167,7 +167,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), CYCLE_FEE);
 
         uint256 beforeUpdate = wsupra.balanceOf(alice);
-        removeForGasConfigUpdate(2, 1);
+        removeForConfigUpdate(2, 1);
         uint256 updateRefund = wsupra.balanceOf(alice) - beforeUpdate;
         assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 0);
 
@@ -185,7 +185,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         EvmGasConfigMock.mockTxGasLimitCap(vm, 50_000);
 
         uint256 aliceBefore = wsupra.balanceOf(alice);
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         assertEq(wsupra.balanceOf(alice) - aliceBefore, DEPOSIT + CYCLE_FEE / 2);
         // The whole fee charged for the cycle is unlocked, not only the refunded share.
@@ -201,7 +201,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         uint256 aliceBefore = wsupra.balanceOf(alice);
 
         vm.recordLogs();
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         assertEq(vm.getRecordedLogs().length, 0);
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
@@ -209,15 +209,15 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 2 * CYCLE_FEE);
     }
 
-    /// @dev A task index that is not registered is a no-op for GAS_CONFIG_UPDATE, while ERROR
+    /// @dev A task index that is not registered is a no-op for CONFIG_UPDATE, while ERROR
     /// requires the task to exist.
-    function testAnUnknownTaskIsANoOpForGasConfigUpdateOnly() public {
+    function testAnUnknownTaskIsANoOpForConfigUpdateOnly() public {
         registerUst(diamondAddr, 2450);
         processCycleTransition(diamondAddr, singleIndex(0));
         EvmGasConfigMock.mockTxGasLimitCap(vm, 50_000);
 
         vm.recordLogs();
-        removeForGasConfigUpdate(2, 7);
+        removeForConfigUpdate(2, 7);
         assertEq(vm.getRecordedLogs().length, 0);
 
         vm.expectRevert();
@@ -235,11 +235,11 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         uint256 diamondBefore = wsupra.balanceOf(diamondAddr);
 
         vm.expectEmit(true, true, true, true, diamondAddr);
-        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+        emit ICoreFacet.TaskRemovedByConfigUpdate(
             0, bob, LibCommon.TaskType.GST, TASK_GAS, 0, 50_000,
             EvmGasConfigMock.DEFAULT_MIN_GAS_PRICE, 0, 0, TX_HASH
         );
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), TASK_GAS);
@@ -253,7 +253,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         EvmGasConfigMock.mockMinGasPrice(vm, 5 gwei);
 
         vm.recordLogs();
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         assertEq(vm.getRecordedLogs().length, 0);
         assertTrue(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
@@ -272,7 +272,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         assertEq(wsupra.balanceOf(alice) - beforeError, DEPOSIT / 2);
 
         uint256 beforeUpdate = wsupra.balanceOf(alice);
-        removeForGasConfigUpdate(1, 1);
+        removeForConfigUpdate(1, 1);
         assertEq(wsupra.balanceOf(alice) - beforeUpdate, DEPOSIT);
 
         assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
@@ -296,23 +296,23 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
 
         EvmGasConfigMock.mockTxGasLimitCap(vm, 50_000);
         uint256 aliceBefore = wsupra.balanceOf(alice);
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         assertEq(wsupra.balanceOf(alice) - aliceBefore, DEPOSIT + CYCLE_FEE);
         assertEq(IRegistryViewFacet(diamondAddr).getGasCommittedForNextCycle(), TASK_GAS);
     }
 
-    /// @dev The caller and cycle-state guards of removeRegisteredTask apply to GAS_CONFIG_UPDATE.
-    function testGasConfigUpdateKeepsTheCallerAndStateGuards() public {
+    /// @dev The caller and cycle-state guards of removeRegisteredTask apply to CONFIG_UPDATE.
+    function testConfigUpdateKeepsTheCallerAndStateGuards() public {
         registerUst(diamondAddr, 2450);
         EvmGasConfigMock.mockTxGasLimitCap(vm, 50_000);
 
         vm.expectRevert(LibUtils.CallerNotVmSigner.selector);
         vm.prank(alice);
-        ICoreFacet(diamondAddr).removeRegisteredTask(1, 0, LibCommon.TaskRemovalReason.GAS_CONFIG_UPDATE, "");
+        ICoreFacet(diamondAddr).removeRegisteredTask(1, 0, LibCommon.TaskRemovalReason.CONFIG_UPDATE, "");
 
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
-        removeForGasConfigUpdate(2, 0);
+        removeForConfigUpdate(2, 0);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
@@ -320,7 +320,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).monitorCycleEnd();
 
         vm.expectRevert(ICoreFacet.InvalidOperationForCurrentCycleState.selector);
-        removeForGasConfigUpdate(index, 0);
+        removeForConfigUpdate(index, 0);
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
@@ -340,7 +340,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(1));
-        assertEq(countLogs(logs, ICoreFacet.TaskRemovedByGasConfigUpdate.selector, true, 0), 1);
+        assertEq(countLogs(logs, ICoreFacet.TaskRemovedByConfigUpdate.selector, true, 0), 1);
         assertEq(countLogs(logs, ICoreFacet.TaskCycleFeeWithdraw.selector, false, 0), 1);
         assertEq(countLogs(logs, ICoreFacet.RemovedTasks.selector, false, 0), 1);
 
@@ -361,7 +361,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         uint64 nextIndex = endCycle();
 
         vm.expectEmit(true, true, true, true, diamondAddr);
-        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+        emit ICoreFacet.TaskRemovedByConfigUpdate(
             0, alice, LibCommon.TaskType.UST, TASK_GAS, 4 gwei,
             EvmGasConfigMock.DEFAULT_TX_GAS_LIMIT_CAP, 5 gwei, 0, DEPOSIT, TX_HASH
         );
@@ -381,7 +381,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         uint64 nextIndex = endCycle();
 
         vm.expectEmit(true, true, true, true, diamondAddr);
-        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+        emit ICoreFacet.TaskRemovedByConfigUpdate(
             0, alice, LibCommon.TaskType.UST, TASK_GAS, 4 gwei,
             EvmGasConfigMock.DEFAULT_TX_GAS_LIMIT_CAP, 5 gwei, 0, 0, TX_HASH
         );
@@ -411,7 +411,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
-        assertEq(countLogs(logs, ICoreFacet.TaskRemovedByGasConfigUpdate.selector, true, 0), 1);
+        assertEq(countLogs(logs, ICoreFacet.TaskRemovedByConfigUpdate.selector, true, 0), 1);
         uint256 charged = IRegistryViewFacet(diamondAddr).getCycleLockedFees();
         assertEq(wsupra.balanceOf(alice) + charged - aliceBefore, DEPOSIT);
         // The new cycle's committed gas, from which its fee rate was derived, was fixed when the
@@ -427,7 +427,7 @@ contract GasConfigUpdateRemovalTest is BaseDiamondTest {
         vm.recordLogs();
         transition(singleIndex(0));
 
-        assertEq(countLogs(vm.getRecordedLogs(), ICoreFacet.TaskRemovedByGasConfigUpdate.selector, true, 0), 1);
+        assertEq(countLogs(vm.getRecordedLogs(), ICoreFacet.TaskRemovedByConfigUpdate.selector, true, 0), 1);
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }

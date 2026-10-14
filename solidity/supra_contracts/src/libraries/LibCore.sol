@@ -398,7 +398,7 @@ library LibCore {
             // the chain can no longer build an admissible transaction for it. The task is dropped
             // before it is charged for the new cycle, and a UST's whole deposit is refunded. This
             // covers PENDING tasks, which the node never schedules, and ACTIVE tasks for which a
-            // GAS_CONFIG_UPDATE removal had not executed when the cycle ended (#4087).
+            // CONFIG_UPDATE removal had not executed when the cycle ended (#4087).
             uint128 depositRefund;
             if (isUst) {
                 bool refunded =
@@ -409,7 +409,7 @@ library LibCore {
             } else {
                 LibCommon.removeTask(_taskIndex, task.owner, true, false);
             }
-            emitTaskRemovedByGasConfigUpdate(task, _txGasLimitCap, _minGasPrice, 0, depositRefund);
+            emitTaskRemovedByConfigUpdate(task, _txGasLimitCap, _minGasPrice, 0, depositRefund);
             result.isRemoved = true;
         } else if (!isUst) {
             // Active GST
@@ -669,11 +669,11 @@ library LibCore {
         LibCommon.TaskRemovalReason _reason,
         string memory _details
     ) internal {
-        bool isGasConfigUpdate = _reason == LibCommon.TaskRemovalReason.GAS_CONFIG_UPDATE;
+        bool isConfigUpdate = _reason == LibCommon.TaskRemovalReason.CONFIG_UPDATE;
         uint64 txGasLimitCap;
         uint256 minGasPrice;
-        if (isGasConfigUpdate) {
-            // A GAS_CONFIG_UPDATE removal is a no-op for a task that no longer exists (removed by
+        if (isConfigUpdate) {
+            // A CONFIG_UPDATE removal is a no-op for a task that no longer exists (removed by
             // its owner or by an earlier record) and for a task the current figures admit. The
             // whole-refund policy therefore applies only to a task this block's EVM gas config
             // actually excludes, whatever the node that scheduled the record observed.
@@ -683,7 +683,7 @@ library LibCore {
         }
 
         TaskMetadataLW memory task = LibCommon.toLW(LibAppStorage.registryState().tasks[_taskId]);
-        if (isGasConfigUpdate && isAdmittedByGasConfig(task, txGasLimitCap, minGasPrice)) { return; }
+        if (isConfigUpdate && isAdmittedByGasConfig(task, txGasLimitCap, minGasPrice)) { return; }
         bool isGst = task.taskType == LibCommon.TaskType.GST;
 
         (uint128 cycleFeeRefund, uint128 depositRefund) = LibRegistry.removeTaskAndComputeRefund(
@@ -697,15 +697,15 @@ library LibCore {
             task.owner,
             task.taskState,
             isGst,
-            isGasConfigUpdate
+            isConfigUpdate
         );
 
         if (!isGst) {
             LibAccounting.refund(task.owner, (cycleFeeRefund + depositRefund));
         }
 
-        if (isGasConfigUpdate) {
-            emitTaskRemovedByGasConfigUpdate(task, txGasLimitCap, minGasPrice, cycleFeeRefund, depositRefund);
+        if (isConfigUpdate) {
+            emitTaskRemovedByConfigUpdate(task, txGasLimitCap, minGasPrice, cycleFeeRefund, depositRefund);
         } else {
             emit ICoreFacet.TaskRemovedBySystem(_taskId, task.owner, task.taskType, task.txHash, _reason, _details);
         }
@@ -726,15 +726,15 @@ library LibCore {
         return _task.taskType != LibCommon.TaskType.UST || _task.gasPriceCap >= _minGasPrice;
     }
 
-    /// @notice Emits {ICoreFacet.TaskRemovedByGasConfigUpdate} for a removed task.
-    function emitTaskRemovedByGasConfigUpdate(
+    /// @notice Emits {ICoreFacet.TaskRemovedByConfigUpdate} for a removed task.
+    function emitTaskRemovedByConfigUpdate(
         TaskMetadataLW memory _task,
         uint64 _txGasLimitCap,
         uint256 _minGasPrice,
         uint128 _cycleFeeRefund,
         uint128 _depositRefund
     ) private {
-        emit ICoreFacet.TaskRemovedByGasConfigUpdate(
+        emit ICoreFacet.TaskRemovedByConfigUpdate(
             _task.taskIndex,
             _task.owner,
             _task.taskType,
