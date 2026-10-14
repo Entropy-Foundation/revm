@@ -1,6 +1,7 @@
 //! Automation registry transaction record definition to assist automation bookkeeping.
 
 use crate::errors::SupraExtensionError;
+use crate::transactions::fixed_price_effective_tip;
 use crate::{processTasksCall, removeRegisteredTaskCall, value_or_error};
 use alloy::eips::eip2930::AccessList;
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, B256, U256};
@@ -110,9 +111,9 @@ impl Transaction for AutomationRegistryRecord {
         self.gas_limit
     }
 
-    /// `Some(0)`: a automation registry record is a gasless system transaction with a fixed price of zero. It is
-    /// reported the way a fixed-price (EIP-2930) transaction is, which is the shape the RPC
-    /// presents it in.
+    /// `Some(0)`: an automation registry record is a gasless system transaction with a fixed price of
+    /// zero. It is reported the way a fixed-price (EIP-2930) transaction is, which is the shape the
+    /// RPC presents it in: one gas price, no priority fee, and not a dynamic-fee transaction.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
         Some(0)
@@ -123,9 +124,10 @@ impl Transaction for AutomationRegistryRecord {
         0
     }
 
+    /// `None`: a fixed-price transaction offers no priority fee; see [`Self::gas_price`].
     #[inline]
     fn max_priority_fee_per_gas(&self) -> Option<u128> {
-        Some(0)
+        None
     }
 
     #[inline]
@@ -140,6 +142,13 @@ impl Transaction for AutomationRegistryRecord {
 
     fn effective_gas_price(&self, _base_fee: Option<u64>) -> u128 {
         0
+    }
+
+    /// Always `Some(0)`: the transaction runs at a price of zero at any base fee rather than being
+    /// refused; see [`fixed_price_effective_tip`].
+    #[inline]
+    fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
+        fixed_price_effective_tip(self.max_fee_per_gas(), base_fee)
     }
 
     #[inline]
@@ -636,7 +645,10 @@ mod tests {
         assert_eq!(record.gas_limit(), GAS_LIMIT);
         assert_eq!(record.gas_price(), Some(0));
         assert_eq!(record.max_fee_per_gas(), 0);
-        assert_eq!(record.max_priority_fee_per_gas(), Some(0));
+        assert_eq!(record.max_priority_fee_per_gas(), None);
+        // Runs at any base fee, so the tip is zero rather than `None`.
+        assert_eq!(record.effective_tip_per_gas(0), Some(0));
+        assert_eq!(record.effective_tip_per_gas(9_999), Some(0));
         assert_eq!(record.max_fee_per_blob_gas(), None);
         assert_eq!(record.priority_fee_or_price(), 0);
         assert_eq!(record.effective_gas_price(None), 0);

@@ -1,6 +1,7 @@
 //! AutomatedTransaction generated based on the registered active automation task.
 
 use crate::errors::SupraExtensionError;
+use crate::transactions::fixed_price_effective_tip;
 use crate::value_or_error;
 use crate::TaskMetadata;
 use alloy::eips::eip2930::AccessList;
@@ -223,14 +224,12 @@ impl Transaction for AutomatedTransaction {
     }
 
     /// The part of the scheduled price above `base_fee`, or zero when the base fee is at or above
-    /// the scheduled price.
-    ///
-    /// It is always `Some`. The trait's default returns `None` once the base fee exceeds the
-    /// price, which describes a transaction that is refused at that base fee, whereas an automated
-    /// transaction is charged its scheduled price at any base fee.
+    /// the scheduled price. Always `Some`, because an automated transaction is charged its
+    /// scheduled price at any base fee rather than being refused; see
+    /// [`fixed_price_effective_tip`].
     #[inline]
     fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
-        Some(self.max_fee_per_gas.saturating_sub(u128::from(base_fee)))
+        fixed_price_effective_tip(self.max_fee_per_gas, base_fee)
     }
 
     /// `false`: an automated transaction pays a fixed price; see [`Self::gas_price`].
@@ -1009,14 +1008,12 @@ mod tests {
     }
 
     #[test]
-    fn fee_accessors_ust_built_report_scheduled_price() {
-        // The builder's gas price is the scheduled price; the accessors must carry it through.
+    fn built_ust_carries_its_gas_price_as_the_scheduled_price() {
+        // The builder's gas price is the scheduled price the fee accessors report; the accessors
+        // themselves are checked against alloy's EIP-2930 transaction above.
         let txn = built_txn(base_ust_builder());
+        assert_eq!(txn.max_fee_per_gas, GAS_PRICE);
         assert_eq!(txn.gas_price(), Some(GAS_PRICE));
-        assert_eq!(txn.max_fee_per_gas(), GAS_PRICE);
-        assert_eq!(txn.max_priority_fee_per_gas(), None);
-        assert_eq!(txn.priority_fee_or_price(), GAS_PRICE);
-        assert_eq!(txn.effective_gas_price(Some(1)), GAS_PRICE);
     }
 
     #[test]
