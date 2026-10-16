@@ -212,11 +212,12 @@ pub enum AutomationTaskRemovalReason {
     /// gas amount). The registry refunds half of the remaining current-cycle fee and the whole
     /// deposit, or half the deposit for a pending task.
     Error = 0,
-    /// The EVM gas config of the executing block's epoch no longer admits the task's transaction
-    /// (#4087). The registry re-checks the task against that config, does nothing if it is still
-    /// admitted or no longer registered, and otherwise refunds the whole remaining current-cycle
-    /// fee and the whole deposit.
-    GasConfigUpdate = 1,
+    /// A governed configuration the task depends on changed at an epoch boundary (#4327). Today
+    /// that is the EVM gas config: the executing block's epoch no longer admits the task's
+    /// transaction (#4087). The registry re-checks the task against that config, does nothing if
+    /// it is still admitted or no longer registered, and otherwise refunds the whole remaining
+    /// current-cycle fee and the whole deposit.
+    ConfigUpdate = 1,
 }
 
 impl From<AutomationTaskRemovalReason> for u8 {
@@ -230,7 +231,7 @@ impl TryFrom<u8> for AutomationTaskRemovalReason {
     fn try_from(value: u8) -> Result<Self, SupraExtensionError> {
         match value {
             0 => Ok(Self::Error),
-            1 => Ok(Self::GasConfigUpdate),
+            1 => Ok(Self::ConfigUpdate),
             _ => Err(SupraExtensionError::InvalidAutomationTaskRemovalReasonValue(value)),
         }
     }
@@ -725,7 +726,7 @@ mod tests {
             .remove_task(
                 CYCLE_INDEX,
                 12,
-                AutomationTaskRemovalReason::GasConfigUpdate,
+                AutomationTaskRemovalReason::ConfigUpdate,
                 "max gas amount 200000 above the cap 100000".to_string(),
             )
             .build()
@@ -738,7 +739,7 @@ mod tests {
         assert_eq!(remove._taskIndex, 12);
         assert_eq!(
             AutomationTaskRemovalReason::try_from(remove._reason).unwrap(),
-            AutomationTaskRemovalReason::GasConfigUpdate
+            AutomationTaskRemovalReason::ConfigUpdate
         );
         assert_eq!(
             remove._details,
@@ -751,18 +752,18 @@ mod tests {
     }
 
     /// The registry's `LibCommon.TaskRemovalReason` is a `uint8` on the wire, with `ERROR = 0` and
-    /// `GAS_CONFIG_UPDATE = 1`.
+    /// `CONFIG_UPDATE = 1`.
     #[test]
     fn removal_reasons_match_the_registry_enum() {
         assert_eq!(u8::from(AutomationTaskRemovalReason::Error), 0);
-        assert_eq!(u8::from(AutomationTaskRemovalReason::GasConfigUpdate), 1);
+        assert_eq!(u8::from(AutomationTaskRemovalReason::ConfigUpdate), 1);
         assert_eq!(
             AutomationTaskRemovalReason::try_from(0).unwrap(),
             AutomationTaskRemovalReason::Error
         );
         assert_eq!(
             AutomationTaskRemovalReason::try_from(1).unwrap(),
-            AutomationTaskRemovalReason::GasConfigUpdate
+            AutomationTaskRemovalReason::ConfigUpdate
         );
     }
 

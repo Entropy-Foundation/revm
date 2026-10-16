@@ -42,15 +42,16 @@ library LibCommon {
     ///      unexecutable gas amount). The owner is refunded half of the remaining current-cycle
     ///      fee and the whole deposit (half the deposit for a PENDING task), see
     ///      {LibAccounting.unlockDepositAndCycleFee}.
-    ///      GAS_CONFIG_UPDATE: a governed EVM gas figure served by {LibEvmGasConfig} changed at
-    ///      an epoch boundary, and the task's transaction can no longer be admitted (its
+    ///      CONFIG_UPDATE: a governed configuration the task depends on changed at an epoch
+    ///      boundary (#4327). Today that is an EVM gas figure served by {LibEvmGasConfig}: the
+    ///      task's transaction can no longer be admitted (its
     ///      maxGasAmount is above the per-transaction gas cap, or, for a UST, its gasPriceCap is
     ///      below the minimum gas price). The registry re-checks the task against the current
     ///      figures, and the owner is refunded the whole remaining current-cycle fee and the whole
     ///      deposit (#4087).
     enum TaskRemovalReason {
         ERROR,
-        GAS_CONFIG_UPDATE
+        CONFIG_UPDATE
     }
 
     /// @notice Represents intermediate state of the registry on cycle change.
