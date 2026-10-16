@@ -366,7 +366,7 @@ library LibAccounting {
     /// policy; only the share of it paid back to the owner depends on `_fullRefund`.
     /// @param _fullRefund False: the owner gets half of the fee for the remaining cycle time and the deposit (half of the
     /// deposit for a PENDING task), which `stopTasks` and an ERROR removal apply. True: the owner gets the whole fee for
-    /// the remaining cycle time and the whole deposit, which a GAS_CONFIG_UPDATE removal applies (#4087).
+    /// the remaining cycle time and the whole deposit, which a CONFIG_UPDATE removal applies (#4087).
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         LibCommon.TaskState _taskState,
