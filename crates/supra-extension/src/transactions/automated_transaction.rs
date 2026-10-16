@@ -185,6 +185,12 @@ impl Transaction for AutomatedTransaction {
     /// EIP-2930) transaction is: one gas price, no priority fee, and not a dynamic-fee
     /// transaction. This matches the EIP-2930 transaction the RPC presents for it, which carries
     /// the task's access list alongside the price.
+    ///
+    /// Only the fee accessors take the EIP-2930 shape. [`Typed2718::ty`] stays
+    /// [`TransactionType::Custom`], which revm exempts from its fee validation. Reporting EIP-2930
+    /// (`1`) there would make revm refuse the transaction whenever its gas price is below the
+    /// block's base fee, as a gasless (GST) transaction's zero price always is, whereas an
+    /// automated transaction is charged its scheduled price at any base fee.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
         Some(self.max_fee_per_gas)
@@ -938,6 +944,16 @@ mod tests {
                 .expect("a fully configured builder within its gas price cap builds"),
         )
         .txn
+    }
+
+    #[test]
+    fn ty_stays_custom_while_fee_accessors_are_fixed_price() {
+        // The type is what exempts the transaction from revm's fee validation; see `gas_price` on
+        // the impl. Changing it to EIP-2930 to match the fee accessors would refuse a
+        // transaction priced below the base fee.
+        let txn = scheduled_txn();
+        assert_eq!(txn.ty(), TransactionType::Custom as u8);
+        assert!(!txn.is_dynamic_fee());
     }
 
     #[test]

@@ -113,7 +113,12 @@ impl Transaction for AutomationRegistryRecord {
 
     /// `Some(0)`: an automation registry record is a gasless system transaction with a fixed price of
     /// zero. It is reported the way a fixed-price (EIP-2930) transaction is, which is the shape the
-    /// RPC presents it in: one gas price, no priority fee, and not a dynamic-fee transaction.
+    /// RPC presents it in: one gas price, no priority fee, and not a dynamic-fee transaction.    ///
+    /// Only the fee accessors take the EIP-2930 shape. [`Typed2718::ty`] stays
+    /// [`TransactionType::Custom`], which revm exempts from its fee validation. Reporting EIP-2930
+    /// (`1`) there would make revm refuse the transaction whenever its gas price, zero here, is
+    /// below the block's base fee, so a system transaction that must run at any base fee keeps the
+    /// `Custom` type.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
         Some(0)
@@ -654,6 +659,8 @@ mod tests {
         assert_eq!(record.effective_gas_price(None), 0);
         assert_eq!(record.effective_gas_price(Some(100)), 0);
         assert!(!record.is_dynamic_fee());
+        // Stays `Custom` so revm's fee validation does not refuse its zero price; see `gas_price`.
+        assert_eq!(record.ty(), TransactionType::Custom as u8);
         assert_eq!(record.kind(), TxKind::Call(REGISTRY_ADDR));
         assert!(!record.is_create());
         assert_eq!(record.value(), U256::ZERO);
