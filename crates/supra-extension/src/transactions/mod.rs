@@ -7,10 +7,11 @@ pub mod block_metadata;
 /// the part of the price above the base fee, or zero when the base fee is at or above the price.
 ///
 /// It is always `Some`. alloy's default `Transaction::effective_tip_per_gas` returns `None` once
-/// the base fee exceeds the price, which describes a transaction refused at that base fee. A Supra
-/// system transaction (an automated transaction, an automation registry record, block-metadata)
-/// is not refused for its price: it runs and is charged its fixed price at any base fee, zero for
-/// the gasless ones.
+/// the base fee exceeds the price, which describes a transaction refused at that base fee. No Supra
+/// system transaction (an automated transaction, an automation registry record, block-metadata) is
+/// refused for its price: revm skips the base-fee floor for an execution mode that charges no gas,
+/// so a gasless one runs at a price of zero at any base fee, and the node schedules a paid
+/// automated transaction at or above the base fee.
 #[inline]
 pub fn fixed_price_effective_tip(price: u128, base_fee: u64) -> Option<u128> {
     Some(price.saturating_sub(u128::from(base_fee)))

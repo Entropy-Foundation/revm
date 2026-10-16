@@ -66,12 +66,9 @@ impl Transaction for BlockMetadata {
 
     /// `Some(0)`: a block-metadata transaction is a gasless system transaction with a fixed price of
     /// zero. It is reported the way a fixed-price (EIP-2930) transaction is, which is the shape the
-    /// RPC presents it in: one gas price, no priority fee, and not a dynamic-fee transaction.    ///
-    /// Only the fee accessors take the EIP-2930 shape. [`Typed2718::ty`] stays
-    /// [`TransactionType::Custom`], which revm exempts from its fee validation. Reporting EIP-2930
-    /// (`1`) there would make revm refuse the transaction whenever its gas price, zero here, is
-    /// below the block's base fee, so a system transaction that must run at any base fee keeps the
-    /// `Custom` type.
+    /// RPC presents it in: one gas price, no priority fee, and not a dynamic-fee transaction. Its
+    /// type, [`Typed2718::ty`], is EIP-2930 as well. revm skips the base-fee floor for an execution
+    /// mode that charges no gas, so the zero price runs at any base fee.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
         Some(0)
@@ -102,8 +99,9 @@ impl Transaction for BlockMetadata {
         0
     }
 
-    /// Always `Some(0)`: the transaction runs at a price of zero at any base fee rather than being
-    /// refused; see [`fixed_price_effective_tip`].
+    /// Always `Some(0)`: the transaction runs at a price of zero at any base fee, because revm skips
+    /// the base-fee floor for an execution mode that charges no gas; see
+    /// [`fixed_price_effective_tip`].
     #[inline]
     fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
         fixed_price_effective_tip(self.max_fee_per_gas(), base_fee)
@@ -150,8 +148,9 @@ impl Transaction for BlockMetadata {
     }
 }
 impl Typed2718 for BlockMetadata {
+    /// EIP-2930, the fixed-price type; see [`Transaction::gas_price`] on this type.
     fn ty(&self) -> u8 {
-        TransactionType::Custom as u8
+        TransactionType::Eip2930 as u8
     }
 }
 
@@ -380,7 +379,7 @@ mod tests {
         assert_eq!(meta.authorization_list(), None);
 
         assert_eq!(meta.input(), &meta.input);
-        assert_eq!(meta.ty(), 0xFF); // TransactionType::Custom
+        assert_eq!(meta.ty(), TransactionType::Eip2930 as u8);
     }
 
     // ── BlockMetadata default ─────────────────────────────────────────────────

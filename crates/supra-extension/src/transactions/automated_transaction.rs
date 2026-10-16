@@ -186,11 +186,11 @@ impl Transaction for AutomatedTransaction {
     /// transaction. This matches the EIP-2930 transaction the RPC presents for it, which carries
     /// the task's access list alongside the price.
     ///
-    /// Only the fee accessors take the EIP-2930 shape. [`Typed2718::ty`] stays
-    /// [`TransactionType::Custom`], which revm exempts from its fee validation. Reporting EIP-2930
-    /// (`1`) there would make revm refuse the transaction whenever its gas price is below the
-    /// block's base fee, as a gasless (GST) transaction's zero price always is, whereas an
-    /// automated transaction is charged its scheduled price at any base fee.
+    /// Its type, [`Typed2718::ty`], is EIP-2930 as well, so the type, the fee accessors and the RPC
+    /// agree. revm holds a transaction to the base-fee floor only when its execution mode charges
+    /// gas: a gasless (GST) task, priced at zero, runs at any base fee, and a paid (UST) task is
+    /// held to the floor as a user transaction is. The node schedules a paid task at or above the
+    /// block's base fee, so the floor never refuses one.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
         Some(self.max_fee_per_gas)
@@ -204,8 +204,8 @@ impl Transaction for AutomatedTransaction {
 
     /// `None`: an automated transaction offers no priority fee, it pays a fixed price.
     ///
-    /// A `TxEnv` built from these accessors carries no `gas_priority_fee`, so revm's
-    /// `effective_gas_price` returns its `gas_price`, the scheduled price, at any base fee.
+    /// revm prices an EIP-2930 `TxEnv` at its `gas_price`, so an environment built from these
+    /// accessors is charged the scheduled price.
     #[inline]
     fn max_priority_fee_per_gas(&self) -> Option<u128> {
         None
@@ -230,9 +230,8 @@ impl Transaction for AutomatedTransaction {
     }
 
     /// The part of the scheduled price above `base_fee`, or zero when the base fee is at or above
-    /// the scheduled price. Always `Some`, because an automated transaction is charged its
-    /// scheduled price at any base fee rather than being refused; see
-    /// [`fixed_price_effective_tip`].
+    /// the scheduled price. Always `Some`: a gasless task runs at any base fee, and a paid task is
+    /// never scheduled below it; see [`fixed_price_effective_tip`].
     #[inline]
     fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
         fixed_price_effective_tip(self.max_fee_per_gas, base_fee)
@@ -281,8 +280,10 @@ impl Transaction for AutomatedTransaction {
 }
 
 impl Typed2718 for AutomatedTransaction {
+    /// EIP-2930, the fixed-price type with an access list; see [`Transaction::gas_price`] on this
+    /// type.
     fn ty(&self) -> u8 {
-        TransactionType::Custom as u8
+        TransactionType::Eip2930 as u8
     }
 }
 
@@ -947,13 +948,12 @@ mod tests {
     }
 
     #[test]
-    fn ty_stays_custom_while_fee_accessors_are_fixed_price() {
-        // The type is what exempts the transaction from revm's fee validation; see `gas_price` on
-        // the impl. Changing it to EIP-2930 to match the fee accessors would refuse a
-        // transaction priced below the base fee.
-        let txn = scheduled_txn();
-        assert_eq!(txn.ty(), TransactionType::Custom as u8);
-        assert!(!txn.is_dynamic_fee());
+    fn ty_is_eip2930_like_the_fee_accessors() {
+        // The type and the fee accessors describe the same fixed-price transaction.
+        for txn in [built_txn(base_ust_builder()), built_txn(base_gst_builder())] {
+            assert_eq!(txn.ty(), TransactionType::Eip2930 as u8);
+            assert!(!txn.is_dynamic_fee());
+        }
     }
 
     #[test]
@@ -987,6 +987,7 @@ mod tests {
             access_list: txn.access_list.clone(),
             input: txn.input.clone(),
         };
+        assert_eq!(txn.ty(), eip2930.ty());
         assert_eq!(txn.gas_price(), eip2930.gas_price());
         assert_eq!(txn.max_fee_per_gas(), eip2930.max_fee_per_gas());
         assert_eq!(

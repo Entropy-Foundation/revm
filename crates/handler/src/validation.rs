@@ -92,7 +92,15 @@ pub fn validate_tx_env<CTX: ContextTr, Error>(
     let tx_type = context.tx().tx_type();
     let tx = context.tx();
 
-    let base_fee = if context.cfg().is_base_fee_check_disabled() {
+    // The base fee is a floor only for a transaction that pays for its gas. An execution mode that
+    // charges none (a gasless automated task, a system transaction, a read-only call, genesis)
+    // offers no price to hold against it, so the check is skipped for it whatever its type; this
+    // is what lets Supra's system transactions carry the fixed-price EIP-2930 type at a zero price.
+    // A mode that does charge gas, including a paid automated task, is held to the floor as any
+    // user transaction is. `BASEFEE` itself is unaffected.
+    let base_fee = if context.cfg().is_base_fee_check_disabled()
+        || !context.cfg().execution_mode().charges_gas()
+    {
         None
     } else {
         Some(context.block().basefee() as u128)
@@ -252,8 +260,95 @@ mod tests {
         result::{EVMError, ExecutionResult, HaltReason, InvalidTransaction, Output},
         Context, TxEnv,
     };
+    use context_interface::{ExecutionMode, TransactionType};
     use database::{CacheDB, EmptyDB};
-    use primitives::{address, eip3860, eip7907, hardfork::SpecId, Bytes, TxKind};
+    use primitives::supra_constants::VM_SIGNER;
+    use primitives::{address, eip3860, eip7907, hardfork::SpecId, Address, Bytes, TxKind};
+
+    /// Base fee of the block the fee-floor tests run in; every gas price below is compared to it.
+    const BLOCK_BASE_FEE: u64 = 100;
+
+    /// Executes an EIP-2930 call offering `gas_price` under `mode` in a block whose base fee is
+    /// [`BLOCK_BASE_FEE`], with the base-fee check otherwise enabled.
+    fn transact_eip2930(
+        mode: ExecutionMode,
+        gas_price: u128,
+    ) -> Result<ExecutionResult, EVMError<core::convert::Infallible>> {
+        // A system transaction must come from the reserved VM signer; every other mode here runs
+        // from the default caller.
+        let caller = if mode == ExecutionMode::System {
+            VM_SIGNER
+        } else {
+            Address::ZERO
+        };
+        let ctx = Context::mainnet()
+            .modify_cfg_chained(|c| c.execution_mode = mode)
+            .modify_block_chained(|b| b.basefee = BLOCK_BASE_FEE)
+            .with_db(CacheDB::<EmptyDB>::default());
+        let mut evm = ctx.build_mainnet();
+        evm.transact_commit(
+            TxEnv::builder()
+                .caller(caller)
+                .tx_type(Some(TransactionType::Eip2930 as u8))
+                .chain_id(Some(1))
+                .gas_price(gas_price)
+                .kind(TxKind::Call(address!(
+                    "0x5355500000000000000000000000000000000001"
+                )))
+                .build()
+                .expect("a complete EIP-2930 call environment builds"),
+        )
+    }
+
+    /// Every execution mode that charges no gas runs a fixed-price transaction priced below the
+    /// base fee, such as a gasless system transaction at a price of zero.
+    #[test]
+    fn base_fee_floor_is_skipped_for_modes_that_charge_no_gas() {
+        for mode in [
+            ExecutionMode::AutomatedGasless,
+            ExecutionMode::System,
+            ExecutionMode::ReadOnly,
+            ExecutionMode::Genesis,
+        ] {
+            assert!(!mode.charges_gas());
+            let result = transact_eip2930(mode.clone(), 0);
+            assert!(
+                matches!(result, Ok(ExecutionResult::Success { .. })),
+                "{mode:?}: {result:?}"
+            );
+        }
+    }
+
+    /// A mode that charges gas is held to the base fee: a price below it is refused, and a price
+    /// at it runs.
+    #[test]
+    fn base_fee_floor_applies_to_modes_that_charge_gas() {
+        for mode in [ExecutionMode::User, ExecutionMode::Automated] {
+            assert!(mode.charges_gas());
+            let below = transact_eip2930(mode.clone(), u128::from(BLOCK_BASE_FEE) - 1);
+            assert!(
+                matches!(
+                    below,
+                    Err(EVMError::Transaction(
+                        InvalidTransaction::GasPriceLessThanBasefee
+                    ))
+                ),
+                "{mode:?} below the base fee: {below:?}"
+            );
+        }
+        // At the floor the price is acceptable; the caller holds no balance, so a mode that
+        // charges gas then fails on funds, not on the price.
+        let at = transact_eip2930(ExecutionMode::User, u128::from(BLOCK_BASE_FEE));
+        assert!(
+            !matches!(
+                at,
+                Err(EVMError::Transaction(
+                    InvalidTransaction::GasPriceLessThanBasefee
+                ))
+            ),
+            "at the base fee: {at:?}"
+        );
+    }
 
     fn deploy_contract(
         bytecode: Bytes,
