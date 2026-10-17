@@ -1,6 +1,7 @@
 //! AutomatedTransaction generated based on the registered active automation task.
 
 use crate::errors::SupraExtensionError;
+use crate::transactions::fixed_price_effective_tip;
 use crate::value_or_error;
 use crate::TaskMetadata;
 use alloy::eips::eip2930::AccessList;
@@ -119,9 +120,14 @@ pub struct AutomatedTransaction {
         serde(with = "alloy_serde::quantity", rename = "gas", alias = "gasLimit")
     )]
     pub gas_limit: u64,
-    /// A scalar value equal to the maximum
-    /// amount of gas that should be used in executing
-    /// this transaction.
+    /// The gas price the automation registry scheduled this transaction at, and the price per gas
+    /// unit it is charged: the lowest gas price of any user transaction in the block it runs in,
+    /// or the chain's minimum gas price when the block carries none. It is 0 for a gasless (GST)
+    /// transaction.
+    ///
+    /// The builder only produces a transaction whose registered gas price cap covers this price,
+    /// so the cap never binds below it. The [`Transaction`] fee accessors report this value as a
+    /// fixed gas price with no priority fee; see [`Transaction::gas_price`] on this type.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub max_fee_per_gas: u128,
     /// The 160-bit address of the message call’s recipient or, for a contract creation
@@ -172,19 +178,37 @@ impl Transaction for AutomatedTransaction {
         self.gas_limit
     }
 
+    /// The scheduled price, as a fixed gas price.
+    ///
+    /// An automated transaction is charged the price the automation registry scheduled it at,
+    /// whatever the block's base fee. It is therefore reported the way a fixed-price (legacy or
+    /// EIP-2930) transaction is: one gas price, no priority fee, and not a dynamic-fee
+    /// transaction. This matches the EIP-2930 transaction the RPC presents for it, which carries
+    /// the task's access list alongside the price.
+    ///
+    /// Its type, [`Typed2718::ty`], is EIP-2930 as well, so the type, the fee accessors and the RPC
+    /// agree. revm holds a transaction to the base-fee floor only when its execution mode charges
+    /// gas: a gasless (GST) task, priced at zero, runs at any base fee, and a paid (UST) task is
+    /// held to the floor as a user transaction is. The node schedules a paid task at or above the
+    /// block's base fee, so the floor never refuses one.
     #[inline]
     fn gas_price(&self) -> Option<u128> {
-        None
+        Some(self.max_fee_per_gas)
     }
 
+    /// The scheduled price. For a fixed-price transaction the trait reports the gas price here.
     #[inline]
     fn max_fee_per_gas(&self) -> u128 {
         self.max_fee_per_gas
     }
 
+    /// `None`: an automated transaction offers no priority fee, it pays a fixed price.
+    ///
+    /// revm prices an EIP-2930 `TxEnv` at its `gas_price`, so an environment built from these
+    /// accessors is charged the scheduled price.
     #[inline]
     fn max_priority_fee_per_gas(&self) -> Option<u128> {
-        Some(0)
+        None
     }
 
     #[inline]
@@ -192,18 +216,31 @@ impl Transaction for AutomatedTransaction {
         None
     }
 
+    /// The scheduled price. For a fixed-price transaction the trait reports the gas price here.
     #[inline]
     fn priority_fee_or_price(&self) -> u128 {
-        0
+        self.max_fee_per_gas
     }
 
-    fn effective_gas_price(&self, base_fee: Option<u64>) -> u128 {
-        alloy_eips::eip1559::calc_effective_gas_price(self.max_fee_per_gas, 0, base_fee)
+    /// The scheduled price, for any base fee. This is what the chain charges the transaction per
+    /// gas unit.
+    #[inline]
+    fn effective_gas_price(&self, _base_fee: Option<u64>) -> u128 {
+        self.max_fee_per_gas
     }
 
+    /// The part of the scheduled price above `base_fee`, or zero when the base fee is at or above
+    /// the scheduled price. Always `Some`: a gasless task runs at any base fee, and a paid task is
+    /// never scheduled below it; see [`fixed_price_effective_tip`].
+    #[inline]
+    fn effective_tip_per_gas(&self, base_fee: u64) -> Option<u128> {
+        fixed_price_effective_tip(self.max_fee_per_gas, base_fee)
+    }
+
+    /// `false`: an automated transaction pays a fixed price; see [`Self::gas_price`].
     #[inline]
     fn is_dynamic_fee(&self) -> bool {
-        true
+        false
     }
 
     #[inline]
@@ -243,8 +280,10 @@ impl Transaction for AutomatedTransaction {
 }
 
 impl Typed2718 for AutomatedTransaction {
+    /// EIP-2930, the fixed-price type with an access list; see [`Transaction::gas_price`] on this
+    /// type.
     fn ty(&self) -> u8 {
-        TransactionType::Custom as u8
+        TransactionType::Eip2930 as u8
     }
 }
 
@@ -659,8 +698,13 @@ mod tests {
     use crate::{errors::SupraExtensionError, TaskMetadata};
     use alloy::hex;
     use alloy::primitives::{address, b256, Address, Bytes, B256, U256};
-    use alloy_consensus::transaction::Transaction;
+    // Both alloy and revm's `context` crate define a `Transaction` trait. `context` is local to
+    // this workspace, so the foreign alloy trait is the one aliased.
+    use alloy_consensus::transaction::Transaction as AlloyTransaction;
+    use alloy_consensus::TxEip2930;
     use alloy_sol_types::SolType;
+    use context::transaction::Transaction;
+    use context::TxEnv;
 
     type PredicateType = (
         alloy_sol_types::sol_data::Address,
@@ -854,12 +898,14 @@ mod tests {
         assert_eq!(txn.chain_id(), Some(CHAIN_ID));
         assert_eq!(txn.nonce(), TASK_INDEX);
         assert_eq!(txn.gas_limit(), GAS_LIMIT);
-        assert_eq!(txn.gas_price(), None);
+        // The scheduled price is a fixed gas price with no priority fee; see `gas_price` on the
+        // impl.
+        assert_eq!(txn.gas_price(), Some(GAS_PRICE));
         assert_eq!(txn.max_fee_per_gas(), GAS_PRICE);
-        assert_eq!(txn.max_priority_fee_per_gas(), Some(0));
+        assert_eq!(txn.max_priority_fee_per_gas(), None);
         assert_eq!(txn.max_fee_per_blob_gas(), None);
-        assert_eq!(txn.priority_fee_or_price(), 0);
-        assert!(txn.is_dynamic_fee());
+        assert_eq!(txn.priority_fee_or_price(), GAS_PRICE);
+        assert!(!txn.is_dynamic_fee());
         assert_eq!(txn.kind(), TxKind::Call(TO));
         assert!(!txn.is_create());
         assert_eq!(txn.value(), val);
@@ -869,33 +915,173 @@ mod tests {
         assert_eq!(txn.authorization_list(), None);
     }
 
-    #[test]
-    fn effective_gas_price_no_base_fee_equals_max_fee() {
-        let txn = AutomatedTransaction {
-            max_fee_per_gas: 5_000,
+    /// Scheduled price used by the fee-accessor tests below.
+    const SCHEDULED_PRICE: u128 = 5_000;
+
+    /// Base fees spanning every position relative to [`SCHEDULED_PRICE`]: none, zero, below,
+    /// equal, above and the largest a block can carry.
+    const BASE_FEES: [Option<u64>; 6] = [
+        None,
+        Some(0),
+        Some(100),
+        Some(SCHEDULED_PRICE as u64),
+        Some(9_999),
+        Some(u64::MAX),
+    ];
+
+    fn scheduled_txn() -> AutomatedTransaction {
+        AutomatedTransaction {
+            max_fee_per_gas: SCHEDULED_PRICE,
             ..Default::default()
-        };
-        assert_eq!(txn.effective_gas_price(None), 5_000);
+        }
+    }
+
+    /// Builds a transaction from a builder the test configured completely, so the build cannot
+    /// fail or be refused; a panic here means the shared builder fixtures above changed.
+    fn built_txn(builder: AutomatedTransactionBuilder) -> AutomatedTransaction {
+        unwrap_success(
+            builder
+                .build()
+                .expect("a fully configured builder within its gas price cap builds"),
+        )
+        .txn
     }
 
     #[test]
-    fn effective_gas_price_base_fee_below_max_fee_uses_base_fee() {
-        let txn = AutomatedTransaction {
-            max_fee_per_gas: 5_000,
-            ..Default::default()
-        };
-        // min(5000, 100 + 0) = 100
-        assert_eq!(txn.effective_gas_price(Some(100)), 100);
+    fn ty_is_eip2930_like_the_fee_accessors() {
+        // The type and the fee accessors describe the same fixed-price transaction.
+        for txn in [built_txn(base_ust_builder()), built_txn(base_gst_builder())] {
+            assert_eq!(txn.ty(), TransactionType::Eip2930 as u8);
+            assert!(!txn.is_dynamic_fee());
+        }
     }
 
     #[test]
-    fn effective_gas_price_base_fee_above_max_fee_is_capped() {
-        let txn = AutomatedTransaction {
-            max_fee_per_gas: 1_000,
-            ..Default::default()
+    fn effective_gas_price_is_scheduled_price_at_any_base_fee() {
+        // The base fee neither lowers nor raises the price: the chain charges the scheduled price.
+        let txn = scheduled_txn();
+        for base_fee in BASE_FEES {
+            assert_eq!(
+                txn.effective_gas_price(base_fee),
+                SCHEDULED_PRICE,
+                "base_fee={base_fee:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn fee_accessors_match_eip2930_transaction_with_same_price() {
+        // The RPC presents an automated transaction as an EIP-2930 transaction carrying the
+        // scheduled price as its gas price. The type reports every fee accessor the way alloy's
+        // own EIP-2930 transaction does for that price, so the two views agree. The tip is the
+        // one exception and is checked separately below: an automated transaction runs at any
+        // base fee, so its tip is never `None`.
+        let txn = built_txn(base_ust_builder());
+        let eip2930 = TxEip2930 {
+            chain_id: txn.chain_id,
+            nonce: txn.nonce,
+            gas_price: txn.max_fee_per_gas,
+            gas_limit: txn.gas_limit,
+            to: TxKind::Call(txn.to),
+            value: txn.value,
+            access_list: txn.access_list.clone(),
+            input: txn.input.clone(),
         };
-        // min(1000, 9999 + 0) = 1000
-        assert_eq!(txn.effective_gas_price(Some(9_999)), 1_000);
+        assert_eq!(txn.ty(), eip2930.ty());
+        assert_eq!(txn.gas_price(), eip2930.gas_price());
+        assert_eq!(txn.max_fee_per_gas(), eip2930.max_fee_per_gas());
+        assert_eq!(
+            txn.max_priority_fee_per_gas(),
+            eip2930.max_priority_fee_per_gas()
+        );
+        assert_eq!(txn.priority_fee_or_price(), eip2930.priority_fee_or_price());
+        assert_eq!(txn.is_dynamic_fee(), eip2930.is_dynamic_fee());
+        for base_fee in BASE_FEES {
+            assert_eq!(
+                txn.effective_gas_price(base_fee),
+                eip2930.effective_gas_price(base_fee),
+                "base_fee={base_fee:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn fee_accessors_gst_report_zero_at_any_base_fee() {
+        // A gasless transaction is built with a zero price, so every fee accessor reports zero
+        // and no base fee changes that.
+        let txn = built_txn(base_gst_builder());
+        assert!(txn.is_gasless());
+        assert_eq!(txn.gas_price(), Some(0));
+        assert_eq!(txn.max_fee_per_gas(), 0);
+        assert_eq!(txn.max_priority_fee_per_gas(), None);
+        assert_eq!(txn.priority_fee_or_price(), 0);
+        for base_fee in BASE_FEES {
+            assert_eq!(
+                txn.effective_gas_price(base_fee),
+                0,
+                "base_fee={base_fee:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn built_ust_carries_its_gas_price_as_the_scheduled_price() {
+        // The builder's gas price is the scheduled price the fee accessors report; the accessors
+        // themselves are checked against alloy's EIP-2930 transaction above.
+        let txn = built_txn(base_ust_builder());
+        assert_eq!(txn.max_fee_per_gas, GAS_PRICE);
+        assert_eq!(txn.gas_price(), Some(GAS_PRICE));
+    }
+
+    #[test]
+    fn effective_tip_per_gas_is_effective_price_minus_base_fee() {
+        // The tip is the effective price minus the base fee, floored at zero, and is always
+        // `Some` because the transaction runs at any base fee.
+        let txn = scheduled_txn();
+        assert_eq!(txn.effective_tip_per_gas(0), Some(SCHEDULED_PRICE));
+        assert_eq!(txn.effective_tip_per_gas(100), Some(SCHEDULED_PRICE - 100));
+        assert_eq!(txn.effective_tip_per_gas(SCHEDULED_PRICE as u64), Some(0));
+        assert_eq!(txn.effective_tip_per_gas(9_999), Some(0));
+        assert_eq!(txn.effective_tip_per_gas(u64::MAX), Some(0));
+        for base_fee in BASE_FEES.into_iter().flatten() {
+            assert_eq!(
+                txn.effective_tip_per_gas(base_fee),
+                Some(
+                    txn.effective_gas_price(Some(base_fee))
+                        .saturating_sub(u128::from(base_fee))
+                ),
+                "base_fee={base_fee}"
+            );
+        }
+    }
+
+    #[test]
+    fn effective_gas_price_agrees_with_tx_env_built_from_accessors() {
+        // The transaction must report what revm charges it. An env built purely from the
+        // transaction's fee accessors has no priority fee, so revm's own
+        // `Transaction::effective_gas_price` returns its gas price. That must equal the
+        // transaction's figure at every base fee, so a caller converting the type gets the
+        // charged price without restating the rule.
+        for (txn, label) in [
+            (scheduled_txn(), "UST"),
+            (built_txn(base_gst_builder()), "GST"),
+        ] {
+            let env = TxEnv {
+                tx_type: txn.ty(),
+                gas_price: txn.max_fee_per_gas(),
+                gas_priority_fee: txn.max_priority_fee_per_gas(),
+                ..Default::default()
+            };
+            for base_fee in BASE_FEES {
+                // revm takes the base fee as a plain u128; an absent one prices like zero.
+                let revm_base_fee = u128::from(base_fee.unwrap_or_default());
+                assert_eq!(
+                    env.effective_gas_price(revm_base_fee),
+                    txn.effective_gas_price(base_fee),
+                    "{label} base_fee={base_fee:?}"
+                );
+            }
+        }
     }
 
     // ── AutomatedTransactionDetails ordering ──────────────────────────────────
