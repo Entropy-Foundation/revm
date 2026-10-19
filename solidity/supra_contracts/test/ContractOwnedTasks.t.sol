@@ -4,7 +4,9 @@ pragma solidity 0.8.34;
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {TaskRegistrant, ConstructorTaskRegistrant} from "./TaskRegistrant.sol";
+import {AUTOMATION_TASK_OWNER_INTERFACE_ID} from "../src/interfaces/IAutomationTaskOwner.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {IERC165} from "../src/interfaces/IERC165.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -12,6 +14,13 @@ import {TaskMetadata} from "../src/libraries/LibAppStorage.sol";
 import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {MultisigBeacon} from "../src/MultisigBeacon.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
+
+/// @dev Reports support for every interface, including `0xffffffff`, which ERC-165 forbids.
+contract EveryInterfaceClaimant {
+    function supportsInterface(bytes4) external pure returns (bool) {
+        return true;
+    }
+}
 
 /// @notice Tasks whose owner is a contract: a user task registered by a contract, and a system
 /// task registered by a MultiSignatureWallet authorized submitter (#4469). The registry records
@@ -24,11 +33,24 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Helpers :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev Deploys a TaskRegistrant and funds it with `_amount` of WSUPRA.
+    /// @dev Deploys a TaskRegistrant that declares `IAutomationTaskOwner` and funds it with
+    /// `_amount` of WSUPRA.
     function deployFundedRegistrant(uint256 _amount) internal returns (TaskRegistrant registrant) {
-        registrant = new TaskRegistrant(diamondAddr, address(wsupra));
-        vm.deal(address(this), _amount);
-        registrant.fund{value: _amount}();
+        registrant = deployFundedRegistrant(_amount, true);
+    }
+
+    /// @dev Deploys a TaskRegistrant, declaring `IAutomationTaskOwner` or not, and funds it with
+    /// `_amount` of WSUPRA.
+    function deployFundedRegistrant(uint256 _amount, bool _declaresTaskOwnerInterface)
+        internal
+        returns (TaskRegistrant registrant)
+    {
+        registrant = new TaskRegistrant(diamondAddr, address(wsupra), _declaresTaskOwnerInterface);
+        // WrappedSupra refuses a zero deposit, so a registrant that pays no fee is left unfunded.
+        if (_amount > 0) {
+            vm.deal(address(this), _amount);
+            registrant.fund{value: _amount}();
+        }
     }
 
     /// @dev Registers, through `_registrant`, the same user task as `RegistryFacetTest.testRegister`.
@@ -171,6 +193,92 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
 
         assertGt(address(registrant).code.length, 0, "the registrant has code once deployed");
         assertEq(IRegistryViewFacet(diamondAddr).getTaskDetails(0).owner, address(registrant));
+    }
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::: The IAutomationTaskOwner opt-in ::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev A contract that does not declare `IAutomationTaskOwner` cannot register a task.
+    function testRegisterFromAContractWithoutTheOwnerInterfaceReverts() public {
+        TaskRegistrant registrant = deployFundedRegistrant(100 ether, false);
+
+        vm.expectRevert(abi.encodeWithSelector(IRegistryFacet.UnsupportedTaskOwner.selector, address(registrant)));
+        registerUstFrom(registrant);
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+    }
+
+    /// @dev ERC-165 requires `supportsInterface(0xffffffff)` to be false, so a contract that
+    /// claims every interface is refused.
+    function testRegisterFromAContractClaimingEveryInterfaceReverts() public {
+        address claimant = address(new EveryInterfaceClaimant());
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
+
+        vm.prank(claimant);
+        vm.expectRevert(abi.encodeWithSelector(IRegistryFacet.UnsupportedTaskOwner.selector, claimant));
+        IRegistryFacet(diamondAddr).register(
+            payload, createPredicate(diamondAddr), uint64(block.timestamp + 1250), 100_000, 4 gwei, 60.1 ether, 4, auxData
+        );
+    }
+
+    /// @dev An account whose code is an EIP-7702 delegation designation registers without
+    /// declaring `IAutomationTaskOwner`, as an account without code does.
+    function testRegisterFromADelegatedAccountIsAccepted() public {
+        address delegated = address(0xD7702);
+        vm.etch(delegated, abi.encodePacked(hex"ef0100", address(wsupra)));
+        vm.deal(delegated, 100 ether);
+        bytes[] memory auxData;
+
+        vm.startPrank(delegated);
+        wsupra.deposit{value: 100 ether}();
+        wsupra.approve(diamondAddr, type(uint256).max);
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + 1250),
+            100_000,
+            4 gwei,
+            60.1 ether,
+            4,
+            auxData
+        );
+        vm.stopPrank();
+
+        assertEq(IRegistryViewFacet(diamondAddr).getTaskDetails(0).owner, delegated);
+    }
+
+    /// @dev The opt-in applies to system tasks too: an authorized submitter with code that does
+    /// not declare `IAutomationTaskOwner` cannot register one.
+    function testRegisterSystemTaskFromAContractWithoutTheOwnerInterfaceReverts() public {
+        TaskRegistrant registrant = deployFundedRegistrant(0, false);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).grantAuthorization(address(registrant));
+        bytes[] memory auxData;
+
+        vm.prank(address(registrant));
+        vm.expectRevert(abi.encodeWithSelector(IRegistryFacet.UnsupportedTaskOwner.selector, address(registrant)));
+        IRegistryFacet(diamondAddr).registerSystemTask(
+            createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + 1250),
+            100_000,
+            2,
+            auxData
+        );
+    }
+
+    /// @dev The fixture's copy of the interface identifier is the registry's.
+    function testTheRegistrantUsesTheRegistrysOwnerInterfaceId() public {
+        TaskRegistrant registrant = deployFundedRegistrant(0, true);
+        assertEq(registrant.AUTOMATION_TASK_OWNER_INTERFACE_ID(), AUTOMATION_TASK_OWNER_INTERFACE_ID);
+    }
+
+    /// @dev The MultiSignatureWallet declares `IERC165` and `IAutomationTaskOwner`, and not
+    /// `0xffffffff`.
+    function testTheMultiSignatureWalletDeclaresTheOwnerInterface() public {
+        MultiSignatureWallet wallet = deployWallet();
+        assertTrue(wallet.supportsInterface(type(IERC165).interfaceId));
+        assertTrue(wallet.supportsInterface(AUTOMATION_TASK_OWNER_INTERFACE_ID));
+        assertFalse(wallet.supportsInterface(0xffffffff));
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::: System tasks owned by a MultiSignatureWallet ::::::::::::::::::::::::::::::::::::::::::::::::

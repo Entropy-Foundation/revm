@@ -7,6 +7,8 @@ import {LibEvmGasConfig} from "./LibEvmGasConfig.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
+import {AUTOMATION_TASK_OWNER_INTERFACE_ID} from "../interfaces/IAutomationTaskOwner.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibRegistry {
@@ -67,6 +69,22 @@ library LibRegistry {
         require(ok, IRegistryFacet.FailedToCallTxHashPrecompile());
         require(out.length == 32, IRegistryFacet.TxnHashLengthShouldBe32(uint64(out.length)));
         return abi.decode(out, (bytes32));
+    }
+
+    /// @notice Accepts `_owner` as the owner of a new task if it has no code, if its code is an
+    /// EIP-7702 delegation designation, or if it declares `IAutomationTaskOwner` through ERC-165
+    /// (#4469). A contract registering from its constructor has no code yet and is accepted.
+    function validateTaskOwner(address _owner) private view {
+        bytes memory code = _owner.code;
+        if (code.length == 0 || isDelegationDesignation(code)) { return; }
+        if (!ERC165Checker.supportsInterface(_owner, AUTOMATION_TASK_OWNER_INTERFACE_ID)) {
+            revert IRegistryFacet.UnsupportedTaskOwner(_owner);
+        }
+    }
+
+    /// @notice Whether `_code` is an EIP-7702 delegation designation, `0xef0100 || address`.
+    function isDelegationDesignation(bytes memory _code) private pure returns (bool) {
+        return _code.length == 23 && _code[0] == 0xef && _code[1] == 0x01 && _code[2] == 0x00;
     }
 
     function validateOwnerType(
@@ -283,6 +301,7 @@ library LibRegistry {
         LibCommon.TaskType _taskType,
         bytes[] memory _auxData
     ) internal returns (uint64 taskIndex) {
+        validateTaskOwner(msg.sender);
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint64 regTime = uint64(block.timestamp);

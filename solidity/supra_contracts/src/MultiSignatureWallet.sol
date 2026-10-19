@@ -5,12 +5,14 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {LowLevelCall} from "@openzeppelin/contracts/utils/LowLevelCall.sol";
 import {IMultiSignatureWallet} from "./interfaces/IMultiSignatureWallet.sol";
+import {IERC165} from "./interfaces/IERC165.sol";
+import {AUTOMATION_TASK_OWNER_INTERFACE_ID, IAutomationTaskOwner} from "./interfaces/IAutomationTaskOwner.sol";
 
 /**
  * @title MultiSignatureWallet
  * @dev A multisignature wallet contract that requires multiple owners to confirm transactions.
  */
-contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
+contract MultiSignatureWallet is Initializable, IMultiSignatureWallet, IAutomationTaskOwner {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     EnumerableSet.AddressSet private owners;
@@ -198,6 +200,12 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     /**
      * @dev Fallback function to receive ether and emit a deposit event.
      */
+    /// @notice ERC-165: the wallet declares `IAutomationTaskOwner`, so that it can register and own
+    /// system automation tasks as an authorized submitter (#4469).
+    function supportsInterface(bytes4 _interfaceId) external pure returns (bool) {
+        return _interfaceId == type(IERC165).interfaceId || _interfaceId == AUTOMATION_TASK_OWNER_INTERFACE_ID;
+    }
+
     receive() external payable {
         emit Deposit(msg.sender, msg.value, address(this).balance);
     }

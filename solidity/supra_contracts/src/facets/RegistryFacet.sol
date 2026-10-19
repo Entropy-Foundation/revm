@@ -19,7 +19,9 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     /// The caller becomes the task's owner and pays its fees. The owner may be a contract. The
     /// chain executes the task's predicate and action as calls from the owner (`msg.sender` and
     /// `tx.origin`) to their targets, so the owner's code runs only if a call reaches the owner.
-    /// Only the owner can cancel or stop the task.
+    /// Only the owner can cancel or stop the task. A caller with code, other than an EIP-7702
+    /// delegated account, must declare `IAutomationTaskOwner` through ERC-165, or the call reverts
+    /// with `UnsupportedTaskOwner`.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
     /// @param _predicate Payload for predicate of the task.
     /// @param _expiryTime Time after which the task gets expired.
@@ -65,7 +67,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
 
     /// @notice Function to register a system task. Reverts if caller is not authorized.
     /// The caller becomes the task's owner, and may be a contract such as a MultiSignatureWallet.
-    /// The chain executes the task with the owner as the transaction sender, as for a user task.
+    /// The chain executes the task with the owner as the transaction sender, as for a user task,
+    /// and a contract caller must declare `IAutomationTaskOwner` as `register` requires.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
     /// @param _predicate Payload for predicate of the task.
     /// @param _expiryTime Time after which the task gets expired.
