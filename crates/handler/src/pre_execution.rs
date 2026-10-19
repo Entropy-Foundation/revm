@@ -119,7 +119,10 @@ pub fn validate_against_state_and_deduct_caller<
     let basefee = context.block().basefee() as u128;
     let blob_price = context.block().blob_gasprice().unwrap_or_default();
     let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
-    let is_eip3607_disabled = context.cfg().is_eip3607_disabled();
+    // EIP-3607 is applied only where the execution mode applies it (see
+    // `ExecutionMode::enforces_eip3607`), or not at all if the configuration disables it.
+    let is_eip3607_disabled =
+        context.cfg().is_eip3607_disabled() || !context.cfg().execution_mode().enforces_eip3607();
     // nonce check will not be done if it is disabled, or execution mode does not assume nonce-change.
     let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled() || !should_update_nonce;
 

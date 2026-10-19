@@ -327,8 +327,9 @@ new scheme assigns non-final vs. final batches.
 ## Registering a single task
 
 `register` (a UST, paid by the owner) and `registerSystemTask` (a GST, submitted by an
-authorized account) are ordinary user transactions, not `AutomationRegistryRecord`s:
-the registrant sets their gas limit. Their cost grows with the size of the task's
+authorized account) are ordinary calls made in a user transaction, either directly or from a
+contract, which then owns the task (Entropy-Foundation/smr-moonshot#4469). They are not
+`AutomationRegistryRecord`s: the user transaction's sender sets their gas limit. Their cost grows with the size of the task's
 `payloadTx` and `predicate`, which the registry stores and which the registration event
 carries in its log data (Entropy-Foundation/smr-moonshot#4285). Reproduce with:
 
