@@ -33,6 +33,11 @@ interface IConfigFacet {
     ///      the Config that takes effect at the start of the next cycle.
     event ConfigBufferUpdated(Config pendingConfig);
 
+    /// @notice Emitted for each index passed to `removeTasks` that names no task, and is skipped
+    /// (#4636).
+    /// @dev taskIndex is topic 1.
+    event TaskRemovalByGovernanceSkipped(uint64 indexed taskIndex);
+
     /// @notice Emitted for each task the registry owner removes through `removeTasks` (#4636).
     /// @dev taskIndex is topic 1 and owner is topic 2; the rest is in the log data. The refunds
     ///      are those a stop by the owner pays, and are zero for a GST.

@@ -168,17 +168,23 @@ contract GovernanceRemovalTest is BaseDiamondTest {
         assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
     }
 
+    /// @dev An index with no task is skipped and reported by TaskRemovalByGovernanceSkipped; the
+    /// rest of the batch is removed.
     function testRemoveTasksSkipsAMissingIndex() public {
         registerUst(diamondAddr, TASK_DURATION);
         uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 7;
         taskIndexes[1] = 0;
+        vm.expectEmit(diamondAddr);
+        emit IConfigFacet.TaskRemovalByGovernanceSkipped(7);
 
         vm.recordLogs();
         removeAsRegistryOwner(taskIndexes);
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
-        assertEq(countLogs(vm.getRecordedLogs(), IConfigFacet.TaskRemovedByGovernance.selector), 1);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(countLogs(logs, IConfigFacet.TaskRemovedByGovernance.selector), 1);
+        assertEq(countLogs(logs, IConfigFacet.TaskRemovalByGovernanceSkipped.selector), 1);
     }
 
     function testRemoveTasksRevertsIfInputIsEmpty() public {
@@ -209,19 +215,22 @@ contract GovernanceRemovalTest is BaseDiamondTest {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::: Runtime removal of a removed task ::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev A runtime removal record with reason ERROR for a task the registry owner has already
-    /// removed in the same block is a no-op, so the record does not revert.
+    /// removed in the same block is a no-op, so the record does not revert; it emits only
+    /// TaskRemovalSkipped.
     function testAnErrorRemovalOfAGovernanceRemovedTaskIsANoOp() public {
         registerUst(diamondAddr, TASK_DURATION);
         processCycleTransition(diamondAddr, singleTask(0));
         (uint64 cycleIndex,,,) = ICoreFacet(diamondAddr).getCycleInfo();
         removeAsRegistryOwner(singleTask(0));
         uint256 registryBefore = wsupra.balanceOf(diamondAddr);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.TaskRemovalSkipped(0, LibCommon.TaskRemovalReason.ERROR);
 
         vm.recordLogs();
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(cycleIndex, 0, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
 
-        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(vm.getRecordedLogs().length, 1);
         assertEq(wsupra.balanceOf(diamondAddr), registryBefore);
     }
 

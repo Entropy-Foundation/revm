@@ -92,6 +92,11 @@ interface ICoreFacet {
     /// @dev taskIndex and owner are topics 1 and 2, so a reader filters system removals by task
     ///      or by owner; each appears only there. taskType, txHash, reason and details are
     ///      ABI-encoded in the log data, details being the VM signer's description of the reason.
+    /// @notice Emitted when `removeRegisteredTask` names a task that does not exist, for either
+    /// reason, and removes nothing (#4636).
+    /// @dev taskIndex is topic 1; reason is in the log data.
+    event TaskRemovalSkipped(uint64 indexed taskIndex, LibCommon.TaskRemovalReason reason);
+
     event TaskRemovedBySystem(
         uint64 indexed taskIndex,
         address indexed owner,

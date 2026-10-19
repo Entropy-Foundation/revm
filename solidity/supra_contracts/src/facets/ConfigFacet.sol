@@ -65,7 +65,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     /// gas for the next cycle is reduced by its max gas amount, and a user task's owner is
     /// refunded the whole deposit and half of the remaining current-cycle fee, or half the deposit
     /// for a PENDING task. A system task is refunded nothing. The refund is paid to the task's
-    /// owner. An index with no task is skipped.
+    /// owner. An index with no task is skipped and reported by `TaskRemovalByGovernanceSkipped`.
     /// Requires automation enabled and the cycle STARTED, as `stopTasks` does.
     /// @param _taskIndexes Indexes of the tasks to remove.
     function removeTasks(uint64[] memory _taskIndexes) external {
@@ -78,7 +78,10 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
-            if (!LibCommon.ifTaskExists(taskId)) { continue; }
+            if (!LibCommon.ifTaskExists(taskId)) {
+                emit TaskRemovalByGovernanceSkipped(taskId);
+                continue;
+            }
 
             (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
                 LibRegistry.removeTaskByGovernance(taskId, cycleEndTime, currentTime, residualInterval);

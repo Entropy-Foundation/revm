@@ -147,7 +147,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     ///      post-genesis; Replace (to ship a fix) is fine.
     ///
     ///      Either reason is a no-op for a task that no longer exists, such as one its owner or
-    ///      the registry owner removed after the node scheduled the record.
+    ///      the registry owner removed after the node scheduled the record; it emits
+    ///      TaskRemovalSkipped.
     ///
     ///      ERROR removes the task and refunds half of the remaining current-cycle fee and the
     ///      whole deposit, or half the deposit for a PENDING task; it emits TaskRemovedBySystem.

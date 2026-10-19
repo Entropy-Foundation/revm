@@ -671,8 +671,11 @@ library LibCore {
     ) internal {
         // A removal is a no-op for a task that no longer exists: one removed by its owner, by the
         // registry owner (ConfigFacet.removeTasks, #4636) or by an earlier record after the node
-        // scheduled this one.
-        if (!LibCommon.ifTaskExists(_taskId)) { return; }
+        // scheduled this one. TaskRemovalSkipped records it.
+        if (!LibCommon.ifTaskExists(_taskId)) {
+            emit ICoreFacet.TaskRemovalSkipped(_taskId, _reason);
+            return;
+        }
 
         bool isConfigUpdate = _reason == LibCommon.TaskRemovalReason.CONFIG_UPDATE;
         uint64 txGasLimitCap;

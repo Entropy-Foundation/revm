@@ -655,11 +655,11 @@ mod tests {
             ),
             (
                 "ConfigFacet",
-                b256!("6df4fc3f36e88dae57dee6ec6ed5ea7ed8586384c5c2293749de17ce5baf545c"),
+                b256!("ca20263195d6d97d5e5dc5c490e12ec9d435801851f781ee22ab691ebd4b7ab9"),
             ),
             (
                 "CoreFacet",
-                b256!("89a90b2c77b9f35cc8cf6d2d84e8a63a430b5d8197962326b913101eff62f312"),
+                b256!("94dc641f119d334c57e66bfa3d74b6332ea95e465d10d873e7b76684249c6dc2"),
             ),
             (
                 "Diamond",
