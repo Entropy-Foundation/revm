@@ -359,6 +359,17 @@ library LibRegistry {
         cancelledTask = LibCommon.TaskCancelled(_taskIndex, task.taskType, task.txHash);
     }
 
+    /// @notice Checks the preconditions shared by every call that cancels, stops or removes a
+    /// batch of tasks: automation is enabled, the cycle is started and the batch is not empty.
+    /// @param _taskIndexes Indexes of the tasks the call acts on.
+    function validateTaskIndexesInput(uint64[] memory _taskIndexes) internal view {
+        if (!LibAppStorage.appStorage().automationEnabled) { revert IRegistryFacet.AutomationNotEnabled(); }
+        if (!LibCommon.isCycleStarted()) revert IRegistryFacet.CycleTransitionInProgress();
+        if (_taskIndexes.length == 0) revert IRegistryFacet.TaskIndexesCannotBeEmpty();
+    }
+
+    /// @notice Stops a task on its owner's request. Reverts unless the caller is the task's owner
+    /// and the task's type matches `_isGst`.
     function stopTask(
         uint64 _taskId,
         uint64 _cycleEndTime,
@@ -371,22 +382,55 @@ library LibRegistry {
 
         validateOwnerType(task.owner, task.taskType, _isGst);
 
+        (taskStopped, refund) = stopTaskUnchecked(_taskId, task, _cycleEndTime, _currentTime, _residualInterval, _isGst);
+    }
+
+    /// @notice Removes a task, of either type, on the registry owner's request (#4636). The task
+    /// is removed and refunded exactly as if its owner had stopped it; the caller is responsible
+    /// for paying `refund` to `task.owner`, which is zero for a GST.
+    /// @return taskStopped The task's index, refunds and transaction hash.
+    /// @return refund Deposit and cycle fee refund owed to the task's owner.
+    /// @return task The task as it was before removal.
+    function removeTaskByGovernance(
+        uint64 _taskId,
+        uint64 _cycleEndTime,
+        uint64 _currentTime,
+        uint64 _residualInterval
+    ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund, TaskMetadataLW memory task) {
+        task = LibCommon.toLW(LibAppStorage.registryState().tasks[_taskId]);
+        bool isGst = task.taskType == LibCommon.TaskType.GST;
+        // stopSystemTasks passes a zero residual interval for a GST, which has no fee to refund.
+        (taskStopped, refund) =
+            stopTaskUnchecked(_taskId, task, _cycleEndTime, _currentTime, isGst ? 0 : _residualInterval, isGst);
+    }
+
+    /// @notice Removes a task and computes the refund a stop pays: the whole deposit and half of
+    /// the remaining current-cycle fee, or half the deposit for a PENDING task, and nothing for a
+    /// GST. The owner and task-type checks are the caller's.
+    function stopTaskUnchecked(
+        uint64 _taskId,
+        TaskMetadataLW memory _task,
+        uint64 _cycleEndTime,
+        uint64 _currentTime,
+        uint64 _residualInterval,
+        bool _isGst
+    ) private returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         (uint128 cycleFeeRefund, uint128 depositRefund) = removeTaskAndComputeRefund(
-            _taskId, 
-            _cycleEndTime, 
-            _currentTime, 
+            _taskId,
+            _cycleEndTime,
+            _currentTime,
             _residualInterval,
-            task.expiryTime,
-            task.maxGasAmount,
-            task.depositFee,
-            task.owner,
-            task.taskState,
+            _task.expiryTime,
+            _task.maxGasAmount,
+            _task.depositFee,
+            _task.owner,
+            _task.taskState,
             _isGst,
             false
         );
 
         refund = cycleFeeRefund + depositRefund;
-        taskStopped = LibCommon.TaskStopped(_taskId, depositRefund, cycleFeeRefund, task.txHash);
+        taskStopped = LibCommon.TaskStopped(_taskId, depositRefund, cycleFeeRefund, _task.txHash);
     }
 
     function removeTaskAndComputeRefund(

@@ -108,7 +108,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function cancelTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskCancelled[] memory cancelledTasksBuffer = new LibCommon.TaskCancelled[](_taskIndexes.length);
         uint256 counter;
@@ -141,7 +141,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function cancelSystemTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskCancelled[] memory cancelledTasksBuffer = new LibCommon.TaskCancelled[](_taskIndexes.length);
         uint256 counter;
@@ -172,7 +172,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function stopTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
@@ -223,7 +223,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function stopSystemTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
@@ -249,13 +249,6 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
             // Emit task stopped event
             emit TasksStopped(stoppedTasks, msg.sender);
         }
-    }
-
-    /// @notice Helper function for validation.
-    function validateInput(uint64[] memory _taskIndexes) private view {
-        if (!LibAppStorage.appStorage().automationEnabled) { revert AutomationNotEnabled(); }
-        if (!LibCommon.isCycleStarted()) revert CycleTransitionInProgress();
-        if (_taskIndexes.length == 0) revert TaskIndexesCannotBeEmpty();
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
