@@ -64,11 +64,13 @@ impl ExecutionMode {
     /// and its sender from chain state rather than from a signature:
     /// - [`ExecutionMode::Automated`] and [`ExecutionMode::AutomatedGasless`] run a registered
     ///   automation task with its owner as sender. The owner is the account that registered the
-    ///   task, and may be a contract. The owner's code is not executed as part of the transaction.
-    /// - [`ExecutionMode::ReadOnly`] runs an automation task's predicate with the same sender, and
-    ///   view calls. Its state changes are discarded.
+    ///   task, and may be a contract. The transaction is a call from the owner to the task's
+    ///   target, so the owner's code runs only if that call reaches the owner.
+    /// - [`ExecutionMode::ReadOnly`] runs an automation task's predicate with the same sender. Its
+    ///   state changes are discarded.
     /// - [`ExecutionMode::Genesis`] deploys the genesis contracts.
-    /// - [`ExecutionMode::System`] transactions skip sender validation entirely.
+    /// - [`ExecutionMode::System`] transactions are sent by the VM signer, which
+    ///   `Handler::validate_caller` requires and which has no code.
     ///
     /// The EIP-7702 delegation exemption applies in every mode. The `disable_eip3607` option of the
     /// EVM configuration, where it is compiled in, disables the rule for a `User` transaction too.
