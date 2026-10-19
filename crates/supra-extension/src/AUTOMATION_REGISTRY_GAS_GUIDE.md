@@ -328,8 +328,11 @@ new scheme assigns non-final vs. final batches.
 
 `register` (a UST, paid by the owner) and `registerSystemTask` (a GST, submitted by an
 authorized account) are ordinary calls made in a user transaction, either directly or from a
-contract, which then owns the task (Entropy-Foundation/smr-moonshot#4469). They are not
-`AutomationRegistryRecord`s: the user transaction's sender sets their gas limit. Their cost grows with the size of the task's
+contract, which then owns the task (Entropy-Foundation/smr-moonshot#4469). A contract caller,
+other than an EIP-7702 delegated account, is first queried through ERC-165 for
+`IAutomationTaskOwner`, which adds up to three `staticcall`s of at most 30,000 gas each to the
+registration. They are not `AutomationRegistryRecord`s: the user transaction's sender sets their
+gas limit. Their cost grows with the size of the task's
 `payloadTx` and `predicate`, which the registry stores and which the registration event
 carries in its log data (Entropy-Foundation/smr-moonshot#4285). Reproduce with:
 

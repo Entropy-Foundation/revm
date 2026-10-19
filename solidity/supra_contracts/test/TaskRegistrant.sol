@@ -29,12 +29,27 @@ interface ITaskRegistrantRegistry {
 /// so that it is the owner of each task it registers (#4469).
 /// @dev Anyone may call it. It is a test fixture, not a pattern for production registrants.
 contract TaskRegistrant {
+    /// @dev ERC-165 identifier of `IERC165`.
+    bytes4 private constant ERC165_INTERFACE_ID = 0x01ffc9a7;
+    /// @dev ERC-165 identifier of the AutomationRegistry's `IAutomationTaskOwner`.
+    bytes4 public constant AUTOMATION_TASK_OWNER_INTERFACE_ID = bytes4(keccak256("IAutomationTaskOwner"));
+
     ITaskRegistrantRegistry public immutable registry;
     ITaskRegistrantWrappedSupra public immutable wsupra;
+    /// @dev Whether this registrant declares `IAutomationTaskOwner`, without which the registry
+    /// refuses it as a task owner.
+    bool public immutable declaresTaskOwnerInterface;
 
-    constructor(address _registry, address _wsupra) {
+    constructor(address _registry, address _wsupra, bool _declaresTaskOwnerInterface) {
         registry = ITaskRegistrantRegistry(_registry);
         wsupra = ITaskRegistrantWrappedSupra(_wsupra);
+        declaresTaskOwnerInterface = _declaresTaskOwnerInterface;
+    }
+
+    /// @notice ERC-165.
+    function supportsInterface(bytes4 _interfaceId) external view returns (bool) {
+        return _interfaceId == ERC165_INTERFACE_ID
+            || (declaresTaskOwnerInterface && _interfaceId == AUTOMATION_TASK_OWNER_INTERFACE_ID);
     }
 
     /// @notice Wraps the attached value into WSUPRA held by this contract and lets the registry
