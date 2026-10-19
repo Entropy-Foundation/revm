@@ -871,3 +871,61 @@ fn test_delegated_sender_is_served_in_user_mode() {
         "a delegated sender must be served in User mode, got: {result:?}"
     );
 }
+
+/// An authorization whose authority is a Supra reserved address is skipped: the reserved
+/// account gets no code and no nonce bump. Another authorization in the same transaction is
+/// applied, and the transaction succeeds (#4534).
+#[test]
+fn test_eip7702_authorization_from_a_reserved_address_is_skipped() {
+    use revm::primitives::supra_constants::u64_to_address;
+
+    let reserved = u64_to_address(0x5355_5005);
+    let ordinary = address!("0x1000000000000000000000000000000000000003");
+    let delegate_to = address!("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
+            STOP_BYTECODE.into(),
+        )))
+        .build_mainnet();
+
+    let authorization = |authority| {
+        RecoveredAuthorization::new_unchecked(
+            Authorization {
+                chain_id: U256::ZERO,
+                address: delegate_to,
+                nonce: 0,
+            },
+            RecoveredAuthority::Valid(authority),
+        )
+    };
+    let tx = TxEnv::builder_for_bench()
+        .tx_type(Some(TransactionType::Eip7702 as u8))
+        .authorization_list_recovered(vec![authorization(reserved), authorization(ordinary)])
+        .build_fill();
+
+    let result = evm.transact_one(tx).unwrap();
+    assert!(result.is_success(), "{result:?}");
+
+    let state = &evm.ctx.journal_mut().state;
+    if let Some(reserved_after) = state.get(&reserved) {
+        assert_eq!(
+            reserved_after.info.nonce, 0,
+            "the reserved authority's nonce must not change"
+        );
+        assert_eq!(
+            reserved_after.info.code_hash, KECCAK_EMPTY,
+            "the reserved authority must not be delegated"
+        );
+    }
+    let ordinary_after = state
+        .get(&ordinary)
+        .expect("the ordinary authority's account is loaded by the authorization");
+    assert_eq!(ordinary_after.info.nonce, 1);
+    assert_eq!(
+        ordinary_after.info.code,
+        Some(Bytecode::new_eip7702(delegate_to)),
+        "the ordinary authority must be delegated"
+    );
+}

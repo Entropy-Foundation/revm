@@ -14,7 +14,9 @@ use context_interface::{
 };
 use core::cmp::Ordering;
 use primitives::StorageKey;
-use primitives::{eip7702, hardfork::SpecId, KECCAK_EMPTY, U256};
+use primitives::{
+    eip7702, hardfork::SpecId, supra_constants::is_supra_reserved, KECCAK_EMPTY, U256,
+};
 use state::AccountInfo;
 use std::boxed::Box;
 
@@ -236,6 +238,15 @@ pub fn apply_eip7702_auth_list<
             let Some(authority) = authorization.authority() else {
                 continue;
             };
+
+            // Supra reserved addresses are used by the system to initiate and execute internal
+            // transactions, and `Handler::validate_caller` refuses them as the sender of any other
+            // transaction. An authorization whose authority is a reserved address is skipped for
+            // the same reason, so that no user transaction sets code on, or bumps the nonce of, a
+            // reserved address. See #4534.
+            if is_supra_reserved(&authority) {
+                continue;
+            }
 
             // warm authority account and check nonce.
             // 4. Add `authority` to `accessed_addresses` (as defined in [EIP-2929](./eip-2929.md).)
