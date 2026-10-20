@@ -267,7 +267,7 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
     }
 
     /// @dev The fixture's copy of the interface identifier is the registry's.
-    function testTheRegistrantUsesTheRegistriesOwnerInterfaceId() public {
+    function testTheRegistrantUsesTheRegistryOwnerInterfaceId() public {
         TaskRegistrant registrant = deployFundedRegistrant(0, true);
         assertEq(registrant.AUTOMATION_TASK_OWNER_INTERFACE_ID(), AUTOMATION_TASK_OWNER_INTERFACE_ID);
     }
