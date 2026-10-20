@@ -23,7 +23,7 @@ contract EveryInterfaceClaimant {
 }
 
 /// @notice Tasks whose owner is a contract: a user task registered by a contract, and a system
-/// task registered by a MultiSignatureWallet authorized submitter (#4469). The registry records
+/// task registered by an authorized submitter that is a MultiSignatureWallet (#4469). The registry records
 /// the calling contract as the owner, and only that contract can cancel or stop the task.
 contract ContractOwnedTasksTest is BaseDiamondTest {
     address constant WALLET_OWNER_1 = address(0x1001);
