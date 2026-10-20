@@ -39,12 +39,13 @@ interface IConfigFacet {
     event TaskRemovalByGovernanceSkipped(uint64 indexed taskIndex);
 
     /// @notice Emitted for each task the registry owner removes through `removeTasks` (#4636).
-    /// @dev taskIndex is topic 1 and owner is topic 2; the rest is in the log data. The refunds
-    ///      are those a stop by the owner pays, and are zero for a GST.
+    /// @dev taskIndex, owner and taskType are topics 1, 2 and 3, as in TaskRemovedByConfigUpdate,
+    ///      so a reader filters governance removals by task, owner or task type; the rest is in
+    ///      the log data. The refunds are those a stop by the owner pays, and are zero for a GST.
     event TaskRemovedByGovernance(
         uint64 indexed taskIndex,
         address indexed owner,
-        LibCommon.TaskType taskType,
+        LibCommon.TaskType indexed taskType,
         bytes32 txHash,
         uint128 depositRefund,
         uint128 cycleFeeRefund

@@ -214,8 +214,8 @@ contract GovernanceRemovalTest is BaseDiamondTest {
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::: Runtime removal of a removed task ::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    /// @dev A runtime removal record with reason ERROR for a task the registry owner has already
-    /// removed in the same block is a no-op, so the record does not revert; it emits only
+    /// @dev A runtime removal record with reason ERROR for a task the registry owner removed before
+    /// the record executes is a no-op, so the record does not revert; it emits only
     /// TaskRemovalSkipped.
     function testAnErrorRemovalOfAGovernanceRemovedTaskIsANoOp() public {
         registerUst(diamondAddr, TASK_DURATION);

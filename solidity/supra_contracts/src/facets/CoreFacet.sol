@@ -146,12 +146,15 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     ///      admits an active task's transaction. Do not Remove this selector via diamondCut
     ///      post-genesis; Replace (to ship a fix) is fine.
     ///
-    ///      Either reason is a no-op for a task that no longer exists, such as one its owner or
-    ///      the registry owner removed after the node scheduled the record; it emits
-    ///      TaskRemovalSkipped.
+    ///      Either reason is a no-op for a task that no longer exists; it emits
+    ///      TaskRemovalSkipped. A registry record runs before the block's user transactions, so
+    ///      such a task was removed before the node scheduled the record: by its owner or the
+    ///      registry owner in a user transaction of the block that scheduled it, or by an earlier
+    ///      record.
     ///
     ///      ERROR removes the task and refunds half of the remaining current-cycle fee and the
-    ///      whole deposit, or half the deposit for a PENDING task; it emits TaskRemovedBySystem.
+    ///      whole deposit; it emits TaskRemovedBySystem. The node schedules it only for a task it
+    ///      executes, which is ACTIVE or CANCELLED.
     ///
     ///      CONFIG_UPDATE removes the task only if the EVM gas config served by
     ///      {LibEvmGasConfig} for this block does not admit it, and is a no-op otherwise, so the
