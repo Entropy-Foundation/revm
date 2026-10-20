@@ -75,8 +75,9 @@ library LibRegistry {
     /// EIP-7702 delegation designation, or if it declares `IAutomationTaskOwner` through ERC-165
     /// (#4469). A contract registering from its constructor has no code yet and is accepted.
     function validateTaskOwner(address _owner) private view {
-        bytes memory code = _owner.code;
-        if (code.length == 0 || isDelegationDesignation(code)) { return; }
+        // EXTCODESIZE first: the code is copied only when its size is that of a designation.
+        uint256 size = _owner.code.length;
+        if (size == 0 || (size == 23 && isDelegationDesignation(_owner.code))) { return; }
         if (!ERC165Checker.supportsInterface(_owner, AUTOMATION_TASK_OWNER_INTERFACE_ID)) {
             revert IRegistryFacet.UnsupportedTaskOwner(_owner);
         }

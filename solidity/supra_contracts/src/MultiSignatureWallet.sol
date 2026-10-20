@@ -197,15 +197,15 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet, IAutomati
         maxTimeoutDuration = DEFAULT_MAX_TIMEOUT_DURATION;
     }
 
-    /**
-     * @dev Fallback function to receive ether and emit a deposit event.
-     */
     /// @notice ERC-165: the wallet declares `IAutomationTaskOwner`, so that it can register and own
     /// system automation tasks as an authorized submitter (#4469).
     function supportsInterface(bytes4 _interfaceId) external pure returns (bool) {
         return _interfaceId == type(IERC165).interfaceId || _interfaceId == AUTOMATION_TASK_OWNER_INTERFACE_ID;
     }
 
+    /**
+     * @dev Fallback function to receive ether and emit a deposit event.
+     */
     receive() external payable {
         emit Deposit(msg.sender, msg.value, address(this).balance);
     }

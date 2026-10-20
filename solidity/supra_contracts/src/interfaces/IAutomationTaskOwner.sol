@@ -9,9 +9,11 @@ import {IERC165} from "./IERC165.sol";
 bytes4 constant AUTOMATION_TASK_OWNER_INTERFACE_ID = bytes4(keccak256("IAutomationTaskOwner"));
 
 /// @notice Declared by a contract that may own SupraEVM automation tasks (#4469).
-/// @dev The AutomationRegistry accepts a contract as the caller of `register` or
-///      `registerSystemTask` only if the contract reports, through ERC-165, that it supports
-///      `IERC165` and `AUTOMATION_TASK_OWNER_INTERFACE_ID` and does not support `0xffffffff`.
+/// @dev The AutomationRegistry accepts a caller of `register` or `registerSystemTask` whose code
+///      is neither empty nor an EIP-7702 delegation designation only if the caller reports,
+///      through ERC-165, that it supports `IERC165` and `AUTOMATION_TASK_OWNER_INTERFACE_ID` and
+///      does not support `0xffffffff`. A caller without code, including a contract registering
+///      from its constructor, and an EIP-7702 delegated account are accepted without the check.
 ///      `supportsInterface` must therefore return `true` for `type(IERC165).interfaceId` as well
 ///      as for `AUTOMATION_TASK_OWNER_INTERFACE_ID`.
 ///
