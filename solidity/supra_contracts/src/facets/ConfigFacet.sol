@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, Config, RegistryState, LibAppStorage} from "../libraries/LibAppStorage.sol";
+import {AppStorage, Config, RegistryState, LibAppStorage, TaskMetadataLW} from "../libraries/LibAppStorage.sol";
+import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
+import {LibRegistry} from "../libraries/LibRegistry.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {IConfigFacet} from "../interfaces/IConfigFacet.sol";
 import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
@@ -56,6 +58,40 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         s.registrationEnabled = false;
 
         emit TaskRegistrationDisabled(s.registrationEnabled);
+    }
+
+    /// @notice Removes the specified tasks, user and system alike, on the registry owner's
+    /// request (#4636). Each task is removed exactly as if its owner had stopped it: the committed
+    /// gas for the next cycle is reduced by its max gas amount, and a user task's owner is
+    /// refunded the whole deposit and half of the remaining current-cycle fee, or half the deposit
+    /// for a PENDING task. A system task is refunded nothing. The refund is paid to the task's
+    /// owner. An index with no task is skipped and reported by `TaskRemovalByGovernanceSkipped`.
+    /// Requires automation enabled and the cycle STARTED, as `stopTasks` does.
+    /// @param _taskIndexes Indexes of the tasks to remove.
+    function removeTasks(uint64[] memory _taskIndexes) external {
+        LibDiamond.enforceIsContractOwner();
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
+
+        uint64 cycleEndTime = LibCommon.getCycleEndTime();
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
+
+        for (uint256 i = 0; i < _taskIndexes.length; i++) {
+            uint64 taskId = _taskIndexes[i];
+            if (!LibCommon.ifTaskExists(taskId)) {
+                emit TaskRemovalByGovernanceSkipped(taskId);
+                continue;
+            }
+
+            (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
+                LibRegistry.removeTaskByGovernance(taskId, cycleEndTime, currentTime, residualInterval);
+            // Zero for a GST; LibAccounting.refund transfers nothing for a zero amount.
+            LibAccounting.refund(task.owner, refund);
+
+            emit TaskRemovedByGovernance(
+                taskId, task.owner, task.taskType, removed.txHash, removed.depositRefund, removed.cycleFeeRefund
+            );
+        }
     }
 
     /// @notice Function to withdraw the accumulated fees.
@@ -212,7 +248,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](12);
+        selectors = new bytes4[](13);
         selectors[0] = ConfigFacet.grantAuthorization.selector;
         selectors[1] = ConfigFacet.revokeAuthorization.selector;
         selectors[2] = ConfigFacet.enableRegistration.selector;
@@ -225,5 +261,6 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         selectors[9] = ConfigFacet.getConfigBuffer.selector;
         selectors[10] = ConfigFacet.updateDataLengthCaps.selector;
         selectors[11] = ConfigFacet.getDataLengthCaps.selector;
+        selectors[12] = ConfigFacet.removeTasks.selector;
     }
 }

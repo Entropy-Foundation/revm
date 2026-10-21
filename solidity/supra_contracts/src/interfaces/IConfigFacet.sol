@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {Config} from "../libraries/LibAppStorage.sol";
+import {LibCommon} from "../libraries/LibCommon.sol";
 
 interface IConfigFacet {
     // =============================================================
@@ -31,6 +32,24 @@ interface IConfigFacet {
     /// @dev The log has no indexed parameter. pendingConfig is ABI-encoded in the log data and is
     ///      the Config that takes effect at the start of the next cycle.
     event ConfigBufferUpdated(Config pendingConfig);
+
+    /// @notice Emitted for each index passed to `removeTasks` that names no task, and is skipped
+    /// (#4636).
+    /// @dev taskIndex is topic 1.
+    event TaskRemovalByGovernanceSkipped(uint64 indexed taskIndex);
+
+    /// @notice Emitted for each task the registry owner removes through `removeTasks` (#4636).
+    /// @dev taskIndex, owner and taskType are topics 1, 2 and 3, as in TaskRemovedByConfigUpdate,
+    ///      so a reader filters governance removals by task, owner or task type; the rest is in
+    ///      the log data. The refunds are those a stop by the owner pays, and are zero for a GST.
+    event TaskRemovedByGovernance(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        LibCommon.TaskType indexed taskType,
+        bytes32 txHash,
+        uint128 depositRefund,
+        uint128 cycleFeeRefund
+    );
 
     /// @notice Emitted when the task registration input size caps are updated.
     event DataLengthCapsUpdated(uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
@@ -67,6 +86,7 @@ interface IConfigFacet {
     function enableRegistration() external;
     function disableRegistration() external;
     function withdrawFees(uint256 _amount, address _recipient) external;
+    function removeTasks(uint64[] memory _taskIndexes) external;
     function updateConfigBuffer(
         uint64 _taskDurationCapSecs,
         uint128 _registryMaxGasCap,

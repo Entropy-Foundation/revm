@@ -669,15 +669,21 @@ library LibCore {
         LibCommon.TaskRemovalReason _reason,
         string memory _details
     ) internal {
+        // A removal is a no-op for a task that no longer exists: one removed before this record
+        // runs, by its owner or by the registry owner (ConfigFacet.removeTasks, #4636), or by an
+        // earlier record. TaskRemovalSkipped records it.
+        if (!LibCommon.ifTaskExists(_taskId)) {
+            emit ICoreFacet.TaskRemovalSkipped(_taskId, _reason);
+            return;
+        }
+
         bool isConfigUpdate = _reason == LibCommon.TaskRemovalReason.CONFIG_UPDATE;
         uint64 txGasLimitCap;
         uint256 minGasPrice;
         if (isConfigUpdate) {
-            // A CONFIG_UPDATE removal is a no-op for a task that no longer exists (removed by
-            // its owner or by an earlier record) and for a task the current figures admit. The
+            // A CONFIG_UPDATE removal is also a no-op for a task the current figures admit. The
             // whole-refund policy therefore applies only to a task this block's EVM gas config
             // actually excludes, whatever the node that scheduled the record observed.
-            if (!LibCommon.ifTaskExists(_taskId)) { return; }
             txGasLimitCap = LibEvmGasConfig.txGasLimitCap();
             minGasPrice = LibEvmGasConfig.minGasPrice();
         }
