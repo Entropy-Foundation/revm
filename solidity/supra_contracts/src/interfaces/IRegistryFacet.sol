@@ -97,6 +97,9 @@ interface IRegistryFacet {
     // =============================================================
     error AlreadyCancelled();
     error AutomationNotEnabled();
+    /// @notice The caller has code, is not an EIP-7702 delegated account and does not declare
+    /// `IAutomationTaskOwner` through ERC-165, so it cannot own a task.
+    error UnsupportedTaskOwner(address owner);
     error CycleTransitionInProgress();
     error ErrorCycleFeeRefund();
     error ErrorDepositRefund();

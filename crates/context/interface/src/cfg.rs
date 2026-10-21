@@ -56,6 +56,28 @@ impl ExecutionMode {
         matches!(self, ExecutionMode::ReadOnly)
     }
 
+    /// Returns true if EIP-3607 is applied to the transaction's sender, i.e. a sender whose code is
+    /// neither empty nor an EIP-7702 delegation designation is refused.
+    ///
+    /// EIP-3607 refuses a signed transaction whose sender has code. Only a [`ExecutionMode::User`]
+    /// transaction is signed by its sender. In every other mode the node builds the transaction
+    /// and its sender from chain state rather than from a signature:
+    /// - [`ExecutionMode::Automated`] and [`ExecutionMode::AutomatedGasless`] run a registered
+    ///   automation task with its owner as sender. The owner is the account that registered the
+    ///   task, and may be a contract. The transaction is a call from the owner to the task's
+    ///   target, so the owner's code runs only if that call reaches the owner.
+    /// - [`ExecutionMode::ReadOnly`] runs an automation task's predicate with the same sender. Its
+    ///   state changes are discarded.
+    /// - [`ExecutionMode::Genesis`] deploys the genesis contracts.
+    /// - [`ExecutionMode::System`] transactions are sent by the VM signer, which
+    ///   `Handler::validate_caller` requires and which has no code.
+    ///
+    /// The EIP-7702 delegation exemption applies in every mode. The `disable_eip3607` option of the
+    /// EVM configuration, where it is compiled in, disables the rule for a `User` transaction too.
+    pub fn enforces_eip3607(&self) -> bool {
+        matches!(self, ExecutionMode::User)
+    }
+
     /// Contract creation is supported only in user and genesis execution modes.
     /// In Automation*, System mode contract deployment is not supported, as nonce update is not
     /// expected in these 2 modes.
@@ -155,4 +177,25 @@ pub enum CreateScheme {
         /// Custom contract creation address.
         address: Address,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExecutionMode;
+
+    /// EIP-3607 is applied to `User` transactions only (#4469).
+    #[test]
+    fn eip3607_is_enforced_only_in_user_mode() {
+        let modes = [
+            (ExecutionMode::User, true),
+            (ExecutionMode::Automated, false),
+            (ExecutionMode::AutomatedGasless, false),
+            (ExecutionMode::ReadOnly, false),
+            (ExecutionMode::System, false),
+            (ExecutionMode::Genesis, false),
+        ];
+        for (mode, expected) in modes {
+            assert_eq!(mode.enforces_eip3607(), expected, "{mode:?}");
+        }
+    }
 }

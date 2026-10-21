@@ -209,20 +209,29 @@ contract ConfigUpdateRemovalTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).getCycleLockedFees(), 2 * CYCLE_FEE);
     }
 
-    /// @dev A task index that is not registered is a no-op for CONFIG_UPDATE, while ERROR
-    /// requires the task to exist.
-    function testAnUnknownTaskIsANoOpForConfigUpdateOnly() public {
+    /// @dev A task index that is not registered is a no-op for both CONFIG_UPDATE and ERROR, and
+    /// emits only TaskRemovalSkipped with the reason (#4636).
+    function testAnUnknownTaskIsANoOpForEitherReason() public {
         registerUst(diamondAddr, 2450);
         processCycleTransition(diamondAddr, singleIndex(0));
         EvmGasConfigMock.mockTxGasLimitCap(vm, 50_000);
+        uint256 registryBefore = wsupra.balanceOf(diamondAddr);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.TaskRemovalSkipped(7, LibCommon.TaskRemovalReason.CONFIG_UPDATE);
 
         vm.recordLogs();
         removeForConfigUpdate(2, 7);
-        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(vm.getRecordedLogs().length, 1);
+        vm.expectEmit(diamondAddr);
+        emit ICoreFacet.TaskRemovalSkipped(7, LibCommon.TaskRemovalReason.ERROR);
 
-        vm.expectRevert();
+        vm.recordLogs();
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(2, 7, LibCommon.TaskRemovalReason.ERROR, "Predicate failed");
+        assertEq(vm.getRecordedLogs().length, 1);
+
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+        assertEq(wsupra.balanceOf(diamondAddr), registryBefore);
     }
 
     /// @dev A GST above the cap is removed without any token movement, and its system gas

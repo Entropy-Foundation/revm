@@ -14,7 +14,9 @@ use context_interface::{
 };
 use core::cmp::Ordering;
 use primitives::StorageKey;
-use primitives::{eip7702, hardfork::SpecId, KECCAK_EMPTY, U256};
+use primitives::{
+    eip7702, hardfork::SpecId, supra_constants::is_supra_reserved, KECCAK_EMPTY, U256,
+};
 use state::AccountInfo;
 use std::boxed::Box;
 
@@ -119,7 +121,10 @@ pub fn validate_against_state_and_deduct_caller<
     let basefee = context.block().basefee() as u128;
     let blob_price = context.block().blob_gasprice().unwrap_or_default();
     let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
-    let is_eip3607_disabled = context.cfg().is_eip3607_disabled();
+    // EIP-3607 is applied only where the execution mode applies it (see
+    // `ExecutionMode::enforces_eip3607`), or not at all if the configuration disables it.
+    let is_eip3607_disabled =
+        context.cfg().is_eip3607_disabled() || !context.cfg().execution_mode().enforces_eip3607();
     // nonce check will not be done if it is disabled, or execution mode does not assume nonce-change.
     let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled() || !should_update_nonce;
 
@@ -233,6 +238,15 @@ pub fn apply_eip7702_auth_list<
             let Some(authority) = authorization.authority() else {
                 continue;
             };
+
+            // Supra reserved addresses are used by the system to initiate and execute internal
+            // transactions, and `Handler::validate_caller` refuses them as the sender of any other
+            // transaction. An authorization whose authority is a reserved address is skipped for
+            // the same reason, so that no user transaction sets code on, or bumps the nonce of, a
+            // reserved address. See #4534.
+            if is_supra_reserved(&authority) {
+                continue;
+            }
 
             // warm authority account and check nonce.
             // 4. Add `authority` to `accessed_addresses` (as defined in [EIP-2929](./eip-2929.md).)

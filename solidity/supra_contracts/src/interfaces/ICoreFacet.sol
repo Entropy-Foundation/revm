@@ -101,6 +101,11 @@ interface ICoreFacet {
         string details
     );
 
+    /// @notice Emitted when `removeRegisteredTask` names a task that does not exist, for either
+    /// reason, and removes nothing (#4636).
+    /// @dev taskIndex is topic 1; reason is in the log data.
+    event TaskRemovalSkipped(uint64 indexed taskIndex, LibCommon.TaskRemovalReason reason);
+
     /// @notice Emitted when a task is removed because the EVM gas config of the executing block's
     /// epoch no longer admits its transaction: its maxGasAmount is above txGasLimitCap, or it is a
     /// UST whose gasPriceCap is below minGasPrice (#4087).

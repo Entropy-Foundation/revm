@@ -16,6 +16,12 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: TASKS RELATED FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Function used to register a user task for automation.
+    /// The caller becomes the task's owner and pays its fees. The owner may be a contract. The
+    /// chain executes the task's predicate and action as calls from the owner (`msg.sender` and
+    /// `tx.origin`) to their targets, so the owner's code runs only if a call reaches the owner.
+    /// Only the owner can cancel or stop the task. A caller with code, other than an EIP-7702
+    /// delegated account, must declare `IAutomationTaskOwner` through ERC-165, or the call reverts
+    /// with `UnsupportedTaskOwner`.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
     /// @param _predicate Payload for predicate of the task.
     /// @param _expiryTime Time after which the task gets expired.
@@ -60,6 +66,9 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     }
 
     /// @notice Function to register a system task. Reverts if caller is not authorized.
+    /// The caller becomes the task's owner, and may be a contract such as a MultiSignatureWallet.
+    /// The chain executes the task with the owner as the transaction sender, as for a user task,
+    /// and a contract caller must declare `IAutomationTaskOwner` as `register` requires.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
     /// @param _predicate Payload for predicate of the task.
     /// @param _expiryTime Time after which the task gets expired.
@@ -102,7 +111,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function cancelTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskCancelled[] memory cancelledTasksBuffer = new LibCommon.TaskCancelled[](_taskIndexes.length);
         uint256 counter;
@@ -135,7 +144,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function cancelSystemTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskCancelled[] memory cancelledTasksBuffer = new LibCommon.TaskCancelled[](_taskIndexes.length);
         uint256 counter;
@@ -166,7 +175,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function stopTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
@@ -217,7 +226,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     function stopSystemTasks(
         uint64[] memory _taskIndexes
     ) external {
-        validateInput(_taskIndexes);
+        LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
@@ -243,13 +252,6 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
             // Emit task stopped event
             emit TasksStopped(stoppedTasks, msg.sender);
         }
-    }
-
-    /// @notice Helper function for validation.
-    function validateInput(uint64[] memory _taskIndexes) private view {
-        if (!LibAppStorage.appStorage().automationEnabled) { revert AutomationNotEnabled(); }
-        if (!LibCommon.isCycleStarted()) revert CycleTransitionInProgress();
-        if (_taskIndexes.length == 0) revert TaskIndexesCannotBeEmpty();
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

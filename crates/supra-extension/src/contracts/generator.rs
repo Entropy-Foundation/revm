@@ -655,11 +655,11 @@ mod tests {
             ),
             (
                 "ConfigFacet",
-                b256!("d5661974490df49ae326aee306e7076de70f7c4c2f8bedc391d0ba877ae3b3fa"),
+                b256!("080ac55d929467807f14ecf20f09eb60e239020bb77368943f58fe270b1d4531"),
             ),
             (
                 "CoreFacet",
-                b256!("48139aa73573fb7c0e242f5fbd91a5f507d1770ae874db969053afad135b8bb3"),
+                b256!("94dc641f119d334c57e66bfa3d74b6332ea95e465d10d873e7b76684249c6dc2"),
             ),
             (
                 "Diamond",
@@ -683,7 +683,7 @@ mod tests {
             ),
             (
                 "MultiSignatureWallet",
-                b256!("d5b0485786d3d3be9f20f7033431e3d75fbb58cb52d78a7894b7c02311a349c3"),
+                b256!("a5412a93c636c49e0ab17473c32189e76dea533c1ae9f825a55e608f88b63f52"),
             ),
             (
                 "MultisigBeacon",
@@ -695,7 +695,7 @@ mod tests {
             ),
             (
                 "RegistryFacet",
-                b256!("519be2e6799e3fae1116945522dda463d1492898b01037f9190e6e3c14cd42f7"),
+                b256!("570037202e03d82480a2f1f54e86a86c9cc2a43de8c24cdbf549e37a68783d52"),
             ),
             (
                 "RegistryViewFacet",

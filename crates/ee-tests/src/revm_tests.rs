@@ -767,3 +767,165 @@ fn test_sender_extcodesize_stays_warm_after_prior_committed_tx() {
          committed to this shared journal"
     );
 }
+
+/// Returns a database holding a funded `sender` whose code is `code`.
+fn cache_db_with_sender_code(
+    sender: revm::primitives::Address,
+    code: Bytecode,
+) -> revm::database::CacheDB<revm::database::EmptyDB> {
+    use revm::state::AccountInfo;
+
+    let mut db = funded_cache_db(sender);
+    db.insert_account_info(
+        sender,
+        AccountInfo {
+            balance: U256::from(10_000_000_000_000_000_000u128),
+            code_hash: code.hash_slow(),
+            code: Some(code),
+            ..Default::default()
+        },
+    );
+    db
+}
+
+/// Runs one call from `sender` in `mode` against `db`, with EIP-3607 left enabled in the
+/// configuration, and returns the result.
+fn transact_from_sender_in_mode(
+    db: revm::database::CacheDB<revm::database::EmptyDB>,
+    sender: revm::primitives::Address,
+    mode: ExecutionMode,
+) -> Result<
+    revm::context_interface::result::ExecutionResult,
+    revm::context_interface::result::EVMError<std::convert::Infallible>,
+> {
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| {
+            cfg.spec = SpecId::PRAGUE;
+            cfg.execution_mode = mode;
+        })
+        .with_db(db)
+        .build_mainnet();
+    evm.transact_one(TxEnv {
+        caller: sender,
+        kind: TxKind::Call(BENCH_TARGET),
+        ..Default::default()
+    })
+}
+
+/// EIP-3607 refuses a `User` transaction whose sender has code, and does not refuse a sender
+/// with code in a mode where the node builds the transaction from chain state: automated
+/// transactions, read-only predicate execution and genesis (#4469).
+#[test]
+fn test_sender_with_code_is_refused_only_in_user_mode() {
+    use revm::context_interface::result::{EVMError, InvalidTransaction};
+
+    let sender = address!("0x1000000000000000000000000000000000000001");
+    // A single `STOP` is neither empty nor an EIP-7702 delegation designation.
+    let code = Bytecode::new_raw(Bytes::from_static(STOP_BYTECODE));
+
+    let user = transact_from_sender_in_mode(
+        cache_db_with_sender_code(sender, code.clone()),
+        sender,
+        ExecutionMode::User,
+    );
+    assert!(
+        matches!(
+            user,
+            Err(EVMError::Transaction(
+                InvalidTransaction::RejectCallerWithCode
+            ))
+        ),
+        "a User transaction from a sender with code must be refused, got: {user:?}"
+    );
+
+    for mode in [
+        ExecutionMode::Automated,
+        ExecutionMode::AutomatedGasless,
+        ExecutionMode::ReadOnly,
+        ExecutionMode::Genesis,
+    ] {
+        let result = transact_from_sender_in_mode(
+            cache_db_with_sender_code(sender, code.clone()),
+            sender,
+            mode.clone(),
+        );
+        assert!(
+            matches!(&result, Ok(r) if r.is_success()),
+            "a {mode:?} transaction from a sender with code must be executed, got: {result:?}"
+        );
+    }
+}
+
+/// A `User` transaction from a sender whose code is an EIP-7702 delegation designation is
+/// executed: the delegation exemption is independent of the execution mode.
+#[test]
+fn test_delegated_sender_is_served_in_user_mode() {
+    let sender = address!("0x1000000000000000000000000000000000000002");
+    let result = transact_from_sender_in_mode(
+        cache_db_with_sender_code(sender, Bytecode::new_eip7702(BENCH_TARGET)),
+        sender,
+        ExecutionMode::User,
+    );
+    assert!(
+        matches!(&result, Ok(r) if r.is_success()),
+        "a delegated sender must be served in User mode, got: {result:?}"
+    );
+}
+
+/// An authorization whose authority is a Supra reserved address is skipped: the reserved
+/// account gets no code and no nonce bump. Another authorization in the same transaction is
+/// applied, and the transaction succeeds (#4534).
+#[test]
+fn test_eip7702_authorization_from_a_reserved_address_is_skipped() {
+    use revm::primitives::supra_constants::u64_to_address;
+
+    let reserved = u64_to_address(0x5355_5005);
+    let ordinary = address!("0x1000000000000000000000000000000000000003");
+    let delegate_to = address!("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    let mut evm = Context::mainnet()
+        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
+            STOP_BYTECODE.into(),
+        )))
+        .build_mainnet();
+
+    let authorization = |authority| {
+        RecoveredAuthorization::new_unchecked(
+            Authorization {
+                chain_id: U256::ZERO,
+                address: delegate_to,
+                nonce: 0,
+            },
+            RecoveredAuthority::Valid(authority),
+        )
+    };
+    let tx = TxEnv::builder_for_bench()
+        .tx_type(Some(TransactionType::Eip7702 as u8))
+        .authorization_list_recovered(vec![authorization(reserved), authorization(ordinary)])
+        .build_fill();
+
+    let result = evm.transact_one(tx).unwrap();
+    assert!(result.is_success(), "{result:?}");
+
+    let state = &evm.ctx.journal_mut().state;
+    if let Some(reserved_after) = state.get(&reserved) {
+        assert_eq!(
+            reserved_after.info.nonce, 0,
+            "the reserved authority's nonce must not change"
+        );
+        assert_eq!(
+            reserved_after.info.code_hash, KECCAK_EMPTY,
+            "the reserved authority must not be delegated"
+        );
+    }
+    let ordinary_after = state
+        .get(&ordinary)
+        .expect("the ordinary authority's account is loaded by the authorization");
+    assert_eq!(ordinary_after.info.nonce, 1);
+    assert_eq!(
+        ordinary_after.info.code,
+        Some(Bytecode::new_eip7702(delegate_to)),
+        "the ordinary authority must be delegated"
+    );
+}
