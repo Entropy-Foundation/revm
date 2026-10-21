@@ -669,9 +669,9 @@ library LibCore {
         LibCommon.TaskRemovalReason _reason,
         string memory _details
     ) internal {
-        // A removal is a no-op for a task that no longer exists: one removed by its owner or by the
-        // registry owner (ConfigFacet.removeTasks, #4636) before the node scheduled this record,
-        // or by an earlier record. TaskRemovalSkipped records it.
+        // A removal is a no-op for a task that no longer exists: one removed before this record
+        // runs, by its owner or by the registry owner (ConfigFacet.removeTasks, #4636), or by an
+        // earlier record. TaskRemovalSkipped records it.
         if (!LibCommon.ifTaskExists(_taskId)) {
             emit ICoreFacet.TaskRemovalSkipped(_taskId, _reason);
             return;

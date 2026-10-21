@@ -147,10 +147,10 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     ///      post-genesis; Replace (to ship a fix) is fine.
     ///
     ///      Either reason is a no-op for a task that no longer exists; it emits
-    ///      TaskRemovalSkipped. A registry record runs before the block's user transactions, so
-    ///      such a task was removed before the node scheduled the record: by its owner or the
-    ///      registry owner in a user transaction of the block that scheduled it, or by an earlier
-    ///      record.
+    ///      TaskRemovalSkipped. Such a task was removed before the record runs: by its owner or
+    ///      the registry owner in an earlier user transaction, or by an earlier record. A record
+    ///      runs before the user transactions of its block, and the node reschedules a record that
+    ///      is not executed into a later block.
     ///
     ///      ERROR removes the task and refunds half of the remaining current-cycle fee and the
     ///      whole deposit; it emits TaskRemovedBySystem. The node schedules it only for a task it
