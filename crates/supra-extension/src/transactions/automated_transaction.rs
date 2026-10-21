@@ -66,7 +66,7 @@ impl TryFrom<&[u8]> for AutomationTaskPredicate {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[repr(u8)]
@@ -1153,7 +1153,7 @@ mod tests {
         details.sort();
         let order: Vec<_> = details
             .iter()
-            .map(|d| (d.txn.txn_type.clone(), d.priority, d.txn.nonce))
+            .map(|d| (d.txn.txn_type, d.priority, d.txn.nonce))
             .collect();
         assert_eq!(
             order,
