@@ -24,8 +24,8 @@ bytes4 constant AUTOMATION_TASK_OWNER_INTERFACE_ID = bytes4(keccak256("IAutomati
 ///        Every task it registers runs in its name, and passes every check other contracts make
 ///        on its address, until the task ends.
 ///      - It has functions, restricted in the same way, that call `cancelTasks` and `stopTasks`
-///        (`cancelSystemTasks` and `stopSystemTasks` for system tasks). Only the owner can end a
-///        task; otherwise only the registry owner can remove it, through `removeTasks`.
+///        (`cancelSystemTasks` and `stopSystemTasks` for system tasks). Only the owner can cancel
+///        or stop a task; otherwise only the registry owner can remove it, through `removeTasks`.
 ///      - It can withdraw the WSUPRA refunded to it when a task is cancelled, stopped or removed.
 ///      - For user tasks, it holds WSUPRA and approves the registry for the registration and
 ///        cycle fees, and holds native SUPRA for each execution's gas and any value the task
