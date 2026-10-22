@@ -66,7 +66,7 @@ impl TryFrom<&[u8]> for AutomationTaskPredicate {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[repr(u8)]
@@ -296,6 +296,9 @@ impl AutomatedTransaction {
 }
 
 /// Evm automated transaction with priority to be scheduled for execution.
+///
+/// Ordered UST before GST, then by ascending priority, then by ascending task index
+/// (`txn.nonce`), which is a total order over the transactions of distinct tasks.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct AutomatedTransactionDetails {
     /// Transaction details
@@ -306,14 +309,17 @@ pub struct AutomatedTransactionDetails {
 }
 
 impl Ord for AutomatedTransactionDetails {
+    /// Orders by type (UST before GST), then by ascending priority, then by ascending task index
+    /// (`txn.nonce`).
+    ///
+    /// The task index is unique per task, so sorting the transactions of distinct tasks gives the
+    /// same sequence whatever order they were produced in.
     fn cmp(&self, other: &Self) -> Ordering {
-        let left_type = &self.txn.txn_type;
-        let right_type = &other.txn.txn_type;
-        if left_type == right_type {
-            self.priority.cmp(&other.priority)
-        } else {
-            left_type.cmp(right_type)
-        }
+        self.txn
+            .txn_type
+            .cmp(&other.txn.txn_type)
+            .then_with(|| self.priority.cmp(&other.priority))
+            .then_with(|| self.txn.nonce.cmp(&other.txn.nonce))
     }
 }
 impl PartialOrd for AutomatedTransactionDetails {
@@ -1089,10 +1095,12 @@ mod tests {
     fn make_details(
         txn_type: AutomatedTransactionType,
         priority: u64,
+        task_index: u64,
     ) -> AutomatedTransactionDetails {
         AutomatedTransactionDetails {
             txn: AutomatedTransaction {
                 txn_type,
+                nonce: task_index,
                 ..Default::default()
             },
             priority,
@@ -1101,8 +1109,9 @@ mod tests {
 
     #[test]
     fn same_type_ordered_by_priority_ascending() {
-        let low = make_details(AutomatedTransactionType::UST, 1);
-        let high = make_details(AutomatedTransactionType::UST, 10);
+        // The higher task index does not outrank the lower priority.
+        let low = make_details(AutomatedTransactionType::UST, 1, 7);
+        let high = make_details(AutomatedTransactionType::UST, 10, 2);
         assert!(low < high);
         assert!(high > low);
         assert_eq!(low.cmp(&low), std::cmp::Ordering::Equal);
@@ -1110,16 +1119,53 @@ mod tests {
 
     #[test]
     fn ust_always_less_than_gst_regardless_of_priority() {
-        let ust = make_details(AutomatedTransactionType::UST, 100);
-        let gst = make_details(AutomatedTransactionType::GST, 1);
+        let ust = make_details(AutomatedTransactionType::UST, 100, 1);
+        let gst = make_details(AutomatedTransactionType::GST, 1, 0);
         assert!(ust < gst);
     }
 
     #[test]
     fn gst_always_greater_than_ust() {
-        let ust = make_details(AutomatedTransactionType::UST, 0);
-        let gst = make_details(AutomatedTransactionType::GST, u64::MAX);
+        let ust = make_details(AutomatedTransactionType::UST, 0, 1);
+        let gst = make_details(AutomatedTransactionType::GST, u64::MAX, 0);
         assert!(gst > ust);
+    }
+
+    #[test]
+    fn same_type_and_priority_ordered_by_task_index_ascending() {
+        let first = make_details(AutomatedTransactionType::UST, 5, 3);
+        let second = make_details(AutomatedTransactionType::UST, 5, 4);
+        assert!(first < second);
+        assert_eq!(first.cmp(&first), std::cmp::Ordering::Equal);
+    }
+
+    #[test]
+    fn details_sort_by_type_then_priority_then_task_index() {
+        use AutomatedTransactionType::{GST, UST};
+        let mut details = [
+            make_details(GST, 1, 5),
+            make_details(UST, 2, 4),
+            make_details(UST, 1, 3),
+            make_details(UST, 2, 2),
+            make_details(GST, 1, 1),
+            make_details(UST, 1, 0),
+        ];
+        details.sort();
+        let order: Vec<_> = details
+            .iter()
+            .map(|d| (d.txn.txn_type, d.priority, d.txn.nonce))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                (UST, 1, 0),
+                (UST, 1, 3),
+                (UST, 2, 2),
+                (UST, 2, 4),
+                (GST, 1, 1),
+                (GST, 1, 5),
+            ]
+        );
     }
 
     // ── TaskPayload ───────────────────────────────────────────────────────────
