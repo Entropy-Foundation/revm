@@ -1,4 +1,8 @@
 //! Encloses data representing genesis contracts.
+#![expect(
+    clippy::redundant_field_names,
+    reason = "clippy reports the `new` that `derive_more::Constructor` generates"
+)]
 
 use crate::contracts::canonical_singletons::CREATE2_FACTORY_ADDRESS;
 use derive_getters::{Dissolve, Getters};
