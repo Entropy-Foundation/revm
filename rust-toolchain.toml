@@ -8,7 +8,7 @@
 # genuinely need a different compiler — the MSRV/nightly test matrix, and the book's nightly
 # rustdoc — override it with `RUSTUP_TOOLCHAIN`, which rustup ranks above this file.
 [toolchain]
-channel = "1.97.1"
+channel = "1.99.1"
 components = ["clippy", "rust-docs", "rustfmt"]
 # `check-no-std` cross-compiles to this target.
 targets = ["riscv32imac-unknown-none-elf"]

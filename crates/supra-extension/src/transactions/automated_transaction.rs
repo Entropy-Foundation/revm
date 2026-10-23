@@ -1,4 +1,8 @@
 //! AutomatedTransaction generated based on the registered active automation task.
+#![expect(
+    clippy::redundant_field_names,
+    reason = "clippy reports the `new` that `derive_more::Constructor` generates"
+)]
 
 use crate::errors::SupraExtensionError;
 use crate::transactions::fixed_price_effective_tip;
