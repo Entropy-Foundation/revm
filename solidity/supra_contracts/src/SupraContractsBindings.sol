@@ -19,6 +19,7 @@ interface SupraContractsBindings {
     // View functions of CoreFacet
     function isAutomationReadyEnabled() external view returns (bool);
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
+    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
 
     // Entry function to be called by node runtime for bookkeeping
     function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;

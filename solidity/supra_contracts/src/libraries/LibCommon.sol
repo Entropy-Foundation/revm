@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
+import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
+import {LibEvmGasConfig} from "./LibEvmGasConfig.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
+
+    /// @notice Share, in percent, of a `processTasks` record's gas limit that
+    /// `CoreFacet.getRecordMaxTaskCount` budgets for tasks. The remaining 20% covers what the
+    /// per-task figures do not model: the transaction's intrinsic gas, its calldata, and the
+    /// variation of a task's cost around the figures. The Move registry applies the same
+    /// factor, `automation_registry::TASK_SUPPORT_FACTOR`, in `get_record_max_task_count`.
+    uint256 internal constant RECORD_TASK_SUPPORT_PERCENTAGE = 80;
 
     struct CycleDetails {
         uint64 index;
@@ -106,6 +114,8 @@ library LibCommon {
     error InvalidSysTaskCapacity();
     error PayloadLengthCapNotWordAligned();
     error PredicateLengthCapNotWordAligned();
+    error InvalidRecordGasParameters();
+    error RecordBudgetTooSmall();
     error TaskDoesNotExist();
     error TaskIndexNotFound();
 
@@ -121,6 +131,127 @@ library LibCommon {
     function validateDataLengthCaps(uint16 _maxPayloadLength, uint16 _maxPredicateLength) internal pure {
         if (_maxPayloadLength % 32 != 0) { revert PayloadLengthCapNotWordAligned(); }
         if (_maxPredicateLength % 32 != 0) { revert PredicateLengthCapNotWordAligned(); }
+    }
+
+    /// @notice Validates the gas figures that size a `processTasks` record.
+    /// @dev Each scales a term of the record cost in `recordMaxTaskCount`: a zero
+    ///      `_recordGasPerTask` or `_recordGasPerStoredWord` would understate every task, and a
+    ///      zero `_recordFinalizationGasPerTask` would ignore the finalization cost.
+    function validateRecordGasParameters(
+        uint64 _recordGasPerTask,
+        uint64 _recordGasPerStoredWord,
+        uint64 _recordFinalizationGasPerTask
+    ) internal pure {
+        if (_recordGasPerTask == 0 || _recordGasPerStoredWord == 0 || _recordFinalizationGasPerTask == 0) {
+            revert InvalidRecordGasParameters();
+        }
+    }
+
+    /// @notice Upper bound on the storage words one task's payload, predicate and auxData occupy
+    /// under the given data-length caps.
+    /// @dev Each byte array takes one word per 32 bytes of content; payload and predicate caps are
+    ///      multiples of 32 (`validateDataLengthCaps`). Each auxData entry is its own byte array,
+    ///      so on top of the combined length it can take a length word and a partly filled word,
+    ///      two words per entry. Removing a task clears all of them (`removeTask`).
+    function recordStoredWords(
+        uint16 _maxPayloadLength,
+        uint16 _maxPredicateLength,
+        uint16 _maxAuxDataLength,
+        uint16 _maxAuxDataEntries
+    ) internal pure returns (uint256) {
+        return _wordsOf(_maxPayloadLength) + _wordsOf(_maxPredicateLength) + _wordsOf(_maxAuxDataLength)
+            + 2 * uint256(_maxAuxDataEntries);
+    }
+
+    /// @dev Number of 32-byte words `_length` bytes occupy.
+    function _wordsOf(uint16 _length) private pure returns (uint256) {
+        return (uint256(_length) + 31) / 32;
+    }
+
+    /// @notice Gas one task can add to a `processTasks` call: a fixed part plus a part per word
+    /// the task may store, since removing a task clears its storage.
+    function recordTaskGas(
+        uint64 _recordGasPerTask,
+        uint64 _recordGasPerStoredWord,
+        uint256 _storedWords
+    ) internal pure returns (uint256) {
+        return uint256(_recordGasPerTask) + uint256(_recordGasPerStoredWord) * _storedWords;
+    }
+
+    /// @notice `recordTaskGas` for the stored figures and the current data-length caps.
+    function currentRecordTaskGas() internal view returns (uint256) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        return recordTaskGas(
+            s.recordGasPerTask,
+            s.recordGasPerStoredWord,
+            recordStoredWords(s.maxPayloadLength, s.maxPredicateLength, s.maxAuxDataLength, s.maxAuxDataEntries)
+        );
+    }
+
+    /// @notice Number of tasks the registry can hold under `_config`: user plus system capacity.
+    function recordCapacity(Config storage _config) internal view returns (uint256) {
+        return uint256(_config.taskCapacity) + uint256(_config.sysTaskCapacity);
+    }
+
+    /// @notice The larger of the active capacity and, if a config is buffered, the buffered one:
+    /// the capacity a change applied now must hold for, before and after the buffer applies.
+    function largestRecordCapacity() internal view returns (uint256 capacity) {
+        capacity = recordCapacity(LibAppStorage.activeConfig());
+        if (LibAppStorage.appStorage().ifBufferExists) {
+            uint256 bufferedCapacity = recordCapacity(LibAppStorage.bufferConfig());
+            if (bufferedCapacity > capacity) { capacity = bufferedCapacity; }
+        }
+    }
+
+    /// @notice Number of tasks one `processTasks` record with gas limit `_recordGasLimit` may carry.
+    /// @dev The budget is `RECORD_TASK_SUPPORT_PERCENTAGE` percent of the gas limit. The finalizing
+    ///      record pays `_capacity * _recordFinalizationGasPerTask` on top of its tasks, and the
+    ///      node cannot know in advance which record that is, so every record reserves it. The
+    ///      remainder divided by `_taskGas` is the count; 0 when the reserve leaves no room for a
+    ///      task, which means no record at this gas limit can finalize a transition of a registry
+    ///      of this capacity. Arithmetic is in uint256: with `_capacity` a sum of two uint16
+    ///      capacities, as `recordCapacity` returns, no product can overflow.
+    /// @param _recordGasLimit Gas limit the record is built with.
+    /// @param _taskGas Gas one task can add to the record (`recordTaskGas`). Reverts with
+    ///        `InvalidRecordGasParameters` if zero, as it is when the figures were never set.
+    /// @param _recordFinalizationGasPerTask Finalization gas per task the registry can hold.
+    /// @param _capacity Number of tasks the registry can hold (`recordCapacity`).
+    function recordMaxTaskCount(
+        uint64 _recordGasLimit,
+        uint256 _taskGas,
+        uint64 _recordFinalizationGasPerTask,
+        uint256 _capacity
+    ) internal pure returns (uint64) {
+        if (_taskGas == 0) { revert InvalidRecordGasParameters(); }
+        uint256 budget = uint256(_recordGasLimit) * RECORD_TASK_SUPPORT_PERCENTAGE / 100;
+        uint256 finalizationReserve = _capacity * uint256(_recordFinalizationGasPerTask);
+        if (budget <= finalizationReserve) { return 0; }
+        // The quotient is at most budget, which is below 2^64 since _recordGasLimit is a uint64.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint64((budget - finalizationReserve) / _taskGas);
+    }
+
+    /// @notice Reverts with `RecordBudgetTooSmall` unless a record at the current per-transaction
+    /// gas cap carries at least one task, for the given task gas, finalization figure and
+    /// registry capacity.
+    /// @dev Called when the owner changes the record gas figures, the data-length caps or the
+    ///      capacity, so that none of these changes leaves the registry with records that cannot
+    ///      carry a task at the cap in force. The cap itself is governed in the gas schedule and
+    ///      can fall later; `CoreFacet.getRecordMaxTaskCount` then returns 0 and the node pauses
+    ///      automation. Not called from `DiamondInit`: the registry is initialised before the gas
+    ///      config precompile serves a value, both at genesis and in the test fixtures.
+    function requireRecordBudgetFits(
+        uint256 _taskGas,
+        uint64 _recordFinalizationGasPerTask,
+        uint256 _capacity
+    ) internal view {
+        uint64 count = recordMaxTaskCount(
+            LibEvmGasConfig.txGasLimitCap(),
+            _taskGas,
+            _recordFinalizationGasPerTask,
+            _capacity
+        );
+        if (count == 0) { revert RecordBudgetTooSmall(); }
     }
 
     /// @notice Helper function to validate the registry configuration parameters.

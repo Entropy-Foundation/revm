@@ -54,6 +54,11 @@ interface IConfigFacet {
     /// @notice Emitted when the task registration input size caps are updated.
     event DataLengthCapsUpdated(uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
 
+    /// @notice Emitted when the gas figures that size a `processTasks` record are updated
+    /// (Entropy-Foundation/smr-moonshot#4755).
+    /// @dev The log has no indexed parameter; the figures are in the log data.
+    event RecordGasParametersUpdated(uint64 recordGasPerTask, uint64 recordGasPerStoredWord, uint64 recordFinalizationGasPerTask);
+
 
     // =============================================================
     //                      Custom errors
@@ -77,6 +82,7 @@ interface IConfigFacet {
     function getConfigBuffer() external view returns (Config memory);
     function isRegistrationEnabled() external view returns (bool);
     function getDataLengthCaps() external view returns (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
+    function getRecordGasParameters() external view returns (uint64 recordGasPerTask, uint64 recordGasPerStoredWord, uint64 recordFinalizationGasPerTask);
 
     // =============================================================
     //                  State update functions
@@ -107,5 +113,10 @@ interface IConfigFacet {
         uint16 _maxPredicateLength,
         uint16 _maxAuxDataLength,
         uint16 _maxAuxDataEntries
+    ) external;
+    function updateRecordGasParameters(
+        uint64 _recordGasPerTask,
+        uint64 _recordGasPerStoredWord,
+        uint64 _recordFinalizationGasPerTask
     ) external;
 }

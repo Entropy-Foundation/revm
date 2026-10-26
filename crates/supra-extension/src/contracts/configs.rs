@@ -21,6 +21,14 @@ use std::collections::HashSet;
 /// list — see that function's NatSpec in `solidity/supra_contracts/src/libraries/LibCore.sol`).
 /// See issue #3445 for background.
 ///
+/// The capacity also sizes the registry's `processTasks` bookkeeping records: each record
+/// reserves the finalization cost of a transition, `recordFinalizationGasPerTask` per task the
+/// registry can hold, and `CoreFacet.getRecordMaxTaskCount` applies the active capacity itself
+/// (Entropy-Foundation/smr-moonshot#4755). The default figure covers registries of up to 400
+/// tasks; above that, `solidity/supra_contracts/test/CycleTransitionGas.t.sol` is re-run at the
+/// new size and the figure raised with `ConfigFacet.updateRecordGasParameters` before the
+/// capacity. See `AUTOMATION_REGISTRY_GAS_GUIDE.md`, "How the node sizes a record".
+///
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤

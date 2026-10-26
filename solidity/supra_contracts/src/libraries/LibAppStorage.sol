@@ -139,6 +139,28 @@ struct AppStorage {
     uint16 maxAuxDataLength; // total across all auxData entries combined
     uint16 maxAuxDataEntries; // bounds the array itself, independent of the byte total above
 
+    /// @notice Owner-configurable gas figures from which `CoreFacet.getRecordMaxTaskCount` derives
+    /// how many tasks one `processTasks` bookkeeping record may carry
+    /// (Entropy-Foundation/smr-moonshot#4755). Applied immediately (no buffering): they size only
+    /// records the node has not built yet, and the node reads the count again each time it chunks
+    /// a transition's tasks into records.
+    ///
+    /// A task adds at most `recordGasPerTask + recordGasPerStoredWord * words` to a
+    /// `processTasks` call, where `words` bounds the storage words a task may hold under the
+    /// data-length caps above (`LibCommon.recordStoredWords`): removing a task clears its
+    /// payload, predicate and auxData. `recordFinalizationGasPerTask` is the gas, per task the
+    /// registry can hold (`taskCapacity + sysTaskCapacity`), that the call finalizing a
+    /// FINISHED -> STARTED transition pays on top, for rewriting the survivor lists, deleting the
+    /// transition state and logging `ActiveTasks`. The view applies the current caps and the
+    /// active capacity. The finalization cost per task grows slowly with the capacity, and the
+    /// default `recordFinalizationGasPerTask` covers registries of up to 400 tasks
+    /// (`DiamondInit`). The figures are re-derived from `test/CycleTransitionGas.t.sol`, which
+    /// asserts them, whenever the registry's processing logic changes or the capacity exceeds
+    /// that size.
+    uint64 recordGasPerTask;
+    uint64 recordGasPerStoredWord;
+    uint64 recordFinalizationGasPerTask;
+
     // =============================================================
     //                      CYCLE MANAGEMENT
     // =============================================================

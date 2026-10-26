@@ -122,6 +122,31 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         details.expectedTasksToBeProcessed = transitionState.expectedTasksToBeProcessed;
     }
 
+    /// @notice Returns the number of tasks one `processTasks` bookkeeping record with gas limit
+    /// `_recordGasLimit` may carry (Entropy-Foundation/smr-moonshot#4755). The node passes the
+    /// gas limit it builds the record with, the epoch's per-transaction cap, and chunks a
+    /// transition's tasks into records of this many tasks. The Move registry's counterpart is
+    /// `automation_registry::get_record_max_task_count`.
+    /// @dev The count is `LibCommon.recordMaxTaskCount` over the owner-set record gas figures
+    ///      (`ConfigFacet.updateRecordGasParameters`), the current data-length caps and the active
+    ///      config's capacity. The active config is the one a transition runs under:
+    ///      `monitorCycleEnd` applies a buffered config before the transition's first
+    ///      `processTasks`. Returns 0 when no record at this gas limit can carry a task, and the
+    ///      node then pauses automation. Reverts with
+    ///      `LibCommon.InvalidRecordGasParameters` if the figures were never set.
+    ///      Node's off-chain automation registry manager relies on existence of this function.
+    ///      Update/Replace is acceptable, but removal should be checked against node-runtime first.
+    /// @param _recordGasLimit Gas limit of the record.
+    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64) {
+        AppStorage storage s = LibAppStorage.appStorage();
+        return LibCommon.recordMaxTaskCount(
+            _recordGasLimit,
+            LibCommon.currentRecordTaskGas(),
+            s.recordFinalizationGasPerTask,
+            LibCommon.recordCapacity(LibAppStorage.activeConfig())
+        );
+    }
+
     /// @notice Returns if automation is enabled.
     function isAutomationEnabled() public view returns (bool) {
         return LibAppStorage.appStorage().automationEnabled;
@@ -192,7 +217,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
 
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](11);
+        selectors = new bytes4[](12);
         selectors[0] = CoreFacet.processTasks.selector;
         selectors[1] = CoreFacet.monitorCycleEnd.selector;
         selectors[2] = CoreFacet.enableAutomation.selector;
@@ -204,5 +229,6 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         selectors[8] = this.isAutomationEnabled.selector;
         selectors[9] = CoreFacet.getCycleStateDetails.selector;
         selectors[10] = CoreFacet.isAutomationReadyEnabled.selector;
+        selectors[11] = CoreFacet.getRecordMaxTaskCount.selector;
     }
 }

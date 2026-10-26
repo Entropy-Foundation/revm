@@ -55,6 +55,13 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(config.congestionThresholdPercentage, 50);
         assertEq(config.congestionExponent, 6);
         assertEq(config.maxCongestionExponent, 6);
+
+        // Record gas figures default to DiamondInit's constants (Entropy-Foundation/smr-moonshot#4755).
+        (uint64 recordGasPerTask, uint64 recordGasPerStoredWord, uint64 recordFinalizationGasPerTask) =
+            IConfigFacet(diamondAddr).getRecordGasParameters();
+        assertEq(recordGasPerTask, 60_000);
+        assertEq(recordGasPerStoredWord, 2_500);
+        assertEq(recordFinalizationGasPerTask, 8_500);
     }
 
     /// @dev Test to ensure all interfaces are registered.

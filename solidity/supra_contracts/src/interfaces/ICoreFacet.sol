@@ -155,6 +155,7 @@ interface ICoreFacet {
     function isAutomationEnabled() external view returns (bool);
     function isAutomationReadyEnabled() external view returns (bool);
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
+    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
 
     // =============================================================
     //                  State update functions
