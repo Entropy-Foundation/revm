@@ -343,7 +343,7 @@ registry how many tasks a record of that limit may carry,
 mirrors the Move registry's `automation_registry::get_record_max_task_count`:
 
 ```
-budget     = cap × 80 / 100                               (RECORD_TASK_SUPPORT_PERCENTAGE)
+budget     = cap × recordTaskSupportPercentage / 100     (default 80)
 taskGas    = recordGasPerTask + recordGasPerStoredWord × storedWords(data-length caps)
 reserve    = (taskCapacity + sysTaskCapacity) × recordFinalizationGasPerTask
 count      = budget > reserve ? (budget − reserve) / taskGas : 0
@@ -356,20 +356,24 @@ count      = budget > reserve ? (budget − reserve) / taskGas : 0
   which record finalizes the transition. The reserve also covers the fixed cost of a
   `processTasks` call, which the per-task figures do not carry: a record of one cap-size
   task measures 555,152 gas, against 487,548 per task in a batch of 25.
-- The remaining 20 % of the cap covers the transaction's intrinsic gas and calldata.
+- The rest of the cap, 20 % at the default `recordTaskSupportPercentage` of 80, covers the
+  transaction's intrinsic gas and calldata. The Move registry applies a fixed 80 %
+  (`TASK_SUPPORT_FACTOR`).
 - The view applies the current data-length caps and the active capacity. A buffered
   config applies in `monitorCycleEnd`, before the transition's first `processTasks`, so a
   transition's records are sized with the capacity it runs under.
 
-The three figures are owner-set with `ConfigFacet.updateRecordGasParameters` and read with
-`getRecordGasParameters`; they take effect immediately. Their defaults (`DiamondInit`) come
-from the scenarios above, rounded up:
+The three gas figures and the task-support percentage are owner-set together with
+`ConfigFacet.updateRecordGasParameters` and read with `getRecordGasParameters`; they take
+effect immediately. The percentage must lie in 1..100. The defaults (`DiamondInit`) of the
+gas figures come from the scenarios above, rounded up:
 
 | Figure | Default | Derived from |
 | --- | --- | --- |
 | `recordGasPerTask` | 60,000 | 55,051, the fixed part of a removed task (Scenarios 2 and 4) |
 | `recordGasPerStoredWord` | 2,500 | 2,252 per word (Scenarios 2 and 4) |
 | `recordFinalizationGasPerTask` | 8,500 | 6,832 per task at 200 tasks, up to 7,933 at 310 (Scenario 1) |
+| `recordTaskSupportPercentage` | 80 | the Move registry's `TASK_SUPPORT_FACTOR`; the derived-size tests below confirm the other 20 % covers intrinsic gas and calldata |
 
 The benchmark asserts the figures against every scenario it measures: each batch of k
 tasks costs at most `k × taskGas + reserve`, each non-final batch of 25 at most
@@ -408,12 +412,12 @@ gas config precompile serves could not carry one task:
 
 | Action | Checked against |
 | --- | --- |
-| `updateRecordGasParameters` | the new figures, current data-length caps, the larger of the active and buffered capacity |
-| `updateDataLengthCaps` | the new caps, current figures, the larger of the active and buffered capacity |
-| `updateConfigBuffer` | the new capacity, current figures and data-length caps |
+| `updateRecordGasParameters` | the new figures and percentage, current data-length caps, the larger of the active and buffered capacity |
+| `updateDataLengthCaps` | the new caps, current figures and percentage, the larger of the active and buffered capacity |
+| `updateConfigBuffer` | the new capacity, current figures, percentage and data-length caps |
 
 `updateRecordGasParameters` and `updateDataLengthCaps` also revert with
-`LibCommon.RecordSizingChangeDuringTransition` unless the cycle is READY or STARTED. The node
+`LibCommon.ChangeDuringTransition` unless the cycle is READY or STARTED. The node
 sizes a transition's records when the transition starts and again only at an epoch change, so
 the count cannot change under a transition in progress. `updateConfigBuffer` is not guarded: a
 buffered capacity applies in `monitorCycleEnd`, before the node sizes the transition's records.

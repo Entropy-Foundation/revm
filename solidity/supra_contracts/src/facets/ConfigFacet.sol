@@ -170,7 +170,8 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         LibCommon.requireRecordBudgetFits(
             LibCommon.currentRecordTaskGas(),
             s.recordFinalizationGasPerTask,
-            uint256(_taskCapacity) + uint256(_sysTaskCapacity)
+            uint256(_taskCapacity) + uint256(_sysTaskCapacity),
+            s.recordTaskSupportPercentage
         );
 
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -211,7 +212,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     /// @param _maxAuxDataLength Max combined length in bytes across all of a task's auxData entries.
     /// @param _maxAuxDataEntries Max number of entries in a task's auxData array, bounded
     /// independently of _maxAuxDataLength.
-    /// @dev Reverts with `LibCommon.RecordSizingChangeDuringTransition` unless the cycle is READY
+    /// @dev Reverts with `LibCommon.ChangeDuringTransition` unless the cycle is READY
     ///      or STARTED, since the caps size `processTasks` records
     ///      (`LibCommon.requireNoCycleTransition`), and with `LibCommon.RecordBudgetTooSmall` if,
     ///      under the new caps, a record at the current per-transaction cap could not carry a
@@ -235,7 +236,9 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             s.recordGasPerStoredWord,
             LibCommon.recordStoredWords(_maxPayloadLength, _maxPredicateLength, _maxAuxDataLength, _maxAuxDataEntries)
         );
-        LibCommon.requireRecordBudgetFits(taskGas, s.recordFinalizationGasPerTask, LibCommon.largestRecordCapacity());
+        LibCommon.requireRecordBudgetFits(
+            taskGas, s.recordFinalizationGasPerTask, LibCommon.largestRecordCapacity(), s.recordTaskSupportPercentage
+        );
         s.maxPayloadLength = _maxPayloadLength;
         s.maxPredicateLength = _maxPredicateLength;
         s.maxAuxDataLength = _maxAuxDataLength;
@@ -244,13 +247,16 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         emit DataLengthCapsUpdated(_maxPayloadLength, _maxPredicateLength, _maxAuxDataLength, _maxAuxDataEntries);
     }
 
-    /// @notice Updates the gas figures from which `CoreFacet.getRecordMaxTaskCount` sizes a
-    /// `processTasks` bookkeeping record (Entropy-Foundation/smr-moonshot#4755). Takes effect
-    /// immediately, and is accepted only outside a cycle transition: the node sizes a
-    /// transition's records when the transition starts.
-    /// @dev Reverts with `LibCommon.RecordSizingChangeDuringTransition` unless the cycle is READY
+    /// @notice Updates the gas figures and the task-support percentage from which
+    /// `CoreFacet.getRecordMaxTaskCount` sizes a `processTasks` bookkeeping record
+    /// (Entropy-Foundation/smr-moonshot#4755). Takes effect immediately, and is accepted only
+    /// outside a cycle transition: the node sizes a transition's records when the transition
+    /// starts. The four are set together so that a change to the budget and to the costs it is
+    /// spent on is checked, and applied, as one.
+    /// @dev Reverts with `LibCommon.ChangeDuringTransition` unless the cycle is READY
     ///      or STARTED (`LibCommon.requireNoCycleTransition`), with
-    ///      `LibCommon.InvalidRecordGasParameters` if any figure is zero, and with
+    ///      `LibCommon.InvalidRecordGasParameters` if any gas figure is zero or the percentage is
+    ///      outside 1..100, and with
     ///      `LibCommon.RecordBudgetTooSmall` if a record at the current per-transaction cap could
     ///      not carry a single task under the current data-length caps. The capacity checked is
     ///      `LibCommon.largestRecordCapacity`, so the figures also hold once a buffered config
@@ -262,14 +268,20 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     /// removing a task clears.
     /// @param _recordFinalizationGasPerTask Gas, per task the registry can hold, that the call
     /// finalizing a FINISHED -> STARTED transition pays on top of its tasks.
+    /// @param _recordTaskSupportPercentage Share, in percent (1..100), of a record's gas limit
+    /// budgeted for its tasks and the finalization reserve; the rest is headroom for the
+    /// transaction's intrinsic gas, its calldata, and costs the figures do not model.
     function updateRecordGasParameters(
         uint64 _recordGasPerTask,
         uint64 _recordGasPerStoredWord,
-        uint64 _recordFinalizationGasPerTask
+        uint64 _recordFinalizationGasPerTask,
+        uint8 _recordTaskSupportPercentage
     ) external {
         LibDiamond.enforceIsContractOwner();
         LibCommon.requireNoCycleTransition();
-        LibCommon.validateRecordGasParameters(_recordGasPerTask, _recordGasPerStoredWord, _recordFinalizationGasPerTask);
+        LibCommon.validateRecordGasParameters(
+            _recordGasPerTask, _recordGasPerStoredWord, _recordFinalizationGasPerTask, _recordTaskSupportPercentage
+        );
 
         AppStorage storage s = LibAppStorage.appStorage();
         uint256 taskGas = LibCommon.recordTaskGas(
@@ -277,13 +289,18 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             _recordGasPerStoredWord,
             LibCommon.recordStoredWords(s.maxPayloadLength, s.maxPredicateLength, s.maxAuxDataLength, s.maxAuxDataEntries)
         );
-        LibCommon.requireRecordBudgetFits(taskGas, _recordFinalizationGasPerTask, LibCommon.largestRecordCapacity());
+        LibCommon.requireRecordBudgetFits(
+            taskGas, _recordFinalizationGasPerTask, LibCommon.largestRecordCapacity(), _recordTaskSupportPercentage
+        );
 
         s.recordGasPerTask = _recordGasPerTask;
         s.recordGasPerStoredWord = _recordGasPerStoredWord;
         s.recordFinalizationGasPerTask = _recordFinalizationGasPerTask;
+        s.recordTaskSupportPercentage = _recordTaskSupportPercentage;
 
-        emit RecordGasParametersUpdated(_recordGasPerTask, _recordGasPerStoredWord, _recordFinalizationGasPerTask);
+        emit RecordGasParametersUpdated(
+            _recordGasPerTask, _recordGasPerStoredWord, _recordFinalizationGasPerTask, _recordTaskSupportPercentage
+        );
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -317,16 +334,23 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         maxAuxDataEntries = s.maxAuxDataEntries;
     }
 
-    /// @notice Returns the gas figures that size a `processTasks` record.
+    /// @notice Returns the gas figures and the task-support percentage that size a
+    /// `processTasks` record.
     function getRecordGasParameters()
         external
         view
-        returns (uint64 recordGasPerTask, uint64 recordGasPerStoredWord, uint64 recordFinalizationGasPerTask)
+        returns (
+            uint64 recordGasPerTask,
+            uint64 recordGasPerStoredWord,
+            uint64 recordFinalizationGasPerTask,
+            uint8 recordTaskSupportPercentage
+        )
     {
         AppStorage storage s = LibAppStorage.appStorage();
         recordGasPerTask = s.recordGasPerTask;
         recordGasPerStoredWord = s.recordGasPerStoredWord;
         recordFinalizationGasPerTask = s.recordFinalizationGasPerTask;
+        recordTaskSupportPercentage = s.recordTaskSupportPercentage;
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {

@@ -8,13 +8,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    /// @notice Share, in percent, of a `processTasks` record's gas limit that
-    /// `CoreFacet.getRecordMaxTaskCount` budgets for tasks. The remaining 20% covers what the
-    /// per-task figures do not model: the transaction's intrinsic gas, its calldata, and the
-    /// variation of a task's cost around the figures. The Move registry applies the same
-    /// factor, `automation_registry::TASK_SUPPORT_FACTOR`, in `get_record_max_task_count`.
-    uint256 internal constant RECORD_TASK_SUPPORT_PERCENTAGE = 80;
-
     struct CycleDetails {
         uint64 index;
         uint64 startTime;
@@ -116,7 +109,7 @@ library LibCommon {
     error PredicateLengthCapNotWordAligned();
     error InvalidRecordGasParameters();
     error RecordBudgetTooSmall();
-    error RecordSizingChangeDuringTransition();
+    error ChangeDuringTransition();
     error TaskDoesNotExist();
     error TaskIndexNotFound();
 
@@ -134,16 +127,23 @@ library LibCommon {
         if (_maxPredicateLength % 32 != 0) { revert PredicateLengthCapNotWordAligned(); }
     }
 
-    /// @notice Validates the gas figures that size a `processTasks` record.
-    /// @dev Each scales a term of the record cost in `recordMaxTaskCount`: a zero
+    /// @notice Validates the parameters that size a `processTasks` record.
+    /// @dev Each gas figure scales a term of the record cost in `recordMaxTaskCount`: a zero
     ///      `_recordGasPerTask` or `_recordGasPerStoredWord` would understate every task, and a
     ///      zero `_recordFinalizationGasPerTask` would ignore the finalization cost.
+    ///      `_recordTaskSupportPercentage` is the share of the gas limit budgeted for tasks, so it
+    ///      must lie in 1..100: 0 would size every record to no task, and above 100 would budget
+    ///      more gas than the record has.
     function validateRecordGasParameters(
         uint64 _recordGasPerTask,
         uint64 _recordGasPerStoredWord,
-        uint64 _recordFinalizationGasPerTask
+        uint64 _recordFinalizationGasPerTask,
+        uint8 _recordTaskSupportPercentage
     ) internal pure {
         if (_recordGasPerTask == 0 || _recordGasPerStoredWord == 0 || _recordFinalizationGasPerTask == 0) {
+            revert InvalidRecordGasParameters();
+        }
+        if (_recordTaskSupportPercentage == 0 || _recordTaskSupportPercentage > 100) {
             revert InvalidRecordGasParameters();
         }
     }
@@ -205,7 +205,7 @@ library LibCommon {
     }
 
     /// @notice Number of tasks one `processTasks` record with gas limit `_recordGasLimit` may carry.
-    /// @dev The budget is `RECORD_TASK_SUPPORT_PERCENTAGE` percent of the gas limit. The finalizing
+    /// @dev The budget is `_recordTaskSupportPercentage` percent of the gas limit. The finalizing
     ///      record pays `_capacity * _recordFinalizationGasPerTask` on top of its tasks, and the
     ///      node cannot know in advance which record that is, so every record reserves it. The
     ///      remainder divided by `_taskGas` is the count; 0 when the reserve leaves no room for a
@@ -217,24 +217,32 @@ library LibCommon {
     ///        `InvalidRecordGasParameters` if zero, as it is when the figures were never set.
     /// @param _recordFinalizationGasPerTask Finalization gas per task the registry can hold.
     /// @param _capacity Number of tasks the registry can hold (`recordCapacity`).
+    /// @param _recordTaskSupportPercentage Share, in percent, of the gas limit budgeted for tasks
+    ///        (`AppStorage.recordTaskSupportPercentage`). Reverts with
+    ///        `InvalidRecordGasParameters` if zero or above 100, as zero is when it was never set.
     function recordMaxTaskCount(
         uint64 _recordGasLimit,
         uint256 _taskGas,
         uint64 _recordFinalizationGasPerTask,
-        uint256 _capacity
+        uint256 _capacity,
+        uint8 _recordTaskSupportPercentage
     ) internal pure returns (uint64) {
         if (_taskGas == 0) { revert InvalidRecordGasParameters(); }
-        uint256 budget = uint256(_recordGasLimit) * RECORD_TASK_SUPPORT_PERCENTAGE / 100;
+        if (_recordTaskSupportPercentage == 0 || _recordTaskSupportPercentage > 100) {
+            revert InvalidRecordGasParameters();
+        }
+        uint256 budget = uint256(_recordGasLimit) * uint256(_recordTaskSupportPercentage) / 100;
         uint256 finalizationReserve = _capacity * uint256(_recordFinalizationGasPerTask);
         if (budget <= finalizationReserve) { return 0; }
-        // The quotient is at most budget, which is below 2^64 since _recordGasLimit is a uint64.
+        // The quotient is at most budget, which is below 2^64 since _recordGasLimit is a uint64
+        // and the percentage is at most 100.
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint64((budget - finalizationReserve) / _taskGas);
     }
 
     /// @notice Reverts with `RecordBudgetTooSmall` unless a record at the current per-transaction
-    /// gas cap carries at least one task, for the given task gas, finalization figure and
-    /// registry capacity.
+    /// gas cap carries at least one task, for the given task gas, finalization figure, registry
+    /// capacity and task-support percentage.
     /// @dev Called when the owner changes the record gas figures, the data-length caps or the
     ///      capacity, so that none of these changes leaves the registry with records that cannot
     ///      carry a task at the cap in force. The cap itself is governed in the gas schedule and
@@ -244,19 +252,20 @@ library LibCommon {
     function requireRecordBudgetFits(
         uint256 _taskGas,
         uint64 _recordFinalizationGasPerTask,
-        uint256 _capacity
+        uint256 _capacity,
+        uint8 _recordTaskSupportPercentage
     ) internal view {
         uint64 count = recordMaxTaskCount(
             LibEvmGasConfig.txGasLimitCap(),
             _taskGas,
             _recordFinalizationGasPerTask,
-            _capacity
+            _capacity,
+            _recordTaskSupportPercentage
         );
         if (count == 0) { revert RecordBudgetTooSmall(); }
     }
 
-    /// @notice Reverts with `RecordSizingChangeDuringTransition` unless the cycle is READY or
-    /// STARTED.
+    /// @notice Reverts with `ChangeDuringTransition` unless the cycle is READY or STARTED.
     /// @dev Guards the setters that change `CoreFacet.getRecordMaxTaskCount` with immediate
     ///      effect (`ConfigFacet.updateRecordGasParameters`, `ConfigFacet.updateDataLengthCaps`).
     ///      The node sizes a transition's records when the transition starts and again only at
@@ -268,7 +277,7 @@ library LibCommon {
     function requireNoCycleTransition() internal view {
         LibCommon.CycleState state = LibAppStorage.appStorage().cycleState;
         if (state != LibCommon.CycleState.READY && state != LibCommon.CycleState.STARTED) {
-            revert RecordSizingChangeDuringTransition();
+            revert ChangeDuringTransition();
         }
     }
 

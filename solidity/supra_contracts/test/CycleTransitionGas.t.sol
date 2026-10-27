@@ -370,16 +370,28 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         batchTasks = new uint256[](numBatches);
         uint256 processed;
         for (uint256 b = 0; b < numBatches; b++) {
-            uint256 count = _batchSize;
-            if (remainder != 0) {
-                bool remainderSlot = _finalBatchFull ? b == 0 : b == numBatches - 1;
-                if (remainderSlot) { count = remainder; }
-            }
+            uint256 count = _batchTaskCount(b, numBatches, _batchSize, remainder, _finalBatchFull);
             batchGas[b] = _measureProcessTasksBatch(_diamond, _cycleIndex, _buildRangeIndexes(processed, count));
             batchTasks[b] = count;
             _logBatch(_logPrefix, b, count, batchGas[b]);
             processed += count;
         }
+    }
+
+    /// @dev Number of tasks batch `_batch` of `_numBatches` carries: `_batchSize`, except the
+    ///      batch that takes the `_remainder` (if non-zero), which is the first batch when
+    ///      `_finalBatchFull` and the last otherwise. A separate function keeps _runBatches'
+    ///      locals within the stack limit.
+    function _batchTaskCount(
+        uint256 _batch,
+        uint256 _numBatches,
+        uint256 _batchSize,
+        uint256 _remainder,
+        bool _finalBatchFull
+    ) internal pure returns (uint256) {
+        if (_remainder == 0) { return _batchSize; }
+        bool remainderSlot = _finalBatchFull ? _batch == 0 : _batch == _numBatches - 1;
+        return remainderSlot ? _remainder : _batchSize;
     }
 
     /// @dev Logs one batch's gas. A separate function keeps _runBatches' locals within the
@@ -455,7 +467,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     ///      data-length caps, computed with the same LibCommon helpers
     ///      CoreFacet.getRecordMaxTaskCount uses.
     function _recordTaskGas(address _diamond) internal view returns (uint256) {
-        (uint64 perTask, uint64 perStoredWord,) = IConfigFacet(_diamond).getRecordGasParameters();
+        (uint64 perTask, uint64 perStoredWord,,) = IConfigFacet(_diamond).getRecordGasParameters();
         (uint16 maxPayload, uint16 maxPredicate, uint16 maxAuxData, uint16 maxAuxEntries) =
             IConfigFacet(_diamond).getDataLengthCaps();
         return LibCommon.recordTaskGas(
@@ -505,7 +517,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     /// @dev The finalization reserve every record carries under `_diamond`'s figures and active
     ///      capacity.
     function _finalizationReserve(address _diamond) internal view returns (uint256) {
-        (,, uint64 finalizationPerTask) = IConfigFacet(_diamond).getRecordGasParameters();
+        (,, uint64 finalizationPerTask,) = IConfigFacet(_diamond).getRecordGasParameters();
         return _capacity(_diamond) * uint256(finalizationPerTask);
     }
 

@@ -16,9 +16,12 @@ contract RecordSizingHarness {
         uint64 _recordGasLimit,
         uint256 _taskGas,
         uint64 _recordFinalizationGasPerTask,
-        uint256 _capacity
+        uint256 _capacity,
+        uint8 _recordTaskSupportPercentage
     ) external pure returns (uint64) {
-        return LibCommon.recordMaxTaskCount(_recordGasLimit, _taskGas, _recordFinalizationGasPerTask, _capacity);
+        return LibCommon.recordMaxTaskCount(
+            _recordGasLimit, _taskGas, _recordFinalizationGasPerTask, _capacity, _recordTaskSupportPercentage
+        );
     }
 }
 
@@ -31,7 +34,8 @@ contract RecordSizingHarness {
 /// Figures used throughout, from the fixture's defaults:
 /// - capacity 160 + 40 = 200;
 /// - data-length caps 4,096 / 2,048 / 0 / 0, so a task stores at most 128 + 64 = 192 words;
-/// - record gas figures 60,000 per task, 2,500 per stored word, 8,500 finalization per task.
+/// - record gas figures 60,000 per task, 2,500 per stored word, 8,500 finalization per task;
+/// - task-support percentage 80, so a record at the production cap budgets 13,421,772 gas.
 /// A task therefore costs 60,000 + 2,500 * 192 = 540,000 gas, and the finalizing record's
 /// reserve is 200 * 8,500 = 1,700,000 gas.
 contract RecordSizingTest is BaseDiamondTest {
@@ -94,10 +98,23 @@ contract RecordSizingTest is BaseDiamondTest {
     /// @dev The count follows the owner-set figures as soon as they change.
     function testRecordMaxTaskCountFollowsRecordGasParameters() public {
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(50_000, 2_000, 10_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(50_000, 2_000, 10_000, 80);
         // Task 50,000 + 2,000 * 192 = 434,000; reserve 2,000,000;
         // (13,421,772 - 2,000,000) / 434,000 = 26.
         assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(PRODUCTION_CAP), 26);
+    }
+
+    /// @dev The count follows the task-support percentage as soon as it changes. At 100% the
+    ///      budget is the whole cap: (16,777,216 - 1,700,000) / 540,000 = 27; at 50%,
+    ///      (8,388,608 - 1,700,000) / 540,000 = 12.
+    function testRecordMaxTaskCountFollowsSupportPercentage() public {
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 8_500, 100);
+        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(PRODUCTION_CAP), 27);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 8_500, 50);
+        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(PRODUCTION_CAP), 12);
     }
 
     /// @dev The count follows the data-length caps as soon as they change.
@@ -131,33 +148,60 @@ contract RecordSizingTest is BaseDiamondTest {
 
     function testUpdateRecordGasParametersStoresAndEmits() public {
         vm.expectEmit(diamondAddr);
-        emit IConfigFacet.RecordGasParametersUpdated(70_000, 3_000, 8_000);
+        emit IConfigFacet.RecordGasParametersUpdated(70_000, 3_000, 8_000, 90);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000, 90);
 
-        (uint64 perTask, uint64 perStoredWord, uint64 finalizationPerTask) =
+        (uint64 perTask, uint64 perStoredWord, uint64 finalizationPerTask, uint8 supportPercentage) =
             IConfigFacet(diamondAddr).getRecordGasParameters();
         assertEq(perTask, 70_000);
         assertEq(perStoredWord, 3_000);
         assertEq(finalizationPerTask, 8_000);
+        assertEq(supportPercentage, 90);
     }
 
     function testUpdateRecordGasParametersRevertsIfNotOwner() public {
         vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
         vm.prank(alice);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000, 80);
     }
 
     function testUpdateRecordGasParametersRevertsOnAnyZeroFigure() public {
         vm.startPrank(admin);
         vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(0, 3_000, 8_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(0, 3_000, 8_000, 80);
         vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 0, 8_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 0, 8_000, 80);
         vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 0);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 0, 80);
         vm.stopPrank();
+    }
+
+    /// @dev The task-support percentage is a share of the gas limit: 0 would size every record
+    ///      to no task, and above 100 would budget more gas than the record has.
+    function testUpdateRecordGasParametersRevertsOnSupportPercentageOutOfRange() public {
+        vm.startPrank(admin);
+        vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000, 0);
+        vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000, 101);
+        // The upper end of the range is accepted.
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 8_000, 100);
+        vm.stopPrank();
+    }
+
+    /// @dev A lower percentage shrinks the budget, and is refused once no task fits at the
+    ///      current cap. At the production cap, 13% budgets 2,181,038 gas: the 1,700,000 reserve
+    ///      and one 540,000-gas task need 2,240,000, so it is refused; 14% budgets 2,348,810.
+    function testUpdateRecordGasParametersRevertsIfSupportPercentageLeavesNoTask() public {
+        vm.expectRevert(LibCommon.RecordBudgetTooSmall.selector);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 8_500, 13);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 8_500, 14);
+        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(PRODUCTION_CAP), 1);
     }
 
     /// @dev At a 4,000,000 cap the budget is 3,200,000. A reserve of 200 * 13,500 = 2,700,000
@@ -167,10 +211,10 @@ contract RecordSizingTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.RecordBudgetTooSmall.selector);
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 13_500);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 13_500, 80);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 13_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 13_000, 80);
     }
 
     /// @dev A task figure above the whole budget (13,421,772 at the production cap) leaves no
@@ -178,7 +222,7 @@ contract RecordSizingTest is BaseDiamondTest {
     function testUpdateRecordGasParametersRevertsIfTaskExceedsBudget() public {
         vm.expectRevert(LibCommon.RecordBudgetTooSmall.selector);
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(13_500_000, 1, 1);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(13_500_000, 1, 1, 80);
     }
 
     /// @dev With a larger capacity buffered, the setter checks the figures against it as well.
@@ -190,21 +234,21 @@ contract RecordSizingTest is BaseDiamondTest {
 
         vm.expectRevert(LibCommon.RecordBudgetTooSmall.selector);
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 13_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 13_000, 80);
 
         vm.prank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 12_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 12_000, 80);
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::: cycle-state guard ::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev Calls both record-sizing setters as the owner, each expected to revert with
-    ///      `RecordSizingChangeDuringTransition`.
+    ///      `ChangeDuringTransition`.
     function _expectSizingSettersRefused() internal {
         vm.startPrank(admin);
-        vm.expectRevert(LibCommon.RecordSizingChangeDuringTransition.selector);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 9_000);
-        vm.expectRevert(LibCommon.RecordSizingChangeDuringTransition.selector);
+        vm.expectRevert(LibCommon.ChangeDuringTransition.selector);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 9_000, 80);
+        vm.expectRevert(LibCommon.ChangeDuringTransition.selector);
         IConfigFacet(diamondAddr).updateDataLengthCaps(1024, 512, 0, 0);
         vm.stopPrank();
     }
@@ -212,7 +256,7 @@ contract RecordSizingTest is BaseDiamondTest {
     /// @dev Calls both record-sizing setters as the owner, each expected to succeed.
     function _expectSizingSettersAccepted() internal {
         vm.startPrank(admin);
-        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 9_000);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 9_000, 80);
         IConfigFacet(diamondAddr).updateDataLengthCaps(1024, 512, 0, 0);
         vm.stopPrank();
     }
@@ -311,11 +355,19 @@ contract RecordSizingTest is BaseDiamondTest {
     function testRecordMaxTaskCountRevertsOnZeroTaskGas() public {
         _deployHarness();
         vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
-        harness.recordMaxTaskCount(PRODUCTION_CAP, 0, 8_500, 200);
+        harness.recordMaxTaskCount(PRODUCTION_CAP, 0, 8_500, 200, 80);
+    }
+
+    function testRecordMaxTaskCountRevertsOnSupportPercentageOutOfRange() public {
+        _deployHarness();
+        vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
+        harness.recordMaxTaskCount(PRODUCTION_CAP, 540_000, 8_500, 200, 0);
+        vm.expectRevert(LibCommon.InvalidRecordGasParameters.selector);
+        harness.recordMaxTaskCount(PRODUCTION_CAP, 540_000, 8_500, 200, 101);
     }
 
     /// @dev The count is the largest n with n * taskGas + capacity * finalizationPerTask within
-    ///      80% of the gas limit, and 0 when not even the reserve fits.
+    ///      the task-support percentage of the gas limit, and 0 when not even the reserve fits.
     function testFuzzRecordMaxTaskCountIsLargestFittingCount(
         uint64 _gasLimit,
         uint64 _perTask,
@@ -324,9 +376,11 @@ contract RecordSizingTest is BaseDiamondTest {
         uint16 _maxPayloadLength,
         uint16 _maxPredicateLength,
         uint16 _taskCapacity,
-        uint16 _sysTaskCapacity
+        uint16 _sysTaskCapacity,
+        uint8 _supportPercentage
     ) public {
         _deployHarness();
+        _supportPercentage = uint8(bound(_supportPercentage, 1, 100));
         _perTask = uint64(bound(_perTask, 1, type(uint64).max));
         _perStoredWord = uint64(bound(_perStoredWord, 1, type(uint64).max));
         _finalizationPerTask = uint64(bound(_finalizationPerTask, 1, type(uint64).max));
@@ -335,9 +389,9 @@ contract RecordSizingTest is BaseDiamondTest {
         );
         uint256 capacity = uint256(_taskCapacity) + uint256(_sysTaskCapacity);
 
-        uint256 n = harness.recordMaxTaskCount(_gasLimit, taskGas, _finalizationPerTask, capacity);
+        uint256 n = harness.recordMaxTaskCount(_gasLimit, taskGas, _finalizationPerTask, capacity, _supportPercentage);
 
-        uint256 budget = uint256(_gasLimit) * 80 / 100;
+        uint256 budget = uint256(_gasLimit) * uint256(_supportPercentage) / 100;
         uint256 reserve = capacity * uint256(_finalizationPerTask);
         if (budget <= reserve) {
             assertEq(n, 0);

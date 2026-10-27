@@ -62,8 +62,9 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
         // At these caps a task can store more than a record at the per-transaction cap can
         // clear, so updateDataLengthCaps refuses them under the default record gas figures
         // (LibCommon.requireRecordBudgetFits). This test does not size records; the figures
-        // are lowered to their minimum first so the caps are accepted.
-        IConfigFacet(dep.diamond).updateRecordGasParameters(1, 1, 1);
+        // are lowered to their minimum, and the whole gas limit budgeted, first so the caps are
+        // accepted.
+        IConfigFacet(dep.diamond).updateRecordGasParameters(1, 1, 1, 100);
         IConfigFacet(dep.diamond).updateDataLengthCaps(65_504, 65_504, type(uint16).max, type(uint16).max);
         vm.stopPrank();
         return dep.diamond;

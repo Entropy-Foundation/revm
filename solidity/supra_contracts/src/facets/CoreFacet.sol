@@ -127,8 +127,9 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     /// gas limit it builds the record with, the epoch's per-transaction cap, and chunks a
     /// transition's tasks into records of this many tasks. The Move registry's counterpart is
     /// `automation_registry::get_record_max_task_count`.
-    /// @dev The count is `LibCommon.recordMaxTaskCount` over the owner-set record gas figures
-    ///      (`ConfigFacet.updateRecordGasParameters`), the current data-length caps and the active
+    /// @dev The count is `LibCommon.recordMaxTaskCount` over the owner-set record gas figures and
+    ///      task-support percentage (`ConfigFacet.updateRecordGasParameters`), the current
+    ///      data-length caps and the active
     ///      config's capacity. The active config is the one a transition runs under:
     ///      `monitorCycleEnd` applies a buffered config before the transition's first
     ///      `processTasks`. Returns 0 when no record at this gas limit can carry a task, and the
@@ -143,7 +144,8 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
             _recordGasLimit,
             LibCommon.currentRecordTaskGas(),
             s.recordFinalizationGasPerTask,
-            LibCommon.recordCapacity(LibAppStorage.activeConfig())
+            LibCommon.recordCapacity(LibAppStorage.activeConfig()),
+            s.recordTaskSupportPercentage
         );
     }
 

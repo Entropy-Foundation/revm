@@ -72,6 +72,11 @@ contract DiamondInit is Initializable {
     uint64 internal constant DEFAULT_RECORD_GAS_PER_TASK = 60_000;
     uint64 internal constant DEFAULT_RECORD_GAS_PER_STORED_WORD = 2_500;
     uint64 internal constant DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK = 8_500;
+    /// @dev Default share, in percent, of a record's gas limit budgeted for its tasks and the
+    ///      finalization reserve, the Move registry's `TASK_SUPPORT_FACTOR`. The other 20% covers
+    ///      the transaction's intrinsic gas and calldata, which CycleTransitionGas.t.sol's
+    ///      derived-size tests add to every measured record before comparing it with the cap.
+    uint8 internal constant DEFAULT_RECORD_TASK_SUPPORT_PERCENTAGE = 80;
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
@@ -143,18 +148,20 @@ contract DiamondInit is Initializable {
         s.maxAuxDataLength = 0;
         s.maxAuxDataEntries = 0;
 
-        // Default record gas figures. Only the non-zero check applies here: the check against
-        // the per-transaction cap (LibCommon.requireRecordBudgetFits) reads the gas config
-        // precompile, which does not serve a value when the registry is initialised. The owner
-        // changes them with ConfigFacet.updateRecordGasParameters.
+        // Default record gas figures and task-support percentage. Only the range checks apply
+        // here: the check against the per-transaction cap (LibCommon.requireRecordBudgetFits)
+        // reads the gas config precompile, which does not serve a value when the registry is
+        // initialised. The owner changes them with ConfigFacet.updateRecordGasParameters.
         LibCommon.validateRecordGasParameters(
             DEFAULT_RECORD_GAS_PER_TASK,
             DEFAULT_RECORD_GAS_PER_STORED_WORD,
-            DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK
+            DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK,
+            DEFAULT_RECORD_TASK_SUPPORT_PERCENTAGE
         );
         s.recordGasPerTask = DEFAULT_RECORD_GAS_PER_TASK;
         s.recordGasPerStoredWord = DEFAULT_RECORD_GAS_PER_STORED_WORD;
         s.recordFinalizationGasPerTask = DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK;
+        s.recordTaskSupportPercentage = DEFAULT_RECORD_TASK_SUPPORT_PERCENTAGE;
 
         // ---------------------------------------------------------------------
         //                          Cycle initialization

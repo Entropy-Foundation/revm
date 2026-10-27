@@ -139,7 +139,8 @@ struct AppStorage {
     uint16 maxAuxDataLength; // total across all auxData entries combined
     uint16 maxAuxDataEntries; // bounds the array itself, independent of the byte total above
 
-    /// @notice Owner-configurable gas figures from which `CoreFacet.getRecordMaxTaskCount` derives
+    /// @notice Owner-configurable gas figures and task-support percentage from which
+    /// `CoreFacet.getRecordMaxTaskCount` derives
     /// how many tasks one `processTasks` bookkeeping record may carry
     /// (Entropy-Foundation/smr-moonshot#4755). Applied immediately (no buffering), and changeable
     /// only while the cycle is READY or STARTED (`LibCommon.requireNoCycleTransition`): the node
@@ -151,7 +152,11 @@ struct AppStorage {
     /// payload, predicate and auxData. `recordFinalizationGasPerTask` is the gas, per task the
     /// registry can hold (`taskCapacity + sysTaskCapacity`), that the call finalizing a
     /// FINISHED -> STARTED transition pays on top, for rewriting the survivor lists, deleting the
-    /// transition state and logging `ActiveTasks`. The view applies the current caps and the
+    /// transition state and logging `ActiveTasks`. `recordTaskSupportPercentage` (1..100) is the
+    /// share of a record's gas limit budgeted for these costs; the rest covers what they do not
+    /// model: the transaction's intrinsic gas, its calldata, and the variation of a task's cost
+    /// around the figures. The Move registry applies a fixed 80%,
+    /// `automation_registry::TASK_SUPPORT_FACTOR`. The view applies the current caps and the
     /// active capacity. The finalization cost per task grows slowly with the capacity, and the
     /// default `recordFinalizationGasPerTask` covers registries of up to 400 tasks
     /// (`DiamondInit`). The figures are re-derived from `test/CycleTransitionGas.t.sol`, which
@@ -160,6 +165,7 @@ struct AppStorage {
     uint64 recordGasPerTask;
     uint64 recordGasPerStoredWord;
     uint64 recordFinalizationGasPerTask;
+    uint8 recordTaskSupportPercentage;
 
     // =============================================================
     //                      CYCLE MANAGEMENT
