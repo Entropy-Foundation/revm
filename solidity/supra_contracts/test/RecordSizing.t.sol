@@ -196,6 +196,80 @@ contract RecordSizingTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).updateRecordGasParameters(60_000, 2_500, 12_000);
     }
 
+    // ::::::::::::::::::::::::::::::::::::::::::::::::: cycle-state guard ::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Calls both record-sizing setters as the owner, each expected to revert with
+    ///      `RecordSizingChangeDuringTransition`.
+    function _expectSizingSettersRefused() internal {
+        vm.startPrank(admin);
+        vm.expectRevert(LibCommon.RecordSizingChangeDuringTransition.selector);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 9_000);
+        vm.expectRevert(LibCommon.RecordSizingChangeDuringTransition.selector);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(1024, 512, 0, 0);
+        vm.stopPrank();
+    }
+
+    /// @dev Calls both record-sizing setters as the owner, each expected to succeed.
+    function _expectSizingSettersAccepted() internal {
+        vm.startPrank(admin);
+        IConfigFacet(diamondAddr).updateRecordGasParameters(70_000, 3_000, 9_000);
+        IConfigFacet(diamondAddr).updateDataLengthCaps(1024, 512, 0, 0);
+        vm.stopPrank();
+    }
+
+    /// @dev Ends the current cycle with one registered task, so the registry is FINISHED with a
+    ///      transition in progress.
+    function _startTransition() internal {
+        registerUst(diamondAddr, 2450);
+        (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.warp(startTime + durationSecs);
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).monitorCycleEnd();
+    }
+
+    function _assertCycleState(LibCommon.CycleState _state) internal view {
+        (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(_state));
+    }
+
+    /// @dev The figures and data-length caps change the record size with immediate effect, so
+    ///      they are refused while a FINISHED -> STARTED transition is being processed.
+    function testRecordSizingSettersRefusedWhenFinished() public {
+        _startTransition();
+        _assertCycleState(LibCommon.CycleState.FINISHED);
+        _expectSizingSettersRefused();
+    }
+
+    /// @dev And while a suspension is being processed.
+    function testRecordSizingSettersRefusedWhenSuspended() public {
+        _startTransition();
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+        _assertCycleState(LibCommon.CycleState.SUSPENDED);
+        _expectSizingSettersRefused();
+    }
+
+    function testRecordSizingSettersAcceptedWhenStarted() public {
+        _assertCycleState(LibCommon.CycleState.STARTED);
+        _expectSizingSettersAccepted();
+    }
+
+    /// @dev Disabling automation with no tasks moves the registry straight to READY.
+    function testRecordSizingSettersAcceptedWhenReady() public {
+        vm.prank(admin);
+        ICoreFacet(diamondAddr).disableAutomation();
+        _assertCycleState(LibCommon.CycleState.READY);
+        _expectSizingSettersAccepted();
+    }
+
+    /// @dev A buffered capacity is not guarded: it applies when the next transition starts,
+    ///      before the node sizes that transition's records.
+    function testUpdateConfigBufferAcceptedDuringTransition() public {
+        _startTransition();
+        _bufferCapacity(240, 40);
+        assertEq(IConfigFacet(diamondAddr).getConfigBuffer().taskCapacity, 240);
+    }
+
     // ::::::::::::::::::::::::::::::::::::::::::::::::::: updateConfigBuffer :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev At a 4,000,000 cap, a capacity of 400 needs a 3,400,000 reserve, above the

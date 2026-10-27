@@ -655,7 +655,7 @@ mod tests {
             ),
             (
                 "ConfigFacet",
-                b256!("3e7e188d959aa0bcc5b38380c2bbfb1b4b6a86438331a7f481b07741cf6a76a8"),
+                b256!("ab6288726c3516550a89a135dfc276cfd15594997e1c27d17d579e23d4ce62b5"),
             ),
             (
                 "CoreFacet",

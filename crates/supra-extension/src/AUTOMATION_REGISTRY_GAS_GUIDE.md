@@ -412,6 +412,12 @@ gas config precompile serves could not carry one task:
 | `updateDataLengthCaps` | the new caps, current figures, the larger of the active and buffered capacity |
 | `updateConfigBuffer` | the new capacity, current figures and data-length caps |
 
+`updateRecordGasParameters` and `updateDataLengthCaps` also revert with
+`LibCommon.RecordSizingChangeDuringTransition` unless the cycle is READY or STARTED. The node
+sizes a transition's records when the transition starts and again only at an epoch change, so
+the count cannot change under a transition in progress. `updateConfigBuffer` is not guarded: a
+buffered capacity applies in `monitorCycleEnd`, before the node sizes the transition's records.
+
 The cap itself is a gas-schedule entry governed outside the registry and can fall after
 these checks; the view then returns 0 and the node pauses automation. Before lowering the
 cap, check `getRecordMaxTaskCount(newCap)` against the registry. Raising the capacity

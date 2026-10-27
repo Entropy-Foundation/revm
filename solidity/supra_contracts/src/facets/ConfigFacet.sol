@@ -211,9 +211,11 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     /// @param _maxAuxDataLength Max combined length in bytes across all of a task's auxData entries.
     /// @param _maxAuxDataEntries Max number of entries in a task's auxData array, bounded
     /// independently of _maxAuxDataLength.
-    /// @dev Reverts with `LibCommon.RecordBudgetTooSmall` if, under the new caps, a
-    ///      `processTasks` record at the current per-transaction cap could not carry a single
-    ///      task (see `updateRecordGasParameters`).
+    /// @dev Reverts with `LibCommon.RecordSizingChangeDuringTransition` unless the cycle is READY
+    ///      or STARTED, since the caps size `processTasks` records
+    ///      (`LibCommon.requireNoCycleTransition`), and with `LibCommon.RecordBudgetTooSmall` if,
+    ///      under the new caps, a record at the current per-transaction cap could not carry a
+    ///      single task (see `updateRecordGasParameters`).
     function updateDataLengthCaps(
         uint16 _maxPayloadLength,
         uint16 _maxPredicateLength,
@@ -221,6 +223,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         uint16 _maxAuxDataEntries
     ) external {
         LibDiamond.enforceIsContractOwner();
+        LibCommon.requireNoCycleTransition();
         LibCommon.validateDataLengthCaps(_maxPayloadLength, _maxPredicateLength);
 
         AppStorage storage s = LibAppStorage.appStorage();
@@ -243,8 +246,11 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
     /// @notice Updates the gas figures from which `CoreFacet.getRecordMaxTaskCount` sizes a
     /// `processTasks` bookkeeping record (Entropy-Foundation/smr-moonshot#4755). Takes effect
-    /// immediately: the figures size only records the node has not built yet.
-    /// @dev Reverts with `LibCommon.InvalidRecordGasParameters` if any figure is zero, and with
+    /// immediately, and is accepted only outside a cycle transition: the node sizes a
+    /// transition's records when the transition starts.
+    /// @dev Reverts with `LibCommon.RecordSizingChangeDuringTransition` unless the cycle is READY
+    ///      or STARTED (`LibCommon.requireNoCycleTransition`), with
+    ///      `LibCommon.InvalidRecordGasParameters` if any figure is zero, and with
     ///      `LibCommon.RecordBudgetTooSmall` if a record at the current per-transaction cap could
     ///      not carry a single task under the current data-length caps. The capacity checked is
     ///      `LibCommon.largestRecordCapacity`, so the figures also hold once a buffered config
@@ -262,6 +268,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         uint64 _recordFinalizationGasPerTask
     ) external {
         LibDiamond.enforceIsContractOwner();
+        LibCommon.requireNoCycleTransition();
         LibCommon.validateRecordGasParameters(_recordGasPerTask, _recordGasPerStoredWord, _recordFinalizationGasPerTask);
 
         AppStorage storage s = LibAppStorage.appStorage();

@@ -141,9 +141,9 @@ struct AppStorage {
 
     /// @notice Owner-configurable gas figures from which `CoreFacet.getRecordMaxTaskCount` derives
     /// how many tasks one `processTasks` bookkeeping record may carry
-    /// (Entropy-Foundation/smr-moonshot#4755). Applied immediately (no buffering): they size only
-    /// records the node has not built yet, and the node reads the count again each time it chunks
-    /// a transition's tasks into records.
+    /// (Entropy-Foundation/smr-moonshot#4755). Applied immediately (no buffering), and changeable
+    /// only while the cycle is READY or STARTED (`LibCommon.requireNoCycleTransition`): the node
+    /// sizes a transition's records when the transition starts and again only at an epoch change.
     ///
     /// A task adds at most `recordGasPerTask + recordGasPerStoredWord * words` to a
     /// `processTasks` call, where `words` bounds the storage words a task may hold under the

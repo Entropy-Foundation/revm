@@ -116,6 +116,7 @@ library LibCommon {
     error PredicateLengthCapNotWordAligned();
     error InvalidRecordGasParameters();
     error RecordBudgetTooSmall();
+    error RecordSizingChangeDuringTransition();
     error TaskDoesNotExist();
     error TaskIndexNotFound();
 
@@ -252,6 +253,23 @@ library LibCommon {
             _capacity
         );
         if (count == 0) { revert RecordBudgetTooSmall(); }
+    }
+
+    /// @notice Reverts with `RecordSizingChangeDuringTransition` unless the cycle is READY or
+    /// STARTED.
+    /// @dev Guards the setters that change `CoreFacet.getRecordMaxTaskCount` with immediate
+    ///      effect (`ConfigFacet.updateRecordGasParameters`, `ConfigFacet.updateDataLengthCaps`).
+    ///      The node sizes a transition's records when the transition starts and again only at
+    ///      an epoch change, so during a transition (FINISHED or SUSPENDED) the count the records
+    ///      were built with must stay the registry's count (Entropy-Foundation/smr-moonshot#4755).
+    ///      A buffered capacity needs no guard: `monitorCycleEnd` applies it before the node
+    ///      sizes the transition's records, and the suspension path applies it with the final
+    ///      batch.
+    function requireNoCycleTransition() internal view {
+        LibCommon.CycleState state = LibAppStorage.appStorage().cycleState;
+        if (state != LibCommon.CycleState.READY && state != LibCommon.CycleState.STARTED) {
+            revert RecordSizingChangeDuringTransition();
+        }
     }
 
     /// @notice Helper function to validate the registry configuration parameters.
