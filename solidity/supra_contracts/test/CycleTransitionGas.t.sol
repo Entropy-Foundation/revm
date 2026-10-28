@@ -11,14 +11,35 @@ import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {Config} from "../src/libraries/LibAppStorage.sol";
-import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
+
+/// @dev Measures the execution gas of one call it makes, before refunds. The benchmark etches it
+///      at LibUtils.VM_SIGNER and calls it as its own isolated transaction, so that the measured
+///      call sees the registry state earlier transactions committed, and comes from VM_SIGNER as
+///      monitorCycleEnd and processTasks require. A transaction's gas used, which the test sees
+///      for an isolated call, has its refunds subtracted, up to a fifth of the gas (EIP-3529),
+///      while a record's gas limit has to cover the gas before them; storage clears earn large
+///      refunds, so a removal measured that way reads about a fifth low.
+contract ExecutionGasMeter {
+    /// @return gasUsed Gas the call used, refunds not subtracted.
+    function measure(address _target, bytes calldata _data) external returns (uint256 gasUsed) {
+        uint256 before = gasleft();
+        (bool ok, bytes memory returned) = _target.call(_data);
+        gasUsed = before - gasleft();
+        if (!ok) {
+            assembly ("memory-safe") {
+                revert(add(returned, 32), mload(returned))
+            }
+        }
+    }
+}
 
 /// @notice Gas benchmark for the automation-registry's cycle-transition flows, by
 ///         default at the production task-registry cap (200 tasks: 160 UST + 40 GST,
 ///         matching LibDiamondUtils.defaultInitParams()), submitted as batches of 25
 ///         tasks (BATCH_SIZE, the measurement size the record gas figures are derived
-///         at), with the registry cooled before each processTasks call (_coolRegistry).
+///         at). Each measured call runs as its own transaction after the registrations
+///         (see the isolation note below) and is metered before refunds (ExecutionGasMeter).
 ///         Two further tests size the batches the way the node does, with
 ///         CoreFacet.getRecordMaxTaskCount, and check every record fits its gas limit
 ///         (testCycleTransitionGas_DerivedRecordSize_*). Every test checks its batches
@@ -32,13 +53,18 @@ import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 ///           CYCLE_GAS_BENCH_GST_COUNT           (default 40)
 ///           CYCLE_GAS_BENCH_EXPIRING_UST_COUNT  (default 20, scenario 3 only)
 ///
-///   1. FINISHED -> STARTED, everything survives (testCycleTransitionGas_FullFlow_ProductionMix)
+///   1. FINISHED -> STARTED, everything survives (testCycleTransitionGas_FullFlow_ProductionMix),
+///      also run at LibCommon.RECORD_GAS_BENCHMARK_CAPACITY tasks
+///      (testCycleTransitionGas_FullFlow_BenchmarkCapacity)
 ///   2. STARTED (mid-cycle) -> SUSPENDED -> READY, everything is dropped/refunded
 ///      (testCycleTransitionGas_MidCycle_StartedToSuspended_FullRegistry)
 ///   3. FINISHED -> STARTED with a subset of tasks expiring mid-transition
 ///      (testCycleTransitionGas_FullFlow_SecondCycle_WithExpiredTasks)
 ///   4. As 2, with every task's payload and predicate at the data-length caps
 ///      (testCycleTransitionGas_MidCycle_Suspension_TasksAtDataLengthCaps)
+///   5. FINISHED -> STARTED after the data-length caps were lowered: half the USTs, stored at
+///      the previous caps, are dropped, and every other task's stored lengths are checked
+///      (testCycleTransitionGas_FullFlow_DataLengthCapsLowered)
 ///
 /// `MonitorCycleEndGas.t.sol` only measures `monitorCycleEnd`. The order-independent
 /// task-list compaction work (see Issue-3445) introduced costs that actually land in
@@ -56,6 +82,18 @@ import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 /// -vv` gives a ready-to-read reference, the same way MonitorCycleEndGas.t.sol does.
 /// The summary across the scenarios is written up as a downstream-facing
 /// reference in crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md.
+///
+/// The suite runs in isolation mode (the inline config below): every top-level call the test
+/// makes, each registration and each processTasks record included, executes as its own
+/// transaction with the state of the calls before it committed, as on a chain. Without it, a
+/// test is one transaction, and a slot that registration wrote earlier in the same test still
+/// has its original value of zero when a record clears it, so EIP-2200 prices the clear as a
+/// write to a slot dirtied in the same transaction rather than as the reset of a stored value,
+/// and removals measure about half their on-chain cost. vm.cool does not change original
+/// values, only whether an account or slot is warm. Every measured call starts cold, as its
+/// own transaction; the registry account is charged as a cold call target where a record
+/// transaction has it warm as its recipient, 2,500 gas over.
+/// forge-config: default.isolate = true
 contract CycleTransitionGasTest is BaseDiamondTest {
 
     /// @dev Default UST/GST counts when CYCLE_GAS_BENCH_UST_COUNT/
@@ -76,15 +114,15 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     uint256 constant BATCH_SIZE = 25;
 
     /// @dev Prague transaction cost constants (EIP-2028, EIP-7623), for the part of a record's
-    ///      gas that the gasleft() brackets do not see: intrinsic gas and calldata.
+    ///      gas that the metered execution gas does not include: intrinsic gas and calldata.
     uint256 constant TX_BASE_GAS = 21_000;
     uint256 constant STANDARD_GAS_PER_TOKEN = 4;
     uint256 constant FLOOR_GAS_PER_TOKEN = 10;
 
     /// @dev Per-transaction gas caps the derived-size tests run at: the production cap, then
-    ///      lower caps down to one task per record. Below 2,800,000 the default figures leave
-    ///      no room for a task at a 200-task registry (see RecordSizing.t.sol).
-    uint64[4] DERIVED_SIZE_CAPS = [uint64(16_777_216), 8_000_000, 4_000_000, 3_000_000];
+    ///      lower caps down to one task per record. Below 3,945,000 the record gas figures
+    ///      leave no room for a task at a 200-task registry (see RecordSizing.t.sol).
+    uint64[4] DERIVED_SIZE_CAPS = [uint64(16_777_216), 8_000_000, 6_000_000, 4_000_000];
 
     /// @dev Figures summarizing one run of batches; see _summarizeAndLog.
     struct BatchSummary {
@@ -183,39 +221,6 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         return createPayload(0, address(wsupra), abi.encodeCall(wsupra.withdraw, 100));
     }
 
-    /// @dev A payload of exactly `_totalLength` bytes, filled with non-zero bytes so every slot
-    ///      it occupies in storage is non-zero (a zero-filled one would store and clear almost
-    ///      for free). Registration only decodes the payload and length-checks its call data.
-    ///      With an empty access list abi.encode(uint128, address, bytes, AccessListEntry[]) is
-    ///      192 bytes plus the call data padded to 32; RegistrationGas.t.sol builds its cap-size
-    ///      payloads the same way.
-    function _payloadOfLength(uint256 _totalLength) internal view returns (bytes memory) {
-        require(_totalLength % 32 == 0 && _totalLength > 192 + 32, "payload length");
-        LibCommon.AccessListEntry[] memory emptyAccessList;
-        bytes memory callData = abi.encodePacked(wsupra.withdraw.selector, _nonZeroBytes(_totalLength - 192 - 4));
-        return abi.encode(uint128(0), address(wsupra), callData, emptyAccessList);
-    }
-
-    /// @dev A predicate of exactly `_totalLength` bytes. Registration executes the predicate
-    ///      with a staticcall, so its call data stays a valid call: isRegistrationEnabled()
-    ///      takes no arguments and ignores the trailing bytes. abi.encode(address, bytes) is
-    ///      96 bytes plus the call data padded to 32.
-    function _predicateOfLength(address _diamond, uint256 _totalLength) internal pure returns (bytes memory) {
-        require(_totalLength % 32 == 0 && _totalLength > 96 + 32, "predicate length");
-        bytes memory callData = abi.encodePacked(
-            IConfigFacet.isRegistrationEnabled.selector, _nonZeroBytes(_totalLength - 96 - 4)
-        );
-        return abi.encode(_diamond, callData);
-    }
-
-    /// @dev Returns `_length` bytes of 0xab.
-    function _nonZeroBytes(uint256 _length) internal pure returns (bytes memory out) {
-        out = new bytes(_length);
-        for (uint256 i = 0; i < _length; i++) {
-            out[i] = 0xab;
-        }
-    }
-
     /// @dev _registerUstTasks with an explicit payload and predicate.
     function _registerUstTasksWith(
         address _diamond,
@@ -224,10 +229,23 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         bytes memory _payload,
         bytes memory _predicate
     ) internal {
+        bytes[] memory noAuxData;
+        _registerUstTasksWithAux(_diamond, _n, _expiry, _payload, _predicate, noAuxData);
+    }
+
+    /// @dev _registerUstTasksWith with explicit auxData.
+    function _registerUstTasksWithAux(
+        address _diamond,
+        uint256 _n,
+        uint64 _expiry,
+        bytes memory _payload,
+        bytes memory _predicate,
+        bytes[] memory _auxData
+    ) internal {
         uint256 depositAmount = _n * 200 ether;
         vm.deal(alice, depositAmount + 100 ether);
 
-        bytes[] memory auxData;
+        bytes[] memory auxData = _auxData;
         bytes memory payload = _payload;
         bytes memory predicate = _predicate;
 
@@ -281,49 +299,33 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         }
     }
 
-    /// @dev Warps to the cycle boundary and measures monitorCycleEnd's gas.
-    ///      gasleft() brackets (not vm.pauseGasMetering) so SLOAD/SSTORE costs are
-    ///      captured faithfully - see MonitorCycleEndGas.t.sol's identical rationale.
+    /// @dev Execution gas, before refunds, of `_data` sent to `_diamond` from VM_SIGNER as its
+    ///      own transaction (ExecutionGasMeter): the gas a record's limit has to cover apart from
+    ///      intrinsic gas and calldata, which _requiredGasLimit adds.
+    function _meteredVmSignerCall(address _diamond, bytes memory _data) internal returns (uint256) {
+        if (LibUtils.VM_SIGNER.code.length == 0) {
+            vm.etch(LibUtils.VM_SIGNER, type(ExecutionGasMeter).runtimeCode);
+        }
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        return ExecutionGasMeter(LibUtils.VM_SIGNER).measure(_diamond, _data);
+    }
+
+    /// @dev Warps to the cycle boundary and measures monitorCycleEnd's execution gas, before
+    ///      refunds, as the BlockMeta prologue's call to it spends it (_meteredVmSignerCall).
     function _measureMonitorCycleEnd(address _diamond) internal returns (uint256 gasUsed) {
         (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTime + durationSecs);
-
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-
-        uint256 before = gasleft();
-        ICoreFacet(_diamond).monitorCycleEnd();
-        gasUsed = before - gasleft();
+        gasUsed = _meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
     }
 
-    /// @dev Marks the registry's accounts and storage cold, as at the start of a transaction.
-    ///      Every record is its own transaction, while this benchmark runs all of them, and the
-    ///      registrations before them, in one test transaction; without this, the task slots
-    ///      registration wrote would be charged warm. The Diamond delegates to its facets, so
-    ///      each facet's code account is cooled as well, and WrappedSupra holds the fee
-    ///      balances a UST's charge moves.
-    function _coolRegistry(address _diamond) internal {
-        vm.cool(_diamond);
-        vm.cool(address(wsupra));
-        address[] memory facets = IDiamondLoupe(_diamond).facetAddresses();
-        for (uint256 i = 0; i < facets.length; i++) {
-            vm.cool(facets[i]);
-        }
-    }
-
-    /// @dev Measures a single processTasks batch's gas, with the registry cooled first
-    ///      (_coolRegistry). processTasks checks msg.sender only (unlike monitorCycleEnd's
-    ///      tx.origin check), so a single-arg prank is enough.
+    /// @dev Measures a single processTasks batch's execution gas, before refunds, as its own
+    ///      transaction (_meteredVmSignerCall).
     function _measureProcessTasksBatch(
         address _diamond,
         uint64 _cycleIndex,
         uint64[] memory _indexes
     ) internal returns (uint256 gasUsed) {
-        _coolRegistry(_diamond);
-        vm.prank(LibUtils.VM_SIGNER);
-
-        uint256 before = gasleft();
-        ICoreFacet(_diamond).processTasks(_cycleIndex, _indexes);
-        gasUsed = before - gasleft();
+        gasUsed = _meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.processTasks, (_cycleIndex, _indexes)));
     }
 
     /// @dev Builds the contiguous range of task indexes `[_start, _start + _count)`.
@@ -363,35 +365,35 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         bool _finalBatchFull,
         string memory _logPrefix
     ) internal returns (uint256[] memory batchGas, uint256[] memory batchTasks) {
-        require(_batchSize > 0, "batch size must be non-zero");
-        uint256 numBatches = (_taskCount + _batchSize - 1) / _batchSize;
-        uint256 remainder = _taskCount % _batchSize;
-        batchGas = new uint256[](numBatches);
-        batchTasks = new uint256[](numBatches);
+        batchTasks = _batchPlan(_taskCount, _batchSize, _finalBatchFull);
+        batchGas = new uint256[](batchTasks.length);
         uint256 processed;
-        for (uint256 b = 0; b < numBatches; b++) {
-            uint256 count = _batchTaskCount(b, numBatches, _batchSize, remainder, _finalBatchFull);
-            batchGas[b] = _measureProcessTasksBatch(_diamond, _cycleIndex, _buildRangeIndexes(processed, count));
-            batchTasks[b] = count;
-            _logBatch(_logPrefix, b, count, batchGas[b]);
-            processed += count;
+        for (uint256 b = 0; b < batchTasks.length; b++) {
+            batchGas[b] = _measureProcessTasksBatch(_diamond, _cycleIndex, _buildRangeIndexes(processed, batchTasks[b]));
+            _logBatch(_logPrefix, b, batchTasks[b], batchGas[b]);
+            processed += batchTasks[b];
         }
     }
 
-    /// @dev Number of tasks batch `_batch` of `_numBatches` carries: `_batchSize`, except the
-    ///      batch that takes the `_remainder` (if non-zero), which is the first batch when
-    ///      `_finalBatchFull` and the last otherwise. A separate function keeps _runBatches'
-    ///      locals within the stack limit.
-    function _batchTaskCount(
-        uint256 _batch,
-        uint256 _numBatches,
-        uint256 _batchSize,
-        uint256 _remainder,
-        bool _finalBatchFull
-    ) internal pure returns (uint256) {
-        if (_remainder == 0) { return _batchSize; }
-        bool remainderSlot = _finalBatchFull ? _batch == 0 : _batch == _numBatches - 1;
-        return remainderSlot ? _remainder : _batchSize;
+    /// @dev Task counts of the batches `_taskCount` tasks are split into: `_batchSize` each,
+    ///      except the batch that takes the remainder (if non-zero), which is the first batch when
+    ///      `_finalBatchFull` and the last otherwise. A separate function keeps _runBatches' locals
+    ///      within the stack limit.
+    function _batchPlan(uint256 _taskCount, uint256 _batchSize, bool _finalBatchFull)
+        internal
+        pure
+        returns (uint256[] memory batchTasks)
+    {
+        require(_batchSize > 0, "batch size must be non-zero");
+        uint256 numBatches = (_taskCount + _batchSize - 1) / _batchSize;
+        uint256 remainder = _taskCount % _batchSize;
+        batchTasks = new uint256[](numBatches);
+        for (uint256 b = 0; b < numBatches; b++) {
+            batchTasks[b] = _batchSize;
+            if (remainder != 0 && (_finalBatchFull ? b == 0 : b == numBatches - 1)) {
+                batchTasks[b] = remainder;
+            }
+        }
     }
 
     /// @dev Logs one batch's gas. A separate function keeps _runBatches' locals within the
@@ -463,22 +465,17 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         return uint256(cfg.taskCapacity) + uint256(cfg.sysTaskCapacity);
     }
 
-    /// @dev Gas one task can add to a record under `_diamond`'s record gas figures and
-    ///      data-length caps, computed with the same LibCommon helpers
+    /// @dev Gas one task can add to a record under the benchmark-derived gas figures and
+    ///      `_diamond`'s stored-words bound, computed with the same LibCommon helper
     ///      CoreFacet.getRecordMaxTaskCount uses.
     function _recordTaskGas(address _diamond) internal view returns (uint256) {
-        (uint64 perTask, uint64 perStoredWord,,) = IConfigFacet(_diamond).getRecordGasParameters();
-        (uint16 maxPayload, uint16 maxPredicate, uint16 maxAuxData, uint16 maxAuxEntries) =
-            IConfigFacet(_diamond).getDataLengthCaps();
-        return LibCommon.recordTaskGas(
-            perTask, perStoredWord, LibCommon.recordStoredWords(maxPayload, maxPredicate, maxAuxData, maxAuxEntries)
-        );
+        return LibCommon.recordTaskGas(IConfigFacet(_diamond).getTaskStoredWordsBound());
     }
 
-    /// @dev Checks the measured batches against the record gas figures
-    ///      (IConfigFacet.getRecordGasParameters, Entropy-Foundation/smr-moonshot#4755).
+    /// @dev Checks the measured batches against the benchmark-derived record gas figures
+    ///      (LibCommon.RECORD_GAS_*, Entropy-Foundation/smr-moonshot#4755).
     ///      CoreFacet.getRecordMaxTaskCount gives every record k tasks at _recordTaskGas each
-    ///      plus the finalization reserve, capacity * recordFinalizationGasPerTask, since the
+    ///      plus the finalization reserve, capacity * RECORD_FINALIZATION_GAS_PER_TASK, since the
     ///      node does not know which record finalizes. Asserted here:
     ///      - every batch costs at most k * _recordTaskGas + reserve, the bound the view sizes
     ///        records with. The reserve also absorbs the fixed cost of a processTasks call,
@@ -495,8 +492,22 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         uint256[] memory _batchGas,
         uint256[] memory _batchTasks
     ) internal view {
-        uint256 taskGas = _recordTaskGas(_diamond);
-        uint256 reserve = _finalizationReserve(_diamond);
+        _assertWithinRecordGasFiguresAt(
+            _recordTaskGas(_diamond), _finalizationReserve(_diamond), _batchGas, _batchTasks
+        );
+    }
+
+    /// @dev _assertWithinRecordGasFigures for a task gas and reserve the caller captured, for a
+    ///      transition after which the registry's stored-words bound differs from the one its
+    ///      records were sized with (scenario 5).
+    function _assertWithinRecordGasFiguresAt(
+        uint256 _taskGas,
+        uint256 _reserve,
+        uint256[] memory _batchGas,
+        uint256[] memory _batchTasks
+    ) internal pure {
+        uint256 taskGas = _taskGas;
+        uint256 reserve = _reserve;
         uint256 last = _batchGas.length - 1;
         for (uint256 b = 0; b <= last; b++) {
             assertLe(
@@ -514,11 +525,10 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         }
     }
 
-    /// @dev The finalization reserve every record carries under `_diamond`'s figures and active
-    ///      capacity.
+    /// @dev The finalization reserve every record carries under the benchmark-derived gas figures
+    ///      and `_diamond`'s active capacity.
     function _finalizationReserve(address _diamond) internal view returns (uint256) {
-        (,, uint64 finalizationPerTask,) = IConfigFacet(_diamond).getRecordGasParameters();
-        return _capacity(_diamond) * uint256(finalizationPerTask);
+        return _capacity(_diamond) * uint256(LibCommon.RECORD_FINALIZATION_GAS_PER_TASK);
     }
 
     /// @dev The final batch's finalization premium (see _summarizeAndLog) is within the
@@ -550,10 +560,26 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     // ────────────────────────────────────────────────────────────────────────
 
     function testCycleTransitionGas_FullFlow_ProductionMix() public {
-        uint256 ustCount = _ustTaskCount();
-        uint256 gstCount = _gstTaskCount();
-        uint256 totalTasks = ustCount + gstCount;
+        _runFullFlowAllSurvive(_ustTaskCount(), _gstTaskCount(), "Scenario 1: FINISHED->STARTED, N=");
+    }
 
+    /// @dev Scenario 1 at LibCommon.RECORD_GAS_BENCHMARK_CAPACITY tasks (80% user, 20% system,
+    ///      the production split), the capacity the record gas figures are measured at and the
+    ///      default RecordSizingParameters.maxCapacity. The finalization premium per task grows
+    ///      with the registry, so this is where LibCommon.RECORD_FINALIZATION_GAS_PER_TASK is
+    ///      tightest; running it in every suite run keeps the limit checked at the capacity
+    ///      updateConfigBuffer accepts by default.
+    function testCycleTransitionGas_FullFlow_BenchmarkCapacity() public {
+        uint256 capacity = LibCommon.RECORD_GAS_BENCHMARK_CAPACITY;
+        _runFullFlowAllSurvive(capacity * 4 / 5, capacity / 5, "Scenario 1 at the benchmark capacity: FINISHED->STARTED, N=");
+    }
+
+    /// @dev Scenario 1: registers `_ustCount` USTs and `_gstCount` GSTs, ends the cycle, and
+    ///      processes the FINISHED -> STARTED transition in which every task survives.
+    function _runFullFlowAllSurvive(uint256 _ustCount, uint256 _gstCount, string memory _label) internal {
+        uint256 ustCount = _ustCount;
+        uint256 gstCount = _gstCount;
+        uint256 totalTasks = ustCount + gstCount;
         address diamond = _deployRegistry(ustCount, gstCount);
         _registerUstTasks(diamond, ustCount, uint64(block.timestamp + 86400));
         _registerGstTasks(diamond, gstCount);
@@ -578,7 +604,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, totalTasks, "all tasks must survive the transition");
 
         BatchSummary memory summary = _summarizeAndLog(
-            string.concat("Scenario 1: FINISHED->STARTED, N=", vm.toString(totalTasks), ", all survive"),
+            string.concat(_label, vm.toString(totalTasks), ", all survive"),
             monitorGas,
             batchGas,
             batchTasks
@@ -669,9 +695,10 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         uint256 totalTasks = ustCount + gstCount;
 
         address diamond = _deployRegistry(ustCount, gstCount);
-        (uint16 maxPayload, uint16 maxPredicate,,) = IConfigFacet(diamond).getDataLengthCaps();
-        bytes memory payload = _payloadOfLength(maxPayload);
-        bytes memory predicate = _predicateOfLength(diamond, maxPredicate);
+        uint16 maxPayload = IConfigFacet(diamond).getDataLengthCaps().maxPayloadLength;
+        uint16 maxPredicate = IConfigFacet(diamond).getDataLengthCaps().maxPredicateLength;
+        bytes memory payload = payloadOfExactLength(maxPayload);
+        bytes memory predicate = predicateOfExactLength(diamond, maxPredicate);
         _registerUstTasksWith(diamond, ustCount, uint64(block.timestamp + 86400), payload, predicate);
         _registerGstTasksWith(diamond, gstCount, payload, predicate);
 
@@ -725,6 +752,159 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     /// @dev Default number of the UST tasks that expire mid-way, when
     ///      CYCLE_GAS_BENCH_EXPIRING_UST_COUNT is unset.
     uint256 constant EXPIRING_UST_COUNT = 20;
+
+    /// @dev Scenario 5: the owner lowers the data-length caps while tasks stored at the previous
+    ///      caps are registered (ConfigFacet.updateDataLengthCaps, Entropy-Foundation/smr-moonshot#4755).
+    ///      The caps apply in monitorCycleEnd, and the transition drops every task above them
+    ///      with its deposit refunded, and checks the stored lengths of every other task. The
+    ///      records are sized for the previous caps' stored-words bound until the transition
+    ///      finalizes, so the batches are asserted against that bound. Tasks are processed in
+    ///      index order: the oversized USTs, registered first, fill the first batches, so both a
+    ///      batch of drops and a batch of checked survivors are measured.
+    function testCycleTransitionGas_FullFlow_DataLengthCapsLowered() public {
+        uint256 ustCount = _ustTaskCount();
+        uint256 gstCount = _gstTaskCount();
+        uint256 totalTasks = ustCount + gstCount;
+        uint256 oversizedCount = ustCount / 2;
+
+        address diamond = _deployRegistry(ustCount, gstCount);
+        uint16 maxPayload = IConfigFacet(diamond).getDataLengthCaps().maxPayloadLength;
+        uint16 maxPredicate = IConfigFacet(diamond).getDataLengthCaps().maxPredicateLength;
+        _registerUstTasksWith(
+            diamond,
+            oversizedCount,
+            uint64(block.timestamp + 86400),
+            payloadOfExactLength(maxPayload),
+            predicateOfExactLength(diamond, maxPredicate)
+        );
+        _registerUstTasks(diamond, ustCount - oversizedCount, uint64(block.timestamp + 86400));
+        _registerGstTasks(diamond, gstCount);
+
+        // The fixture's 640-byte payload and 128-byte predicate fit the lower caps; the
+        // cap-size tasks do not.
+        vm.prank(admin);
+        IConfigFacet(diamond).updateDataLengthCaps(1024, 512, 0, 0);
+
+        (uint64 cycleIndexBefore, , , ) = ICoreFacet(diamond).getCycleInfo();
+        uint256 monitorGas = _measureMonitorCycleEnd(diamond);
+
+        // The lower caps are in force, and records are sized for the previous ones.
+        uint16 payloadCap = IConfigFacet(diamond).getDataLengthCaps().maxPayloadLength;
+        assertEq(payloadCap, 1024, "lower caps apply in monitorCycleEnd");
+        uint32 boundDuringTransition = IConfigFacet(diamond).getTaskStoredWordsBound();
+        assertEq(boundDuringTransition, uint32(maxPayload / 32 + maxPredicate / 32), "bound stays at the previous caps");
+        uint256 taskGas = _recordTaskGas(diamond);
+        uint256 reserve = _finalizationReserve(diamond);
+
+        (uint256[] memory batchGas, uint256[] memory batchTasks) = _runAllBatches(
+            diamond,
+            cycleIndexBefore + 1,
+            totalTasks,
+            "processTasks gas | scenario 5, batch="
+        );
+
+        (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED), "cycle must be STARTED after full transition");
+        assertEq(
+            IRegistryViewFacet(diamond).getActiveTaskIds().length,
+            totalTasks - oversizedCount,
+            "the tasks above the lower caps are dropped"
+        );
+        assertEq(IConfigFacet(diamond).getTaskStoredWordsBound(), 1024 / 32 + 512 / 32, "bound follows the caps once finalized");
+
+        BatchSummary memory summary = _summarizeAndLog(
+            string.concat(
+                "Scenario 5: FINISHED->STARTED, caps lowered, N=", vm.toString(totalTasks),
+                ", dropped ", vm.toString(oversizedCount)
+            ),
+            monitorGas,
+            batchGas,
+            batchTasks
+        );
+
+        assertLt(summary.finalGas, SANITY_GAS_CEILING, "final batch gas exceeds generic sanity ceiling");
+        _assertWithinRecordGasFiguresAt(taskGas, reserve, batchGas, batchTasks);
+        assertLe(summary.finalizationPremium, reserve, "finalization premium exceeds the record finalization figure");
+    }
+
+    /// @dev auxData shape of scenario 6: AUX_ENTRY_COUNT entries of one byte each. A byte array
+    ///      of up to 31 bytes is stored in a single slot together with its length, so each entry
+    ///      is one slot to read and one to clear, the most slots per entry byte, while
+    ///      LibCommon.recordStoredWords charges two words per entry plus the words of the combined
+    ///      length.
+    uint256 constant AUX_ENTRY_COUNT = 64;
+
+    /// @dev Scenario 6: scenario 5 for auxData. The USTs carry AUX_ENTRY_COUNT one-byte auxData
+    ///      entries under caps that admit exactly that (Entropy-Foundation/smr-moonshot#4755),
+    ///      with the payload and predicate caps at the fixture's sizes, so the stored-words bound
+    ///      is dominated by auxData. The combined-length cap is then lowered by one byte, keeping
+    ///      the entry cap: LibCore.exceedsDataLengthCaps reads every entry's length before it
+    ///      finds the task above the caps, the costliest check, and the transition then clears
+    ///      every entry. The batches are asserted against the record gas figures at the previous
+    ///      caps' bound, as in scenario 5, so the per-entry words recordStoredWords charges are
+    ///      checked against a measured drop.
+    function testCycleTransitionGas_FullFlow_AuxDataCapsLowered() public {
+        uint256 ustCount = _ustTaskCount();
+        uint256 gstCount = _gstTaskCount();
+        uint256 totalTasks = ustCount + gstCount;
+        uint16 entries = uint16(AUX_ENTRY_COUNT);
+
+        address diamond = _deployRegistry(ustCount, gstCount);
+        bytes memory payload = _fixturePayload();
+        bytes memory predicate = createPredicate(diamond);
+        // Caps at the fixture's payload and predicate sizes, admitting the auxData exactly; with
+        // no task registered they apply at the first boundary, and so does the bound.
+        vm.prank(admin);
+        IConfigFacet(diamond).updateDataLengthCaps(
+            uint16(payload.length), uint16(predicate.length), entries, entries
+        );
+        endCycleAsVmSigner(diamond);
+
+        bytes[] memory auxData = new bytes[](AUX_ENTRY_COUNT);
+        for (uint256 i = 0; i < AUX_ENTRY_COUNT; i++) {
+            auxData[i] = hex"ff";
+        }
+        _registerUstTasksWithAux(diamond, ustCount, uint64(block.timestamp + 86400 * 2), payload, predicate, auxData);
+        _registerGstTasks(diamond, gstCount);
+
+        vm.prank(admin);
+        IConfigFacet(diamond).updateDataLengthCaps(
+            uint16(payload.length), uint16(predicate.length), entries - 1, entries
+        );
+
+        (uint64 cycleIndexBefore, , , ) = ICoreFacet(diamond).getCycleInfo();
+        uint256 monitorGas = _measureMonitorCycleEnd(diamond);
+        uint256 taskGas = _recordTaskGas(diamond);
+        uint256 reserve = _finalizationReserve(diamond);
+
+        (uint256[] memory batchGas, uint256[] memory batchTasks) = _runAllBatches(
+            diamond,
+            cycleIndexBefore + 1,
+            totalTasks,
+            "processTasks gas | scenario 6, batch="
+        );
+
+        assertEq(
+            IRegistryViewFacet(diamond).getActiveTaskIds().length,
+            gstCount,
+            "every UST is above the lowered combined-length cap"
+        );
+
+        BatchSummary memory summary = _summarizeAndLog(
+            string.concat(
+                "Scenario 6: FINISHED->STARTED, auxData caps lowered, N=", vm.toString(totalTasks),
+                ", auxData entries per UST ", vm.toString(AUX_ENTRY_COUNT),
+                ", record task gas ", vm.toString(taskGas)
+            ),
+            monitorGas,
+            batchGas,
+            batchTasks
+        );
+
+        assertLt(summary.finalGas, SANITY_GAS_CEILING, "final batch gas exceeds generic sanity ceiling");
+        _assertWithinRecordGasFiguresAt(taskGas, reserve, batchGas, batchTasks);
+        assertLe(summary.finalizationPremium, reserve, "finalization premium exceeds the record finalization figure");
+    }
 
     function testCycleTransitionGas_FullFlow_SecondCycle_WithExpiredTasks() public {
         uint256 ustCount = _ustTaskCount();
@@ -815,8 +995,9 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     /// @dev On a fresh registry (a transition finalizes once), with the gas config precompile
     ///      serving `_cap`: register the full registry, start a transition, size the batches
     ///      with getRecordMaxTaskCount(_cap) and run them with the final batch carrying a full
-    ///      batch of tasks. Every batch, with the intrinsic and calldata gas the gasleft()
-    ///      bracket does not see, must fit `_cap`, the gas limit the node gives each record.
+    ///      batch of tasks. Every batch, with the intrinsic and calldata gas its metered
+    ///      execution gas does not include, must fit `_cap`, the gas limit the node gives each
+    ///      record.
     ///      `_suspendCapSizeTasks` false ends the cycle with fixture-size tasks that all survive;
     ///      true registers tasks at the data-length caps and suspends mid-cycle, so every task
     ///      is removed. The task counts follow the CYCLE_GAS_BENCH_* overrides; a larger
@@ -832,9 +1013,10 @@ contract CycleTransitionGasTest is BaseDiamondTest {
 
         uint64 cycleIndex;
         if (_suspendCapSizeTasks) {
-            (uint16 maxPayload, uint16 maxPredicate,,) = IConfigFacet(diamond).getDataLengthCaps();
-            bytes memory payload = _payloadOfLength(maxPayload);
-            bytes memory predicate = _predicateOfLength(diamond, maxPredicate);
+            uint16 maxPayload = IConfigFacet(diamond).getDataLengthCaps().maxPayloadLength;
+            uint16 maxPredicate = IConfigFacet(diamond).getDataLengthCaps().maxPredicateLength;
+            bytes memory payload = payloadOfExactLength(maxPayload);
+            bytes memory predicate = predicateOfExactLength(diamond, maxPredicate);
             _registerUstTasksWith(diamond, ustCount, uint64(block.timestamp + 86400), payload, predicate);
             _registerGstTasksWith(diamond, gstCount, payload, predicate);
 

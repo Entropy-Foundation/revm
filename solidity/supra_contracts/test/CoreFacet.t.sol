@@ -1384,6 +1384,8 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure config buffer is applied when no tasks exist during cycle end, updating the cycle duration directly.
     function testConfigBufferAppliedWhenNoTasks() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         ( , uint64 startBefore, uint64 durationBefore, ) = ICoreFacet(diamondAddr).getCycleInfo();
         assertEq(durationBefore, 1200);
 
@@ -1405,6 +1407,8 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure config buffer is applied after monitorCycleEnd + processTasks, resulting in STARTED state with the updated cycle duration.
     function testCycleTransitionAppliesConfigBuffer() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         registerUst(diamondAddr, 2450);
 
         (uint64 indexBefore, uint64 startBefore, uint64 durationBefore, ) = ICoreFacet(diamondAddr).getCycleInfo();
@@ -1456,6 +1460,8 @@ contract CoreFacetTest is BaseDiamondTest {
 
     /// @notice Test to ensure that when buffer changes cycle duration, moveToReadyState resets transition state.
     function testMoveToReadyStateResetsTransitionStateOnDurationChange() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         registerUst(diamondAddr, 2450);
 
         (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();

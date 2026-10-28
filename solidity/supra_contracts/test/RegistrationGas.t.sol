@@ -241,7 +241,8 @@ contract RegistrationGasTest is BaseDiamondTest {
     /// @dev The configured payload and predicate caps. ConfigFacet keeps both multiples of 32
     ///      (LibCommon.validateDataLengthCaps), the grid the builders below require.
     function _capLengths() internal view returns (uint256 payloadLength, uint256 predicateLength) {
-        (uint16 maxPayload, uint16 maxPredicate,,) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        uint16 maxPayload = IConfigFacet(diamondAddr).getDataLengthCaps().maxPayloadLength;
+        uint16 maxPredicate = IConfigFacet(diamondAddr).getDataLengthCaps().maxPredicateLength;
         payloadLength = maxPayload;
         predicateLength = maxPredicate;
     }

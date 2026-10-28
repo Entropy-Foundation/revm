@@ -275,6 +275,8 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' updates the config buffer.
     function testUpdateConfigBuffer() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         Config memory cfg = validConfig();
 
         vm.prank(admin);
@@ -313,6 +315,8 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' emits event 'ConfigBufferUpdated'.
     function testUpdateConfigBufferEmitsEvent() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         Config memory cfg = validConfig();
 
         vm.expectEmit(diamondAddr);
@@ -362,6 +366,8 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' reverts when registryMaxGasCap is less than gas committed for next cycle.
     function testUpdateConfigBufferRevertsWhenRegistryMaxGasCapIsLessThanGasCommittedForNextCycle() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         registerUst(diamondAddr, 2450);
         Config memory cfg = validConfig();
 
@@ -387,6 +393,8 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' reverts when sysRegistryMaxGasCap is less than system gas committed for next cycle.
     function testUpdateConfigBufferRevertsWhenSysRegistryMaxGasCapIsLessThanSysGasCommittedForNextCycle() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         registerGst(diamondAddr, 2450);
         Config memory cfg = validConfig();
 
@@ -460,6 +468,8 @@ contract ConfigFacetTest is BaseDiamondTest {
 
     /// @dev Test to ensure 'updateConfigBuffer' succeeds when congestionExponent equals maxCongestionExponent exactly.
     function testUpdateConfigBufferSucceedsAtCongestionExponentBoundary() public {
+        // The buffered config holds 500 + 500 tasks, above the default record gas maxCapacity.
+        raiseRecordMaxCapacity(diamondAddr, 1000);
         Config memory cfg = validConfig();
 
         vm.prank(admin);

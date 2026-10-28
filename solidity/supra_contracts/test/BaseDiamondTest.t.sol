@@ -11,6 +11,7 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
+import {RecordSizingParameters} from "../src/libraries/LibAppStorage.sol";
 
 abstract contract BaseDiamondTest is Test {
     WrappedSupra wsupra;                             // WrappedSupra contract
@@ -124,6 +125,39 @@ abstract contract BaseDiamondTest is Test {
         return payload;   
     }
 
+    /// @dev A payload of exactly `_totalLength` bytes, filled with non-zero bytes so every slot
+    ///      it occupies in storage is non-zero (a zero-filled one would store and clear almost
+    ///      for free). Registration only decodes the payload and length-checks its call data.
+    ///      With an empty access list abi.encode(uint128, address, bytes, AccessListEntry[]) is
+    ///      192 bytes plus the call data padded to 32; RegistrationGas.t.sol builds its cap-size
+    ///      payloads the same way. Shared by CycleTransitionGas.t.sol and RecordSizing.t.sol.
+    function payloadOfExactLength(uint256 _totalLength) internal view returns (bytes memory) {
+        require(_totalLength % 32 == 0 && _totalLength > 192 + 32, "payload length");
+        LibCommon.AccessListEntry[] memory emptyAccessList;
+        bytes memory callData = abi.encodePacked(wsupra.withdraw.selector, nonZeroBytes(_totalLength - 192 - 4));
+        return abi.encode(uint128(0), address(wsupra), callData, emptyAccessList);
+    }
+
+    /// @dev A predicate of exactly `_totalLength` bytes. Registration executes the predicate
+    ///      with a staticcall, so its call data stays a valid call: isRegistrationEnabled()
+    ///      takes no arguments and ignores the trailing bytes. abi.encode(address, bytes) is
+    ///      96 bytes plus the call data padded to 32.
+    function predicateOfExactLength(address _diamond, uint256 _totalLength) internal pure returns (bytes memory) {
+        require(_totalLength % 32 == 0 && _totalLength > 96 + 32, "predicate length");
+        bytes memory callData = abi.encodePacked(
+            IConfigFacet.isRegistrationEnabled.selector, nonZeroBytes(_totalLength - 96 - 4)
+        );
+        return abi.encode(_diamond, callData);
+    }
+
+    /// @dev Returns `_length` bytes of 0xab.
+    function nonZeroBytes(uint256 _length) internal pure returns (bytes memory out) {
+        out = new bytes(_length);
+        for (uint256 i = 0; i < _length; i++) {
+            out[i] = 0xab;
+        }
+    }
+
     /// @notice Helper function to create a predicate
     /// @param _target Address of the contract to call
     function createPredicate(address _target) internal pure returns (bytes memory) {
@@ -149,6 +183,19 @@ abstract contract BaseDiamondTest is Test {
 
         ICoreFacet(_diamond).processTasks(indexBefore + 1, _taskIndexes);
         vm.stopPrank();
+    }
+
+    /// @dev Buffers `_diamond`'s record sizing `maxCapacity` raised to `_maxCapacity` as the owner,
+    ///      keeping the task-support percentage in force. updateConfigBuffer refuses a capacity
+    ///      above the `maxCapacity` in force after the next cycle boundary
+    ///      (Entropy-Foundation/smr-moonshot#4755); tests that buffer a larger capacity for reasons
+    ///      unrelated to record sizing declare it first, as an operator would after re-running the
+    ///      benchmark at that size. Both buffers apply at the same boundary.
+    function raiseRecordMaxCapacity(address _diamond, uint32 _maxCapacity) internal {
+        RecordSizingParameters memory parameters = IConfigFacet(_diamond).getRecordSizingParameters();
+        parameters.maxCapacity = _maxCapacity;
+        vm.prank(admin);
+        IConfigFacet(_diamond).updateRecordSizingParameters(parameters);
     }
 
     /// @dev Warps to the end of `_diamond`'s current cycle and calls monitorCycleEnd as the VM

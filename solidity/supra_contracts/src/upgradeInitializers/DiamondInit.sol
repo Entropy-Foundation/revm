@@ -15,7 +15,7 @@ import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
 import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
-import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
+import { AppStorage, Config, LibAppStorage, RecordSizingParameters, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
 import { InitParams } from "../libraries/DiamondTypes.sol";
@@ -52,31 +52,6 @@ contract DiamondInit is Initializable {
     ///      (LibCommon.validateDataLengthCaps); init validates and stores these same constants.
     uint16 internal constant DEFAULT_MAX_PAYLOAD_LENGTH = 4096;
     uint16 internal constant DEFAULT_MAX_PREDICATE_LENGTH = 2048;
-
-    /// @dev Default gas figures that size a `processTasks` bookkeeping record
-    ///      (LibCommon.recordMaxTaskCount, Entropy-Foundation/smr-moonshot#4755), from
-    ///      test/CycleTransitionGas.t.sol at a 200-task registry, measured with the registry's
-    ///      storage cold as in a record transaction. The test asserts the measured batches
-    ///      against these figures.
-    ///      - A removed task costs 109,099 gas with the fixture's 24 words of payload and
-    ///        predicate (scenario 2) and 487,432 with 192 words at the default data-length
-    ///        caps (scenario 4): 2,252 gas per stored word on top of 55,051. Rounded up:
-    ///        DEFAULT_RECORD_GAS_PER_STORED_WORD = 2,500, DEFAULT_RECORD_GAS_PER_TASK = 60,000.
-    ///        A task that survives a transition costs less (scenario 1, about 40,000).
-    ///      - The batch finalizing a FINISHED -> STARTED transition costs 1,366,562 gas more than
-    ///        its tasks at the average non-final rate, 6,832 per task of the 200 the registry
-    ///        holds (scenario 1). Per surviving task the premium grows with the registry: about
-    ///        5,970 at 100 tasks and 7,441 at 400, and 7,933 at 310 tasks, where the final batch
-    ///        carries 10. DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK = 8,500 covers registries of
-    ///        up to 400 tasks; a larger capacity needs the benchmark re-run at that size.
-    uint64 internal constant DEFAULT_RECORD_GAS_PER_TASK = 60_000;
-    uint64 internal constant DEFAULT_RECORD_GAS_PER_STORED_WORD = 2_500;
-    uint64 internal constant DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK = 8_500;
-    /// @dev Default share, in percent, of a record's gas limit budgeted for its tasks and the
-    ///      finalization reserve, the Move registry's `TASK_SUPPORT_FACTOR`. The other 20% covers
-    ///      the transaction's intrinsic gas and calldata, which CycleTransitionGas.t.sol's
-    ///      derived-size tests add to every measured record before comparing it with the cap.
-    uint8 internal constant DEFAULT_RECORD_TASK_SUPPORT_PERCENTAGE = 80;
 
     /// @notice Initializes Automation Registry state in Diamond storage
     /// @param _params Initialization parameters for the Automation Registry.
@@ -131,7 +106,7 @@ contract DiamondInit is Initializable {
             maxCongestionExponent: _params.maxCongestionExponent
         });
         
-        s.configuration[LibAppStorage.ACTIVE_CONFIG] = activeConfig;
+        s.configuration[LibAppStorage.ACTIVE_ENTRY] = activeConfig;
 
         s.automationEnabled = _params.automationEnabled;
         s.registrationEnabled = _params.registrationEnabled;
@@ -143,25 +118,36 @@ contract DiamondInit is Initializable {
         // validateDataLengthCaps enforces word alignment here as in
         // ConfigFacet.updateDataLengthCaps, on the same constants that are stored.
         LibCommon.validateDataLengthCaps(DEFAULT_MAX_PAYLOAD_LENGTH, DEFAULT_MAX_PREDICATE_LENGTH);
-        s.maxPayloadLength = DEFAULT_MAX_PAYLOAD_LENGTH;
-        s.maxPredicateLength = DEFAULT_MAX_PREDICATE_LENGTH;
-        s.maxAuxDataLength = 0;
-        s.maxAuxDataEntries = 0;
+        s.dataLengthCaps[LibAppStorage.ACTIVE_ENTRY] = LibCommon.newDataLengthCaps(DEFAULT_MAX_PAYLOAD_LENGTH, DEFAULT_MAX_PREDICATE_LENGTH, 0, 0);
 
-        // Default record gas figures and task-support percentage. Only the range checks apply
-        // here: the check against the per-transaction cap (LibCommon.requireRecordBudgetFits)
-        // reads the gas config precompile, which does not serve a value when the registry is
-        // initialised. The owner changes them with ConfigFacet.updateRecordGasParameters.
-        LibCommon.validateRecordGasParameters(
-            DEFAULT_RECORD_GAS_PER_TASK,
-            DEFAULT_RECORD_GAS_PER_STORED_WORD,
-            DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK,
-            DEFAULT_RECORD_TASK_SUPPORT_PERCENTAGE
-        );
-        s.recordGasPerTask = DEFAULT_RECORD_GAS_PER_TASK;
-        s.recordGasPerStoredWord = DEFAULT_RECORD_GAS_PER_STORED_WORD;
-        s.recordFinalizationGasPerTask = DEFAULT_RECORD_FINALIZATION_GAS_PER_TASK;
-        s.recordTaskSupportPercentage = DEFAULT_RECORD_TASK_SUPPORT_PERCENTAGE;
+        // Records are sized for the stored-words bound of the caps in force; no task is
+        // registered yet (AppStorage.taskStoredWordsBound, Entropy-Foundation/smr-moonshot#4755).
+        s.taskStoredWordsBound = LibAppStorage.activeDataLengthCaps().storedWords;
+
+        // Default record sizing parameters (AppStorage.recordSizingParameters,
+        // Entropy-Foundation/smr-moonshot#4755): the largest task-support percentage the benchmark
+        // supports, and as maxCapacity the capacity the gas figures in LibCommon were measured at,
+        // or the initial capacity if larger: InitParams carries no maxCapacity, so a larger
+        // genesis capacity declares, as raising maxCapacity later does, that the benchmark was run
+        // at that size. Genesis uses MAX_SUPPORTED_AUTOMATION_TASKS (crates/supra-extension),
+        // below the measured capacity, and a compile-time assertion there keeps it so. A larger
+        // initial capacity is accepted rather than refused because the registry's own gas
+        // benchmarks deploy above it (MonitorCycleEndGas.t.sol scans up to 4,000 tasks) and
+        // cannot raise the capacity after genesis without a cycle boundary changing what they
+        // measure. Only the range checks apply here: the check against the
+        // per-transaction cap (LibCommon.requireRecordSizingFits) reads the gas config
+        // precompile, which does not serve a value when the registry is initialised.
+        uint256 initialCapacity = uint256(_params.taskCapacity) + uint256(_params.sysTaskCapacity);
+        uint32 maxCapacity = LibCommon.RECORD_GAS_BENCHMARK_CAPACITY;
+        // A sum of two uint16 capacities fits a uint32.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (initialCapacity > maxCapacity) { maxCapacity = uint32(initialCapacity); }
+        RecordSizingParameters memory recordSizingParameters = RecordSizingParameters({
+            taskSupportPercentage: LibCommon.MAX_RECORD_TASK_SUPPORT_PERCENTAGE,
+            maxCapacity: maxCapacity
+        });
+        LibCommon.validateRecordSizingParameters(recordSizingParameters);
+        s.recordSizingParameters[LibAppStorage.ACTIVE_ENTRY] = recordSizingParameters;
 
         // ---------------------------------------------------------------------
         //                          Cycle initialization

@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
+import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
@@ -60,13 +61,17 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
         // 65,504 is the largest multiple of 32 a uint16 holds; payload and predicate caps must
         // be multiples of 32 (LibCommon.validateDataLengthCaps).
         // At these caps a task can store more than a record at the per-transaction cap can
-        // clear, so updateDataLengthCaps refuses them under the default record gas figures
-        // (LibCommon.requireRecordBudgetFits). This test does not size records; the figures
-        // are lowered to their minimum, and the whole gas limit budgeted, first so the caps are
-        // accepted.
-        IConfigFacet(dep.diamond).updateRecordGasParameters(1, 1, 1, 100);
+        // clear, so updateDataLengthCaps refuses them at the production cap
+        // (LibCommon.requireRecordBudgetFits). This test does not size records; the cap the
+        // check reads is raised while the caps are buffered, and restored after.
+        EvmGasConfigMock.mockTxGasLimitCap(vm, type(uint64).max);
         IConfigFacet(dep.diamond).updateDataLengthCaps(65_504, 65_504, type(uint16).max, type(uint16).max);
+        EvmGasConfigMock.mockTxGasLimitCap(vm, EvmGasConfigMock.DEFAULT_TX_GAS_LIMIT_CAP);
         vm.stopPrank();
+        // The caps apply at the sibling's next cycle boundary. Both diamonds were deployed in the
+        // same block with the same cycle duration, so this is also the main diamond's cycle end,
+        // which chargeSoleTaskAndMeasureGas warps to later.
+        endCycleAsVmSigner(dep.diamond);
         return dep.diamond;
     }
 

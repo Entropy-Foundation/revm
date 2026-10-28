@@ -129,6 +129,21 @@ interface ICoreFacet {
         bytes32 txHash
     );
 
+    /// @notice Emitted when a cycle transition drops a task whose stored payloadTx, predicate or
+    /// auxData is above data-length caps lowered at the start of that transition
+    /// (ConfigFacet.updateDataLengthCaps, Entropy-Foundation/smr-moonshot#4755).
+    /// @dev depositRefund is the whole deposit of a UST and 0 for a GST, which pays none; it is 0
+    /// if the deposit could not be transferred, which an ErrorUnlockTaskDepositFee or
+    /// ErrorInsufficientBalanceToRefund event then records. No cycle fee is refunded: the ended
+    /// cycle's fee was earned and the new cycle's fee has not been charged.
+    event TaskRemovedByDataLengthCaps(
+        uint64 indexed taskIndex,
+        address indexed owner,
+        LibCommon.TaskType indexed taskType,
+        uint128 depositRefund,
+        bytes32 txHash
+    );
+
     // =============================================================
     //                      Custom errors
     // =============================================================

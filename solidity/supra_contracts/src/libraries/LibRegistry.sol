@@ -37,7 +37,7 @@ library LibRegistry {
 
     /// @notice Helper function to validate the inputs while registering a task.
     function validateInputs(bytes memory _payloadTx, uint128 _maxGasAmount) private view {
-        if (_payloadTx.length > LibAppStorage.appStorage().maxPayloadLength) revert IRegistryFacet.PayloadTooLarge();
+        if (LibCommon.payloadAboveCap(_payloadTx.length)) revert IRegistryFacet.PayloadTooLarge();
         // payloadTx is the ABI encoding of (uint128, address, bytes, AccessListEntry[]), a whole
         // number of 32-byte words. abi.decode below tolerates trailing bytes, so the length is
         // checked here; this also makes the word-aligned maxPayloadLength the largest admitted
@@ -53,14 +53,13 @@ library LibRegistry {
 
     /// @notice Helper function to validate the combined size of a task's auxData entries.
     function validateAuxData(bytes[] memory _auxData) private view {
-        AppStorage storage s = LibAppStorage.appStorage();
-        if (_auxData.length > s.maxAuxDataEntries) revert IRegistryFacet.AuxDataTooLarge();
+        if (LibCommon.auxDataEntriesAboveCap(_auxData.length)) revert IRegistryFacet.AuxDataTooLarge();
 
         uint256 totalLength;
         for (uint256 i = 0; i < _auxData.length; i++) {
             totalLength += _auxData[i].length;
         }
-        if (totalLength > s.maxAuxDataLength) revert IRegistryFacet.AuxDataTooLarge();
+        if (LibCommon.auxDataLengthAboveCap(totalLength)) revert IRegistryFacet.AuxDataTooLarge();
     }
 
     /// @notice Read tx hash via precompile. Reverts if precompile missing/fails.
@@ -112,7 +111,7 @@ library LibRegistry {
     /// @param _predicate Predicate to validate
     /// @param gasAmount Gas amount to use for the static call
     function validatePredicate(bytes memory _predicate, uint128 gasAmount) private view {
-        if (_predicate.length > LibAppStorage.appStorage().maxPredicateLength) revert IRegistryFacet.PredicateTooLarge();
+        if (LibCommon.predicateAboveCap(_predicate.length)) revert IRegistryFacet.PredicateTooLarge();
         // predicate is the ABI encoding of (address, bytes), a whole number of 32-byte words;
         // abi.decode below tolerates trailing bytes, so the length is checked here.
         if (_predicate.length % 32 != 0) revert IRegistryFacet.PredicateNotWordAligned();

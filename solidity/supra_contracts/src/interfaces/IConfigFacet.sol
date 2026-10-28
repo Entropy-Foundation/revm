@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {Config} from "../libraries/LibAppStorage.sol";
+import {Config, DataLengthCaps, RecordSizingParameters} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 
 interface IConfigFacet {
@@ -51,18 +51,14 @@ interface IConfigFacet {
         uint128 cycleFeeRefund
     );
 
-    /// @notice Emitted when the task registration input size caps are updated.
-    event DataLengthCapsUpdated(uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
+    /// @notice Emitted when task registration input size caps are buffered for the next cycle
+    /// boundary (`updateDataLengthCaps`).
+    event DataLengthCapsBufferUpdated(DataLengthCaps pendingCaps);
 
-    /// @notice Emitted when the gas figures and the task-support percentage that size a
-    /// `processTasks` record are updated (Entropy-Foundation/smr-moonshot#4755).
-    /// @dev The log has no indexed parameter; the values are in the log data.
-    event RecordGasParametersUpdated(
-        uint64 recordGasPerTask,
-        uint64 recordGasPerStoredWord,
-        uint64 recordFinalizationGasPerTask,
-        uint8 recordTaskSupportPercentage
-    );
+    /// @notice Emitted when the owner-set parameters that size a `processTasks` record are
+    /// buffered for the next cycle boundary (`updateRecordSizingParameters`,
+    /// Entropy-Foundation/smr-moonshot#4755).
+    event RecordSizingParametersBufferUpdated(RecordSizingParameters pendingParameters);
 
 
     // =============================================================
@@ -86,8 +82,11 @@ interface IConfigFacet {
     function getConfig() external view returns (Config memory);
     function getConfigBuffer() external view returns (Config memory);
     function isRegistrationEnabled() external view returns (bool);
-    function getDataLengthCaps() external view returns (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries);
-    function getRecordGasParameters() external view returns (uint64 recordGasPerTask, uint64 recordGasPerStoredWord, uint64 recordFinalizationGasPerTask, uint8 recordTaskSupportPercentage);
+    function getDataLengthCaps() external view returns (DataLengthCaps memory);
+    function getDataLengthCapsBuffer() external view returns (DataLengthCaps memory);
+    function getRecordSizingParameters() external view returns (RecordSizingParameters memory);
+    function getRecordSizingParametersBuffer() external view returns (RecordSizingParameters memory);
+    function getTaskStoredWordsBound() external view returns (uint32);
 
     // =============================================================
     //                  State update functions
@@ -119,10 +118,5 @@ interface IConfigFacet {
         uint16 _maxAuxDataLength,
         uint16 _maxAuxDataEntries
     ) external;
-    function updateRecordGasParameters(
-        uint64 _recordGasPerTask,
-        uint64 _recordGasPerStoredWord,
-        uint64 _recordFinalizationGasPerTask,
-        uint8 _recordTaskSupportPercentage
-    ) external;
+    function updateRecordSizingParameters(RecordSizingParameters calldata _parameters) external;
 }

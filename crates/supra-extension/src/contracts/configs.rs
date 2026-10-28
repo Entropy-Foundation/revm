@@ -22,12 +22,16 @@ use std::collections::HashSet;
 /// See issue #3445 for background.
 ///
 /// The capacity also sizes the registry's `processTasks` bookkeeping records: each record
-/// reserves the finalization cost of a transition, `recordFinalizationGasPerTask` per task the
-/// registry can hold, and `CoreFacet.getRecordMaxTaskCount` applies the active capacity itself
-/// (Entropy-Foundation/smr-moonshot#4755). The default figure covers registries of up to 400
-/// tasks; above that, `solidity/supra_contracts/test/CycleTransitionGas.t.sol` is re-run at the
-/// new size and the figure raised with `ConfigFacet.updateRecordGasParameters` before the
-/// capacity. See `AUTOMATION_REGISTRY_GAS_GUIDE.md`, "How the node sizes a record".
+/// reserves the finalization cost of a transition, `LibCommon.RECORD_FINALIZATION_GAS_PER_TASK`
+/// per task the registry can hold, and `CoreFacet.getRecordMaxTaskCount` applies the active
+/// capacity itself (Entropy-Foundation/smr-moonshot#4755). The record gas figures are derived at
+/// 400 tasks, and `ConfigFacet.updateConfigBuffer` refuses a capacity above the registry's
+/// `RecordSizingParameters.maxCapacity` (400 by default, or this genesis capacity if larger). To
+/// go beyond it, `solidity/supra_contracts/test/CycleTransitionGas.t.sol` is re-run at the new
+/// size; if the figures still cover it, `maxCapacity` is raised with
+/// `ConfigFacet.updateRecordSizingParameters` before the capacity is buffered, and otherwise the
+/// figures are re-derived in a contract upgrade. See
+/// `AUTOMATION_REGISTRY_GAS_GUIDE.md`, "How the node sizes a record".
 ///
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
@@ -59,6 +63,14 @@ use std::collections::HashSet;
 // `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
 // applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).
 pub const MAX_SUPPORTED_AUTOMATION_TASKS: u16 = 200;
+
+/// Registry capacity the automation registry's record gas figures are measured at, the
+/// contract's `LibCommon.RECORD_GAS_BENCHMARK_CAPACITY` (Entropy-Foundation/smr-moonshot#4755).
+/// `DiamondInit` sets `RecordSizingParameters.maxCapacity` to it, or to the genesis capacity if
+/// larger, which would declare without a benchmark run that the record gas figures cover the
+/// larger registry. The assertion below keeps every genesis capacity within it.
+const RECORD_GAS_BENCHMARK_CAPACITY: u16 = 400;
+const _: () = assert!(MAX_SUPPORTED_AUTOMATION_TASKS <= RECORD_GAS_BENCHMARK_CAPACITY);
 
 /// Default maximum allowable duration (in seconds) from the registration time that a user
 /// automation task can run. Set to 7 days.
