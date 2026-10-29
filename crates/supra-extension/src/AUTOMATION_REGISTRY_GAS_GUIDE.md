@@ -617,12 +617,13 @@ cap, check `getRecordMaxTaskCount(newCap)` against the registry.
 ### Trigger calls
 
 `monitorCycleEnd` and `disableAutomation` are not `processTasks` records. At the 200-task
-cap `monitorCycleEnd` spends about 1.95M gas before refunds when it starts a transition, and
-3.78M at 400 tasks; `disableAutomation` costs about 1.97M as a transaction. The table in
-`configs.rs`'s `MAX_SUPPORTED_AUTOMATION_TASKS` documentation (1,414,028 at 200 tasks) comes
-from `MonitorCycleEndGas.t.sol`, which registers and measures in one transaction and so does
-not price the transition as a chain does; size the trigger from this benchmark's figures,
-with headroom, until that table is re-measured. For `monitorCycleEnd`, "size" means the
+cap `monitorCycleEnd` spends 1,945,671 gas before refunds when it starts a transition, and
+3,776,612 at 400 tasks; `disableAutomation` costs about 1.97M as a transaction.
+`MonitorCycleEndGas.t.sol`, measured the same way, gives the same 200-task figure and the
+table in `configs.rs`'s `MAX_SUPPORTED_AUTOMATION_TASKS` documentation (50 to 800 tasks); its
+boundary scan puts the most tasks that fit `BLOCK_METADATA_GAS_LIMIT` at 1,819. Register
+`monitorCycleEnd` with headroom over the figure for the registry's capacity, for instance
+2,500,000 at 200 tasks. For `monitorCycleEnd`, "size" means the
 `selectorGasLimit` it was registered with in `BlockMeta` (see "How `monitorCycleEnd`
 relates to `BlockMeta::blockPrologue`" above) — this is **not** automatically kept in sync
 with `taskCapacity`/`sysTaskCapacity`, so re-check it specifically whenever either capacity

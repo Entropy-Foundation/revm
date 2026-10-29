@@ -30,7 +30,19 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 ///   B. At what task count does the cumulative gas exceed 16_777_216?
 ///
 /// Every test logs its gas figures so the output of `forge test -vv` can be used
-/// as a reference when sizing the task registry capacity.
+/// as a reference when sizing the task registry capacity, and the `selectorGasLimit`
+/// monitorCycleEnd is registered with in BlockMeta.
+///
+/// The suite runs in isolation mode (the inline config below): every top-level call the test
+/// makes, each registration and the measured monitorCycleEnd included, executes as its own
+/// transaction with the state of the calls before it committed, as on a chain, where
+/// monitorCycleEnd runs in a later block's prologue than the registrations. Without it, a test
+/// is one transaction: every slot monitorCycleEnd reads was already touched by registration
+/// earlier in it and is charged warm, and a slot registration wrote is charged as a write to a
+/// slot dirtied in the same transaction (EIP-2200), so the figures read about a quarter low.
+/// monitorCycleEnd is metered before refunds (BaseDiamondTest.meteredVmSignerCall), the gas
+/// its registered limit has to cover.
+/// forge-config: default.isolate = true
 contract MonitorCycleEndGasTest is BaseDiamondTest {
 
     /// @dev Hard gas budget imposed by Supra's blockPrologue on this call path.
@@ -41,8 +53,8 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      N200-N400 tests each deploy a diamond with a capacity matching their own N,
     ///      so they are unaffected by this constant.
     ///      uint16 matches the type of InitParams.taskCapacity. The scan's upper bound must
-    ///      exceed the safe task limit, or the scan reports the bound itself; the limit is
-    ///      2,504 tasks with uint64[] task-ID lists (#4285).
+    ///      exceed the safe task limit, or the scan reports the bound itself (see
+    ///      testMonitorCycleEndGas_BoundaryScan for the current limit).
     uint16 constant LARGE_CAPACITY = 4000;
 
     // ────────────────────────────────────────────────────────────────────────
@@ -125,27 +137,22 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     }
 
     /// @dev Advance time past the cycle boundary, call monitorCycleEnd as the
-    ///      VM signer, and return the gas consumed.
+    ///      VM signer in its own transaction, and return its execution gas before
+    ///      refunds (BaseDiamondTest.meteredVmSignerCall).
     ///
     ///      Gas metering is done with gasleft() brackets rather than Forge's
     ///      `vm.pauseGasMetering` so that storage-access costs (SLOAD/SSTORE)
     ///      are captured faithfully — pauseGasMetering would zero those out.
     ///
-    ///      The measured value is slightly higher than the bare function cost
-    ///      because the CALL opcode overhead and return data copying are included.
-    ///      This conservative over-count is appropriate: the production caller
-    ///      (blockPrologue) incurs the same overhead.
+    ///      The measured value includes the CALL into the registry as a cold call
+    ///      target and its return data copying, as blockPrologue's call to it does.
     function _measureMonitorCycleEnd(address _diamond) internal returns (uint256 gasUsed) {
         // Warp to exactly the cycle boundary so the end condition triggers.
         (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTime + durationSecs);
 
-        // monitorCycleEnd checks tx.origin, not msg.sender alone.
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-
-        uint256 before = gasleft();
-        ICoreFacet(_diamond).monitorCycleEnd();
-        gasUsed = before - gasleft();
+        // monitorCycleEnd checks tx.origin, which meteredVmSignerCall sets to the VM signer.
+        gasUsed = meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
     }
 
     /// @dev Overwrites `RegistryState.orderedTaskIds` (the append-only array

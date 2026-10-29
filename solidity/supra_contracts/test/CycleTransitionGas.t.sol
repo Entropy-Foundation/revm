@@ -13,27 +13,6 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 import {Config} from "../src/libraries/LibAppStorage.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 
-/// @dev Measures the execution gas of one call it makes, before refunds. The benchmark etches it
-///      at LibUtils.VM_SIGNER and calls it as its own isolated transaction, so that the measured
-///      call sees the registry state earlier transactions committed, and comes from VM_SIGNER as
-///      monitorCycleEnd and processTasks require. A transaction's gas used, which the test sees
-///      for an isolated call, has its refunds subtracted, up to a fifth of the gas (EIP-3529),
-///      while a record's gas limit has to cover the gas before them; storage clears earn large
-///      refunds, so a removal measured that way reads about a fifth low.
-contract ExecutionGasMeter {
-    /// @return gasUsed Gas the call used, refunds not subtracted.
-    function measure(address _target, bytes calldata _data) external returns (uint256 gasUsed) {
-        uint256 before = gasleft();
-        (bool ok, bytes memory returned) = _target.call(_data);
-        gasUsed = before - gasleft();
-        if (!ok) {
-            assembly ("memory-safe") {
-                revert(add(returned, 32), mload(returned))
-            }
-        }
-    }
-}
-
 /// @notice Gas benchmark for the automation-registry's cycle-transition flows, by
 ///         default at the production task-registry cap (200 tasks: 160 UST + 40 GST,
 ///         matching LibDiamondUtils.defaultInitParams()), submitted as batches of 25
@@ -299,33 +278,23 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         }
     }
 
-    /// @dev Execution gas, before refunds, of `_data` sent to `_diamond` from VM_SIGNER as its
-    ///      own transaction (ExecutionGasMeter): the gas a record's limit has to cover apart from
-    ///      intrinsic gas and calldata, which _requiredGasLimit adds.
-    function _meteredVmSignerCall(address _diamond, bytes memory _data) internal returns (uint256) {
-        if (LibUtils.VM_SIGNER.code.length == 0) {
-            vm.etch(LibUtils.VM_SIGNER, type(ExecutionGasMeter).runtimeCode);
-        }
-        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
-        return ExecutionGasMeter(LibUtils.VM_SIGNER).measure(_diamond, _data);
-    }
-
     /// @dev Warps to the cycle boundary and measures monitorCycleEnd's execution gas, before
-    ///      refunds, as the BlockMeta prologue's call to it spends it (_meteredVmSignerCall).
+    ///      refunds, as the BlockMeta prologue's call to it spends it
+    ///      (BaseDiamondTest.meteredVmSignerCall).
     function _measureMonitorCycleEnd(address _diamond) internal returns (uint256 gasUsed) {
         (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(_diamond).getCycleInfo();
         vm.warp(startTime + durationSecs);
-        gasUsed = _meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
+        gasUsed = meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
     }
 
     /// @dev Measures a single processTasks batch's execution gas, before refunds, as its own
-    ///      transaction (_meteredVmSignerCall).
+    ///      transaction (BaseDiamondTest.meteredVmSignerCall).
     function _measureProcessTasksBatch(
         address _diamond,
         uint64 _cycleIndex,
         uint64[] memory _indexes
     ) internal returns (uint256 gasUsed) {
-        gasUsed = _meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.processTasks, (_cycleIndex, _indexes)));
+        gasUsed = meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.processTasks, (_cycleIndex, _indexes)));
     }
 
     /// @dev Builds the contiguous range of task indexes `[_start, _start + _count)`.

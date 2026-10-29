@@ -118,8 +118,10 @@ left-padded with zeros.
   `BlockMeta.register` refuses a registration over it, and `InitializeCycleMonitoring` refuses to
   submit one. With the default cap of 16,777,216 and no other entries, the bound is 16,515,072.
 - **Lower bound.** The worst-case cost of `monitorCycleEnd` at the registry's current
-  `taskCapacity + sysTaskCapacity`, from `crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md`
-  (about 1.5M gas at the 200-task cap). An entry that runs out of gas emits `CallFailed` and
+  `taskCapacity + sysTaskCapacity`, plus headroom: 1,945,671 gas at the 200-task cap and
+  3,776,612 at 400, measured before refunds as on a chain (`test/MonitorCycleEndGas.t.sol`,
+  `crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md`, "Trigger calls"); for
+  instance 2,500,000 at 200 tasks. An entry that runs out of gas emits `CallFailed` and
   nothing else: the cycle stops advancing without any error.
 - The smr-moonshot localnet end-to-end tests register 9,000,000.
 

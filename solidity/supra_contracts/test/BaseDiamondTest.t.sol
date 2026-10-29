@@ -11,6 +11,7 @@ import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamo
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
+import {ExecutionGasMeter} from "./ExecutionGasMeter.sol";
 import {RecordSizingParameters} from "../src/libraries/LibAppStorage.sol";
 
 abstract contract BaseDiamondTest is Test {
@@ -196,6 +197,21 @@ abstract contract BaseDiamondTest is Test {
         parameters.maxCapacity = _maxCapacity;
         vm.prank(admin);
         IConfigFacet(_diamond).updateRecordSizingParameters(parameters);
+    }
+
+    /// @dev Execution gas, before refunds, of `_data` sent to `_diamond` from VM_SIGNER, as
+    ///      monitorCycleEnd and processTasks require (ExecutionGasMeter, etched at VM_SIGNER on
+    ///      first use). In a suite running in isolation mode the call is its own transaction, so
+    ///      it starts cold and sees the state earlier calls committed, as on a chain; the target
+    ///      is charged as a cold call target, as BlockMeta's call to monitorCycleEnd is and 2,500
+    ///      gas over a record transaction, which has the registry warm as its recipient. The
+    ///      figure excludes a transaction's intrinsic gas and calldata.
+    function meteredVmSignerCall(address _diamond, bytes memory _data) internal returns (uint256) {
+        if (LibUtils.VM_SIGNER.code.length == 0) {
+            vm.etch(LibUtils.VM_SIGNER, type(ExecutionGasMeter).runtimeCode);
+        }
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        return ExecutionGasMeter(LibUtils.VM_SIGNER).measure(_diamond, _data);
     }
 
     /// @dev Warps to the end of `_diamond`'s current cycle and calls monitorCycleEnd as the VM
