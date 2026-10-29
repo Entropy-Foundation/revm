@@ -10,7 +10,7 @@ import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
-import {TaskMetadata} from "../src/libraries/LibAppStorage.sol";
+import {DataLengthCaps, TaskMetadata} from "../src/libraries/LibAppStorage.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 
 contract RegistryFacetTest is BaseDiamondTest {
@@ -873,19 +873,41 @@ contract RegistryFacetTest is BaseDiamondTest {
         IConfigFacet(diamondAddr).updateDataLengthCaps(8192, 4096, 100, 10);
     }
 
-    /// @dev Test to ensure 'updateDataLengthCaps' updates the caps and emits an event.
-    function testUpdateDataLengthCapsEmitsEvent() public {
-        vm.expectEmit(true, false, false, true);
-        emit IConfigFacet.DataLengthCapsUpdated(8192, 4096, 100, 10);
+    /// @dev Test to ensure 'updateDataLengthCaps' buffers the caps, emits an event, and that the
+    /// caps apply at the next cycle boundary (Entropy-Foundation/smr-moonshot#4755).
+    function testUpdateDataLengthCapsBuffersUntilCycleBoundary() public {
+        DataLengthCaps memory expected = LibCommon.newDataLengthCaps(8192, 4096, 100, 10);
+        vm.expectEmit(diamondAddr);
+        emit IConfigFacet.DataLengthCapsBufferUpdated(expected);
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).updateDataLengthCaps(8192, 4096, 100, 10);
 
-        (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        DataLengthCaps memory buffered = IConfigFacet(diamondAddr).getDataLengthCapsBuffer();
+        assertEq(buffered.maxPayloadLength, 8192);
+        assertEq(buffered.storedWords, expected.storedWords);
+        // Registrations are still checked against the caps in force.
+        uint16 maxPayloadLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPayloadLength;
+        uint16 maxPredicateLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPredicateLength;
+        uint16 maxAuxDataLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataLength;
+        uint16 maxAuxDataEntries = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataEntries;
+        assertEq(maxPayloadLength, 4096);
+        assertEq(maxAuxDataEntries, 0);
+
+        endCycleAsVmSigner(diamondAddr);
+
+        maxPayloadLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPayloadLength;
+
+        maxPredicateLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPredicateLength;
+
+        maxAuxDataLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataLength;
+
+        maxAuxDataEntries = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataEntries;
         assertEq(maxPayloadLength, 8192);
         assertEq(maxPredicateLength, 4096);
         assertEq(maxAuxDataLength, 100);
         assertEq(maxAuxDataEntries, 10);
+        assertEq(IConfigFacet(diamondAddr).getDataLengthCapsBuffer().maxPayloadLength, 0, "buffer cleared");
     }
 
     /// @dev Test to ensure 'updateDataLengthCaps' rejects a payload cap that is not a multiple of 32:
@@ -938,20 +960,26 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure the auxData caps are not constrained to multiples of 32, and that the
     /// default payload and predicate caps set at deployment are multiples of 32.
     function testDataLengthCapsAlignmentAppliesToPayloadAndPredicateOnly() public {
-        (uint16 maxPayloadLength, uint16 maxPredicateLength, , ) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        uint16 maxPayloadLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPayloadLength;
+        uint16 maxPredicateLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPredicateLength;
         assertEq(maxPayloadLength % 32, 0, "default payload cap is word-aligned");
         assertEq(maxPredicateLength % 32, 0, "default predicate cap is word-aligned");
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2048, 101, 3);
-        (, , uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        endCycleAsVmSigner(diamondAddr);
+        uint16 maxAuxDataLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataLength;
+        uint16 maxAuxDataEntries = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataEntries;
         assertEq(maxAuxDataLength, 101, "auxData length cap is not constrained");
         assertEq(maxAuxDataEntries, 3);
     }
 
     /// @dev Test to ensure the default data length caps set at init match the documented defaults.
     function testGetDataLengthCapsReturnsDefaults() public view {
-        (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) = IConfigFacet(diamondAddr).getDataLengthCaps();
+        uint16 maxPayloadLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPayloadLength;
+        uint16 maxPredicateLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxPredicateLength;
+        uint16 maxAuxDataLength = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataLength;
+        uint16 maxAuxDataEntries = IConfigFacet(diamondAddr).getDataLengthCaps().maxAuxDataEntries;
         assertEq(maxPayloadLength, 4096);
         assertEq(maxPredicateLength, 2048);
         assertEq(maxAuxDataLength, 0);
@@ -1059,6 +1087,8 @@ contract RegistryFacetTest is BaseDiamondTest {
 
         vm.prank(admin);
         IConfigFacet(diamondAddr).updateDataLengthCaps(4096, 2048, 100, 2);
+        // The caps apply at the next cycle boundary.
+        endCycleAsVmSigner(diamondAddr);
 
         vm.startPrank(alice);
         wsupra.deposit{value: 100 ether}();

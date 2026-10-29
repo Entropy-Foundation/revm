@@ -15,7 +15,7 @@ import { IERC173 } from "../interfaces/IERC173.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
 import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
-import { AppStorage, Config, LibAppStorage, RegistryState} from "../libraries/LibAppStorage.sol";
+import { AppStorage, Config, LibAppStorage, RecordSizingParameters, RegistryState} from "../libraries/LibAppStorage.sol";
 import { LibCommon } from "../libraries/LibCommon.sol";
 import { LibUtils } from "../libraries/LibUtils.sol";
 import { InitParams } from "../libraries/DiamondTypes.sol";
@@ -106,7 +106,7 @@ contract DiamondInit is Initializable {
             maxCongestionExponent: _params.maxCongestionExponent
         });
         
-        s.configuration[LibAppStorage.ACTIVE_CONFIG] = activeConfig;
+        s.configuration[LibAppStorage.ACTIVE_ENTRY] = activeConfig;
 
         s.automationEnabled = _params.automationEnabled;
         s.registrationEnabled = _params.registrationEnabled;
@@ -118,10 +118,36 @@ contract DiamondInit is Initializable {
         // validateDataLengthCaps enforces word alignment here as in
         // ConfigFacet.updateDataLengthCaps, on the same constants that are stored.
         LibCommon.validateDataLengthCaps(DEFAULT_MAX_PAYLOAD_LENGTH, DEFAULT_MAX_PREDICATE_LENGTH);
-        s.maxPayloadLength = DEFAULT_MAX_PAYLOAD_LENGTH;
-        s.maxPredicateLength = DEFAULT_MAX_PREDICATE_LENGTH;
-        s.maxAuxDataLength = 0;
-        s.maxAuxDataEntries = 0;
+        s.dataLengthCaps[LibAppStorage.ACTIVE_ENTRY] = LibCommon.newDataLengthCaps(DEFAULT_MAX_PAYLOAD_LENGTH, DEFAULT_MAX_PREDICATE_LENGTH, 0, 0);
+
+        // Records are sized for the stored-words bound of the caps in force; no task is
+        // registered yet (AppStorage.taskStoredWordsBound, Entropy-Foundation/smr-moonshot#4755).
+        s.taskStoredWordsBound = LibAppStorage.activeDataLengthCaps().storedWords;
+
+        // Default record sizing parameters (AppStorage.recordSizingParameters,
+        // Entropy-Foundation/smr-moonshot#4755): the largest task-support percentage the benchmark
+        // supports, and as maxCapacity the capacity the gas figures in LibCommon were measured at,
+        // or the initial capacity if larger: InitParams carries no maxCapacity, so a larger
+        // genesis capacity declares, as raising maxCapacity later does, that the benchmark was run
+        // at that size. Genesis uses MAX_SUPPORTED_AUTOMATION_TASKS (crates/supra-extension),
+        // below the measured capacity, and a compile-time assertion there keeps it so. A larger
+        // initial capacity is accepted rather than refused because the registry's own gas
+        // benchmarks deploy above it (MonitorCycleEndGas.t.sol scans up to 4,000 tasks) and
+        // cannot raise the capacity after genesis without a cycle boundary changing what they
+        // measure. Only the range checks apply here: the check against the
+        // per-transaction cap (LibCommon.requireRecordSizingFits) reads the gas config
+        // precompile, which does not serve a value when the registry is initialised.
+        uint256 initialCapacity = uint256(_params.taskCapacity) + uint256(_params.sysTaskCapacity);
+        uint32 maxCapacity = LibCommon.RECORD_GAS_BENCHMARK_CAPACITY;
+        // A sum of two uint16 capacities fits a uint32.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (initialCapacity > maxCapacity) { maxCapacity = uint32(initialCapacity); }
+        RecordSizingParameters memory recordSizingParameters = RecordSizingParameters({
+            taskSupportPercentage: LibCommon.MAX_RECORD_TASK_SUPPORT_PERCENTAGE,
+            maxCapacity: maxCapacity
+        });
+        LibCommon.validateRecordSizingParameters(recordSizingParameters);
+        s.recordSizingParameters[LibAppStorage.ACTIVE_ENTRY] = recordSizingParameters;
 
         // ---------------------------------------------------------------------
         //                          Cycle initialization

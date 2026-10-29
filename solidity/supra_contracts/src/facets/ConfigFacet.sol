@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, Config, RegistryState, LibAppStorage, TaskMetadataLW} from "../libraries/LibAppStorage.sol";
+import {AppStorage, Config, DataLengthCaps, RecordSizingParameters, RegistryState, LibAppStorage, TaskMetadataLW} from "../libraries/LibAppStorage.sol";
 import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";
@@ -129,6 +129,12 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     ///      verify off-chain that the resulting worst-case `monitorCycleEnd()` gas cost still fits
     ///      under `BlockMeta`'s registered gas limit for it, or `blockPrologue()` will start
     ///      reverting/OOG-ing on that entry every block.
+    ///      The new capacity is also checked against the record sizing parameters in force after
+    ///      the next cycle boundary (see `updateRecordSizingParameters`): the call reverts with
+    ///      `LibCommon.CapacityAboveRecordGasLimit` if it exceeds their `maxCapacity`, the capacity
+    ///      the record gas figures were measured for, and with `LibCommon.RecordBudgetTooSmall` if
+    ///      a `processTasks` record at the current per-transaction cap could not carry a single
+    ///      task at the new capacity.
     function updateConfigBuffer(
         uint64 _taskDurationCapSecs,
         uint128 _registryMaxGasCap,
@@ -160,6 +166,8 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             _sysTaskCapacity
         );
 
+        requireRecordSizingFitsCapacity(uint256(_taskCapacity) + uint256(_sysTaskCapacity));
+
         RegistryState storage registryState = LibAppStorage.registryState();
         if (registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
         if (registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
@@ -180,7 +188,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             congestionExponent: _congestionExponent,
             maxCongestionExponent: _maxCongestionExponent
         });
-        s.configuration[LibAppStorage.BUFFER_CONFIG] = configBuffer;
+        s.configuration[LibAppStorage.BUFFER_ENTRY] = configBuffer;
         s.ifBufferExists = true;
 
         registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
@@ -189,9 +197,30 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         emit ConfigBufferUpdated(configBuffer);
     }
 
-    /// @notice Updates the task-registration input size caps. Takes effect immediately (unlike
-    /// updateConfigBuffer) since these only gate new registrations, which are already blocked
-    /// outside cycle state STARTED, so there's no mid-cycle-fairness reason to defer them.
+    /// @dev Checks a capacity the registry is about to hold against the record sizing parameters
+    ///      and stored-words bound in force after the next cycle boundary
+    ///      (Entropy-Foundation/smr-moonshot#4755). The finalization cost per task grows with the
+    ///      capacity, so the capacity must be within the one the gas figures were measured for,
+    ///      and a record at the current per-transaction cap must still carry a task once the
+    ///      finalizing record's reserve grows with it (LibCommon.requireRecordSizingFits). A
+    ///      separate function keeps updateConfigBuffer's locals within the stack limit.
+    function requireRecordSizingFitsCapacity(uint256 _capacity) private view {
+        LibCommon.requireRecordSizingFits(
+            LibCommon.nextRecordSizingParameters(), LibCommon.largestStoredWords(), _capacity
+        );
+    }
+
+    /// @notice Buffers new task-registration input size caps, applied at the next cycle boundary
+    /// together with the config buffer, like a config change. Registrations until then are
+    /// checked against the caps in force. A second call before the boundary replaces the buffer.
+    /// @dev Removing a task clears its stored data, so the caps size `processTasks` records
+    ///      (`AppStorage.taskStoredWordsBound`, Entropy-Foundation/smr-moonshot#4755). When lower
+    ///      caps apply, the transition that applies them drops every task stored above them, with
+    ///      its deposit refunded (`LibCore.dropOrChargeTask`), and sizes its records for the
+    ///      previous caps until it finalizes. Reverts with `LibCommon.RecordBudgetTooSmall` if,
+    ///      once the buffers apply, a record at the current per-transaction cap could not carry a
+    ///      single task with the record sizing parameters and capacity then in force (see
+    ///      `updateRecordSizingParameters`).
     /// @param _maxPayloadLength Max length in bytes of a task's payloadTx; a multiple of 32
     /// (LibCommon.validateDataLengthCaps).
     /// @param _maxPredicateLength Max length in bytes of a task's predicate; a multiple of 32.
@@ -207,13 +236,52 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         LibDiamond.enforceIsContractOwner();
         LibCommon.validateDataLengthCaps(_maxPayloadLength, _maxPredicateLength);
 
-        AppStorage storage s = LibAppStorage.appStorage();
-        s.maxPayloadLength = _maxPayloadLength;
-        s.maxPredicateLength = _maxPredicateLength;
-        s.maxAuxDataLength = _maxAuxDataLength;
-        s.maxAuxDataEntries = _maxAuxDataEntries;
+        DataLengthCaps memory caps =
+            LibCommon.newDataLengthCaps(_maxPayloadLength, _maxPredicateLength, _maxAuxDataLength, _maxAuxDataEntries);
 
-        emit DataLengthCapsUpdated(_maxPayloadLength, _maxPredicateLength, _maxAuxDataLength, _maxAuxDataEntries);
+        AppStorage storage s = LibAppStorage.appStorage();
+        // Applying the caps raises the stored-words bound to theirs if theirs is larger
+        // (LibCore.applyPendingDataLengthCaps), and the bound stays at least the current one until
+        // a transition finalizes, so the larger of the two must leave room for a task.
+        uint32 words = caps.storedWords;
+        if (s.taskStoredWordsBound > words) { words = s.taskStoredWordsBound; }
+        LibCommon.requireRecordSizingFits(LibCommon.nextRecordSizingParameters(), words, LibCommon.nextRecordCapacity());
+
+        s.dataLengthCaps[LibAppStorage.BUFFER_ENTRY] = caps;
+        s.ifDataLengthCapsBufferExists = true;
+
+        emit DataLengthCapsBufferUpdated(caps);
+    }
+
+    /// @notice Buffers new owner-set parameters from which, with the benchmark-derived gas figures
+    /// in `LibCommon`, `CoreFacet.getRecordMaxTaskCount` sizes a `processTasks` bookkeeping record
+    /// (Entropy-Foundation/smr-moonshot#4755); see `RecordSizingParameters`. Like a config change,
+    /// they apply at the next cycle boundary, before the node sizes that transition's records,
+    /// and a second call before the boundary replaces the buffer.
+    /// @dev Reverts with `LibCommon.InvalidRecordSizingParameters` if the percentage is zero or
+    ///      above `LibCommon.MAX_RECORD_TASK_SUPPORT_PERCENTAGE`, or `maxCapacity` is zero
+    ///      (`LibCommon.validateRecordSizingParameters`); with
+    ///      `LibCommon.CapacityAboveRecordGasLimit` if `maxCapacity` is below the capacity in force
+    ///      after the boundary; and with `LibCommon.RecordBudgetTooSmall` if a record at the
+    ///      current per-transaction cap could not then carry a single task
+    ///      (`LibCommon.requireRecordSizingFits`). The capacity and stored-words bound checked are
+    ///      those after the boundary (`LibCommon.nextRecordCapacity`,
+    ///      `LibCommon.largestStoredWords`), since the buffers apply together.
+    ///      Raising `maxCapacity` declares that `test/CycleTransitionGas.t.sol` was re-run at that
+    ///      capacity and that `LibCommon.RECORD_FINALIZATION_GAS_PER_TASK` covers the finalization
+    ///      premium it measures. To raise the capacity above the current `maxCapacity`, buffer the
+    ///      parameters first and then the config: both apply at the same boundary.
+    /// @param _parameters The new record sizing parameters.
+    function updateRecordSizingParameters(RecordSizingParameters calldata _parameters) external {
+        LibDiamond.enforceIsContractOwner();
+        LibCommon.validateRecordSizingParameters(_parameters);
+        LibCommon.requireRecordSizingFits(_parameters, LibCommon.largestStoredWords(), LibCommon.nextRecordCapacity());
+
+        AppStorage storage s = LibAppStorage.appStorage();
+        s.recordSizingParameters[LibAppStorage.BUFFER_ENTRY] = _parameters;
+        s.ifRecordSizingParametersBufferExists = true;
+
+        emit RecordSizingParametersBufferUpdated(_parameters);
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -238,17 +306,37 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         return LibAppStorage.bufferConfig();
     }
 
-    /// @notice Returns the current task-registration input size caps.
-    function getDataLengthCaps() external view returns (uint16 maxPayloadLength, uint16 maxPredicateLength, uint16 maxAuxDataLength, uint16 maxAuxDataEntries) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        maxPayloadLength = s.maxPayloadLength;
-        maxPredicateLength = s.maxPredicateLength;
-        maxAuxDataLength = s.maxAuxDataLength;
-        maxAuxDataEntries = s.maxAuxDataEntries;
+    /// @notice Returns the task-registration input size caps in force.
+    /// The same shape as `getDataLengthCapsBuffer`, including the caps' stored-words bound.
+    function getDataLengthCaps() external view returns (DataLengthCaps memory) {
+        return LibAppStorage.activeDataLengthCaps();
+    }
+
+    /// @notice Returns the data-length caps waiting for the next cycle boundary; all zero if none
+    /// are buffered.
+    function getDataLengthCapsBuffer() external view returns (DataLengthCaps memory) {
+        return LibAppStorage.bufferDataLengthCaps();
+    }
+
+    /// @notice Returns the upper bound on the storage words any task in the registry holds, which
+    /// `CoreFacet.getRecordMaxTaskCount` sizes records with (`AppStorage.taskStoredWordsBound`).
+    function getTaskStoredWordsBound() external view returns (uint32) {
+        return LibAppStorage.appStorage().taskStoredWordsBound;
+    }
+
+    /// @notice Returns the owner-set parameters in force that size a `processTasks` record.
+    function getRecordSizingParameters() external view returns (RecordSizingParameters memory) {
+        return LibAppStorage.activeRecordSizingParameters();
+    }
+
+    /// @notice Returns the record sizing parameters waiting for the next cycle boundary; all zero
+    /// if none are buffered.
+    function getRecordSizingParametersBuffer() external view returns (RecordSizingParameters memory) {
+        return LibAppStorage.bufferRecordSizingParameters();
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](13);
+        selectors = new bytes4[](18);
         selectors[0] = ConfigFacet.grantAuthorization.selector;
         selectors[1] = ConfigFacet.revokeAuthorization.selector;
         selectors[2] = ConfigFacet.enableRegistration.selector;
@@ -262,5 +350,10 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         selectors[10] = ConfigFacet.updateDataLengthCaps.selector;
         selectors[11] = ConfigFacet.getDataLengthCaps.selector;
         selectors[12] = ConfigFacet.removeTasks.selector;
+        selectors[13] = ConfigFacet.updateRecordSizingParameters.selector;
+        selectors[14] = ConfigFacet.getRecordSizingParameters.selector;
+        selectors[15] = ConfigFacet.getDataLengthCapsBuffer.selector;
+        selectors[16] = ConfigFacet.getTaskStoredWordsBound.selector;
+        selectors[17] = ConfigFacet.getRecordSizingParametersBuffer.selector;
     }
 }

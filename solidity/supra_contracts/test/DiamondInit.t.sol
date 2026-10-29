@@ -6,7 +6,7 @@ import {OwnershipFacet} from "../src/facets/OwnershipFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibDiamond} from "../src/libraries/LibDiamond.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
-import {Config} from "../src/libraries/LibAppStorage.sol";
+import {Config, RecordSizingParameters} from "../src/libraries/LibAppStorage.sol";
 import {FacetsDeployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
@@ -55,6 +55,19 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(config.congestionThresholdPercentage, 50);
         assertEq(config.congestionExponent, 6);
         assertEq(config.maxCongestionExponent, 6);
+
+        // The record sizing parameters default to the largest percentage the benchmark supports
+        // and the capacity it measured (Entropy-Foundation/smr-moonshot#4755), with none buffered.
+        RecordSizingParameters memory parameters = IConfigFacet(diamondAddr).getRecordSizingParameters();
+        assertEq(parameters.taskSupportPercentage, LibCommon.MAX_RECORD_TASK_SUPPORT_PERCENTAGE);
+        assertEq(parameters.taskSupportPercentage, 80);
+        assertEq(parameters.maxCapacity, LibCommon.RECORD_GAS_BENCHMARK_CAPACITY);
+        assertEq(parameters.maxCapacity, 400);
+        RecordSizingParameters memory buffered = IConfigFacet(diamondAddr).getRecordSizingParametersBuffer();
+        assertEq(buffered.taskSupportPercentage, 0);
+        assertEq(buffered.maxCapacity, 0);
+        // The stored-words bound is that of the default caps: 4,096 / 32 + 2,048 / 32 = 192 words.
+        assertEq(IConfigFacet(diamondAddr).getTaskStoredWordsBound(), 192);
     }
 
     /// @dev Test to ensure all interfaces are registered.

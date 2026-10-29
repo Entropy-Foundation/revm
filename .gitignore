@@ -33,3 +33,5 @@ rustc-ice-*
 /test-fixtures
 
 node_modules
+# Editor swap files
+*.swp

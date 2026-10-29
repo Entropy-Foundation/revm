@@ -6,7 +6,7 @@ import {LibCommon} from "./LibCommon.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {LibRegistry} from "./LibRegistry.sol";
 import {LibEvmGasConfig} from "./LibEvmGasConfig.sol";
-import {AppStorage, LibAppStorage, RegistryState, TaskMetadataLW, TransitionState} from "./LibAppStorage.sol";
+import {AppStorage, DataLengthCaps, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW, TransitionState} from "./LibAppStorage.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -145,12 +145,88 @@ library LibCore {
             return (false, 0);
         } 
         uint64 pendingCycleDuration = LibAppStorage.bufferConfig().cycleDurationSecs;
-        s.configuration[LibAppStorage.ACTIVE_CONFIG] = s.configuration[LibAppStorage.BUFFER_CONFIG];
+        s.configuration[LibAppStorage.ACTIVE_ENTRY] = s.configuration[LibAppStorage.BUFFER_ENTRY];
         
         s.ifBufferExists = false;
-        delete s.configuration[LibAppStorage.BUFFER_CONFIG];
+        delete s.configuration[LibAppStorage.BUFFER_ENTRY];
         
         return (true, pendingCycleDuration);        
+    }
+
+    /// @notice Applies the buffered data-length caps, if any, at a cycle boundary
+    /// (`ConfigFacet.updateDataLengthCaps`, Entropy-Foundation/smr-moonshot#4755).
+    /// @dev Tasks registered under the previous caps stay in the registry until the transition
+    ///      that starts here processes them, so the stored-words bound records are sized with is
+    ///      only raised here, never lowered: to the new caps' bound if that is larger, and
+    ///      otherwise kept at the previous caps' bound until the transition finalizes
+    ///      (`resetTaskStoredWordsBound`). If any cap is lower than before, `dataLengthCapsLowered`
+    ///      makes the transition drop the tasks stored above the new caps (`dropOrChargeTask`).
+    ///      With no task in the registry nothing was registered under the previous caps, and the
+    ///      bound is that of the new caps at once.
+    function applyPendingDataLengthCaps() private {
+        AppStorage storage s = LibAppStorage.appStorage();
+        if (!s.ifDataLengthCapsBufferExists) { return; }
+
+        // Compared with the caps in force as the buffer applies, so the flag holds whatever wrote
+        // the active caps since the buffer was written.
+        if (LibCommon.lowersAnyDataLengthCap(LibAppStorage.bufferDataLengthCaps(), LibAppStorage.activeDataLengthCaps())) {
+            s.dataLengthCapsLowered = true;
+        }
+        s.dataLengthCaps[LibAppStorage.ACTIVE_ENTRY] = s.dataLengthCaps[LibAppStorage.BUFFER_ENTRY];
+        s.ifDataLengthCapsBufferExists = false;
+        delete s.dataLengthCaps[LibAppStorage.BUFFER_ENTRY];
+
+        uint32 words = LibAppStorage.activeDataLengthCaps().storedWords;
+        if (totalTasks() == 0) {
+            resetTaskStoredWordsBound();
+        } else if (words > s.taskStoredWordsBound) {
+            s.taskStoredWordsBound = words;
+        }
+    }
+
+    /// @notice Applies the buffered record sizing parameters, if any, at a cycle boundary
+    /// (`ConfigFacet.updateRecordSizingParameters`, Entropy-Foundation/smr-moonshot#4755).
+    /// @dev Applied before the node sizes the records of the transition that starts here, so
+    ///      the record size stays fixed while the transition runs.
+    function applyPendingRecordSizingParameters() private {
+        AppStorage storage s = LibAppStorage.appStorage();
+        if (!s.ifRecordSizingParametersBufferExists) { return; }
+
+        s.recordSizingParameters[LibAppStorage.ACTIVE_ENTRY] =
+            s.recordSizingParameters[LibAppStorage.BUFFER_ENTRY];
+        s.ifRecordSizingParametersBufferExists = false;
+        delete s.recordSizingParameters[LibAppStorage.BUFFER_ENTRY];
+    }
+
+    /// @notice Sets the stored-words bound records are sized with to that of the caps in force,
+    /// and clears `dataLengthCapsLowered`.
+    /// @dev Called when every task left in the registry is known to be within the caps in force:
+    ///      when a transition finalizes, since it processed every task and dropped those above
+    ///      lower caps, and when the registry is empty (`applyPendingDataLengthCaps`).
+    function resetTaskStoredWordsBound() private {
+        AppStorage storage s = LibAppStorage.appStorage();
+        s.taskStoredWordsBound = LibAppStorage.activeDataLengthCaps().storedWords;
+        s.dataLengthCapsLowered = false;
+    }
+
+    /// @notice Whether the task's stored payload, predicate or auxData is above the data-length
+    /// caps in force, i.e. whether the registry would refuse it if it registered now: the same
+    /// LibCommon rules registration applies (`LibCommon.payloadAboveCap` and its siblings).
+    /// @dev Reads the lengths from storage: one word per byte array, plus one per auxData entry
+    ///      when the entry count is within its cap. Only called while `dataLengthCapsLowered`, in
+    ///      the transition that applies lower caps.
+    function exceedsDataLengthCaps(uint64 _taskIndex) private view returns (bool) {
+        TaskMetadata storage task = LibAppStorage.registryState().tasks[_taskIndex];
+        if (LibCommon.payloadAboveCap(task.payloadTx.length)) { return true; }
+        if (LibCommon.predicateAboveCap(task.predicate.length)) { return true; }
+
+        uint256 entries = task.auxData.length;
+        if (LibCommon.auxDataEntriesAboveCap(entries)) { return true; }
+        uint256 totalLength;
+        for (uint256 i = 0; i < entries; i++) {
+            totalLength += task.auxData[i].length;
+        }
+        return LibCommon.auxDataLengthAboveCap(totalLength);
     }
 
     /// @notice Updates the state of the cycle.
@@ -236,6 +312,8 @@ library LibCore {
         }
         
         updateRegistryState(0, 0, 0, 0, LibCommon.CycleState.SUSPENDED);
+        // Every task has been removed, so none is stored above the caps in force.
+        resetTaskStoredWordsBound();
 
         // Check if automation is enabled
         if (s.automationEnabled) {
@@ -281,6 +359,8 @@ library LibCore {
                 transitionState.gasCommittedForNewCycle,
                 LibCommon.CycleState.FINISHED
             );
+            // The transition processed every task and dropped those above the caps in force.
+            resetTaskStoredWordsBound();
 
             // Set current timestamp as cycle start time
             // Increment the cycle and update the state to STARTED
@@ -399,17 +479,10 @@ library LibCore {
             // before it is charged for the new cycle, and a UST's whole deposit is refunded. This
             // covers PENDING tasks, which the node never schedules, and ACTIVE tasks for which a
             // CONFIG_UPDATE removal had not executed when the cycle ended (#4087).
-            uint128 depositRefund;
-            if (isUst) {
-                bool refunded =
-                    LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
-                // The event reports what was paid: a deposit the registry could not transfer is
-                // reported as 0, alongside the error event safeDepositRefund emits.
-                depositRefund = refunded ? task.depositFee : 0;
-            } else {
-                LibCommon.removeTask(_taskIndex, task.owner, true, false);
-            }
+            uint128 depositRefund = dropWithWholeDeposit(_taskIndex, task);
             emitTaskRemovedByConfigUpdate(task, _txGasLimitCap, _minGasPrice, 0, depositRefund);
+            result.isRemoved = true;
+        } else if (dropIfAboveDataLengthCaps(_taskIndex, task)) {
             result.isRemoved = true;
         } else if (!isUst) {
             // Active GST
@@ -732,6 +805,38 @@ library LibCore {
         return _task.taskType != LibCommon.TaskType.UST || _task.gasPriceCap >= _minGasPrice;
     }
 
+    /// @notice Removes a task that a governed configuration no longer admits, before it is charged
+    /// for the new cycle, refunding a UST's whole deposit.
+    /// @return depositRefund The deposit paid back: the whole deposit of a UST, or 0 if it could not
+    /// be transferred, which an error event of {LibAccounting.safeDepositRefund} then records; 0
+    /// for a GST, which pays none.
+    function dropWithWholeDeposit(uint64 _taskIndex, TaskMetadataLW memory _task) private returns (uint128 depositRefund) {
+        if (_task.taskType == LibCommon.TaskType.UST) {
+            bool refunded =
+                LibAccounting.refundDepositAndDrop(_taskIndex, _task.owner, _task.depositFee, _task.depositFee);
+            depositRefund = refunded ? _task.depositFee : 0;
+        } else {
+            LibCommon.removeTask(_taskIndex, _task.owner, true, false);
+        }
+    }
+
+    /// @notice Drops the task if lower data-length caps applied at the start of this transition
+    /// and the task stores more than they admit (Entropy-Foundation/smr-moonshot#4755). It is
+    /// dropped before it is charged for the new cycle, with a UST's whole deposit refunded, as for
+    /// a gas config change.
+    /// @dev A separate function keeps dropOrChargeTasks' locals within the stack limit.
+    /// @return dropped Whether the task was dropped.
+    function dropIfAboveDataLengthCaps(uint64 _taskIndex, TaskMetadataLW memory _task) private returns (bool dropped) {
+        if (!LibAppStorage.appStorage().dataLengthCapsLowered || !exceedsDataLengthCaps(_taskIndex)) {
+            return false;
+        }
+        uint128 depositRefund = dropWithWholeDeposit(_taskIndex, _task);
+        emit ICoreFacet.TaskRemovedByDataLengthCaps(
+            _task.taskIndex, _task.owner, _task.taskType, depositRefund, _task.txHash
+        );
+        return true;
+    }
+
     /// @notice Emits {ICoreFacet.TaskRemovedByConfigUpdate} for a removed task.
     function emitTaskRemovedByConfigUpdate(
         TaskMetadataLW memory _task,
@@ -894,8 +999,13 @@ library LibCore {
     }
 
     /// @notice Function to update the registry config structure with values extracted from the buffer, if the buffer exists.
+    /// @dev Also applies buffered data-length caps, which follow the config buffer's cycle
+    ///      boundary (`applyPendingDataLengthCaps`).
     function updateConfigFromBuffer() internal {
         AppStorage storage s = LibAppStorage.appStorage();
+
+        applyPendingDataLengthCaps();
+        applyPendingRecordSizingParameters();
 
         (bool applied, uint64 cycleDuration) = applyPendingConfig();
         if (!applied) return;

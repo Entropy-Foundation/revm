@@ -966,6 +966,7 @@ interface SupraContractsBindings {
     function blockPrologue() external;
     function getActiveTaskIds() external view returns (uint64[] memory);
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
+    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
@@ -1041,6 +1042,25 @@ interface SupraContractsBindings {
             "internalType": "uint64[]"
           }
         ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRecordMaxTaskCount",
+    "inputs": [
+      {
+        "name": "_recordGasLimit",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
@@ -2439,6 +2459,147 @@ pub mod SupraContractsBindings {
         }
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
+    /**Function with signature `getRecordMaxTaskCount(uint64)` and selector `0x458ba0a4`.
+    ```solidity
+    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
+    ```*/
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct getRecordMaxTaskCountCall {
+        #[allow(missing_docs)]
+        pub _recordGasLimit: u64,
+    }
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
+    ///Container type for the return parameters of the [`getRecordMaxTaskCount(uint64)`](getRecordMaxTaskCountCall) function.
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct getRecordMaxTaskCountReturn {
+        #[allow(missing_docs)]
+        pub _0: u64,
+    }
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (alloy::sol_types::sol_data::Uint<64>,);
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (u64,);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<getRecordMaxTaskCountCall> for UnderlyingRustTuple<'_> {
+                fn from(value: getRecordMaxTaskCountCall) -> Self {
+                    (value._recordGasLimit,)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getRecordMaxTaskCountCall {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self {
+                        _recordGasLimit: tuple.0,
+                    }
+                }
+            }
+        }
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (alloy::sol_types::sol_data::Uint<64>,);
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (u64,);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<getRecordMaxTaskCountReturn> for UnderlyingRustTuple<'_> {
+                fn from(value: getRecordMaxTaskCountReturn) -> Self {
+                    (value._0,)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for getRecordMaxTaskCountReturn {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self { _0: tuple.0 }
+                }
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolCall for getRecordMaxTaskCountCall {
+            type Parameters<'a> = (alloy::sol_types::sol_data::Uint<64>,);
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
+            type Return = u64;
+            type ReturnTuple<'a> = (alloy::sol_types::sol_data::Uint<64>,);
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
+            const SIGNATURE: &'static str = "getRecordMaxTaskCount(uint64)";
+            const SELECTOR: [u8; 4] = [69u8, 139u8, 160u8, 164u8];
+            #[inline]
+            fn new<'a>(
+                tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                tuple.into()
+            }
+            #[inline]
+            fn tokenize(&self) -> Self::Token<'_> {
+                (
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._recordGasLimit,
+                    ),
+                )
+            }
+            #[inline]
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                (
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        ret,
+                    ),
+                )
+            }
+            #[inline]
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
+                        let r: getRecordMaxTaskCountReturn = r.into();
+                        r._0
+                    },
+                )
+            }
+            #[inline]
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: getRecordMaxTaskCountReturn = r.into();
+                    r._0
+                })
+            }
+        }
+    };
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetails(uint64)` and selector `0xb2ef6896`.
     ```solidity
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
@@ -3582,6 +3743,8 @@ pub mod SupraContractsBindings {
         #[allow(missing_docs)]
         getCycleStateDetails(getCycleStateDetailsCall),
         #[allow(missing_docs)]
+        getRecordMaxTaskCount(getRecordMaxTaskCountCall),
+        #[allow(missing_docs)]
         getTaskDetails(getTaskDetailsCall),
         #[allow(missing_docs)]
         getTaskDetailsBulk(getTaskDetailsBulkCall),
@@ -3611,6 +3774,7 @@ pub mod SupraContractsBindings {
             [35u8, 33u8, 204u8, 163u8],
             [37u8, 110u8, 78u8, 77u8],
             [57u8, 46u8, 83u8, 205u8],
+            [69u8, 139u8, 160u8, 164u8],
             [107u8, 93u8, 140u8, 86u8],
             [125u8, 237u8, 9u8, 27u8],
             [127u8, 105u8, 195u8, 92u8],
@@ -3625,6 +3789,7 @@ pub mod SupraContractsBindings {
             ::core::stringify!(getActiveTaskIds),
             ::core::stringify!(removeRegisteredTask),
             ::core::stringify!(isInitialized),
+            ::core::stringify!(getRecordMaxTaskCount),
             ::core::stringify!(getCycleStateDetails),
             ::core::stringify!(blockPrologue),
             ::core::stringify!(processTasks),
@@ -3639,6 +3804,7 @@ pub mod SupraContractsBindings {
             <getActiveTaskIdsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <removeRegisteredTaskCall as alloy_sol_types::SolCall>::SIGNATURE,
             <isInitializedCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <getRecordMaxTaskCountCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
             <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
@@ -3669,7 +3835,7 @@ pub mod SupraContractsBindings {
     impl alloy_sol_types::SolInterface for SupraContractsBindingsCalls {
         const NAME: &'static str = "SupraContractsBindingsCalls";
         const MIN_DATA_LENGTH: usize = 0usize;
-        const COUNT: usize = 11usize;
+        const COUNT: usize = 12usize;
         #[inline]
         fn selector(&self) -> [u8; 4] {
             match self {
@@ -3679,6 +3845,9 @@ pub mod SupraContractsBindings {
                 }
                 Self::getCycleStateDetails(_) => {
                     <getCycleStateDetailsCall as alloy_sol_types::SolCall>::SELECTOR
+                }
+                Self::getRecordMaxTaskCount(_) => {
+                    <getRecordMaxTaskCountCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::getTaskDetails(_) => {
                     <getTaskDetailsCall as alloy_sol_types::SolCall>::SELECTOR
@@ -3759,6 +3928,17 @@ pub mod SupraContractsBindings {
                             .map(SupraContractsBindingsCalls::isInitialized)
                     }
                     isInitialized
+                },
+                {
+                    fn getRecordMaxTaskCount(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <getRecordMaxTaskCountCall as alloy_sol_types::SolCall>::abi_decode_raw(
+                            data,
+                        )
+                        .map(SupraContractsBindingsCalls::getRecordMaxTaskCount)
+                    }
+                    getRecordMaxTaskCount
                 },
                 {
                     fn getCycleStateDetails(
@@ -3890,6 +4070,17 @@ pub mod SupraContractsBindings {
                     isInitialized
                 },
                 {
+                    fn getRecordMaxTaskCount(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <getRecordMaxTaskCountCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::getRecordMaxTaskCount)
+                    }
+                    getRecordMaxTaskCount
+                },
+                {
                     fn getCycleStateDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -3976,6 +4167,9 @@ pub mod SupraContractsBindings {
                 Self::getCycleStateDetails(inner) => {
                     <getCycleStateDetailsCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
+                Self::getRecordMaxTaskCount(inner) => {
+                    <getRecordMaxTaskCountCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
+                }
                 Self::getTaskDetails(inner) => {
                     <getTaskDetailsCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
@@ -4015,6 +4209,11 @@ pub mod SupraContractsBindings {
                 }
                 Self::getCycleStateDetails(inner) => {
                     <getCycleStateDetailsCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                        inner, out,
+                    )
+                }
+                Self::getRecordMaxTaskCount(inner) => {
+                    <getRecordMaxTaskCountCall as alloy_sol_types::SolCall>::abi_encode_raw(
                         inner, out,
                     )
                 }
@@ -4303,6 +4502,13 @@ pub mod SupraContractsBindings {
             &self,
         ) -> alloy_contract::SolCallBuilder<&P, getCycleStateDetailsCall, N> {
             self.call_builder(&getCycleStateDetailsCall)
+        }
+        ///Creates a new call builder for the [`getRecordMaxTaskCount`] function.
+        pub fn getRecordMaxTaskCount(
+            &self,
+            _recordGasLimit: u64,
+        ) -> alloy_contract::SolCallBuilder<&P, getRecordMaxTaskCountCall, N> {
+            self.call_builder(&getRecordMaxTaskCountCall { _recordGasLimit })
         }
         ///Creates a new call builder for the [`getTaskDetails`] function.
         pub fn getTaskDetails(
