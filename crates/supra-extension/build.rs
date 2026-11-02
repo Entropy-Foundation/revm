@@ -24,6 +24,9 @@ fn rebuild_rust_bindings() {
     // - uncomment build dependencies in Cargo.toml file of this project
     // - uncomment forge library reference in top level Cargo.toml file
     // - build the project
+    // - run `scripts/dedent_binding_docs.py` on the generated supra_contracts_bindings.rs.
+    //   forge indents the continuation lines of its `/** */` doc blocks, and rustdoc
+    //   compiles text indented 4 or more spaces as a doctest (Entropy-Foundation/smr-moonshot#3951).
 
     // // Determine the output directory for the generated bindings
     // use clap::Parser;

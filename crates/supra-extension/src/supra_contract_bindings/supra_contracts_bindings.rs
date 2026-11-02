@@ -506,8 +506,8 @@ pub mod LibCommon {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**```solidity
-    struct CycleDetails { uint64 index; uint64 startTime; uint64 durationSecs; CycleState state; uint64 nextTaskIndexPosition; uint64[] expectedTasksToBeProcessed; }
-    ```*/
+struct CycleDetails { uint64 index; uint64 startTime; uint64 durationSecs; CycleState state; uint64 nextTaskIndexPosition; uint64[] expectedTasksToBeProcessed; }
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct CycleDetails {
@@ -809,7 +809,7 @@ pub mod LibCommon {
     use alloy::contract as alloy_contract;
     /**Creates a new wrapper around an on-chain [`LibCommon`](self) contract instance.
 
-    See the [wrapper's documentation](`LibCommonInstance`) for more details.*/
+See the [wrapper's documentation](`LibCommonInstance`) for more details.*/
     #[inline]
     pub const fn new<
         P: alloy_contract::private::Provider<N>,
@@ -822,15 +822,15 @@ pub mod LibCommon {
     }
     /**A [`LibCommon`](self) instance.
 
-    Contains type-safe methods for interacting with an on-chain instance of the
-    [`LibCommon`](self) contract located at a given `address`, using a given
-    provider `P`.
+Contains type-safe methods for interacting with an on-chain instance of the
+[`LibCommon`](self) contract located at a given `address`, using a given
+provider `P`.
 
-    If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
-    documentation on how to provide it), the `deploy` and `deploy_builder` methods can
-    be used to deploy a new instance of the contract.
+If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
+documentation on how to provide it), the `deploy` and `deploy_builder` methods can
+be used to deploy a new instance of the contract.
 
-    See the [module-level documentation](self) for all the available methods.*/
+See the [module-level documentation](self) for all the available methods.*/
     #[derive(Clone)]
     pub struct LibCommonInstance<P, N = alloy_contract::private::Ethereum> {
         address: alloy_sol_types::private::Address,
@@ -852,7 +852,7 @@ pub mod LibCommon {
     {
         /**Creates a new wrapper around an on-chain [`LibCommon`](self) contract instance.
 
-        See the [wrapper's documentation](`LibCommonInstance`) for more details.*/
+See the [wrapper's documentation](`LibCommonInstance`) for more details.*/
         #[inline]
         pub const fn new(address: alloy_sol_types::private::Address, __provider: P) -> Self {
             Self {
@@ -1462,8 +1462,8 @@ pub mod SupraContractsBindings {
     );
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**```solidity
-    struct TaskMetadata { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 depositFee; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; uint64 priority; address owner; LibCommon.TaskType taskType; LibCommon.TaskState taskState; bytes payloadTx; bytes predicate; bytes[] auxData; }
-    ```*/
+struct TaskMetadata { uint128 maxGasAmount; uint128 gasPriceCap; uint128 automationFeeCapForCycle; uint128 depositFee; bytes32 txHash; uint64 taskIndex; uint64 registrationTime; uint64 expiryTime; uint64 priority; address owner; LibCommon.TaskType taskType; LibCommon.TaskState taskState; bytes payloadTx; bytes predicate; bytes[] auxData; }
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct TaskMetadata {
@@ -1966,9 +1966,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Event with signature `AutomationCycleEvent(uint64,uint8,uint64,uint64,uint8)` and selector `0xe3a609ff9d35dde784f4ecc5c5988b3a4ad5ebeabb27e7ad22a76570128e51df`.
-    ```solidity
-    event AutomationCycleEvent(uint64 indexed index, LibCommon.CycleState indexed state, uint64 startTime, uint64 durationSecs, LibCommon.CycleState indexed oldState);
-    ```*/
+```solidity
+event AutomationCycleEvent(uint64 indexed index, LibCommon.CycleState indexed state, uint64 startTime, uint64 durationSecs, LibCommon.CycleState indexed oldState);
+```*/
     #[allow(
         non_camel_case_types,
         non_snake_case,
@@ -2105,9 +2105,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `blockPrologue()` and selector `0x7ded091b`.
-    ```solidity
-    function blockPrologue() external;
-    ```*/
+```solidity
+function blockPrologue() external;
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct blockPrologueCall;
@@ -2229,9 +2229,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getActiveTaskIds()` and selector `0x2321cca3`.
-    ```solidity
-    function getActiveTaskIds() external view returns (uint64[] memory);
-    ```*/
+```solidity
+function getActiveTaskIds() external view returns (uint64[] memory);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getActiveTaskIdsCall;
@@ -2361,9 +2361,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getCycleStateDetails()` and selector `0x6b5d8c56`.
-    ```solidity
-    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
-    ```*/
+```solidity
+function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getCycleStateDetailsCall;
@@ -2490,9 +2490,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getRecordMaxTaskCount(uint64)` and selector `0x458ba0a4`.
-    ```solidity
-    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
-    ```*/
+```solidity
+function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getRecordMaxTaskCountCall {
@@ -2631,9 +2631,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetails(uint64)` and selector `0xb2ef6896`.
-    ```solidity
-    function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
-    ```*/
+```solidity
+function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskDetailsCall {
@@ -2768,9 +2768,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskDetailsBulk(uint64[])` and selector `0x12f72cf4`.
-    ```solidity
-    function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
-    ```*/
+```solidity
+function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskDetailsBulkCall {
@@ -2918,9 +2918,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `getTaskIdList()` and selector `0xec82b429`.
-    ```solidity
-    function getTaskIdList() external view returns (uint256[] memory);
-    ```*/
+```solidity
+function getTaskIdList() external view returns (uint256[] memory);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct getTaskIdListCall;
@@ -3057,9 +3057,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `hasActiveTaskOfType(address,uint64,uint8)` and selector `0xa03ebf69`.
-    ```solidity
-    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) external view returns (bool);
-    ```*/
+```solidity
+function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) external view returns (bool);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct hasActiveTaskOfTypeCall {
@@ -3216,9 +3216,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `ifTaskExists(uint64)` and selector `0x8aaa404e`.
-    ```solidity
-    function ifTaskExists(uint64 _taskIndex) external view returns (bool);
-    ```*/
+```solidity
+function ifTaskExists(uint64 _taskIndex) external view returns (bool);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct ifTaskExistsCall {
@@ -3353,9 +3353,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `isAutomationReadyEnabled()` and selector `0x105176ce`.
-    ```solidity
-    function isAutomationReadyEnabled() external view returns (bool);
-    ```*/
+```solidity
+function isAutomationReadyEnabled() external view returns (bool);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct isAutomationReadyEnabledCall;
@@ -3481,9 +3481,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `isInitialized()` and selector `0x392e53cd`.
-    ```solidity
-    function isInitialized() external view returns (bool);
-    ```*/
+```solidity
+function isInitialized() external view returns (bool);
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct isInitializedCall;
@@ -3609,9 +3609,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `processTasks(uint64,uint64[])` and selector `0x7f69c35c`.
-    ```solidity
-    function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
-    ```*/
+```solidity
+function processTasks(uint64 _cycleIndex, uint64[] memory _taskIndexes) external;
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct processTasksCall {
@@ -3752,9 +3752,9 @@ pub mod SupraContractsBindings {
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `removeRegisteredTask(uint64,uint64,uint8,string)` and selector `0x256e4e4d`.
-    ```solidity
-    function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, LibCommon.TaskRemovalReason _reason, string memory _details) external;
-    ```*/
+```solidity
+function removeRegisteredTask(uint64 _cycleIndex, uint64 _taskIndex, LibCommon.TaskRemovalReason _reason, string memory _details) external;
+```*/
     #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
     #[derive(Clone)]
     pub struct removeRegisteredTaskCall {
@@ -4563,7 +4563,7 @@ pub mod SupraContractsBindings {
     use alloy::contract as alloy_contract;
     /**Creates a new wrapper around an on-chain [`SupraContractsBindings`](self) contract instance.
 
-    See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
+See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
     #[inline]
     pub const fn new<
         P: alloy_contract::private::Provider<N>,
@@ -4576,9 +4576,9 @@ pub mod SupraContractsBindings {
     }
     /**Deploys this contract using the given `provider` and constructor arguments, if any.
 
-    Returns a new instance of the contract, if the deployment was successful.
+Returns a new instance of the contract, if the deployment was successful.
 
-    For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
+For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
     #[inline]
     pub fn deploy<P: alloy_contract::private::Provider<N>, N: alloy_contract::private::Network>(
         __provider: P,
@@ -4587,10 +4587,10 @@ pub mod SupraContractsBindings {
         SupraContractsBindingsInstance::<P, N>::deploy(__provider)
     }
     /**Creates a `RawCallBuilder` for deploying this contract using the given `provider`
-    and constructor arguments, if any.
+and constructor arguments, if any.
 
-    This is a simple wrapper around creating a `RawCallBuilder` with the data set to
-    the bytecode concatenated with the constructor's ABI-encoded arguments.*/
+This is a simple wrapper around creating a `RawCallBuilder` with the data set to
+the bytecode concatenated with the constructor's ABI-encoded arguments.*/
     #[inline]
     pub fn deploy_builder<
         P: alloy_contract::private::Provider<N>,
@@ -4602,15 +4602,15 @@ pub mod SupraContractsBindings {
     }
     /**A [`SupraContractsBindings`](self) instance.
 
-    Contains type-safe methods for interacting with an on-chain instance of the
-    [`SupraContractsBindings`](self) contract located at a given `address`, using a given
-    provider `P`.
+Contains type-safe methods for interacting with an on-chain instance of the
+[`SupraContractsBindings`](self) contract located at a given `address`, using a given
+provider `P`.
 
-    If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
-    documentation on how to provide it), the `deploy` and `deploy_builder` methods can
-    be used to deploy a new instance of the contract.
+If the contract bytecode is available (see the [`sol!`](alloy_sol_types::sol!)
+documentation on how to provide it), the `deploy` and `deploy_builder` methods can
+be used to deploy a new instance of the contract.
 
-    See the [module-level documentation](self) for all the available methods.*/
+See the [module-level documentation](self) for all the available methods.*/
     #[derive(Clone)]
     pub struct SupraContractsBindingsInstance<P, N = alloy_contract::private::Ethereum> {
         address: alloy_sol_types::private::Address,
@@ -4632,7 +4632,7 @@ pub mod SupraContractsBindings {
     {
         /**Creates a new wrapper around an on-chain [`SupraContractsBindings`](self) contract instance.
 
-        See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
+See the [wrapper's documentation](`SupraContractsBindingsInstance`) for more details.*/
         #[inline]
         pub const fn new(address: alloy_sol_types::private::Address, __provider: P) -> Self {
             Self {
@@ -4643,9 +4643,9 @@ pub mod SupraContractsBindings {
         }
         /**Deploys this contract using the given `provider` and constructor arguments, if any.
 
-        Returns a new instance of the contract, if the deployment was successful.
+Returns a new instance of the contract, if the deployment was successful.
 
-        For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
+For more fine-grained control over the deployment process, use [`deploy_builder`] instead.*/
         #[inline]
         pub async fn deploy(
             __provider: P,
@@ -4655,10 +4655,10 @@ pub mod SupraContractsBindings {
             Ok(Self::new(contract_address, call_builder.provider))
         }
         /**Creates a `RawCallBuilder` for deploying this contract using the given `provider`
-        and constructor arguments, if any.
+and constructor arguments, if any.
 
-        This is a simple wrapper around creating a `RawCallBuilder` with the data set to
-        the bytecode concatenated with the constructor's ABI-encoded arguments.*/
+This is a simple wrapper around creating a `RawCallBuilder` with the data set to
+the bytecode concatenated with the constructor's ABI-encoded arguments.*/
         #[inline]
         pub fn deploy_builder(__provider: P) -> alloy_contract::RawCallBuilder<P, N> {
             alloy_contract::RawCallBuilder::new_raw_deploy(
