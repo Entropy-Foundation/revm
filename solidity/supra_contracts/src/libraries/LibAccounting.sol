@@ -387,9 +387,18 @@ library LibAccounting {
         // The residual-time fee never exceeds the fee charged for the cycle, since the residual
         // window is a suffix of the charged one, so the InvalidCycleRefundFee invariant below holds
         // for FULL_REFUND_FACTOR as well.
-        // The only place a refund policy becomes a divisor. The enum admits exactly the two
-        // policies, so the divisor is always 1 or 2, never 0, and the divisions below cannot revert.
-        uint8 refundDivisor = _policy == LibCommon.RefundPolicy.FULL ? FULL_REFUND_FACTOR : REFUND_FACTOR;
+        // The only place a refund policy becomes a divisor. Each policy is named, so a policy added
+        // to LibCommon.RefundPolicy without a divisor of its own reverts here rather than paying
+        // another policy's share. Both divisors are non-zero constants, so the divisions below
+        // cannot revert.
+        uint8 refundDivisor;
+        if (_policy == LibCommon.RefundPolicy.FULL) {
+            refundDivisor = FULL_REFUND_FACTOR;
+        } else if (_policy == LibCommon.RefundPolicy.PARTIAL) {
+            refundDivisor = REFUND_FACTOR;
+        } else {
+            revert IRegistryFacet.UnsupportedRefundPolicy();
+        }
 
         if (_taskState != LibCommon.TaskState.PENDING) {
             // Compute the automation fee multiplier for cycle

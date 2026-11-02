@@ -92,6 +92,9 @@ library LibCommon {
     ///      below the minimum gas price). The registry re-checks the task against the current
     ///      figures, and the owner is refunded the whole remaining current-cycle fee and the whole
     ///      deposit (#4087).
+    ///      {LibCore.handleTasksRemoval} is where each reason gets its admission check, refund
+    ///      policy and event; a reason added here must be given its handling there, which refuses
+    ///      any reason it does not name.
     enum TaskRemovalReason {
         ERROR,
         CONFIG_UPDATE
@@ -105,8 +108,10 @@ library LibCommon {
     ///      CONFIG_UPDATE removal applies it (#4087), because the owner did nothing to cause it.
     ///      A GST is refunded nothing under either policy, as it paid no fee.
     ///      The two policies are the only refund shares the registry pays, which is why this is an
-    ///      enum rather than a divisor: {LibAccounting.unlockDepositAndCycleFee} maps it to its
-    ///      divisor, and that mapping is the only place a policy becomes a number.
+    ///      enum rather than a divisor: {LibAccounting.unlockDepositAndCycleFee} maps each policy to
+    ///      its divisor, and that mapping is the only place a policy becomes a number. A policy
+    ///      added here must be given its own divisor there, which refuses any policy it does not
+    ///      name.
     enum RefundPolicy {
         PARTIAL,
         FULL
@@ -425,14 +430,6 @@ library LibCommon {
         cycleEndTime = s.startTime + s.durationSecs;
     }
     
-    /// @notice The refund policy a runtime removal for `_reason` applies.
-    /// @dev Kept next to {TaskRemovalReason} rather than inlined at the caller, so that a reason
-    ///      added later has to be given a policy here, in one place, rather than inheriting
-    ///      PARTIAL from a comparison against CONFIG_UPDATE written elsewhere.
-    function refundPolicyOf(TaskRemovalReason _reason) internal pure returns (RefundPolicy) {
-        return _reason == TaskRemovalReason.CONFIG_UPDATE ? RefundPolicy.FULL : RefundPolicy.PARTIAL;
-    }
-
     /// @notice Checks if a task exist.
     /// @param _taskIndex Task index to check if a task exists against it.
     function ifTaskExists(uint64 _taskIndex) internal view returns (bool) {
