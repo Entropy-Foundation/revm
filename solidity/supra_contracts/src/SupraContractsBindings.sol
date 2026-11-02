@@ -11,6 +11,10 @@ interface SupraContractsBindings {
 
     // View functions of RegistryViewFacet
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
+    // Whether `_account` owns an ACTIVE or CANCELLED task of `_type` at `_taskIndex`. The node
+    // asks this immediately before executing a scheduled automated transaction, so that a task
+    // stopped or removed earlier in the same block is not executed (smr-moonshot#4652).
+    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) external view returns (bool);
     function getActiveTaskIds() external view returns (uint64[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);

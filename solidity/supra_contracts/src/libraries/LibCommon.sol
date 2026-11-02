@@ -97,6 +97,21 @@ library LibCommon {
         CONFIG_UPDATE
     }
 
+    /// @notice How much of a removed task's locked funds is paid back to its owner.
+    /// @dev PARTIAL: the whole deposit and half of the fee for the remaining cycle time, or half
+    ///      the deposit for a PENDING task. `stopTasks`, `stopSystemTasks`, the registry owner's
+    ///      `removeTasks` and an ERROR removal apply it.
+    ///      FULL: the whole deposit and the whole fee for the remaining cycle time. A
+    ///      CONFIG_UPDATE removal applies it (#4087), because the owner did nothing to cause it.
+    ///      A GST is refunded nothing under either policy, as it paid no fee.
+    ///      The two policies are the only refund shares the registry pays, which is why this is an
+    ///      enum rather than a divisor: {LibAccounting.unlockDepositAndCycleFee} maps it to its
+    ///      divisor, and that mapping is the only place a policy becomes a number.
+    enum RefundPolicy {
+        PARTIAL,
+        FULL
+    }
+
     /// @notice Represents intermediate state of the registry on cycle change.
     struct IntermediateStateOfCycleChange {
         uint256 cycleLockedFees;
@@ -410,6 +425,14 @@ library LibCommon {
         cycleEndTime = s.startTime + s.durationSecs;
     }
     
+    /// @notice The refund policy a runtime removal for `_reason` applies.
+    /// @dev Kept next to {TaskRemovalReason} rather than inlined at the caller, so that a reason
+    ///      added later has to be given a policy here, in one place, rather than inheriting
+    ///      PARTIAL from a comparison against CONFIG_UPDATE written elsewhere.
+    function refundPolicyOf(TaskRemovalReason _reason) internal pure returns (RefundPolicy) {
+        return _reason == TaskRemovalReason.CONFIG_UPDATE ? RefundPolicy.FULL : RefundPolicy.PARTIAL;
+    }
+
     /// @notice Checks if a task exist.
     /// @param _taskIndex Task index to check if a task exists against it.
     function ifTaskExists(uint64 _taskIndex) internal view returns (bool) {

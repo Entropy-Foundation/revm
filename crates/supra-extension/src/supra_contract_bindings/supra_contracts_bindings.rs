@@ -970,6 +970,7 @@ interface SupraContractsBindings {
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
+    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) external view returns (bool);
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
     function isAutomationReadyEnabled() external view returns (bool);
     function isInitialized() external view returns (bool);
@@ -1266,6 +1267,35 @@ interface SupraContractsBindings {
         "name": "",
         "type": "uint256[]",
         "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasActiveTaskOfType",
+    "inputs": [
+      {
+        "name": "_account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_taskIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "_type",
+        "type": "uint8",
+        "internalType": "enum LibCommon.TaskType"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -3026,6 +3056,165 @@ pub mod SupraContractsBindings {
         }
     };
     #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
+    /**Function with signature `hasActiveTaskOfType(address,uint64,uint8)` and selector `0xa03ebf69`.
+    ```solidity
+    function hasActiveTaskOfType(address _account, uint64 _taskIndex, LibCommon.TaskType _type) external view returns (bool);
+    ```*/
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct hasActiveTaskOfTypeCall {
+        #[allow(missing_docs)]
+        pub _account: alloy::sol_types::private::Address,
+        #[allow(missing_docs)]
+        pub _taskIndex: u64,
+        #[allow(missing_docs)]
+        pub _type: <LibCommon::TaskType as alloy::sol_types::SolType>::RustType,
+    }
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
+    ///Container type for the return parameters of the [`hasActiveTaskOfType(address,uint64,uint8)`](hasActiveTaskOfTypeCall) function.
+    #[allow(non_camel_case_types, non_snake_case, clippy::pub_underscore_fields)]
+    #[derive(Clone)]
+    pub struct hasActiveTaskOfTypeReturn {
+        #[allow(missing_docs)]
+        pub _0: bool,
+    }
+    #[allow(
+        non_camel_case_types,
+        non_snake_case,
+        clippy::pub_underscore_fields,
+        clippy::style
+    )]
+    const _: () = {
+        use alloy::sol_types as alloy_sol_types;
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (
+                alloy::sol_types::sol_data::Address,
+                alloy::sol_types::sol_data::Uint<64>,
+                LibCommon::TaskType,
+            );
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (
+                alloy::sol_types::private::Address,
+                u64,
+                <LibCommon::TaskType as alloy::sol_types::SolType>::RustType,
+            );
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<hasActiveTaskOfTypeCall> for UnderlyingRustTuple<'_> {
+                fn from(value: hasActiveTaskOfTypeCall) -> Self {
+                    (value._account, value._taskIndex, value._type)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for hasActiveTaskOfTypeCall {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self {
+                        _account: tuple.0,
+                        _taskIndex: tuple.1,
+                        _type: tuple.2,
+                    }
+                }
+            }
+        }
+        {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            type UnderlyingSolTuple<'a> = (alloy::sol_types::sol_data::Bool,);
+            #[doc(hidden)]
+            type UnderlyingRustTuple<'a> = (bool,);
+            #[cfg(test)]
+            #[allow(dead_code, unreachable_patterns)]
+            fn _type_assertion(_t: alloy_sol_types::private::AssertTypeEq<UnderlyingRustTuple>) {
+                match _t {
+                    alloy_sol_types::private::AssertTypeEq::<
+                        <UnderlyingSolTuple as alloy_sol_types::SolType>::RustType,
+                    >(_) => {}
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<hasActiveTaskOfTypeReturn> for UnderlyingRustTuple<'_> {
+                fn from(value: hasActiveTaskOfTypeReturn) -> Self {
+                    (value._0,)
+                }
+            }
+            #[automatically_derived]
+            #[doc(hidden)]
+            impl ::core::convert::From<UnderlyingRustTuple<'_>> for hasActiveTaskOfTypeReturn {
+                fn from(tuple: UnderlyingRustTuple<'_>) -> Self {
+                    Self { _0: tuple.0 }
+                }
+            }
+        }
+        #[automatically_derived]
+        impl alloy_sol_types::SolCall for hasActiveTaskOfTypeCall {
+            type Parameters<'a> = (
+                alloy::sol_types::sol_data::Address,
+                alloy::sol_types::sol_data::Uint<64>,
+                LibCommon::TaskType,
+            );
+            type Token<'a> = <Self::Parameters<'a> as alloy_sol_types::SolType>::Token<'a>;
+            type Return = bool;
+            type ReturnTuple<'a> = (alloy::sol_types::sol_data::Bool,);
+            type ReturnToken<'a> = <Self::ReturnTuple<'a> as alloy_sol_types::SolType>::Token<'a>;
+            const SIGNATURE: &'static str = "hasActiveTaskOfType(address,uint64,uint8)";
+            const SELECTOR: [u8; 4] = [160u8, 62u8, 191u8, 105u8];
+            #[inline]
+            fn new<'a>(
+                tuple: <Self::Parameters<'a> as alloy_sol_types::SolType>::RustType,
+            ) -> Self {
+                tuple.into()
+            }
+            #[inline]
+            fn tokenize(&self) -> Self::Token<'_> {
+                (
+                    <alloy::sol_types::sol_data::Address as alloy_sol_types::SolType>::tokenize(
+                        &self._account,
+                    ),
+                    <alloy::sol_types::sol_data::Uint<64> as alloy_sol_types::SolType>::tokenize(
+                        &self._taskIndex,
+                    ),
+                    <LibCommon::TaskType as alloy_sol_types::SolType>::tokenize(&self._type),
+                )
+            }
+            #[inline]
+            fn tokenize_returns(ret: &Self::Return) -> Self::ReturnToken<'_> {
+                (<alloy::sol_types::sol_data::Bool as alloy_sol_types::SolType>::tokenize(ret),)
+            }
+            #[inline]
+            fn abi_decode_returns(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence(data).map(
+                    |r| {
+                        let r: hasActiveTaskOfTypeReturn = r.into();
+                        r._0
+                    },
+                )
+            }
+            #[inline]
+            fn abi_decode_returns_validate(data: &[u8]) -> alloy_sol_types::Result<Self::Return> {
+                <Self::ReturnTuple<'_> as alloy_sol_types::SolType>::abi_decode_sequence_validate(
+                    data,
+                )
+                .map(|r| {
+                    let r: hasActiveTaskOfTypeReturn = r.into();
+                    r._0
+                })
+            }
+        }
+    };
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Eq, Hash)]
     /**Function with signature `ifTaskExists(uint64)` and selector `0x8aaa404e`.
     ```solidity
     function ifTaskExists(uint64 _taskIndex) external view returns (bool);
@@ -3751,6 +3940,8 @@ pub mod SupraContractsBindings {
         #[allow(missing_docs)]
         getTaskIdList(getTaskIdListCall),
         #[allow(missing_docs)]
+        hasActiveTaskOfType(hasActiveTaskOfTypeCall),
+        #[allow(missing_docs)]
         ifTaskExists(ifTaskExistsCall),
         #[allow(missing_docs)]
         isAutomationReadyEnabled(isAutomationReadyEnabledCall),
@@ -3779,6 +3970,7 @@ pub mod SupraContractsBindings {
             [125u8, 237u8, 9u8, 27u8],
             [127u8, 105u8, 195u8, 92u8],
             [138u8, 170u8, 64u8, 78u8],
+            [160u8, 62u8, 191u8, 105u8],
             [178u8, 239u8, 104u8, 150u8],
             [236u8, 130u8, 180u8, 41u8],
         ];
@@ -3794,6 +3986,7 @@ pub mod SupraContractsBindings {
             ::core::stringify!(blockPrologue),
             ::core::stringify!(processTasks),
             ::core::stringify!(ifTaskExists),
+            ::core::stringify!(hasActiveTaskOfType),
             ::core::stringify!(getTaskDetails),
             ::core::stringify!(getTaskIdList),
         ];
@@ -3809,6 +4002,7 @@ pub mod SupraContractsBindings {
             <blockPrologueCall as alloy_sol_types::SolCall>::SIGNATURE,
             <processTasksCall as alloy_sol_types::SolCall>::SIGNATURE,
             <ifTaskExistsCall as alloy_sol_types::SolCall>::SIGNATURE,
+            <hasActiveTaskOfTypeCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskDetailsCall as alloy_sol_types::SolCall>::SIGNATURE,
             <getTaskIdListCall as alloy_sol_types::SolCall>::SIGNATURE,
         ];
@@ -3835,7 +4029,7 @@ pub mod SupraContractsBindings {
     impl alloy_sol_types::SolInterface for SupraContractsBindingsCalls {
         const NAME: &'static str = "SupraContractsBindingsCalls";
         const MIN_DATA_LENGTH: usize = 0usize;
-        const COUNT: usize = 12usize;
+        const COUNT: usize = 13usize;
         #[inline]
         fn selector(&self) -> [u8; 4] {
             match self {
@@ -3856,6 +4050,9 @@ pub mod SupraContractsBindings {
                     <getTaskDetailsBulkCall as alloy_sol_types::SolCall>::SELECTOR
                 }
                 Self::getTaskIdList(_) => <getTaskIdListCall as alloy_sol_types::SolCall>::SELECTOR,
+                Self::hasActiveTaskOfType(_) => {
+                    <hasActiveTaskOfTypeCall as alloy_sol_types::SolCall>::SELECTOR
+                }
                 Self::ifTaskExists(_) => <ifTaskExistsCall as alloy_sol_types::SolCall>::SELECTOR,
                 Self::isAutomationReadyEnabled(_) => {
                     <isAutomationReadyEnabledCall as alloy_sol_types::SolCall>::SELECTOR
@@ -3975,6 +4172,15 @@ pub mod SupraContractsBindings {
                             .map(SupraContractsBindingsCalls::ifTaskExists)
                     }
                     ifTaskExists
+                },
+                {
+                    fn hasActiveTaskOfType(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <hasActiveTaskOfTypeCall as alloy_sol_types::SolCall>::abi_decode_raw(data)
+                            .map(SupraContractsBindingsCalls::hasActiveTaskOfType)
+                    }
+                    hasActiveTaskOfType
                 },
                 {
                     fn getTaskDetails(
@@ -4125,6 +4331,17 @@ pub mod SupraContractsBindings {
                     ifTaskExists
                 },
                 {
+                    fn hasActiveTaskOfType(
+                        data: &[u8],
+                    ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
+                        <hasActiveTaskOfTypeCall as alloy_sol_types::SolCall>::abi_decode_raw_validate(
+                                data,
+                            )
+                            .map(SupraContractsBindingsCalls::hasActiveTaskOfType)
+                    }
+                    hasActiveTaskOfType
+                },
+                {
                     fn getTaskDetails(
                         data: &[u8],
                     ) -> alloy_sol_types::Result<SupraContractsBindingsCalls> {
@@ -4179,6 +4396,9 @@ pub mod SupraContractsBindings {
                 Self::getTaskIdList(inner) => {
                     <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
+                Self::hasActiveTaskOfType(inner) => {
+                    <hasActiveTaskOfTypeCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
+                }
                 Self::ifTaskExists(inner) => {
                     <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encoded_size(inner)
                 }
@@ -4225,6 +4445,11 @@ pub mod SupraContractsBindings {
                 }
                 Self::getTaskIdList(inner) => {
                     <getTaskIdListCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
+                }
+                Self::hasActiveTaskOfType(inner) => {
+                    <hasActiveTaskOfTypeCall as alloy_sol_types::SolCall>::abi_encode_raw(
+                        inner, out,
+                    )
                 }
                 Self::ifTaskExists(inner) => {
                     <ifTaskExistsCall as alloy_sol_types::SolCall>::abi_encode_raw(inner, out)
@@ -4527,6 +4752,19 @@ pub mod SupraContractsBindings {
         ///Creates a new call builder for the [`getTaskIdList`] function.
         pub fn getTaskIdList(&self) -> alloy_contract::SolCallBuilder<&P, getTaskIdListCall, N> {
             self.call_builder(&getTaskIdListCall)
+        }
+        ///Creates a new call builder for the [`hasActiveTaskOfType`] function.
+        pub fn hasActiveTaskOfType(
+            &self,
+            _account: alloy::sol_types::private::Address,
+            _taskIndex: u64,
+            _type: <LibCommon::TaskType as alloy::sol_types::SolType>::RustType,
+        ) -> alloy_contract::SolCallBuilder<&P, hasActiveTaskOfTypeCall, N> {
+            self.call_builder(&hasActiveTaskOfTypeCall {
+                _account,
+                _taskIndex,
+                _type,
+            })
         }
         ///Creates a new call builder for the [`ifTaskExists`] function.
         pub fn ifTaskExists(

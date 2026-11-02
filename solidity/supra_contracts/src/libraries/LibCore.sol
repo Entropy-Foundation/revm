@@ -776,7 +776,7 @@ library LibCore {
             task.owner,
             task.taskState,
             isGst,
-            isConfigUpdate
+            LibCommon.refundPolicyOf(_reason)
         );
 
         if (!isGst) {
