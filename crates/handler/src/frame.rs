@@ -27,7 +27,7 @@ use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
 };
-use primitives::{keccak256, Address, Bytes, U256};
+use primitives::{keccak256, supra_constants::is_supra_reserved, Address, Bytes, U256};
 use state::Bytecode;
 use std::borrow::ToOwned;
 use std::boxed::Box;
@@ -164,6 +164,29 @@ impl EthFrame<EthInterpreter> {
             return return_result(InstructionResult::CallTooDeep);
         }
 
+        // Value reaches a Supra reserved address only through a call to a precompile registered
+        // there that declares, through `PrecompileProvider::accepts_value`, that it is
+        // responsible for the value it receives. Value sent to any other reserved address, or to
+        // a reserved precompile that only reads, would be held by an account that nothing can
+        // spend from, so such a transfer is refused in every execution mode. Both provider
+        // methods are consulted so that a provider whose `accepts_value` names an address it
+        // does not serve still cannot admit value there. See smr-moonshot#3117.
+        //
+        // The check runs before any account is loaded or any journal entry is written, so the
+        // refusal itself writes nothing to the journal. `DELEGATECALL` and `CALLCODE` do not
+        // move value to `target_address` from another account (`CallValue::Apparent`, and a
+        // transfer to the caller itself, respectively), and a zero-value `CALL` moves nothing,
+        // so only a non-zero `CallValue::Transfer` is examined.
+        if let CallValue::Transfer(value) = inputs.value {
+            if !value.is_zero() && is_supra_reserved(&inputs.target_address) {
+                let is_value_accepting_precompile = precompiles.contains(&inputs.target_address)
+                    && precompiles.accepts_value(&inputs.target_address);
+                if !is_value_accepting_precompile {
+                    return return_result(InstructionResult::ReservedAddressTarget);
+                }
+            }
+        }
+
         // Make account warm and loaded.
         let _ = ctx
             .journal_mut()
@@ -233,13 +256,37 @@ impl EthFrame<EthInterpreter> {
         let mut code_hash = account.info.code_hash();
         let mut bytecode = account.info.code.clone().unwrap_or_default();
 
+        // Code never executes from a Supra reserved address, in any execution mode: neither as
+        // the executing account (`target_address`, which becomes `msg.sender` of every call the
+        // code makes), nor as the account the code is loaded from (`bytecode_address`), nor as
+        // the account an EIP-7702 delegation designation points to. Precompiles were dispatched
+        // above and are not bytecode. See smr-moonshot#3117.
+        //
+        // A reserved frame is refused if its own code is non-empty, before any delegation is
+        // resolved, so a reserved account holding a delegation designation is refused whatever
+        // the designation points to.
+        if !bytecode.is_empty()
+            && (is_supra_reserved(&inputs.target_address)
+                || is_supra_reserved(&inputs.bytecode_address))
+        {
+            ctx.journal_mut().checkpoint_revert(checkpoint);
+            return return_result(InstructionResult::ReservedAddressTarget);
+        }
+
         if let Bytecode::Eip7702(eip7702_bytecode) = bytecode {
-            let account = &ctx
-                .journal_mut()
-                .load_account_code(eip7702_bytecode.delegated_address)?
-                .info;
+            let delegated_address = eip7702_bytecode.delegated_address;
+            let account = &ctx.journal_mut().load_account_code(delegated_address)?.info;
             bytecode = account.code.clone().unwrap_or_default();
             code_hash = account.code_hash();
+
+            // The frame's own account is outside the reserved range here, so the delegation is
+            // refused when it would load code from a reserved address. A designation that
+            // points to a reserved address holding no code executes nothing, exactly as a
+            // designation to any other empty account does.
+            if !bytecode.is_empty() && is_supra_reserved(&delegated_address) {
+                ctx.journal_mut().checkpoint_revert(checkpoint);
+                return return_result(InstructionResult::ReservedAddressTarget);
+            }
         }
 
         // Returns success if bytecode is empty.

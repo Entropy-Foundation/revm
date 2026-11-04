@@ -256,6 +256,11 @@ pub trait Handler {
     /// To avoid/prevent any EOA address collision with the reserved addresses, and corrupting
     /// internal system state the user transactions ever having sender address matching any SUPRA
     /// reserved one are rejected.
+    ///
+    /// This check covers the transaction's sender only. Reserved addresses inside execution are
+    /// guarded by `EthFrame::make_call_frame`, which never executes bytecode at a reserved address
+    /// and admits value to one only through a precompile registered there, and by the
+    /// `SELFDESTRUCT` instruction, which refuses a reserved beneficiary.
     #[inline]
     fn validate_caller(&self, evm: &Self::Evm) -> Result<(), Self::Error> {
         let ctx = evm.ctx_ref();
@@ -470,8 +475,9 @@ pub trait Handler {
     /// For [`context::ExecutionMode::ReadOnly`] transactions the journal is always discarded
     /// via [`JournalTr::discard_tx`] rather than committed, preventing any side effects
     /// (including account warmth) from leaking into subsequent transaction execution.
-    /// If the journal contains state-mutating entries the method returns an error, because
-    /// predicates are expected to be pure view functions.
+    /// If the journal contains state-mutating entries the method returns an error: a predicate may
+    /// leave no lasting change to accounts or storage. Transient storage writes, logs and warming
+    /// are permitted, and are discarded with the run. See [`context::ExecutionMode::ReadOnly`].
     #[inline]
     fn execution_result(
         &mut self,

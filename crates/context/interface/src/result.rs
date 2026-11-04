@@ -624,6 +624,12 @@ pub enum HaltReason {
     OutOfFunds,
     /// Call is too deep.
     CallTooDeep,
+    /// A Supra reserved address was the target of an operation it does not accept: code
+    /// execution, a value transfer to an address with no precompile, or a `SELFDESTRUCT`
+    /// beneficiary.
+    ///
+    /// Declared last so that the serialized index of every variant above is unchanged.
+    ReservedAddressTarget,
 }
 
 /// Out of gas errors.

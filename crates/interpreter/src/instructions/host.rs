@@ -5,7 +5,10 @@ use crate::{
     Host, InstructionResult,
 };
 use core::cmp::min;
-use primitives::{hardfork::SpecId::*, Bytes, Log, LogData, B256, BLOCK_HASH_HISTORY, U256};
+use primitives::{
+    hardfork::SpecId::*, supra_constants::is_supra_reserved, Bytes, Log, LogData, B256,
+    BLOCK_HASH_HISTORY, U256,
+};
 
 use crate::InstructionContext;
 
@@ -322,12 +325,28 @@ pub fn log<const N: usize, H: Host + ?Sized>(
 /// Implements the SELFDESTRUCT instruction.
 ///
 /// Halt execution and register account for later deletion.
+///
+/// A Supra reserved address is never the beneficiary: the instruction halts with
+/// [`InstructionResult::ReservedAddressTarget`] instead, in every execution mode.
 pub fn selfdestruct<WIRE: InterpreterTypes, H: Host + ?Sized>(
     context: InstructionContext<'_, H, WIRE>,
 ) {
     require_non_staticcall!(context.interpreter);
     popn!([target], context.interpreter);
     let target = target.into_address();
+
+    // `SELFDESTRUCT` credits its beneficiary without calling it, so no code or precompile at the
+    // beneficiary sees the value arrive. Value reaches a reserved address only through a call to
+    // a precompile registered there (`EthFrame::make_call_frame`), so a reserved beneficiary is
+    // refused, precompile or not, and whatever the balance being moved. The check precedes
+    // `Host::selfdestruct` so that a refused instruction neither loads the beneficiary nor writes
+    // a journal entry. See smr-moonshot#3117.
+    if is_supra_reserved(&target) {
+        context
+            .interpreter
+            .halt(InstructionResult::ReservedAddressTarget);
+        return;
+    }
 
     let Some(res) = context
         .host
@@ -356,4 +375,84 @@ pub fn selfdestruct<WIRE: InterpreterTypes, H: Host + ?Sized>(
     );
 
     context.interpreter.halt(InstructionResult::SelfDestruct);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        host::DummyHost,
+        instructions::instruction_table,
+        interpreter::{EthInterpreter, ExtBytecode},
+        InputsImpl, InstructionResult, Interpreter, InterpreterAction, SharedMemory,
+    };
+    use bytecode::{opcode, Bytecode};
+    use primitives::{
+        hardfork::SpecId,
+        supra_constants::{u64_to_address, TX_HASH_ADDRESS, VM_SIGNER},
+        Address, Bytes,
+    };
+
+    /// Runs `PUSH20 beneficiary; SELFDESTRUCT` against `DummyHost` and returns the result the
+    /// frame ends with.
+    ///
+    /// `DummyHost::selfdestruct` returns `None`, which the instruction turns into
+    /// `FatalExternalError`. A run that ends with any other result therefore never reached the
+    /// host.
+    fn selfdestruct_result(beneficiary: Address, is_static: bool) -> InstructionResult {
+        let mut code = vec![opcode::PUSH20];
+        code.extend_from_slice(beneficiary.as_slice());
+        code.push(opcode::SELFDESTRUCT);
+
+        let mut interpreter = Interpreter::<EthInterpreter>::new(
+            SharedMemory::new(),
+            ExtBytecode::new(Bytecode::new_raw(Bytes::from(code))),
+            InputsImpl::default(),
+            is_static,
+            SpecId::PRAGUE,
+            1_000_000,
+        );
+        let table = instruction_table::<EthInterpreter, DummyHost>();
+        match interpreter.run_plain(&table, &mut DummyHost) {
+            InterpreterAction::Return(result) => result.result,
+            other => panic!("SELFDESTRUCT must end the frame, got: {other:?}"),
+        }
+    }
+
+    /// A reserved beneficiary halts the instruction before the host is asked to self-destruct.
+    #[test]
+    fn selfdestruct_to_a_reserved_beneficiary_halts_before_the_host() {
+        for beneficiary in [
+            VM_SIGNER,
+            TX_HASH_ADDRESS,
+            u64_to_address(0x5355_5002),
+            u64_to_address(0x5355_50FF),
+        ] {
+            assert_eq!(
+                selfdestruct_result(beneficiary, false),
+                InstructionResult::ReservedAddressTarget,
+                "beneficiary {beneficiary}"
+            );
+        }
+    }
+
+    /// An address on either side of the reserved range reaches the host.
+    #[test]
+    fn selfdestruct_to_an_address_outside_the_reserved_range_reaches_the_host() {
+        for beneficiary in [u64_to_address(0x5355_4FFF), u64_to_address(0x5355_5100)] {
+            assert_eq!(
+                selfdestruct_result(beneficiary, false),
+                InstructionResult::FatalExternalError,
+                "beneficiary {beneficiary}"
+            );
+        }
+    }
+
+    /// The static-call check precedes the reserved-beneficiary check.
+    #[test]
+    fn selfdestruct_in_a_static_call_reports_the_static_violation() {
+        assert_eq!(
+            selfdestruct_result(VM_SIGNER, true),
+            InstructionResult::StateChangeDuringStaticCall
+        );
+    }
 }

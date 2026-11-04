@@ -229,8 +229,9 @@ pub trait JournalTr {
     /// **Must be called before [`JournalTr::commit_tx`] or [`JournalTr::discard_tx`]** — both
     /// of those methods clear the entry list, making detection impossible afterward.
     ///
-    /// Used by runtime handler to validate that [`crate::ExecutionMode::ReadOnly`] mode transactions
-    /// are truly stateless.
+    /// Used by the handler to validate that an [`crate::ExecutionMode::ReadOnly`] run leaves no
+    /// lasting change to accounts or storage. Transient storage writes and warming are not
+    /// mutations, and logs are not journal entries.
     fn has_state_mutations(&self) -> bool;
 
     /// Clear current journal resetting it to initial state and return changes state.

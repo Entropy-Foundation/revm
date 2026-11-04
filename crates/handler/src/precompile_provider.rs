@@ -35,6 +35,23 @@ pub trait PrecompileProvider<CTX: ContextTr> {
 
     /// Check if the address is a precompile.
     fn contains(&self, address: &Address) -> bool;
+
+    /// Returns whether the precompile at `address`, which lies in the Supra reserved range,
+    /// accepts a call that transfers value.
+    ///
+    /// A value transfer to a reserved address is refused unless the address holds a precompile
+    /// for which this returns `true`: such a precompile is responsible for the value it
+    /// receives, whereas value sent to any other reserved address would be held by an account
+    /// that nothing can spend from. The call frame consults this method only for addresses in
+    /// the reserved range, and only after [`PrecompileProvider::contains`] has confirmed that a
+    /// precompile is registered there. See smr-moonshot#3117.
+    ///
+    /// The default accepts value at no address. A provider overrides it for exactly those
+    /// reserved precompiles that account for the value they receive.
+    fn accepts_value(&self, address: &Address) -> bool {
+        let _ = address;
+        false
+    }
 }
 
 /// The [`PrecompileProvider`] for ethereum precompiles.
