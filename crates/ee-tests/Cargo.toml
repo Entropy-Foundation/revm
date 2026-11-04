@@ -24,6 +24,7 @@ rstest = { workspace = true }
 alloy-sol-types = { workspace = true }
 sha2 = { workspace = true }
 alloy-primitives = { workspace = true }
+supra-extension = { workspace = true }
 
 [features]
 default = []

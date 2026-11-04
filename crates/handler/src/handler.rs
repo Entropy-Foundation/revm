@@ -12,8 +12,11 @@ use context_interface::{
 };
 use interpreter::interpreter_action::FrameInit;
 use interpreter::{Gas, InitialAndFloorGas, SharedMemory};
-use primitives::supra_constants::{is_supra_reserved, is_vm_signer};
 use primitives::U256;
+use primitives::{
+    eip2935::is_system_address,
+    supra_constants::{is_supra_reserved, is_vm_signer},
+};
 use std::format;
 use std::string::String;
 
@@ -250,12 +253,22 @@ pub trait Handler {
         validation::validate_env(evm.ctx())
     }
 
-    /// Validates caller, to reject user transactions having caller address matching any of
-    /// the SUPRA reserved addresses.
-    /// SUPRA reserved addresses are used by the system to initiate and execute internal transactions.
-    /// To avoid/prevent any EOA address collision with the reserved addresses, and corrupting
-    /// internal system state the user transactions ever having sender address matching any SUPRA
-    /// reserved one are rejected.
+    /// Validates the transaction's sender against the execution mode.
+    ///
+    /// - A Supra reserved address is a sender only in [`context::ExecutionMode::System`] and
+    ///   [`context::ExecutionMode::Genesis`]. The reserved addresses are used by the system to
+    ///   initiate and execute internal transactions, and a transaction in any other mode from one
+    ///   of them is refused, so that no externally built transaction can act as the system.
+    /// - The EIP-2935 system address ([`primitives::eip2935::SYSTEM_ADDRESS`]) is a sender only in
+    ///   [`context::ExecutionMode::System`]. The node sends from it the pre-block call that
+    ///   records the parent block's hash in the history contract, whose `set` path admits no other
+    ///   caller. Every other mode refuses it as a sender, Genesis included, so that call stays the
+    ///   only writer of the history.
+    /// - A [`context::ExecutionMode::System`] transaction is sent by `VM_SIGNER` or by the
+    ///   EIP-2935 system address, and by no other sender.
+    ///
+    /// The EIP-2935 system address is an ordinary account in every other respect: value may be
+    /// sent to it and it may be called, as on Ethereum.
     ///
     /// This check covers the transaction's sender only. Reserved addresses inside execution are
     /// guarded by `EthFrame::make_call_frame`, which never executes bytecode at a reserved address
@@ -279,12 +292,26 @@ pub trait Handler {
                     ),
                 },
             ))
-        } else if !is_vm_signer(&caller) && execution_mode.is_system() {
+        } else if is_system_address(&caller) && !execution_mode.is_system() {
+            Err(Self::Error::from(
+                InvalidTransaction::UnsupportedTransactionSender {
+                    sender: caller,
+                    msg: format!(
+                        "Invalid caller: the EIP-2935 system address is a sender of system \
+                         transactions only. TxnHash {}",
+                        ctx.tx().tx_hash()
+                    ),
+                },
+            ))
+        } else if execution_mode.is_system()
+            && !(is_vm_signer(&caller) || is_system_address(&caller))
+        {
             Err(Self::Error::from(
                 InvalidTransaction::UnsupportedTransactionSender {
                     sender: caller,
                     msg: String::from(
-                        "Invalid caller: Expected VM_SIGNER as caller for system transactions.",
+                        "Invalid caller: Expected VM_SIGNER or the EIP-2935 system address as \
+                         caller for system transactions.",
                     ),
                 },
             ))
