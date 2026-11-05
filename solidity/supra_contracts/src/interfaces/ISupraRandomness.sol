@@ -82,8 +82,8 @@ interface ISupraRandomness {
     ///
     /// Call this function with `CALL` or `STATICCALL`. A `DELEGATECALL` to it is decided on the
     /// calling frame's `msg.sender` instead of its context, so it is served from a self-call frame
-    /// and refused from the root frame. Do not send ETH with a call to this address: value sent
-    /// there stays at the address, which no key controls, and is not recoverable.
+    /// and refused from the root frame. Do not send ETH with a call to this address: a call that
+    /// sends value is refused before the precompile runs, and the value stays with the caller.
     ///
     /// # Cost of an undone read
     ///

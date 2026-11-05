@@ -8,8 +8,9 @@
 //!   provider declares, through `PrecompileProvider::accepts_value`, that it accepts value;
 //! - a reserved address is never the beneficiary of `SELFDESTRUCT`.
 //!
-//! Every refusal reports `ReservedAddressTarget`. `VM_SIGNER` remains the `msg.sender` that a
-//! System transaction's `DELEGATECALL` preserves.
+//! Every refusal reports `ReservedAddressTarget` and is revert-class: the refused frame returns its
+//! unspent gas to its caller, and a transaction that ends with the refusal is charged the gas it
+//! used. `VM_SIGNER` remains the `msg.sender` that a System transaction's `DELEGATECALL` preserves.
 
 use revm::{
     bytecode::opcode,
@@ -69,6 +70,18 @@ const EMPTY_ACCOUNT: Address = address!("0x1000000000000000000000000000000000000
 
 /// Balance of every funded account.
 const FUNDS: u128 = 1_000_000_000_000_000_000;
+
+/// The gas limit of every test transaction.
+const TX_GAS_LIMIT: u64 = 1_000_000;
+
+/// An upper bound on the gas a transaction in these tests uses when a frame is refused with
+/// `ReservedAddressTarget`. The refusal is revert-class, so the refused frame returns its unspent
+/// gas: a transaction whose refused call had consumed what it was forwarded would use close to
+/// [`TX_GAS_LIMIT`] instead.
+const REFUSED_GAS_BOUND: u64 = 100_000;
+
+/// The intrinsic gas of a call transaction without call data.
+const INTRINSIC_GAS: u64 = 21_000;
 
 /// Every execution mode.
 const ALL_MODES: [ExecutionMode; 6] = [
@@ -271,7 +284,27 @@ impl Run {
         (B256::from_slice(&output[..32]), flag == U256::from(1))
     }
 
-    /// Asserts that the transaction halted with `ReservedAddressTarget`.
+    /// The gas the transaction used.
+    fn gas_used(&self, context: &str) -> u64 {
+        match &self.result {
+            Ok(result) => result.gas_used(),
+            Err(error) => panic!("{context}: the transaction did not execute: {error:?}"),
+        }
+    }
+
+    /// Asserts that the transaction used less than [`REFUSED_GAS_BOUND`]: every refused frame in
+    /// it returned its unspent gas.
+    fn assert_refused_gas_returned(&self, context: &str) {
+        let gas_used = self.gas_used(context);
+        assert!(
+            gas_used < REFUSED_GAS_BOUND,
+            "{context}: used {gas_used} gas of {TX_GAS_LIMIT}; a refused frame must return its \
+             unspent gas"
+        );
+    }
+
+    /// Asserts that the transaction halted with `ReservedAddressTarget` and was charged only the
+    /// gas it used, not its gas limit.
     fn assert_reserved_halt(&self, context: &str) {
         assert!(
             matches!(
@@ -284,6 +317,7 @@ impl Run {
             "{context}: expected a ReservedAddressTarget halt, got {:?}",
             self.result
         );
+        self.assert_refused_gas_returned(context);
     }
 }
 
@@ -323,7 +357,7 @@ fn run(
         caller,
         kind: TxKind::Call(to),
         value,
-        gas_limit: 1_000_000,
+        gas_limit: TX_GAS_LIMIT,
         tx_hash,
         ..Default::default()
     });
@@ -370,6 +404,7 @@ fn inner_value_call_to_a_reserved_address_is_refused_in_every_mode() {
             );
             let (_, called) = run.reported(&context);
             assert!(!called, "{context}: the call must fail");
+            run.assert_refused_gas_returned(&context);
             // `VM_SIGNER` is also a funded sender in this database.
             let target_funds = if target == VM_SIGNER {
                 U256::from(FUNDS)
@@ -454,6 +489,11 @@ fn transaction_value_to_vm_signer_is_refused() {
         &[SENDER, VM_SIGNER],
     );
     run.assert_reserved_halt("transaction with value to VM_SIGNER");
+    // The refusal precedes any execution, so the transaction is charged its intrinsic gas alone.
+    assert_eq!(
+        run.gas_used("transaction with value to VM_SIGNER"),
+        INTRINSIC_GAS
+    );
     // The gas price is zero, so the sender pays nothing for the halted transaction.
     assert_eq!(run.balances, [U256::from(FUNDS), U256::from(FUNDS)]);
 }
@@ -541,6 +581,7 @@ fn bytecode_at_a_reserved_address_never_executes() {
                 );
                 let (word, called) = run.reported(&context);
                 assert!(!called, "{context}: the call must fail");
+                run.assert_refused_gas_returned(&context);
                 assert_eq!(
                     word,
                     B256::ZERO,
@@ -674,6 +715,7 @@ fn selfdestruct_to_a_reserved_beneficiary_is_refused_in_every_mode() {
             );
             let (_, called) = run_inner.reported(&context);
             assert!(!called, "{context}: the call must fail");
+            run_inner.assert_refused_gas_returned(&context);
             assert_eq!(run_inner.balances, [beneficiary_funds], "{context}");
         }
     }

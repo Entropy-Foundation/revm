@@ -40,8 +40,9 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// A {value} cannot be known before its transaction is ordered, and anyone can compute it once its
 /// block commits. Do not use it as a secret.
 ///
-/// The precompile is called with `CALL` or `STATICCALL`, and ETH is never sent to it: value sent
-/// to `0x53555003` is not recoverable.
+/// The precompile is called with `CALL` or `STATICCALL`, and ETH is never sent to it: a call to
+/// `0x53555003` that sends value is refused before the precompile runs, and the value stays with
+/// the caller.
 ///
 /// {seedAt} carries a different obligation, which applies to every kind of transaction: the value
 /// is public, so anyone can compute what your contract will derive from it. A design that settles

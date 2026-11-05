@@ -54,8 +54,9 @@ impl ExecutionMode {
     ///   nonce. Each run is identified by its transaction hash, which the node computes over the
     ///   whole transaction, including the height of the block it runs in.
     /// - [`ExecutionMode::ReadOnly`] runs a task's predicate, and its changes are discarded.
-    /// - [`ExecutionMode::System`] transactions are sent by `VM_SIGNER`, which has no account
-    ///   nonce to sequence against.
+    /// - [`ExecutionMode::System`] transactions are sent by `VM_SIGNER` and are not sequenced by
+    ///   its nonce: the node builds them for the block it executes. `VM_SIGNER` also deploys the
+    ///   genesis contracts, and its nonce advances in [`ExecutionMode::Genesis`].
     ///
     /// Replay protection for the modes that return false is the node's responsibility: revm
     /// executes the transaction it is given in the mode it is given.

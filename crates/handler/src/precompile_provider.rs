@@ -47,7 +47,8 @@ pub trait PrecompileProvider<CTX: ContextTr> {
     /// precompile is registered there. See smr-moonshot#3117.
     ///
     /// The default accepts value at no address. A provider overrides it for exactly those
-    /// reserved precompiles that account for the value they receive.
+    /// reserved precompiles that account for the value they receive. A refused call halts with
+    /// `ReservedAddressTarget` and returns its unspent gas to the caller.
     fn accepts_value(&self, address: &Address) -> bool {
         let _ = address;
         false

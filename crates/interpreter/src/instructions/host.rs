@@ -340,7 +340,8 @@ pub fn selfdestruct<WIRE: InterpreterTypes, H: Host + ?Sized>(
     // a precompile registered there (`EthFrame::make_call_frame`), so a reserved beneficiary is
     // refused, precompile or not, and whatever the balance being moved. The check precedes
     // `Host::selfdestruct` so that a refused instruction neither loads the beneficiary nor writes
-    // a journal entry. See smr-moonshot#3117.
+    // a journal entry. The halt is revert-class, so the frame's unspent gas returns to its
+    // caller. See smr-moonshot#3117.
     if is_supra_reserved(&target) {
         context
             .interpreter
