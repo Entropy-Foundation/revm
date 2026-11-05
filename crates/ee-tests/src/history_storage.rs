@@ -16,6 +16,7 @@ use revm::{
     context_interface::{
         cfg::ExecutionMode,
         result::{EVMError, ExecutionResult, InvalidTransaction, Output, SuccessReason},
+        transaction::{Authorization, RecoveredAuthority, RecoveredAuthorization, TransactionType},
     },
     database::{CacheDB, EmptyDB},
     handler::{EthFrame, Handler, MainnetContext, MainnetEvm, MainnetHandler},
@@ -27,9 +28,9 @@ use revm::{
         hardfork::SpecId,
         keccak256,
         supra_constants::{is_supra_reserved, VM_SIGNER},
-        Address, Bytes, TxKind, B256, U256,
+        Address, Bytes, TxKind, B256, KECCAK_EMPTY, U256,
     },
-    state::AccountInfo,
+    state::{AccountInfo, Bytecode},
     DatabaseCommit, DatabaseRef, ExecuteCommitEvm, ExecuteEvm, MainBuilder, MainContext,
 };
 use std::convert::Infallible;
@@ -123,7 +124,8 @@ fn hash_of(number: u64) -> B256 {
 /// Runs the history write of the block at `height` and returns its result.
 fn write_history(evm: &mut TestEvm, height: u64) -> Result<ExecutionResult, TestError> {
     evm.ctx.block.number = U256::from(height);
-    let tx = history_storage_write_tx_env(CHAIN_ID, height, hash_of(height - 1), TX_GAS_LIMIT_CAP);
+    let tx = history_storage_write_tx_env(CHAIN_ID, height, hash_of(height - 1), TX_GAS_LIMIT_CAP)
+        .expect("every height the tests write has a parent");
     execute_commit(evm, ExecutionMode::System, tx)
 }
 
@@ -206,12 +208,10 @@ fn history_writes_fill_the_ring_and_get_serves_the_window() {
     // The first write, inspected before it is committed.
     evm.ctx.block.number = U256::from(1);
     evm.ctx.cfg.execution_mode = ExecutionMode::System;
-    evm.ctx.set_tx(history_storage_write_tx_env(
-        CHAIN_ID,
-        1,
-        hash_of(0),
-        TX_GAS_LIMIT_CAP,
-    ));
+    evm.ctx.set_tx(
+        history_storage_write_tx_env(CHAIN_ID, 1, hash_of(0), TX_GAS_LIMIT_CAP)
+            .expect("height 1 has a parent"),
+    );
     let mut handler = MainnetHandler::<TestEvm, TestError, EthFrame<EthInterpreter>>::default();
     handler
         .validate_caller(&evm)
@@ -342,8 +342,10 @@ fn a_user_transaction_from_the_system_address_cannot_write_the_history() {
     );
 }
 
-/// Who may send in which mode: the system address in System mode only; `VM_SIGNER` in System and
-/// Genesis mode only; any other sender in every mode but System.
+/// Who may send in which mode, for a transaction to the history contract: the system address in
+/// System mode only; `VM_SIGNER` in System and Genesis mode only; any other sender in every mode
+/// but System. The contract is not deployed here, so every executed call is a plain call to an
+/// empty account.
 #[test]
 fn the_system_address_is_a_sender_of_system_transactions_only() {
     for sender in [SYSTEM_ADDRESS, VM_SIGNER, SENDER] {
@@ -361,7 +363,7 @@ fn the_system_address_is_a_sender_of_system_transactions_only() {
                 mode.clone(),
                 TxEnv {
                     caller: sender,
-                    kind: TxKind::Call(EMPTY_ACCOUNT),
+                    kind: TxKind::Call(HISTORY_STORAGE_ADDRESS),
                     gas_limit: 100_000,
                     ..Default::default()
                 },
@@ -384,6 +386,105 @@ fn the_system_address_is_a_sender_of_system_transactions_only() {
             }
         }
     }
+}
+
+/// In System mode the system address sends the history write only: a System transaction from it
+/// to any other target, a contract creation included, is refused as a sender, while `VM_SIGNER`
+/// passes the sender check for the same transactions (what execution then does with a System
+/// creation is outside this test).
+#[test]
+fn the_system_address_sends_no_system_transaction_but_the_history_write() {
+    for kind in [
+        TxKind::Call(EMPTY_ACCOUNT),
+        TxKind::Call(VM_SIGNER),
+        TxKind::Call(SYSTEM_ADDRESS),
+        TxKind::Create,
+    ] {
+        let tx = |caller| TxEnv {
+            caller,
+            kind,
+            gas_limit: 100_000,
+            ..Default::default()
+        };
+
+        let mut evm = new_evm();
+        let result = execute_commit(&mut evm, ExecutionMode::System, tx(SYSTEM_ADDRESS));
+        assert!(
+            matches!(
+                &result,
+                Err(EVMError::Transaction(
+                    InvalidTransaction::UnsupportedTransactionSender { sender, msg }
+                )) if *sender == SYSTEM_ADDRESS && msg.contains("TxnHash")
+            ),
+            "the system address must not send a System transaction to {kind:?}, got {result:?}"
+        );
+
+        let mut evm = new_evm();
+        let result = execute_commit(&mut evm, ExecutionMode::System, tx(VM_SIGNER));
+        assert!(
+            result.is_ok(),
+            "VM_SIGNER is a sender of a System transaction to {kind:?}, got {result:?}"
+        );
+    }
+}
+
+/// An EIP-7702 authorization whose authority is the system address is skipped: the address gets
+/// no code and no nonce bump. Another authorization in the same transaction is applied, and the
+/// transaction succeeds.
+#[test]
+fn an_eip7702_authorization_from_the_system_address_is_skipped() {
+    let ordinary = address!("0x1000000000000000000000000000000000000003");
+    let delegate_to = address!("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    let authorization = |authority| {
+        RecoveredAuthorization::new_unchecked(
+            Authorization {
+                chain_id: U256::ZERO,
+                address: delegate_to,
+                nonce: 0,
+            },
+            RecoveredAuthority::Valid(authority),
+        )
+    };
+
+    let mut evm = new_evm();
+    let result = execute_commit(
+        &mut evm,
+        ExecutionMode::User,
+        TxEnv::builder()
+            .caller(SENDER)
+            .kind(TxKind::Call(EMPTY_ACCOUNT))
+            .gas_limit(1_000_000)
+            .tx_type(Some(TransactionType::Eip7702 as u8))
+            .authorization_list_recovered(vec![
+                authorization(SYSTEM_ADDRESS),
+                authorization(ordinary),
+            ])
+            .build_fill(),
+    )
+    .expect("a transaction with authorizations is valid");
+    assert!(result.is_success(), "{result:?}");
+
+    let db = evm.ctx.db();
+    if let Some(system_after) = db.basic_ref(SYSTEM_ADDRESS).expect("in-memory read") {
+        assert_eq!(
+            system_after.nonce, 0,
+            "the system address's nonce must not change"
+        );
+        assert_eq!(
+            system_after.code_hash, KECCAK_EMPTY,
+            "the system address must not be delegated"
+        );
+    }
+    let ordinary_after = db
+        .basic_ref(ordinary)
+        .expect("in-memory read")
+        .expect("the ordinary authority's account is written by the authorization");
+    assert_eq!(ordinary_after.nonce, 1);
+    assert_eq!(
+        ordinary_after.code_hash,
+        Bytecode::new_eip7702(delegate_to).hash_slow(),
+        "the ordinary authority must be delegated"
+    );
 }
 
 /// The system address is not a Supra reserved address, and is an ordinary account otherwise:

@@ -273,10 +273,9 @@ mod tests {
         Context, Transaction,
     };
     use database::InMemoryDB;
-    use primitives::{address, b256, bytes, StorageKey, U256};
+    use primitives::{b256, bytes, eip2935::HISTORY_STORAGE_ADDRESS, StorageKey, U256};
     use state::{AccountInfo, Bytecode};
 
-    const HISTORY_STORAGE_ADDRESS: Address = address!("0x0000F90827F1C53a10cb7A02335B175320002935");
     static HISTORY_STORAGE_CODE: Bytes = bytes!("0x3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500");
 
     #[test]

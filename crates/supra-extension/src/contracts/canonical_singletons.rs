@@ -225,10 +225,9 @@ mod tests {
     //
     // Arachnid's proxy, Multicall3, ERC-2470, ERC-1820 and EIP-2935 don't publish an init-code
     // hash in their own docs/spec the way CreateX does, so those five hashes below are
-    // self-computed
-    // (via this codebase's own `keccak256`) at the time each asset was extracted and pinned as
-    // a regression guard, not independently-published community values. The EIP-2935 asset is
-    // also checked against independently published values, in
+    // self-computed (via this codebase's own `keccak256`) at the time each asset was extracted
+    // and pinned as a regression guard, not independently-published community values. The
+    // EIP-2935 asset is also checked against independently published values, in
     // `history_storage_code_is_the_eip_constructor_and_runtime_code`.
     #[test]
     fn create2_factory_code_matches_expected_hash() {
