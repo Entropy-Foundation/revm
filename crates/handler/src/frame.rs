@@ -172,6 +172,9 @@ impl EthFrame<EthInterpreter> {
         // methods are consulted so that a provider whose `accepts_value` names an address it
         // does not serve still cannot admit value there. See smr-moonshot#3117.
         //
+        // The refusal is revert-class, like `CallTooDeep` above and `OutOfFunds` below: the
+        // caller gets back the gas it forwarded, and the outcome is still reported as a halt.
+        //
         // The check runs before any account is loaded or any journal entry is written, so the
         // refusal itself writes nothing to the journal. `DELEGATECALL` and `CALLCODE` do not
         // move value to `target_address` from another account (`CallValue::Apparent`, and a
@@ -261,6 +264,11 @@ impl EthFrame<EthInterpreter> {
         // code makes), nor as the account the code is loaded from (`bytecode_address`), nor as
         // the account an EIP-7702 delegation designation points to. Precompiles were dispatched
         // above and are not bytecode. See smr-moonshot#3117.
+        //
+        // This is a second line of defence. The reserved range is meant never to hold code, and
+        // this guard keeps that rule in force at execution should code ever be placed there, so
+        // it must not be removed on the grounds that the range is empty. Like the value check,
+        // the refusal is revert-class and returns the forwarded gas to the caller.
         //
         // A reserved frame is refused if its own code is non-empty, before any delegation is
         // resolved, so a reserved account holding a delegation designation is refused whatever
