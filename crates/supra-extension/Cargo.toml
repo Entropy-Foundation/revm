@@ -12,7 +12,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-alloy-sol-types = { workspace = true }
+# `json` lets `sol!` read a JSON ABI; src/supra_contract_bindings uses it.
+alloy-sol-types = { workspace = true, features = ["json"] }
 alloy-contract =  { workspace = true }
 alloy-consensus = { workspace = true }
 alloy-eips = { workspace = true }
@@ -43,9 +44,6 @@ workspace = true
 
 
 [build-dependencies]
-#forge = { workspace =  true }
-#clap = { workspace = true }
-#shlex = { workspace = true }
 foundry-compilers = { workspace = true }
 foundry-config = { workspace = true }
 anyhow = { workspace = true }
