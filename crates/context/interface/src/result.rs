@@ -624,6 +624,16 @@ pub enum HaltReason {
     OutOfFunds,
     /// Call is too deep.
     CallTooDeep,
+    /// A Supra reserved address was the target of an operation it does not accept: code
+    /// execution, a value transfer to an address with no precompile, or a `SELFDESTRUCT`
+    /// beneficiary.
+    ///
+    /// As with [`HaltReason::CallTooDeep`] and [`HaltReason::OutOfFunds`], the refused frame
+    /// returns its unspent gas to its caller, so a transaction that halts with this reason is
+    /// charged the gas it used rather than its gas limit.
+    ///
+    /// Declared last so that the serialized index of every variant above is unchanged.
+    ReservedAddressTarget,
 }
 
 /// Out of gas errors.

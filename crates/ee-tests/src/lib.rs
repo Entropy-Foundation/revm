@@ -138,3 +138,6 @@ mod coinbase_warmth;
 
 #[cfg(test)]
 mod access_list_warmth;
+
+#[cfg(test)]
+mod reserved_addresses;

@@ -15,7 +15,14 @@ pub enum ExecutionMode {
     Automated,
     /// Executing governance sponsored automated transaction.
     AutomatedGasless,
-    /// Executing a transaction for which no state change is expected
+    /// Executing an automation task's predicate.
+    ///
+    /// The run is always discarded, and it fails if it leaves a lasting change to an account or
+    /// to storage: a storage write, a nonce, code or non-zero balance change, an account created
+    /// or self-destructed. Changes made inside a frame that reverted are undone with that frame
+    /// and do not count. Transient storage writes, logs and account or storage warming are
+    /// permitted; they last only until the end of the transaction, and the run discards them.
+    /// See `Handler::execution_result` and `JournalTr::has_state_mutations`.
     ReadOnly,
     /// Executing governance native transaction.
     System,
@@ -35,7 +42,24 @@ impl ExecutionMode {
         }
     }
 
-    /// Returns true if nonce should be updated in case of successful execution.
+    /// Returns true if the transaction's nonce is checked against its sender's nonce, and the
+    /// sender's nonce is incremented.
+    ///
+    /// Only [`ExecutionMode::User`] and [`ExecutionMode::Genesis`] transactions are sequenced by
+    /// the sender's nonce. Transactions in the other modes are built by the node, and the node
+    /// selects the execution mode from the transaction's type:
+    /// - [`ExecutionMode::Automated`] and [`ExecutionMode::AutomatedGasless`] run a task of the
+    ///   automation registry. The node builds the task's transaction anew in every block in which
+    ///   the task's predicate holds, so the same task runs repeatedly against the same sender
+    ///   nonce. Each run is identified by its transaction hash, which the node computes over the
+    ///   whole transaction, including the height of the block it runs in.
+    /// - [`ExecutionMode::ReadOnly`] runs a task's predicate, and its changes are discarded.
+    /// - [`ExecutionMode::System`] transactions are sent by `VM_SIGNER` and are not sequenced by
+    ///   its nonce: the node builds them for the block it executes. `VM_SIGNER` also deploys the
+    ///   genesis contracts, and its nonce advances in [`ExecutionMode::Genesis`].
+    ///
+    /// Replay protection for the modes that return false is the node's responsibility: revm
+    /// executes the transaction it is given in the mode it is given.
     pub fn updates_nonce(&self) -> bool {
         matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }
@@ -50,8 +74,9 @@ impl ExecutionMode {
         matches!(self, ExecutionMode::Genesis)
     }
 
-    /// Returns true if the execution context is configured for read-only execution,
-    /// i.e. for execution of pure view functions.
+    /// Returns true if the execution context is configured for read-only execution, which leaves
+    /// no lasting change to accounts or storage. See [`ExecutionMode::ReadOnly`] for what is
+    /// permitted.
     pub fn is_read_only(&self) -> bool {
         matches!(self, ExecutionMode::ReadOnly)
     }
@@ -81,7 +106,7 @@ impl ExecutionMode {
     /// Contract creation is supported only in user and genesis execution modes.
     /// In Automation*, System mode contract deployment is not supported, as nonce update is not
     /// expected in these 2 modes.
-    /// And ReadOnly mode is used to execute pure view transactions where *NO* state change is expected.
+    /// [`ExecutionMode::ReadOnly`] permits no lasting state change, and creating a contract is one.
     pub fn supports_contract_creation(&self) -> bool {
         matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }

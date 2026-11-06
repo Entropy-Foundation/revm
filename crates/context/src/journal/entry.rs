@@ -70,15 +70,17 @@ pub trait JournalEntryTr {
 
     /// Returns `true` if this journal entry represents an operation that mutates persistent state.
     ///
-    /// Used to verify that [`context_interface::ExecutionMode::ReadOnly`] transactions are truly
-    /// stateless before committing or discarding them.
+    /// Used to verify that an [`context_interface::ExecutionMode::ReadOnly`] run leaves no lasting
+    /// change to accounts or storage, before it is discarded.
     ///
     /// `BalanceChange` requires the current `state` snapshot to filter out zero-delta entries
     /// produced unconditionally by `pre_execution` for zero-fee predicate calls — the old
     /// balance stored in the entry is compared against the account's current balance.
     ///
-    /// Read-only / gas-metering entries (`AccountWarmed`, `AccountTouched`, `StorageWarmed`,
-    /// `TransientStorageChange`) always return `false`.
+    /// Read-only / gas-metering entries (`AccountWarmed`, `AccountTouched`, `StorageWarmed`) always
+    /// return `false`. So does `TransientStorageChange`: transient storage is cleared at the end
+    /// of every transaction (EIP-1153), and the entry exists only to restore a transient value
+    /// when the frame that wrote it reverts.
     fn is_state_mutating(&self, state: &EvmState) -> bool;
 
     /// Returns the amount of native value this entry destroyed outright, with no

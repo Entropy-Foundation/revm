@@ -81,6 +81,19 @@ pub enum InstructionResult {
     CreateInitCodeSizeLimit,
     /// Fatal external error. Returned by database.
     FatalExternalError,
+    /// A Supra reserved address was the target of an operation it does not accept.
+    ///
+    /// Bytecode never executes at a reserved address, value reaches a reserved address only
+    /// through a call to a precompile registered there, and a reserved address is never the
+    /// beneficiary of `SELFDESTRUCT`. See [`primitives::supra_constants::is_supra_reserved`].
+    ///
+    /// A revert-class result, like [`InstructionResult::CallTooDeep`] and
+    /// [`InstructionResult::OutOfFunds`]: the refused frame's state changes are reverted and its
+    /// unspent gas is returned to the caller, and a transaction that ends with it is reported as
+    /// a halt and charged the gas it used.
+    ///
+    /// Declared last so that the discriminants of the variants above are unchanged.
+    ReservedAddressTarget,
 }
 
 impl From<TransferError> for InstructionResult {
@@ -132,6 +145,7 @@ impl From<HaltReason> for InstructionResult {
             HaltReason::CallNotAllowedInsideStatic => Self::CallNotAllowedInsideStatic,
             HaltReason::OutOfFunds => Self::OutOfFunds,
             HaltReason::CallTooDeep => Self::CallTooDeep,
+            HaltReason::ReservedAddressTarget => Self::ReservedAddressTarget,
         }
     }
 }
@@ -158,6 +172,7 @@ macro_rules! return_revert {
             | $crate::InstructionResult::InvalidEOFInitCode
             | $crate::InstructionResult::CreateInitCodeStartingEF00
             | $crate::InstructionResult::InvalidExtDelegateCallTarget
+            | $crate::InstructionResult::ReservedAddressTarget
     };
 }
 
@@ -344,6 +359,9 @@ impl<HaltReasonTr: From<HaltReason>> From<InstructionResult> for SuccessOrHalt<H
             // TODO : (EOF) Add proper Revert subtype.
             InstructionResult::InvalidEOFInitCode => Self::Revert,
             InstructionResult::FatalExternalError => Self::FatalExternalError,
+            InstructionResult::ReservedAddressTarget => {
+                Self::Halt(HaltReason::ReservedAddressTarget.into())
+            }
             InstructionResult::InvalidExtDelegateCallTarget => {
                 Self::Internal(InternalResult::InvalidExtDelegateCallTarget)
             }
@@ -381,6 +399,7 @@ mod tests {
             InstructionResult::Revert,
             InstructionResult::CallTooDeep,
             InstructionResult::OutOfFunds,
+            InstructionResult::ReservedAddressTarget,
         ];
         for result in revert_results {
             assert!(!result.is_ok());
