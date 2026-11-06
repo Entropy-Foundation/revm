@@ -3,6 +3,10 @@ pragma solidity 0.8.34;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
+import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {LibUtils} from "../src/libraries/LibUtils.sol";
+import {SupraContractsBindings} from "../src/SupraContractsBindings.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {TaskMetadata} from "../src/libraries/LibAppStorage.sol";
 
@@ -108,6 +112,62 @@ contract RegistryViewFacetTest is BaseDiamondTest {
 
         assertFalse(IRegistryViewFacet(diamondAddr).hasActiveUserTask(alice, 0));
         assertFalse(IRegistryViewFacet(diamondAddr).hasActiveUserTask(alice, 99));
+    }
+
+    /// @dev 'hasActiveTaskOfType', called through the node's bindings interface, is true only for
+    /// the owner, index and type of a task that is still in the registry and past PENDING. It
+    /// stays true for a CANCELLED task, which keeps running until the cycle ends, and turns false
+    /// once the task is stopped by its owner or removed by the VM signer. The node relies on
+    /// exactly this call, routed through the diamond, to skip an automated transaction whose task
+    /// left the registry earlier in its block (Entropy-Foundation/smr-moonshot#4652).
+    function testHasActiveTaskOfTypeThroughTheNodeBindings() public {
+        // Each registerUst deposits 100 SUPRA from alice; fund her for three registrations.
+        vm.deal(alice, 1_000 ether);
+        registerUst(diamondAddr, 2450); // 0: stopped by its owner
+        registerUst(diamondAddr, 2450); // 1: cancelled by its owner
+        registerUst(diamondAddr, 2450); // 2: removed by the VM signer for an ERROR
+        registerGst(diamondAddr, 2450); // 3: left alone
+        SupraContractsBindings registry = SupraContractsBindings(diamondAddr);
+
+        // PENDING tasks are not executed, so they do not count as active.
+        assertFalse(registry.hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST), "pending UST");
+        assertFalse(registry.hasActiveTaskOfType(bob, 3, LibCommon.TaskType.GST), "pending GST");
+
+        uint64[] memory taskIndexes = new uint64[](4);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+        taskIndexes[2] = 2;
+        taskIndexes[3] = 3;
+        processCycleTransition(diamondAddr, taskIndexes);
+
+        for (uint64 i = 0; i < 3; i++) {
+            assertTrue(registry.hasActiveTaskOfType(alice, i, LibCommon.TaskType.UST), "active UST");
+        }
+        assertTrue(registry.hasActiveTaskOfType(bob, 3, LibCommon.TaskType.GST), "active GST");
+        // Each of owner, type and index has to match.
+        assertFalse(registry.hasActiveTaskOfType(bob, 0, LibCommon.TaskType.UST), "wrong owner");
+        assertFalse(registry.hasActiveTaskOfType(alice, 0, LibCommon.TaskType.GST), "wrong type");
+        assertFalse(registry.hasActiveTaskOfType(alice, 99, LibCommon.TaskType.UST), "no such task");
+
+        uint64[] memory single = new uint64[](1);
+        single[0] = 0;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).stopTasks(single);
+        assertFalse(registry.hasActiveTaskOfType(alice, 0, LibCommon.TaskType.UST), "stopped");
+
+        single[0] = 1;
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(single);
+        assertTrue(registry.hasActiveTaskOfType(alice, 1, LibCommon.TaskType.UST), "cancelled");
+
+        (uint64 cycleIndex, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+        vm.prank(LibUtils.VM_SIGNER);
+        ICoreFacet(diamondAddr).removeRegisteredTask(
+            cycleIndex, 2, LibCommon.TaskRemovalReason.ERROR, "MalformedPayload"
+        );
+        assertFalse(registry.hasActiveTaskOfType(alice, 2, LibCommon.TaskType.UST), "removed for an ERROR");
+
+        assertTrue(registry.hasActiveTaskOfType(bob, 3, LibCommon.TaskType.GST), "unaffected");
     }
 
     /// @dev Test to ensure 'hasActiveSystemTask' returns true for an active system task.

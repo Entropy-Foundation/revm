@@ -160,6 +160,9 @@ interface ICoreFacet {
     error TaskIndexNotFound();
     error TransferFailed();
     error UnknownTaskToProcess(uint64 taskIndex);
+    /// @notice `removeRegisteredTask` was given a {LibCommon.TaskRemovalReason} that
+    /// {LibCore.handleTasksRemoval} has no handling for.
+    error UnsupportedTaskRemovalReason();
 
     // =============================================================
     //                      View functions

@@ -110,6 +110,11 @@ pub enum GenesisTransactionTags {
     DiamondInit,
     Diamond,
     RegistryViewFacet,
+
+    // Canonical EVM singleton predeploy, declared here and not with the others above because serde
+    // encodes this enum by declaration position. Its place in the deployment order is the one
+    // `deployment_rank` gives it, next to the other singletons.
+    HistoryStorage,
 }
 
 impl GenesisTransactionTags {
@@ -127,23 +132,24 @@ impl GenesisTransactionTags {
             Self::SingletonFactory => 2,
             Self::CreateX => 3,
             Self::Erc1820Registry => 4,
+            Self::HistoryStorage => 5,
 
-            Self::MultisigWalletImpl => 5,
-            Self::MultisigBeacon => 6,
-            Self::FoundationWallet => 7,
-            Self::WrappedSupra => 8,
-            Self::BlockMetadataImpl => 9,
-            Self::BlockMetadata => 10,
+            Self::MultisigWalletImpl => 6,
+            Self::MultisigBeacon => 7,
+            Self::FoundationWallet => 8,
+            Self::WrappedSupra => 9,
+            Self::BlockMetadataImpl => 10,
+            Self::BlockMetadata => 11,
 
-            Self::DiamondCutFacet => 11,
-            Self::DiamondLoupeFacet => 12,
-            Self::OwnershipFacet => 13,
-            Self::ConfigFacet => 14,
-            Self::RegistryFacet => 15,
-            Self::RegistryViewFacet => 16,
-            Self::CoreFacet => 17,
-            Self::DiamondInit => 18,
-            Self::Diamond => 19,
+            Self::DiamondCutFacet => 12,
+            Self::DiamondLoupeFacet => 13,
+            Self::OwnershipFacet => 14,
+            Self::ConfigFacet => 15,
+            Self::RegistryFacet => 16,
+            Self::RegistryViewFacet => 17,
+            Self::CoreFacet => 18,
+            Self::DiamondInit => 19,
+            Self::Diamond => 20,
         }
     }
 }
@@ -188,6 +194,7 @@ mod tests {
             GenesisTransactionTags::SingletonFactory,
             GenesisTransactionTags::CreateX,
             GenesisTransactionTags::Erc1820Registry,
+            GenesisTransactionTags::HistoryStorage,
             GenesisTransactionTags::MultisigWalletImpl,
             GenesisTransactionTags::MultisigBeacon,
             GenesisTransactionTags::FoundationWallet,

@@ -12,10 +12,12 @@ use context_interface::{
 };
 use interpreter::interpreter_action::FrameInit;
 use interpreter::{Gas, InitialAndFloorGas, SharedMemory};
-use primitives::supra_constants::{is_supra_reserved, is_vm_signer};
-use primitives::U256;
+use primitives::{
+    eip2935::{is_system_address, HISTORY_STORAGE_ADDRESS},
+    supra_constants::{is_supra_reserved, is_vm_signer},
+};
+use primitives::{TxKind, U256};
 use std::format;
-use std::string::String;
 
 /// Trait for errors that can occur during EVM execution.
 ///
@@ -107,12 +109,23 @@ pub trait Handler {
 
     /// Runs the system call.
     ///
-    /// System call is a special transaction where caller is a [`crate::SYSTEM_ADDRESS`]
+    /// A system call is a special transaction that calls a system contract. On SupraEVM it is an
+    /// [`context::ExecutionMode::System`] transaction, whose sender is `VM_SIGNER`, or the
+    /// EIP-2935 system address ([`crate::SYSTEM_ADDRESS`]) for the history write to
+    /// [`primitives::eip2935::HISTORY_STORAGE_ADDRESS`]; see [`Handler::validate_caller`].
     ///
-    /// It is used to call a system contracts and it skips all the `validation` and `pre-execution` and most of `post-execution` phases.
+    /// It skips all the `validation` and `pre-execution` and most of `post-execution` phases.
     /// For example it will not deduct the caller or reward the beneficiary.
     ///
     /// State changs can be obtained by calling [`JournalTr::finalize`] method from the [`EvmTr::Context`].
+    ///
+    /// # Sender check
+    ///
+    /// Because this method skips validation, it does not check the sender itself. A caller that
+    /// executes a transaction it did not build, or one in [`context::ExecutionMode::System`],
+    /// calls [`Handler::validate_caller`] first and runs this method only when it succeeds, as the
+    /// Supra node does for every System transaction. That check is what keeps the system senders
+    /// to the transactions the system builds.
     ///
     /// # Error handling
     ///
@@ -250,44 +263,75 @@ pub trait Handler {
         validation::validate_env(evm.ctx())
     }
 
-    /// Validates caller, to reject user transactions having caller address matching any of
-    /// the SUPRA reserved addresses.
-    /// SUPRA reserved addresses are used by the system to initiate and execute internal transactions.
-    /// To avoid/prevent any EOA address collision with the reserved addresses, and corrupting
-    /// internal system state the user transactions ever having sender address matching any SUPRA
-    /// reserved one are rejected.
+    /// Validates the transaction's sender against the execution mode.
+    ///
+    /// - A Supra reserved address is a sender only in [`context::ExecutionMode::System`] and
+    ///   [`context::ExecutionMode::Genesis`]. The reserved addresses are used by the system to
+    ///   initiate and execute internal transactions, and a transaction in any other mode from one
+    ///   of them is refused, so that no externally built transaction can act as the system.
+    /// - The EIP-2935 system address ([`primitives::eip2935::SYSTEM_ADDRESS`]) is a sender only of
+    ///   a [`context::ExecutionMode::System`] transaction that calls the history contract
+    ///   ([`primitives::eip2935::HISTORY_STORAGE_ADDRESS`]). The node sends from it the pre-block
+    ///   call that records the parent block's hash in that contract, whose `set` path admits no
+    ///   other caller. Every other mode refuses it as a sender, Genesis included, and so does a
+    ///   System transaction to any other target, so that call stays the only writer of the history
+    ///   and the address sends nothing else.
+    /// - A [`context::ExecutionMode::System`] transaction is sent by `VM_SIGNER` or, for the
+    ///   history write, by the EIP-2935 system address, and by no other sender.
+    ///
+    /// The EIP-2935 system address is an ordinary account in every other respect: value may be
+    /// sent to it and it may be called, as on Ethereum.
     ///
     /// This check covers the transaction's sender only. Reserved addresses inside execution are
     /// guarded by `EthFrame::make_call_frame`, which never executes bytecode at a reserved address
     /// and admits value to one only through a precompile registered there, and by the
     /// `SELFDESTRUCT` instruction, which refuses a reserved beneficiary.
+    ///
+    /// [`Handler::run`] calls this check as part of validation. [`Handler::run_system_call`]
+    /// skips validation, so a caller of it calls this check first; see that method's
+    /// "Sender check" section.
     #[inline]
     fn validate_caller(&self, evm: &Self::Evm) -> Result<(), Self::Error> {
         let ctx = evm.ctx_ref();
         let execution_mode = ctx.cfg().execution_mode();
         let caller = ctx.tx().caller();
-        // Supra reserved address is allowed either in system execution mode or in genesis
-        if is_supra_reserved(&caller)
-            && !(execution_mode.is_system() || execution_mode.is_genesis())
-        {
+        // Every refusal is the same error, naming the sender, the rule it breaks and the
+        // transaction it came with.
+        let refuse = |rule: &str| {
             Err(Self::Error::from(
                 InvalidTransaction::UnsupportedTransactionSender {
                     sender: caller,
-                    msg: format!(
-                        "Invalid caller: supra reserved address. TxnHash {}",
-                        ctx.tx().tx_hash()
-                    ),
+                    msg: format!("Invalid caller: {rule}. TxnHash {}", ctx.tx().tx_hash()),
                 },
             ))
-        } else if !is_vm_signer(&caller) && execution_mode.is_system() {
-            Err(Self::Error::from(
-                InvalidTransaction::UnsupportedTransactionSender {
-                    sender: caller,
-                    msg: String::from(
-                        "Invalid caller: Expected VM_SIGNER as caller for system transactions.",
-                    ),
-                },
-            ))
+        };
+
+        if execution_mode.is_system() {
+            // The EIP-2935 system address sends one System transaction only: the history write,
+            // a call to the history contract. `VM_SIGNER` sends every other one.
+            if is_system_address(&caller) {
+                if ctx.tx().kind() == TxKind::Call(HISTORY_STORAGE_ADDRESS) {
+                    Ok(())
+                } else {
+                    refuse(
+                        "the EIP-2935 system address is a sender of system transactions to the \
+                         history contract only",
+                    )
+                }
+            } else if is_vm_signer(&caller) {
+                Ok(())
+            } else {
+                refuse(
+                    "expected VM_SIGNER or the EIP-2935 system address as caller for system \
+                     transactions",
+                )
+            }
+        } else if is_supra_reserved(&caller) && !execution_mode.is_genesis() {
+            // Supra reserved addresses are senders in System and Genesis mode only.
+            refuse("supra reserved address")
+        } else if is_system_address(&caller) {
+            // The EIP-2935 system address is a sender in System mode only, Genesis included.
+            refuse("the EIP-2935 system address is a sender of system transactions only")
         } else {
             Ok(())
         }

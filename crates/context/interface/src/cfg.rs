@@ -54,9 +54,10 @@ impl ExecutionMode {
     ///   nonce. Each run is identified by its transaction hash, which the node computes over the
     ///   whole transaction, including the height of the block it runs in.
     /// - [`ExecutionMode::ReadOnly`] runs a task's predicate, and its changes are discarded.
-    /// - [`ExecutionMode::System`] transactions are sent by `VM_SIGNER` and are not sequenced by
-    ///   its nonce: the node builds them for the block it executes. `VM_SIGNER` also deploys the
-    ///   genesis contracts, and its nonce advances in [`ExecutionMode::Genesis`].
+    /// - [`ExecutionMode::System`] transactions are sent by `VM_SIGNER` or by the EIP-2935 system
+    ///   address, and are not sequenced by the sender's nonce: the node builds them for the block
+    ///   it executes. `VM_SIGNER` also deploys the genesis contracts, and its nonce advances in
+    ///   [`ExecutionMode::Genesis`].
     ///
     /// Replay protection for the modes that return false is the node's responsibility: revm
     /// executes the transaction it is given in the mode it is given.
@@ -94,8 +95,8 @@ impl ExecutionMode {
     /// - [`ExecutionMode::ReadOnly`] runs an automation task's predicate with the same sender. Its
     ///   state changes are discarded.
     /// - [`ExecutionMode::Genesis`] deploys the genesis contracts.
-    /// - [`ExecutionMode::System`] transactions are sent by the VM signer, which
-    ///   `Handler::validate_caller` requires and which has no code.
+    /// - [`ExecutionMode::System`] transactions are sent by the VM signer or by the EIP-2935 system
+    ///   address, the only senders `Handler::validate_caller` admits there, and neither has code.
     ///
     /// The EIP-7702 delegation exemption applies in every mode. The `disable_eip3607` option of the
     /// EVM configuration, where it is compiled in, disables the rule for a `User` transaction too.

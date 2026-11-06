@@ -363,10 +363,11 @@ library LibAccounting {
     /// corresponding counters and returns the refund amounts. Function reverts if unlocking fails. Note that this
     /// function does not do actual refund, but only unlocking.
     /// @dev The amount unlocked from `cycleLockedFees` is the task's whole fee for the current cycle whatever the refund
-    /// policy; only the share of it paid back to the owner depends on `_fullRefund`.
-    /// @param _fullRefund False: the owner gets half of the fee for the remaining cycle time and the deposit (half of the
-    /// deposit for a PENDING task), which `stopTasks` and an ERROR removal apply. True: the owner gets the whole fee for
-    /// the remaining cycle time and the whole deposit, which a CONFIG_UPDATE removal applies (#4087).
+    /// policy; only the share of it paid back to the owner depends on `_policy`.
+    /// @param _policy PARTIAL: the owner gets half of the fee for the remaining cycle time and the whole deposit (half of
+    /// the deposit for a PENDING task), which `stopTasks`, `removeTasks` and an ERROR removal apply. FULL: the owner gets
+    /// the whole fee for the remaining cycle time and the whole deposit, which a CONFIG_UPDATE removal applies (#4087).
+    /// See {LibCommon.RefundPolicy}.
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         LibCommon.TaskState _taskState,
@@ -375,7 +376,7 @@ library LibAccounting {
         uint64 _residualInterval,
         uint64 _currentTime,
         uint128 _depositFee,
-        bool _fullRefund
+        LibCommon.RefundPolicy _policy
     )  internal returns (uint128, uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -386,7 +387,18 @@ library LibAccounting {
         // The residual-time fee never exceeds the fee charged for the cycle, since the residual
         // window is a suffix of the charged one, so the InvalidCycleRefundFee invariant below holds
         // for FULL_REFUND_FACTOR as well.
-        uint8 refundDivisor = _fullRefund ? FULL_REFUND_FACTOR : REFUND_FACTOR;
+        // The only place a refund policy becomes a divisor. Each policy is named, so a policy added
+        // to LibCommon.RefundPolicy without a divisor of its own reverts here rather than paying
+        // another policy's share. Both divisors are non-zero constants, so the divisions below
+        // cannot revert.
+        uint8 refundDivisor;
+        if (_policy == LibCommon.RefundPolicy.FULL) {
+            refundDivisor = FULL_REFUND_FACTOR;
+        } else if (_policy == LibCommon.RefundPolicy.PARTIAL) {
+            refundDivisor = REFUND_FACTOR;
+        } else {
+            revert IRegistryFacet.UnsupportedRefundPolicy();
+        }
 
         if (_taskState != LibCommon.TaskState.PENDING) {
             // Compute the automation fee multiplier for cycle
