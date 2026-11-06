@@ -445,13 +445,17 @@ library LibRegistry {
             _task.owner,
             _task.taskState,
             _isGst,
-            false
+            LibCommon.RefundPolicy.PARTIAL
         );
 
         refund = cycleFeeRefund + depositRefund;
         taskStopped = LibCommon.TaskStopped(_taskId, depositRefund, cycleFeeRefund, _task.txHash);
     }
 
+    /// @notice Removes a task from the registry, releases its gas commitment for the next cycle,
+    /// and unlocks and computes its refund under `_policy` (nothing for a GST). Paying the refund
+    /// is the caller's.
+    /// @param _policy The refund share the removal pays; see {LibCommon.RefundPolicy}.
     function removeTaskAndComputeRefund(
         uint64 _taskId,
         uint64 _cycleEndTime,
@@ -463,7 +467,7 @@ library LibRegistry {
         address _owner,
         LibCommon.TaskState _taskState,
         bool _isGst,
-        bool _fullRefund
+        LibCommon.RefundPolicy _policy
     ) internal returns (uint128 cycleFeeRefund, uint128 depositRefund) {
         // Remove task from the registry and active tasks
         LibCommon.removeTask(_taskId, _owner, _isGst, _taskState != LibCommon.TaskState.PENDING);
@@ -485,7 +489,7 @@ library LibRegistry {
                 _residualInterval,
                 _currentTime,
                 _depositFee,
-                _fullRefund
+                _policy
             );
         }
     }
