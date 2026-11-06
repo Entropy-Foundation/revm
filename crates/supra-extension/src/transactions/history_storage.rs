@@ -21,8 +21,8 @@
 use crate::errors::SupraExtensionError;
 use alloy::primitives::ChainId;
 use context::{TransactionType, TxEnv};
-// The history contract's address is exported once, from `contracts::canonical_singletons`, next
-// to the genesis transaction that deploys it; this module only uses it.
+// The EIP-2935 constants are defined once, in `primitives::eip2935`. `contracts::canonical_singletons`
+// re-exports the history contract's address next to the genesis transaction that deploys it.
 use primitives::{
     eip2935::{HISTORY_SERVE_WINDOW, HISTORY_STORAGE_ADDRESS, SYSTEM_ADDRESS},
     eip7825::TX_GAS_LIMIT_CAP,
