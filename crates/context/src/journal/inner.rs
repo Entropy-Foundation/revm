@@ -55,15 +55,22 @@ pub struct JournalInner<ENTRY> {
     pub spec: SpecId,
     /// Warm addresses containing both coinbase and current precompiles.
     pub warm_addresses: WarmAddresses,
-    /// Running total of native value destroyed by `SELFDESTRUCT` with the destroyed
-    /// account as its own beneficiary, which credits no account and so removes the
-    /// value from circulation.
+    /// Running total of native value removed from circulation by self-destructed
+    /// accounts. It has two parts:
+    ///
+    /// - the balance a `SELFDESTRUCT` zeroes when the destroyed account is its own
+    ///   beneficiary, which credits no account. This is added at the opcode and
+    ///   decremented again when the journal entry that recorded it is reverted, so a
+    ///   reverted frame or a discarded transaction contributes nothing;
+    /// - the balance each account marked self-destructed in a transaction holds when
+    ///   that transaction is committed. The account is deleted with that balance,
+    ///   either when a later transaction in the same journal loads it or when the
+    ///   state is finalized, so the balance is destroyed even though it was credited
+    ///   after the `SELFDESTRUCT`. This is added by [`Self::commit_tx`], after which
+    ///   nothing can revert it.
     ///
     /// Supra's EVM native balance mirrors value escrowed outside the EVM and cannot be
-    /// minted, so the host has to account for every destruction of it. The total is
-    /// accumulated where the destruction decision is made and is decremented again when
-    /// the journal entry that recorded it is reverted, so a reverted frame or a
-    /// discarded transaction contributes nothing.
+    /// minted, so the host has to account for every destruction of it.
     ///
     /// Unlike the other fields this one is deliberately **not** cleared by
     /// [`Self::commit_tx`] or [`Self::finalize`], so that it is still readable after
@@ -143,6 +150,10 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     /// and clear the journal for the next transaction.
     ///
     /// `commit_tx` is used even for discarding transactions so transaction_id will be incremented.
+    ///
+    /// Adds the balance still held by every account marked self-destructed in this
+    /// transaction to [`Self::selfdestruct_burn`], because committing the transaction
+    /// is what makes the deletion of those accounts final.
     pub fn commit_tx(&mut self) {
         // Clears all field from JournalInner. Doing it this way to avoid
         // missing any field.
@@ -159,10 +170,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         } = self;
         // Spec precompiles and state are not changed. It is always set again execution.
         let _ = spec;
-        let _ = state;
         // Preserved across the transaction boundary so the host can still read it after
-        // execution; see the field docs.
-        let _ = selfdestruct_burn;
+        // execution; see the field docs. Counted before `journal` is cleared below,
+        // since the journal is what names the accounts this transaction destroyed.
+        *selfdestruct_burn =
+            selfdestruct_burn.saturating_add(Self::balance_of_destroyed_accounts(state, journal));
         transient_storage.clear();
         *depth = 0;
 
@@ -174,6 +186,29 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         // increment transaction id.
         *transaction_id += 1;
         logs.clear();
+    }
+
+    /// Returns the summed balance of the accounts that `journal` marks as
+    /// self-destructed and that are still marked so in `state`.
+    ///
+    /// `journal` holds the entries of one transaction that have not been reverted.
+    /// An account appears once per self-destruct entry, so addresses are
+    /// deduplicated before summing. The self-destructed flag is checked as well
+    /// as the entry, because the flag is what decides that the account is deleted.
+    fn balance_of_destroyed_accounts(state: &EvmState, journal: &[ENTRY]) -> U256 {
+        let mut destroyed: Vec<Address> = journal
+            .iter()
+            .filter_map(JournalEntryTr::selfdestructed_address)
+            .collect();
+        destroyed.sort_unstable();
+        destroyed.dedup();
+        destroyed
+            .iter()
+            .filter_map(|address| state.get(address))
+            .filter(|account| account.is_selfdestructed_locally())
+            .fold(U256::ZERO, |sum, account| {
+                sum.saturating_add(account.info.balance)
+            })
     }
 
     /// Discard the current transaction, by reverting the journal entries and incrementing the transaction id.
@@ -1985,6 +2020,168 @@ mod eip6780_selfdestruct_burn_tests {
         assert_eq!(journal.take_selfdestruct_burn(), U256::from(ENDOWMENT));
 
         journal.checkpoint_revert(checkpoint);
+    }
+
+    /// Value paid to an account after it self-destructs to another beneficiary is
+    /// deleted with the account, so committing the transaction counts it.
+    #[test]
+    fn value_credited_after_selfdestruct_is_counted_at_commit() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+        assert_eq!(journal.selfdestruct_burn, U256::ZERO);
+
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
+            .unwrap();
+        journal.commit_tx();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::from(55),
+            "the balance a self-destructed account holds at commit is destroyed with it"
+        );
+    }
+
+    /// A self-targeting self-destruct is counted at the opcode, and a later credit
+    /// to the same account is counted at commit; neither is counted twice.
+    #[test]
+    fn self_targeting_selfdestruct_then_credit_counts_both() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
+            .unwrap();
+
+        journal.commit_tx();
+
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT + 55));
+    }
+
+    /// Two accounts created in the same transaction that each name the other as
+    /// beneficiary are both deleted; whichever holds the value at commit has it
+    /// counted.
+    #[test]
+    fn selfdestruct_to_a_destroyed_beneficiary_is_counted_at_commit() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        let second = Address::with_last_byte(4);
+        journal.load_account(&mut db, second).unwrap();
+        journal
+            .create_account_checkpoint(CALLER, second, U256::from(7), SpecId::CANCUN)
+            .unwrap();
+        journal.checkpoint_commit();
+
+        journal.selfdestruct(&mut db, CONTRACT, second).unwrap();
+        journal.selfdestruct(&mut db, second, CONTRACT).unwrap();
+        assert_eq!(journal.selfdestruct_burn, U256::ZERO);
+
+        journal.commit_tx();
+
+        assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT + 7));
+    }
+
+    /// An account that self-destructs more than once in a transaction is counted
+    /// once at commit.
+    #[test]
+    fn repeated_selfdestruct_is_counted_once_at_commit() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
+            .unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(9))
+            .unwrap();
+
+        journal.commit_tx();
+
+        assert_eq!(
+            journal.selfdestruct_burn,
+            U256::from(9),
+            "the second self-destruct moved the 55 to the beneficiary; only the 9 is deleted"
+        );
+        assert_eq!(
+            journal.state.get(&BENEFICIARY).unwrap().info.balance,
+            U256::from(ENDOWMENT + 55)
+        );
+    }
+
+    /// A credit that is reverted is not held at commit, so it is not counted.
+    #[test]
+    fn reverted_credit_to_a_destroyed_account_is_not_counted() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+
+        let checkpoint = journal.checkpoint();
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
+            .unwrap();
+        journal.checkpoint_revert(checkpoint);
+        journal.commit_tx();
+
+        assert_eq!(journal.selfdestruct_burn, U256::ZERO);
+    }
+
+    /// A discarded transaction deletes nothing, including an account that was
+    /// credited after self-destructing.
+    #[test]
+    fn discarded_transaction_with_credit_after_selfdestruct_reports_nothing() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
+            .unwrap();
+
+        journal.discard_tx();
+
+        assert_eq!(journal.selfdestruct_burn, U256::ZERO);
+    }
+
+    /// The balance is counted by the commit of the transaction that destroyed the
+    /// account. A later transaction that does not destroy it again adds nothing,
+    /// whether or not it loads the account.
+    #[test]
+    fn destroyed_balance_is_counted_by_one_commit_only() {
+        let (mut journal, mut db) = setup(SpecId::CANCUN);
+        create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
+        journal
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .unwrap();
+        journal
+            .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
+            .unwrap();
+        journal.commit_tx();
+        assert_eq!(journal.selfdestruct_burn, U256::from(55));
+
+        // A transaction that does not load the destroyed account.
+        journal.load_account(&mut db, CALLER).unwrap();
+        journal.commit_tx();
+        assert_eq!(journal.selfdestruct_burn, U256::from(55));
+
+        // A transaction that loads it, which deletes it.
+        journal.load_account(&mut db, CONTRACT).unwrap();
+        assert_eq!(
+            journal.state.get(&CONTRACT).unwrap().info.balance,
+            U256::ZERO
+        );
+        journal.commit_tx();
+        assert_eq!(journal.selfdestruct_burn, U256::from(55));
     }
 
     /// The total survives the transaction boundary and `finalize`, so the host can
