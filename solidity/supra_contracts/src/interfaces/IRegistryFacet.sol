@@ -110,7 +110,10 @@ interface IRegistryFacet {
     /// fee, read from {ISupraEvmGasConfig-minGasPrice}), so its transaction could never be admitted.
     error GasPriceCapBelowMinimum(uint128 gasPriceCap, uint256 minGasPrice);
     error InsufficientFeeCapForCycle(uint128 estimatedAutomationFeeForCycle);
-    error InvalidCycleRefundFee(); 
+    error InvalidCycleRefundFee();
+    /// @notice A refund was requested under a {LibCommon.RefundPolicy} that
+    /// {LibAccounting.unlockDepositAndCycleFee} gives no divisor.
+    error UnsupportedRefundPolicy();
     error InvalidExpiryTime();
     error InvalidGasPriceCap();
     error InvalidMaxGasAmount();

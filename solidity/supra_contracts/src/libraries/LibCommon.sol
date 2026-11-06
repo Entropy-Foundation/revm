@@ -92,9 +92,29 @@ library LibCommon {
     ///      below the minimum gas price). The registry re-checks the task against the current
     ///      figures, and the owner is refunded the whole remaining current-cycle fee and the whole
     ///      deposit (#4087).
+    ///      {LibCore.handleTasksRemoval} is where each reason gets its admission check, refund
+    ///      policy and event; a reason added here must be given its handling there, which refuses
+    ///      any reason it does not name.
     enum TaskRemovalReason {
         ERROR,
         CONFIG_UPDATE
+    }
+
+    /// @notice How much of a removed task's locked funds is paid back to its owner.
+    /// @dev PARTIAL: the whole deposit and half of the fee for the remaining cycle time, or half
+    ///      the deposit for a PENDING task. `stopTasks`, `stopSystemTasks`, the registry owner's
+    ///      `removeTasks` and an ERROR removal apply it.
+    ///      FULL: the whole deposit and the whole fee for the remaining cycle time. A
+    ///      CONFIG_UPDATE removal applies it (#4087), because the owner did nothing to cause it.
+    ///      A GST is refunded nothing under either policy, as it paid no fee.
+    ///      The two policies are the only refund shares the registry pays, which is why this is an
+    ///      enum rather than a divisor: {LibAccounting.unlockDepositAndCycleFee} maps each policy to
+    ///      its divisor, and that mapping is the only place a policy becomes a number. A policy
+    ///      added here must be given its own divisor there, which refuses any policy it does not
+    ///      name.
+    enum RefundPolicy {
+        PARTIAL,
+        FULL
     }
 
     /// @notice Represents intermediate state of the registry on cycle change.

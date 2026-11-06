@@ -750,7 +750,18 @@ library LibCore {
             return;
         }
 
+        // Everything that depends on the reason is decided by this one comparison: the admission
+        // re-check, the refund policy and the event. CONFIG_UPDATE re-checks the task against the
+        // current gas config, refunds in FULL and emits TaskRemovedByConfigUpdate; ERROR refunds
+        // PARTIAL and emits TaskRemovedBySystem. Deriving all three from one value keeps a FULL
+        // refund from being paid without the re-check that justifies it. A reason added to
+        // TaskRemovalReason is refused until it is given its own handling here.
         bool isConfigUpdate = _reason == LibCommon.TaskRemovalReason.CONFIG_UPDATE;
+        if (!isConfigUpdate && _reason != LibCommon.TaskRemovalReason.ERROR) {
+            revert ICoreFacet.UnsupportedTaskRemovalReason();
+        }
+        LibCommon.RefundPolicy refundPolicy =
+            isConfigUpdate ? LibCommon.RefundPolicy.FULL : LibCommon.RefundPolicy.PARTIAL;
         uint64 txGasLimitCap;
         uint256 minGasPrice;
         if (isConfigUpdate) {
@@ -776,7 +787,7 @@ library LibCore {
             task.owner,
             task.taskState,
             isGst,
-            isConfigUpdate
+            refundPolicy
         );
 
         if (!isGst) {
