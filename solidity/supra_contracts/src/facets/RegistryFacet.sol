@@ -268,11 +268,15 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         return LibAppStorage.appStorage().authorizedAccounts.contains(_account);
     }
 
-    /// @notice Calculates automation fee per second for the specified task occupancy
-    /// referencing the current automation registry fee parameters, specified total/committed occupancy and current registry
-    /// maximum allowed occupancy.
-    function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external view returns (uint128) {
-        return LibAccounting.calculateAutomationFeeMultiplierForCommittedOccupancy(_totalCommittedMaxGas);
+    /// @notice Calculates the automation fee per second for a cycle to which user tasks have
+    /// committed `_totalCommittedMaxGas` gas and `_totalCommittedTasks` tasks, under the current
+    /// automation registry fee parameters, max gas cap and task capacity. Congestion is priced on
+    /// the larger of the gas share and the task share (Entropy-Foundation/smr-moonshot#4921).
+    function calculateAutomationFeeMultiplierForCommittedOccupancy(
+        uint128 _totalCommittedMaxGas,
+        uint32 _totalCommittedTasks
+    ) external view returns (uint128) {
+        return LibAccounting.calculateAutomationFeeMultiplierForCommittedOccupancy(_totalCommittedMaxGas, _totalCommittedTasks);
     }
     
     /// @notice Calculates the automation fee multiplier for current cycle. 
@@ -283,20 +287,31 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     /// @notice Estimates automation fee for the next cycle for specified task occupancy for the configured cycle-interval
     /// referencing the current automation registry fee parameters, current total occupancy and registry maximum allowed
     /// occupancy for the next cycle.
+    /// The gas and the number of user tasks committed to the next cycle are read from registry state, and the task
+    /// being estimated is added to both.
     function estimateAutomationFee(uint128 _taskOccupancy) external view returns (uint128) {
-        return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_taskOccupancy, LibAppStorage.registryState().gasCommittedForNextCycle);
+        RegistryState storage registryState = LibAppStorage.registryState();
+        return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(
+            _taskOccupancy,
+            registryState.gasCommittedForNextCycle,
+            registryState.tasksCommittedForNextCycle
+        );
     }
 
     /// @notice Estimates automation fee the next cycle for specified task occupancy for the configured cycle-interval
-    /// referencing the current automation registry fee parameters, specified total/committed occupancy and registry
-    /// maximum allowed occupancy for the next cycle.
+    /// referencing the current automation registry fee parameters, specified committed gas and task count, and the
+    /// registry's maximum allowed gas and task capacity for the next cycle.
+    /// @param _committedOccupancy Gas committed to the next cycle, excluding the task being estimated.
+    /// @param _committedTasks User tasks committed to the next cycle, excluding the task being estimated.
     function estimateAutomationFeeWithCommittedOccupancy(
         uint128 _taskOccupancy,
-        uint128 _committedOccupancy
+        uint128 _committedOccupancy,
+        uint32 _committedTasks
     ) external view returns (uint128) {
         return LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(
             _taskOccupancy,
-            _committedOccupancy
+            _committedOccupancy,
+            _committedTasks
         );
     }
 

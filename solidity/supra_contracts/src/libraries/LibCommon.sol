@@ -122,6 +122,8 @@ library LibCommon {
         uint256 cycleLockedFees;
         uint128 gasCommittedForNextCycle;
         uint128 sysGasCommittedForNextCycle;
+        // USTs of the batch that stay committed to the cycle after the one being entered.
+        uint32 tasksCommittedForNextCycle;
         uint64[] removedTasks;
     }
 

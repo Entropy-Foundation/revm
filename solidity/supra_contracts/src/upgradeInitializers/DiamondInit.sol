@@ -169,6 +169,7 @@ contract DiamondInit is Initializable {
         // ---------------------------------------------------------------------
         RegistryState storage registryState = LibAppStorage.registryState();
         registryState.nextCycleRegistryMaxGasCap = _params.registryMaxGasCap;
+        registryState.nextCycleTaskCapacity = _params.taskCapacity;
         registryState.nextCycleSysRegistryMaxGasCap = _params.sysRegistryMaxGasCap;
 
         // Set last, after every other write above has succeeded: this is the single flag

@@ -193,7 +193,11 @@ library LibRegistry {
             }
 
             gasCommittedForNextCycle = registryState.gasCommittedForNextCycle;
-            uint128 estimatedAutomationFeeForCycle = LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(_maxGasAmount, gasCommittedForNextCycle);
+            uint128 estimatedAutomationFeeForCycle = LibAccounting.estimateAutomationFeeWithCommittedOccupancyInternal(
+                _maxGasAmount,
+                gasCommittedForNextCycle,
+                registryState.tasksCommittedForNextCycle
+            );
             if (_automationFeeCapForCycle < estimatedAutomationFeeForCycle) { revert IRegistryFacet.InsufficientFeeCapForCycle(estimatedAutomationFeeForCycle); }
             taskDurationCap = activeConfig.taskDurationCapSecs;
             nextCycleRegistryMaxGasCap = registryState.nextCycleRegistryMaxGasCap;
@@ -212,6 +216,9 @@ library LibRegistry {
 
         if (_isUst) {
             registryState.gasCommittedForNextCycle = gasCommitted;
+            // validateTaskDuration above requires the task to outlive the current cycle, so it is
+            // committed to the next one. The capacity check above bounds the count.
+            registryState.tasksCommittedForNextCycle += 1;
         } else {
             registryState.sysGasCommittedForNextCycle = gasCommitted;
         } 
@@ -273,6 +280,9 @@ library LibRegistry {
         registryState.currentIndex += 1;
     }
 
+    /// @notice Releases a cancelled, stopped or removed task's commitment to the next cycle: its
+    /// gas, and for a UST also its place in `tasksCommittedForNextCycle`. Gas and task count are
+    /// released together so the two always describe the same set of tasks.
     function reduceGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
         RegistryState storage registryState = LibAppStorage.registryState();
 
@@ -284,7 +294,9 @@ library LibRegistry {
             registryState.sysGasCommittedForNextCycle = gasCommittedForNextCycle - _maxGasAmount;
         } else {
             registryState.gasCommittedForNextCycle = gasCommittedForNextCycle - _maxGasAmount;
-        
+            uint32 tasksCommittedForNextCycle = registryState.tasksCommittedForNextCycle;
+            if (tasksCommittedForNextCycle == 0) { revert IRegistryFacet.TasksCommittedValueUnderflow(); }
+            registryState.tasksCommittedForNextCycle = tasksCommittedForNextCycle - 1;
         }
     }
 

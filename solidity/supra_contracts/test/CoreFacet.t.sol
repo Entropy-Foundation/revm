@@ -1915,11 +1915,11 @@ contract CoreFacetTest is BaseDiamondTest {
         uint256 depositAmount = 451 ether;
 
         // Congestion multiplier is inactive below threshold
-        uint128 baseMultiplier = IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCommittedOccupancy(100_000);
+        uint128 baseMultiplier = IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCommittedOccupancy(100_000, 0);
         assertEq(baseMultiplier, 0.5 ether, "sub-threshold should use base fee only");
 
         // Congestion multiplier activates above 50%
-        uint128 congestedMultiplier = IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCommittedOccupancy(11_000_000);
+        uint128 congestedMultiplier = IRegistryFacet(diamondAddr).calculateAutomationFeeMultiplierForCommittedOccupancy(11_000_000, 0);
         assertEq(congestedMultiplier, 0.67004782 ether, "congestion should raise fee above base");
 
         // Estimated fee
@@ -1957,7 +1957,7 @@ contract CoreFacetTest is BaseDiamondTest {
         address customRegistry = deployCustomRegistry();
 
         // With zero base fees, multiplier and estimated fee should be 0
-        uint128 multiplier = IRegistryFacet(customRegistry).calculateAutomationFeeMultiplierForCommittedOccupancy(100_000);
+        uint128 multiplier = IRegistryFacet(customRegistry).calculateAutomationFeeMultiplierForCommittedOccupancy(100_000, 0);
         assertEq(multiplier, 0);
         uint128 estimatedFee = IRegistryFacet(customRegistry).estimateAutomationFee(100_000);
         assertEq(estimatedFee, 0);

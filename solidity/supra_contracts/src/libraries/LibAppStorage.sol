@@ -70,6 +70,15 @@ struct TransitionState {
     uint128 gasCommittedForNewCycle;
     uint128 gasCommittedForNextCycle;
     uint128 sysGasCommittedForNextCycle;
+    // Number of USTs committed to the cycle the transition enters, taken from
+    // RegistryState.tasksCommittedForNextCycle when the cycle ends. It is the task-count
+    // counterpart of gasCommittedForNewCycle: both are fixed for the whole transition, every task
+    // is charged against them, and RegistryState.tasksCommittedForThisCycle is set from it when
+    // the transition finalizes (Entropy-Foundation/smr-moonshot#4921).
+    uint32 tasksCommittedForNewCycle;
+    // Number of surviving USTs committed to the cycle after the one the transition enters,
+    // accumulated batch by batch like gasCommittedForNextCycle.
+    uint32 tasksCommittedForNextCycle;
     uint64 refundDuration;
     uint64 newCycleDuration;
     uint64 nextTaskIndexPosition;
@@ -131,6 +140,20 @@ struct RegistryState {
     uint128 sysGasCommittedForThisCycle;
     uint128 nextCycleRegistryMaxGasCap;
     uint128 nextCycleSysRegistryMaxGasCap;
+    // Number of USTs committed to run in the next cycle, one per task whatever its gas. It
+    // changes wherever gasCommittedForNextCycle does: registration, cancellation, stop and
+    // removal, and the transition rebuilds it from the surviving tasks.
+    uint32 tasksCommittedForNextCycle;
+    // Number of USTs committed to the current cycle, fixed when the cycle starts. With
+    // gasCommittedForThisCycle it is the occupancy the cycle's fees are computed from: the
+    // transition charges against it and a stop or removal during the cycle recomputes the
+    // charged fee from it, so it must not change during the cycle
+    // (Entropy-Foundation/smr-moonshot#4921, LibAccounting.CycleOccupancy).
+    uint32 tasksCommittedForThisCycle;
+    // UST capacity in force from the next cycle: the buffered Config.taskCapacity when a config
+    // buffer exists, the active one otherwise. The registration fee estimate prices the next
+    // cycle with it, as it does with nextCycleRegistryMaxGasCap.
+    uint16 nextCycleTaskCapacity;
 
     uint64 currentIndex;
     // Plain array, not EnumerableSet.UintSet: no .contains() call site needs O(1)

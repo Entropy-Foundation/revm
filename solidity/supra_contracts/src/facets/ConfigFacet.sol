@@ -171,6 +171,10 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         RegistryState storage registryState = LibAppStorage.registryState();
         if (registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
         if (registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
+        // The user tasks already committed to the next cycle must fit the capacity it will have,
+        // as their gas must fit its gas cap. The fees of that cycle are priced on the task share
+        // (LibAccounting.CycleOccupancy), which this keeps at or below 100%.
+        if (registryState.tasksCommittedForNextCycle > _taskCapacity) { revert UnacceptableTaskCapacity(); }
 
         // Add new config to the buffer
         Config memory configBuffer = Config({ 
@@ -193,6 +197,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
         registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
+        registryState.nextCycleTaskCapacity = _taskCapacity;
 
         emit ConfigBufferUpdated(configBuffer);
     }

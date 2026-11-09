@@ -186,14 +186,14 @@ contract DiamondInitTest is BaseDiamondTest {
     }
 
     /// @dev Test to ensure every RegistryFacet and RegistryViewFacet selector routes to the
-    /// facet that actually implements it: RegistryViewFacet's own 25 selectors resolve to
+    /// facet that actually implements it: RegistryViewFacet's own 28 selectors resolve to
     /// registryViewFacet, and RegistryFacet's 11 (6 mutators, the 4 fee views and
     /// `isAuthorizedSubmitter`) resolve to registryFacet. This pins the split
     /// (Entropy-Foundation/smr-moonshot#4101): moving a selector across facets without
     /// updating this test fails it.
     function testRegistryFacetSplitSelectorRouting() public view {
         bytes4[] memory viewSelectors = IFacetSelectors(deployment.facets.registryViewFacet).getSelectors();
-        assertEq(viewSelectors.length, 25);
+        assertEq(viewSelectors.length, 28);
         for (uint256 i; i < viewSelectors.length; i++) {
             assertEq(
                 IDiamondLoupe(diamondAddr).facetAddress(viewSelectors[i]),
@@ -229,6 +229,20 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(
             IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.estimateAutomationFeeWithCommittedOccupancy.selector),
             deployment.facets.registryFacet
+        );
+        // The task-occupancy views (Entropy-Foundation/smr-moonshot#4921) are plain reads of
+        // registry state and live with the other views.
+        assertEq(
+            IDiamondLoupe(diamondAddr).facetAddress(IRegistryViewFacet.getTasksCommittedForNextCycle.selector),
+            deployment.facets.registryViewFacet
+        );
+        assertEq(
+            IDiamondLoupe(diamondAddr).facetAddress(IRegistryViewFacet.getTasksCommittedForCurrentCycle.selector),
+            deployment.facets.registryViewFacet
+        );
+        assertEq(
+            IDiamondLoupe(diamondAddr).facetAddress(IRegistryViewFacet.getNextCycleTaskCapacity.selector),
+            deployment.facets.registryViewFacet
         );
     }
 

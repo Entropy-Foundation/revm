@@ -142,6 +142,18 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
         return LibAppStorage.registryState().gasCommittedForThisCycle;
     }
 
+    /// @notice Returns the number of user tasks committed for the next cycle.
+    function getTasksCommittedForNextCycle() external view returns (uint32) {
+        return LibAppStorage.registryState().tasksCommittedForNextCycle;
+    }
+
+    /// @notice Returns the number of user tasks committed for the current cycle, fixed when the
+    /// cycle started. With the gas committed for the current cycle it is the occupancy the
+    /// cycle's fees are computed from.
+    function getTasksCommittedForCurrentCycle() external view returns (uint32) {
+        return LibAppStorage.registryState().tasksCommittedForThisCycle;
+    }
+
     /// @notice Returns the system gas committed for the next cycle.
     function getSystemGasCommittedForNextCycle() external view returns (uint128) {
         return LibAppStorage.registryState().sysGasCommittedForNextCycle;
@@ -162,6 +174,11 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
         return LibAppStorage.registryState().nextCycleSysRegistryMaxGasCap;
     }
 
+    /// @notice Returns the user task capacity for the next cycle.
+    function getNextCycleTaskCapacity() external view returns (uint16) {
+        return LibAppStorage.registryState().nextCycleTaskCapacity;
+    }
+
     /// @notice Returns the locked fees for the cycle.
     function getCycleLockedFees() external view returns (uint256) {
         return LibAppStorage.registryState().cycleLockedFees;
@@ -179,7 +196,7 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](25);
+        selectors = new bytes4[](28);
         selectors[0]  = RegistryViewFacet.getTaskIdList.selector;
         selectors[1]  = RegistryViewFacet.getSystemTaskIds.selector;
         selectors[2]  = RegistryViewFacet.getTaskOwner.selector;
@@ -205,5 +222,8 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
         selectors[22] = RegistryViewFacet.ifTaskExists.selector;
         selectors[23] = RegistryViewFacet.ifSysTaskExists.selector;
         selectors[24] = RegistryViewFacet.getTasksByAddress.selector;
+        selectors[25] = RegistryViewFacet.getTasksCommittedForNextCycle.selector;
+        selectors[26] = RegistryViewFacet.getTasksCommittedForCurrentCycle.selector;
+        selectors[27] = RegistryViewFacet.getNextCycleTaskCapacity.selector;
     }
 }
