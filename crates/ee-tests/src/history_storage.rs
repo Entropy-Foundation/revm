@@ -41,8 +41,6 @@ use supra_extension::{
     transactions::history_storage::{history_storage_slot, history_storage_write_tx_env},
 };
 
-/// Chain id the history writes carry.
-const CHAIN_ID: u64 = 8;
 /// Sender of the user transactions in these tests.
 const SENDER: Address = address!("0x1000000000000000000000000000000000000001");
 /// An account without code, the target of the sender matrix.
@@ -124,7 +122,7 @@ fn hash_of(number: u64) -> B256 {
 /// Runs the history write of the block at `height` and returns its result.
 fn write_history(evm: &mut TestEvm, height: u64) -> Result<ExecutionResult, TestError> {
     evm.ctx.block.number = U256::from(height);
-    let tx = history_storage_write_tx_env(CHAIN_ID, height, hash_of(height - 1), TX_GAS_LIMIT_CAP)
+    let tx = history_storage_write_tx_env(height, hash_of(height - 1))
         .expect("every height the tests write has a parent");
     execute_commit(evm, ExecutionMode::System, tx)
 }
@@ -208,10 +206,8 @@ fn history_writes_fill_the_ring_and_get_serves_the_window() {
     // The first write, inspected before it is committed.
     evm.ctx.block.number = U256::from(1);
     evm.ctx.cfg.execution_mode = ExecutionMode::System;
-    evm.ctx.set_tx(
-        history_storage_write_tx_env(CHAIN_ID, 1, hash_of(0), TX_GAS_LIMIT_CAP)
-            .expect("height 1 has a parent"),
-    );
+    evm.ctx
+        .set_tx(history_storage_write_tx_env(1, hash_of(0)).expect("height 1 has a parent"));
     let mut handler = MainnetHandler::<TestEvm, TestError, EthFrame<EthInterpreter>>::default();
     handler
         .validate_caller(&evm)

@@ -167,7 +167,19 @@ pub fn generate_history_storage_transaction() -> GenesisTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use primitives::{b256, keccak256};
+    use alloy_eips::{
+        eip2935::{
+            HISTORY_SERVE_WINDOW as ALLOY_HISTORY_SERVE_WINDOW,
+            HISTORY_STORAGE_ADDRESS as ALLOY_HISTORY_STORAGE_ADDRESS,
+            HISTORY_STORAGE_CODE as ALLOY_HISTORY_STORAGE_CODE,
+        },
+        eip4788::SYSTEM_ADDRESS as ALLOY_SYSTEM_ADDRESS,
+    };
+    use primitives::{
+        b256,
+        eip2935::{HISTORY_SERVE_WINDOW, SYSTEM_ADDRESS},
+        keccak256,
+    };
 
     /// For a plain-CREATE deployment, the resulting contract address depends only on the
     /// sender and nonce, not on the init-code. This asserts each fixed (deployer, address)
@@ -286,7 +298,7 @@ mod tests {
     #[test]
     fn history_storage_code_is_the_eip_constructor_and_runtime_code() {
         const CONSTRUCTOR: [u8; 9] = [0x60, 0x53, 0x80, 0x60, 0x09, 0x5f, 0x39, 0x5f, 0xf3];
-        let runtime = alloy_eips::eip2935::HISTORY_STORAGE_CODE.as_ref();
+        let runtime = ALLOY_HISTORY_STORAGE_CODE.as_ref();
         assert_eq!(
             runtime.len(),
             0x53,
@@ -295,18 +307,9 @@ mod tests {
         assert_eq!(&HISTORY_STORAGE_CODE[..CONSTRUCTOR.len()], CONSTRUCTOR);
         assert_eq!(&HISTORY_STORAGE_CODE[CONSTRUCTOR.len()..], runtime);
 
-        assert_eq!(
-            HISTORY_STORAGE_ADDRESS,
-            alloy_eips::eip2935::HISTORY_STORAGE_ADDRESS
-        );
-        assert_eq!(
-            primitives::eip2935::HISTORY_SERVE_WINDOW,
-            alloy_eips::eip2935::HISTORY_SERVE_WINDOW as u64
-        );
-        assert_eq!(
-            primitives::eip2935::SYSTEM_ADDRESS,
-            alloy_eips::eip4788::SYSTEM_ADDRESS
-        );
+        assert_eq!(HISTORY_STORAGE_ADDRESS, ALLOY_HISTORY_STORAGE_ADDRESS);
+        assert_eq!(HISTORY_SERVE_WINDOW, ALLOY_HISTORY_SERVE_WINDOW as u64);
+        assert_eq!(SYSTEM_ADDRESS, ALLOY_SYSTEM_ADDRESS);
     }
 
     #[test]

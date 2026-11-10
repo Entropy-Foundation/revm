@@ -19,7 +19,6 @@
 //!   the hash stored one window earlier.
 
 use crate::errors::SupraExtensionError;
-use alloy::primitives::ChainId;
 use context::{TransactionType, TxEnv};
 // The EIP-2935 constants are defined once, in `primitives::eip2935`. `contracts::canonical_singletons`
 // re-exports the history contract's address next to the genesis transaction that deploys it.
@@ -29,13 +28,16 @@ use primitives::{
     Bytes, TxKind, B256, U256,
 };
 
-/// Default gas limit of the history write: the transaction gas-limit cap, the figure the node
-/// executes the genesis transactions at and the default of the block-metadata transaction
-/// ([`DEFAULT_BLOCK_METADATA_GAS_LIMIT`](crate::transactions::block_metadata::DEFAULT_BLOCK_METADATA_GAS_LIMIT)).
+/// Gas limit of the history write: the fixed transaction gas-limit cap [`TX_GAS_LIMIT_CAP`], not
+/// the per-transaction cap governance sets for an epoch (`supra.evm.max_transaction_gas_limit`).
 ///
-/// The EIP gives the call 30,000,000 gas. On SupraEVM the call follows the chain's cap like every
-/// other system transaction; the contract's `set` path uses about 22,000 gas, far below either.
-pub const DEFAULT_HISTORY_STORAGE_WRITE_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
+/// The write is not a transaction a sender declares, and the node fails a block whose write does
+/// not succeed. Running it at the governed cap, which only has to be non-zero, would let a cap
+/// below the write's cost fail every EVM block. A fixed limit keeps the write independent of it,
+/// as the EIP's fixed 30,000,000 does on Ethereum. The contract's `set` path uses 22,143 gas for
+/// a slot's first write, far below this limit. The System path skips validation, so the EVM's own
+/// cap is not applied to the call either.
+pub const HISTORY_STORAGE_WRITE_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 
 /// Builds the history write for the block at `height`, whose parent's hash is `parent_hash`.
 ///
@@ -47,9 +49,7 @@ pub const DEFAULT_HISTORY_STORAGE_WRITE_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 /// other block environment, it records `parent_hash` as the hash of a different block.
 ///
 /// Its other fields:
-/// - `gas_limit` is the caller's; the node passes the transaction gas-limit cap of the epoch it
-///   executes, as it does for the genesis transactions
-///   ([`DEFAULT_HISTORY_STORAGE_WRITE_GAS_LIMIT`] is the default cap).
+/// - The gas limit is the fixed [`HISTORY_STORAGE_WRITE_GAS_LIMIT`].
 /// - Value, gas price and priority fee are zero: a system transaction pays nothing and is paid
 ///   nothing.
 /// - The type is EIP-2930, the fixed-price type the other Supra system transactions report.
@@ -57,16 +57,17 @@ pub const DEFAULT_HISTORY_STORAGE_WRITE_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 ///   sender's account nonce: System transactions are not sequenced by nonce
 ///   (`ExecutionMode::updates_nonce`).
 /// - The transaction hash is zero, since the call is no transaction of the block.
+/// - There is no chain id. On the System path the call reads only its caller, kind, value, input
+///   and gas limit, and the contract's code does not execute `CHAINID`, so a chain id would have
+///   no effect.
 ///
 /// # Errors
 ///
 /// [`SupraExtensionError::HistoryStorageWriteWithoutParent`] for `height == 0`: the block at
 /// height 0 has no parent, so there is no hash to record.
 pub fn history_storage_write_tx_env(
-    chain_id: ChainId,
     height: u64,
     parent_hash: B256,
-    gas_limit: u64,
 ) -> Result<TxEnv, SupraExtensionError> {
     if height == 0 {
         return Err(SupraExtensionError::HistoryStorageWriteWithoutParent);
@@ -74,13 +75,13 @@ pub fn history_storage_write_tx_env(
     Ok(TxEnv {
         tx_type: TransactionType::Eip2930 as u8,
         caller: SYSTEM_ADDRESS,
-        gas_limit,
+        gas_limit: HISTORY_STORAGE_WRITE_GAS_LIMIT,
         gas_price: 0,
         kind: TxKind::Call(HISTORY_STORAGE_ADDRESS),
         value: U256::ZERO,
         data: Bytes::copy_from_slice(parent_hash.as_slice()),
         nonce: height,
-        chain_id: Some(chain_id),
+        chain_id: None,
         gas_priority_fee: Some(0),
         tx_hash: B256::ZERO,
         ..Default::default()
@@ -105,9 +106,7 @@ mod tests {
     #[test]
     fn history_storage_write_tx_env_calls_the_history_contract_from_the_system_address() {
         let parent = b256!("0x1111111111111111111111111111111111111111111111111111111111111111");
-        let tx =
-            history_storage_write_tx_env(8, 42, parent, DEFAULT_HISTORY_STORAGE_WRITE_GAS_LIMIT)
-                .expect("height 42 has a parent");
+        let tx = history_storage_write_tx_env(42, parent).expect("height 42 has a parent");
 
         assert_eq!(tx.caller(), SYSTEM_ADDRESS);
         assert_eq!(tx.kind(), TxKind::Call(HISTORY_STORAGE_ADDRESS));
@@ -123,7 +122,7 @@ mod tests {
         assert_eq!(tx.max_priority_fee_per_gas(), Some(0));
         assert_eq!(tx.tx_type(), TransactionType::Eip2930 as u8);
         assert_eq!(tx.nonce(), 42);
-        assert_eq!(tx.chain_id(), Some(8));
+        assert_eq!(tx.chain_id(), None);
         assert_eq!(tx.tx_hash(), B256::ZERO);
         assert!(tx
             .access_list()
@@ -131,18 +130,11 @@ mod tests {
         assert!(tx.authorization_list_len() == 0);
     }
 
-    #[test]
-    fn history_storage_write_tx_env_keeps_the_given_gas_limit() {
-        let tx = history_storage_write_tx_env(1, 1, B256::ZERO, 1_000_000)
-            .expect("height 1 has a parent");
-        assert_eq!(tx.gas_limit(), 1_000_000);
-    }
-
     /// The block at height 0 has no parent, so no history write is built for it; the first
     /// write is the one of the block at height 1.
     #[test]
     fn history_storage_write_tx_env_refuses_height_zero() {
-        let result = history_storage_write_tx_env(1, 0, B256::ZERO, TX_GAS_LIMIT_CAP);
+        let result = history_storage_write_tx_env(0, B256::ZERO);
         assert!(
             matches!(
                 result,
@@ -150,8 +142,8 @@ mod tests {
             ),
             "got {result:?}"
         );
-        assert!(history_storage_write_tx_env(1, 1, B256::ZERO, TX_GAS_LIMIT_CAP).is_ok());
-        assert!(history_storage_write_tx_env(1, u64::MAX, B256::ZERO, TX_GAS_LIMIT_CAP).is_ok());
+        assert!(history_storage_write_tx_env(1, B256::ZERO).is_ok());
+        assert!(history_storage_write_tx_env(u64::MAX, B256::ZERO).is_ok());
     }
 
     /// The slot index wraps at the window: the hash of block `n` and the hash of block
