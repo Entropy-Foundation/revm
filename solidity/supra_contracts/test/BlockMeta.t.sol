@@ -4,11 +4,16 @@ pragma solidity 0.8.34;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {BlockMeta} from "../src/BlockMeta.sol";
+import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
+import {MultisigBeacon} from "../src/MultisigBeacon.sol";
 import {Counter} from "./Counter.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
+import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
 
 contract BlockMetaTest is Test {
     BlockMeta blockMeta;                        // BlockMeta instance on proxy address
@@ -805,6 +810,168 @@ contract BlockMetaTest is Test {
         blockMeta.upgradeToAndCall(address(newImpl), "");
     }
 
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to ownership (#4936) :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev A second BlockMeta implementation for the ownership helpers' upgrade checks, deployed on first use and
+    ///      reused, so a test that checks owner powers several times pays for one deployment. Upgrading a proxy to
+    ///      the implementation it already runs is allowed, so reuse does not weaken the check.
+    BlockMeta private spareImpl;
+
+    function spareImplementation() private returns (BlockMeta) {
+        if (address(spareImpl) == address(0)) {
+            spareImpl = new BlockMeta();
+        }
+        return spareImpl;
+    }
+
+    /// @dev Asserts that `_account` can use every owner-only BlockMeta entry point: register, the gas cap
+    ///      setter and the UUPS upgrade authorisation. Each call leaves the contract usable for the next.
+    function assertHasOwnerPowers(address _account) private {
+        BlockMeta newImpl = spareImplementation();
+
+        vm.startPrank(_account);
+        blockMeta.register(counterAddress, selector, DEFAULT_GAS);
+        blockMeta.deregister(counterAddress, selector);
+        blockMeta.setBlockPrologueGasCap(2_000_000);
+        blockMeta.upgradeToAndCall(address(newImpl), "");
+        vm.stopPrank();
+
+        assertEq(blockMeta.blockPrologueGasCap(), 2_000_000);
+        assertEq(address(uint160(uint256(vm.load(address(blockMeta), ERC1967Utils.IMPLEMENTATION_SLOT)))), address(newImpl));
+    }
+
+    /// @dev Asserts that `_account` is refused by every owner-only BlockMeta entry point.
+    function assertHasNoOwnerPowers(address _account) private {
+        bytes memory unauthorized = abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, _account);
+        BlockMeta newImpl = spareImplementation();
+
+        vm.expectRevert(unauthorized);
+        vm.prank(_account);
+        blockMeta.register(counterAddress, selector, DEFAULT_GAS);
+
+        vm.expectRevert(unauthorized);
+        vm.prank(_account);
+        blockMeta.setBlockPrologueGasCap(2_000_000);
+
+        vm.expectRevert(unauthorized);
+        vm.prank(_account);
+        blockMeta.upgradeToAndCall(address(newImpl), "");
+    }
+
+    /// @dev 'renounceOwnership' is always refused for the owner, and the owner keeps every owner-only power.
+    function testRenounceOwnershipReverts() public {
+        vm.expectRevert(IBlockMeta.OwnershipRenunciationDisabled.selector);
+        vm.prank(admin);
+        blockMeta.renounceOwnership();
+
+        assertEq(blockMeta.owner(), admin);
+        assertEq(blockMeta.pendingOwner(), address(0));
+        assertHasOwnerPowers(admin);
+    }
+
+    /// @dev A non-owner calling 'renounceOwnership' gets the ordinary access error, not the renunciation one.
+    function testRenounceOwnershipRevertsIfNotOwner() public {
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        blockMeta.renounceOwnership();
+
+        assertEq(blockMeta.owner(), admin);
+    }
+
+    /// @dev 'transferOwnership' only nominates: the owner is unchanged and keeps its powers, the nominee has none yet.
+    function testTransferOwnershipSetsPendingOwner() public {
+        vm.expectEmit(true, true, false, false, address(blockMeta));
+        emit Ownable2StepUpgradeable.OwnershipTransferStarted(admin, alice);
+        vm.prank(admin);
+        blockMeta.transferOwnership(alice);
+
+        assertEq(blockMeta.owner(), admin);
+        assertEq(blockMeta.pendingOwner(), alice);
+        assertHasNoOwnerPowers(alice);
+        assertHasOwnerPowers(admin);
+    }
+
+    /// @dev 'transferOwnership' is owner-only.
+    function testTransferOwnershipRevertsIfNotOwner() public {
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        blockMeta.transferOwnership(alice);
+
+        assertEq(blockMeta.pendingOwner(), address(0));
+    }
+
+    /// @dev The nominee completes the transfer with 'acceptOwnership': ownership and every owner-only power move,
+    ///      and the pending slot is cleared.
+    function testAcceptOwnership() public {
+        vm.prank(admin);
+        blockMeta.transferOwnership(alice);
+
+        vm.expectEmit(true, true, false, false, address(blockMeta));
+        emit OwnableUpgradeable.OwnershipTransferred(admin, alice);
+        vm.prank(alice);
+        blockMeta.acceptOwnership();
+
+        assertEq(blockMeta.owner(), alice);
+        assertEq(blockMeta.pendingOwner(), address(0));
+        assertHasNoOwnerPowers(admin);
+        assertHasOwnerPowers(alice);
+    }
+
+    /// @dev Only the nominee can accept, including the current owner and when nobody is nominated.
+    function testAcceptOwnershipRevertsIfNotPendingOwner() public {
+        // Nobody nominated: pendingOwner is zero, so no caller matches.
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, alice));
+        vm.prank(alice);
+        blockMeta.acceptOwnership();
+
+        vm.prank(admin);
+        blockMeta.transferOwnership(alice);
+
+        address bob = address(0xB0B);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, bob));
+        vm.prank(bob);
+        blockMeta.acceptOwnership();
+
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, admin));
+        vm.prank(admin);
+        blockMeta.acceptOwnership();
+
+        assertEq(blockMeta.owner(), admin);
+        assertEq(blockMeta.pendingOwner(), alice);
+    }
+
+    /// @dev A nomination of the wrong address is corrected by the owner: a new nomination replaces it (and the
+    ///      replaced nominee can no longer accept), and nominating zero cancels it.
+    function testOwnershipTransferMistakeIsRecoverable() public {
+        address wrongAddress = address(0xBAD);
+
+        vm.prank(admin);
+        blockMeta.transferOwnership(wrongAddress);
+        assertEq(blockMeta.owner(), admin);
+
+        // Cancel by nominating zero; the wrong nominee cannot accept any more.
+        vm.prank(admin);
+        blockMeta.transferOwnership(address(0));
+        assertEq(blockMeta.pendingOwner(), address(0));
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, wrongAddress));
+        vm.prank(wrongAddress);
+        blockMeta.acceptOwnership();
+
+        // Nominate the wrong address again, then replace it with the intended one.
+        vm.prank(admin);
+        blockMeta.transferOwnership(wrongAddress);
+        vm.prank(admin);
+        blockMeta.transferOwnership(alice);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, wrongAddress));
+        vm.prank(wrongAddress);
+        blockMeta.acceptOwnership();
+
+        vm.prank(alice);
+        blockMeta.acceptOwnership();
+        assertEq(blockMeta.owner(), alice);
+        assertEq(blockMeta.pendingOwner(), address(0));
+    }
+
     /// @dev Helper function to pack a target contract address, function selector, and gas limit into a single uint256 execution entry.
     function packExecution(address _targetContract, bytes4 _selector, uint64 _gasLimit) private pure returns (uint256) {
         // Layout: [target[160] | selector[32] | gasLimit[64]]
@@ -828,5 +995,100 @@ contract FailingContract {
     error Fail();
     function fail() external pure {
         revert Fail();
+    }
+}
+
+/// @dev BlockMeta owned by the Foundation multisig, as genesis deploys it: ownership actions reach BlockMeta only
+///      as wallet transactions that gather the required confirmations.
+contract BlockMetaWalletOwnershipTest is Test {
+    MultiSignatureWallet wallet;
+    BlockMeta blockMeta;
+    Counter counter;
+
+    address ownerA = address(0xA11CE);
+    address ownerB = address(0xB0B);
+    address nominee = address(0xC0FFEE);
+
+    uint64 constant GAS_CAP = 1_000_000;
+    uint64 constant TIMEOUT = 1 hours;
+
+    function setUp() public {
+        address[] memory owners = new address[](2);
+        owners[0] = ownerA;
+        owners[1] = ownerB;
+
+        MultisigBeacon beacon = new MultisigBeacon(address(new MultiSignatureWallet()), address(this));
+        BeaconProxy walletProxy =
+            new BeaconProxy(address(beacon), abi.encodeCall(MultiSignatureWallet.initialize, (owners, 2)));
+        wallet = MultiSignatureWallet(payable(walletProxy));
+
+        ERC1967Proxy blockMetaProxy = new ERC1967Proxy(
+            address(new BlockMeta()), abi.encodeCall(BlockMeta.initialize, (address(wallet), GAS_CAP))
+        );
+        blockMeta = BlockMeta(address(blockMetaProxy));
+
+        Counter counterImpl = new Counter();
+        ERC1967Proxy counterProxy =
+            new ERC1967Proxy(address(counterImpl), abi.encodeCall(Counter.initialize, (address(blockMeta))));
+        counter = Counter(address(counterProxy));
+    }
+
+    /// @dev Submits `_data` to BlockMeta as ownerA (which counts as its confirmation) and confirms it as ownerB,
+    ///      so the transaction meets the 2-of-2 threshold. Returns its index and content hash for execution.
+    function submitAndConfirm(bytes memory _data) private returns (uint256 txIndex, bytes32 contentHash) {
+        txIndex = wallet.getNextTransactionIndex();
+        vm.prank(ownerA);
+        wallet.submitTransaction(address(blockMeta), 0, TIMEOUT, _data);
+        contentHash = wallet.getTransactionContentHash(txIndex);
+        vm.prank(ownerB);
+        wallet.confirmTransaction(txIndex, contentHash);
+    }
+
+    /// @dev Submits, confirms and executes `_data` through the wallet; the execution must succeed.
+    function executeThroughWallet(bytes memory _data) private {
+        (uint256 txIndex, bytes32 contentHash) = submitAndConfirm(_data);
+        vm.prank(ownerA);
+        wallet.executeTransaction(txIndex, contentHash);
+    }
+
+    /// @dev A fully confirmed wallet transaction calling 'renounceOwnership' fails with BlockMeta's renunciation
+    ///      error, and the wallet keeps governing BlockMeta afterwards.
+    function testWalletRenounceOwnershipIsRefused() public {
+        (uint256 txIndex, bytes32 contentHash) = submitAndConfirm(abi.encodeCall(BlockMeta.renounceOwnership, ()));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMultiSignatureWallet.ExecutionFailed.selector,
+                abi.encodeWithSelector(IBlockMeta.OwnershipRenunciationDisabled.selector)
+            )
+        );
+        vm.prank(ownerA);
+        wallet.executeTransaction(txIndex, contentHash);
+
+        assertEq(blockMeta.owner(), address(wallet));
+
+        executeThroughWallet(abi.encodeCall(IBlockMeta.register, (address(counter), Counter.increment.selector, 50_000)));
+        assertEq(blockMeta.getExecutionGasLimit(address(counter), Counter.increment.selector), 50_000);
+    }
+
+    /// @dev The wallet hands BlockMeta over in two steps: its transaction only nominates, the wallet stays owner
+    ///      until the nominee accepts, and the nominee then holds the owner-only powers.
+    function testWalletTransfersOwnershipInTwoSteps() public {
+        executeThroughWallet(abi.encodeCall(IBlockMeta.transferOwnership, (nominee)));
+
+        assertEq(blockMeta.owner(), address(wallet));
+        assertEq(blockMeta.pendingOwner(), nominee);
+
+        // Still the wallet's to govern while the nomination is pending.
+        executeThroughWallet(abi.encodeCall(IBlockMeta.setBlockPrologueGasCap, (2_000_000)));
+        assertEq(blockMeta.blockPrologueGasCap(), 2_000_000);
+
+        vm.prank(nominee);
+        blockMeta.acceptOwnership();
+
+        assertEq(blockMeta.owner(), nominee);
+        assertEq(blockMeta.pendingOwner(), address(0));
+        vm.prank(nominee);
+        blockMeta.register(address(counter), Counter.increment.selector, 50_000);
     }
 }

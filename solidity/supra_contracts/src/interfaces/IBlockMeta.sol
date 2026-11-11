@@ -20,6 +20,10 @@ interface IBlockMeta {
     error GasCapExceeded();
     /// @notice Thrown when an empty execution array is provided to 'updateExecutionOrder'.
     error InvalidExecutionsLength();
+    /// @notice Thrown by 'renounceOwnership', which is always disabled on BlockMeta: the execution list,
+    ///         the gas cap and the upgrade authorisation are all owner-only, so the contract must always
+    ///         have an owner. Same error name as MultisigBeacon's, so both system contracts surface it alike.
+    error OwnershipRenunciationDisabled();
 
     /// @notice Emitted when a function selector is registered for per-block execution.
     /// @param targetContract Address of the target contract.
@@ -118,4 +122,24 @@ interface IBlockMeta {
     /// @notice Returns the sum of all per-entry gas limits currently registered.
     /// @return totalGas Total allocated gas.
     function totalGasAllocated() external view returns (uint64 totalGas);
+
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: OWNERSHIP (Ownable2Step) :::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // Declared here so a caller that binds only IBlockMeta (a governance script, a multisig submitter) can read the
+    // owner and drive the two-step handover without importing OpenZeppelin's ABI.
+
+    /// @notice Returns the current owner, the only account allowed to call the owner-only functions above.
+    function owner() external view returns (address);
+
+    /// @notice Returns the account nominated by 'transferOwnership' that has not accepted yet, or zero if none.
+    function pendingOwner() external view returns (address);
+
+    /// @notice Owner-only. Nominates `newOwner`; ownership moves only when `newOwner` calls 'acceptOwnership'.
+    /// @dev Replaces any earlier nomination. Nominating the zero address cancels a pending nomination.
+    function transferOwnership(address newOwner) external;
+
+    /// @notice Completes a transfer started by 'transferOwnership'. Callable only by the pending owner.
+    function acceptOwnership() external;
+
+    /// @notice Always reverts with OwnershipRenunciationDisabled for the owner (OwnableUnauthorizedAccount for anyone else).
+    function renounceOwnership() external view;
 }

@@ -657,7 +657,7 @@ mod tests {
             ),
             (
                 "BlockMeta",
-                b256!("6a5ca2b9ef23d1f0244c247266f0dda07518d23d0db648a1c803d39f67d59ed5"),
+                b256!("db4905948360c16a0644f5ea554107f246fc3693dd25896fead1dd6857ac5378"),
             ),
             (
                 "ConfigFacet",
