@@ -128,9 +128,12 @@ interface ISupraRandomness {
     /// dynamic dispatch: any address you call is code that may revert you.
     ///
     /// > **After reading randomness, no external call you make may be able to revert your
-    /// > frame.** Either catch the failure of every such call, or finalise the outcome in a
-    /// > different transaction from the one that makes the call. A callee controlled by the
-    /// > transaction sender can otherwise revert the transaction after observing the outcome.
+    /// > frame or exhaust its gas.** Either finalise the outcome in a different transaction from
+    /// > the one that makes the call, or make every such call with its failure caught, its gas
+    /// > capped, and none of its return data copied or a bounded amount, with the cap and the
+    /// > copy counted in the gas checked before the read. A callee controlled by the transaction
+    /// > sender can otherwise revert the transaction, or leave it too little gas to finish, after
+    /// > observing the outcome.
     ///
     /// An ERC-20 transfer hook, a bare `receive()`, an ERC-721 `onERC721Received` and an ERC-1155
     /// acceptance check are all calls into an address the sender may control, and any of them can
@@ -139,8 +142,31 @@ interface ISupraRandomness {
     ///
     /// Persisting the outcome to storage before the call does **not** protect it: a revert unwinds
     /// the entire frame, storage writes included, so the persisted outcome is undone with
-    /// everything else. A low-level call whose boolean result you handle, or `try`/`catch` around a
-    /// high-level one, keeps the frame alive.
+    /// everything else.
+    ///
+    /// A low-level call returns a boolean instead of bubbling the callee's revert, so a reverting
+    /// callee cannot revert the frame. Catching the failure does not bound the two other things the
+    /// callee controls:
+    ///
+    /// - Gas. A call forwards all but 1/64 of the remaining gas unless it names a cap. A callee
+    ///   that spends it leaves the frame 1/64 of the gas it had, and if the work after the call
+    ///   needs more, the frame runs out of gas and the read is undone. Name a cap, and include the
+    ///   callee spending all of it in the `N` of the check before the read described below.
+    /// - Return data. A Solidity low-level call copies all of the callee's return data into the
+    ///   calling frame whether or not the result is bound: `(bool ok, ) = to.call(...)` copies it as
+    ///   `(bool ok, bytes memory ret) = to.call(...)` does. The callee chooses its size, so it
+    ///   chooses the memory cost of the copy, which is paid by the calling frame and is not covered
+    ///   by the cap. An assembly `call` whose output size is zero copies none of it. Where some of
+    ///   it is needed, copy at most the bytes that are decoded.
+    ///
+    /// `try`/`catch` around a high-level call catches a revert in the callee, but not a failure to
+    /// decode the callee's return data, such as empty return data from a contract that returns
+    /// nothing or from an address with no code. That failure is raised in the calling frame and
+    /// reverts it. `try`/`catch` also forwards all but 1/64 of the remaining gas unless the call
+    /// names a cap, and copies data the callee sizes: `catch (bytes memory reason)` and
+    /// `catch Error(string memory reason)` copy all of the revert data, and with solc 0.8.34 a
+    /// successful call copies all of its return data under the legacy code generator and the
+    /// declared return size under `via_ir`.
     ///
     /// Recording the outcome and settling in a later transaction closes this only when the
     /// settlement cannot run in the same transaction as the read, after it: a transaction that
