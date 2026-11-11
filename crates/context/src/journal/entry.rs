@@ -91,8 +91,8 @@ pub trait JournalEntryTr {
     /// destroyed here. A self-destruct to any other address moves the balance, and
     /// every other journal entry conserves it, so all of those return zero.
     ///
-    /// This covers only the balance held at the opcode. The account is deleted when
-    /// its transaction is committed, together with whatever balance it holds then;
+    /// This covers only the balance held at the opcode. The account is deleted with
+    /// whatever balance it holds when its transaction is committed;
     /// `JournalInner::commit_tx` counts that balance, using
     /// [`Self::selfdestructed_address`].
     ///

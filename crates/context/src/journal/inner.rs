@@ -93,7 +93,7 @@ pub struct JournalInner<ENTRY> {
     /// # Scope is whatever the caller drains
     ///
     /// The journal has no notion of a block. Supra runs one journal per block and
-    /// drains once per transaction, which is what makes the sum of the drains a block
+    /// drains once, after the block's last transaction, which makes the drain a block
     /// total. An embedder that finalizes per transaction instead gets a
     /// per-transaction total from the same field, and those still compose, because
     /// each drain covers exactly the destructions since the previous one.
