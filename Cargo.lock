@@ -4791,6 +4791,7 @@ dependencies = [
  "alloy-sol-types",
  "op-revm",
  "revm 29.0.0",
+ "revm-supra-extension",
  "rstest",
  "serde",
  "serde_json",

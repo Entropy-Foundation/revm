@@ -160,9 +160,11 @@ impl GenesisTransactionGenerator {
         } = config;
         // First, the Create2 Factory contract deployment, which will allow later to utilize
         // create2 API if required during genesis, alongside the other canonical EVM singleton
-        // predeploys (Multicall3, ERC-2470 SingletonFactory, CreateX, ERC-1820 Registry) that
-        // the wider EVM ecosystem/tooling expects at fixed addresses. All five are unconditional,
-        // independent of `full_set`, since none relate to Supra's own application contracts below.
+        // predeploys (Multicall3, ERC-2470 SingletonFactory, CreateX, ERC-1820 Registry, EIP-2935
+        // block-hash history) that the wider EVM ecosystem/tooling expects at fixed addresses. All
+        // six are unconditional, independent of `full_set`, since none relate to Supra's own
+        // application contracts below. The history contract in particular must exist on every
+        // chain, because the node writes the parent block's hash into it before every block.
         let mut genesis_transactions = BTreeMap::from([
             (
                 GenesisTransactionTags::Create2Factory,
@@ -183,6 +185,10 @@ impl GenesisTransactionGenerator {
             (
                 GenesisTransactionTags::Erc1820Registry,
                 canonical_singletons::generate_erc1820_registry_transaction(),
+            ),
+            (
+                GenesisTransactionTags::HistoryStorage,
+                canonical_singletons::generate_history_storage_transaction(),
             ),
         ]);
         // Second multisig contract and foundation multisig account setup should be done
@@ -741,7 +747,7 @@ mod tests {
         let result = generator
             .prepare_genesis_transactions(config.clone())
             .unwrap();
-        assert_eq!(result.len(), 8);
+        assert_eq!(result.len(), 9);
         assert!(result.contains_key(&GenesisTransactionTags::Create2Factory));
         assert!(result.contains_key(&GenesisTransactionTags::MultisigWalletImpl));
         assert!(result.contains_key(&GenesisTransactionTags::MultisigBeacon));
@@ -752,6 +758,7 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::SingletonFactory));
         assert!(result.contains_key(&GenesisTransactionTags::CreateX));
         assert!(result.contains_key(&GenesisTransactionTags::Erc1820Registry));
+        assert!(result.contains_key(&GenesisTransactionTags::HistoryStorage));
 
         // Enable full set of contract generation without automation config
         config.full_set = true;
@@ -762,6 +769,7 @@ mod tests {
         assert!(result.contains_key(&GenesisTransactionTags::FoundationWallet));
         assert!(result.contains_key(&GenesisTransactionTags::BlockMetadata));
         assert!(result.contains_key(&GenesisTransactionTags::WrappedSupra));
+        assert!(result.contains_key(&GenesisTransactionTags::HistoryStorage));
         // Verify automation contracts are not deployed
         assert!(!result.contains_key(&GenesisTransactionTags::DiamondCutFacet));
         assert!(!result.contains_key(&GenesisTransactionTags::Diamond));
@@ -803,6 +811,10 @@ mod tests {
             (
                 GenesisTransactionTags::Erc1820Registry,
                 canonical_singletons::ERC1820_REGISTRY_ADDRESS,
+            ),
+            (
+                GenesisTransactionTags::HistoryStorage,
+                canonical_singletons::HISTORY_STORAGE_ADDRESS,
             ),
         ];
         for (tag, expected_address) in expectations {

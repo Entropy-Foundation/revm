@@ -26,11 +26,11 @@ use crate::{
 use context::{result::ExecResultAndState, ContextSetters, ContextTr, Evm, JournalTr, TxEnv};
 use database_interface::DatabaseCommit;
 use interpreter::{interpreter::EthInterpreter, InterpreterResult};
-use primitives::{address, Address, Bytes, TxKind};
+use primitives::{Address, Bytes, TxKind};
 use state::EvmState;
 
-/// The system address used for system calls.
-pub const SYSTEM_ADDRESS: Address = address!("0xfffffffffffffffffffffffffffffffffffffffe");
+/// The system address used for system calls, defined once in [`primitives::eip2935`].
+pub use primitives::eip2935::SYSTEM_ADDRESS;
 
 /// Creates the system transaction with default values and set data and tx call target to system contract address
 /// that is going to be called.
@@ -273,10 +273,9 @@ mod tests {
         Context, Transaction,
     };
     use database::InMemoryDB;
-    use primitives::{b256, bytes, StorageKey, U256};
+    use primitives::{b256, bytes, eip2935::HISTORY_STORAGE_ADDRESS, StorageKey, U256};
     use state::{AccountInfo, Bytecode};
 
-    const HISTORY_STORAGE_ADDRESS: Address = address!("0x0000F90827F1C53a10cb7A02335B175320002935");
     static HISTORY_STORAGE_CODE: Bytes = bytes!("0x3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500");
 
     #[test]
