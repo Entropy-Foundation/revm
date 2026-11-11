@@ -12,10 +12,14 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// through this library. The two requirements the VM cannot enforce, repeated from
 /// {ISupraRandomness-next}:
 ///
-/// > After reading randomness, no external call you make may be able to revert your frame. Either
-/// > catch the failure of every such call, or finalise the outcome in a different transaction from
-/// > the one that makes the call. A callee controlled by the transaction sender can otherwise
-/// > revert the transaction after observing the outcome. Persisting the outcome to storage first
+/// > After reading randomness, no external call you make may be able to revert your frame or
+/// > exhaust its gas. Either finalise the outcome in a different transaction from the one that
+/// > makes the call, or make every such call with its failure caught, its gas capped, and none of
+/// > its return data copied or a bounded amount, with the cap and the copy counted in the gas
+/// > checked before the read. A Solidity low-level call copies all of the return data whether or
+/// > not the result is bound, and `try`/`catch` does not catch a failure to decode it. A callee
+/// > controlled by the transaction sender can otherwise revert the transaction, or leave it too
+/// > little gas to finish, after observing the outcome. Persisting the outcome to storage first
 /// > does not help: a revert unwinds the frame, storage writes included.
 ///
 /// > After a read, the gas you spend must not depend on the value in a way that makes an outcome
@@ -25,8 +29,9 @@ import {ISupraRandomness} from "../interfaces/ISupraRandomness.sol";
 /// > a contract that never calls out is exposed too.
 ///
 /// Recording the outcome and settling in a later transaction satisfies both when the settlement
-/// cannot run in the same transaction as the read, after it. {valueWithGasLeft} satisfies the
-/// second when the gas after the read cannot be made independent of the value.
+/// cannot run in the same transaction as the read, after it. {valueWithGasLeft} performs the check
+/// before the read: the first needs it when a call is made in the reading transaction, and it
+/// satisfies the second when the gas after the read cannot be made independent of the value.
 ///
 /// A reading function must not be reachable from a batch whose other entries the sender chooses,
 /// a strict self-delegating `multicall` included.
