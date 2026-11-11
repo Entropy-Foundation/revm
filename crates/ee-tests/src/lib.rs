@@ -144,3 +144,6 @@ mod reserved_addresses;
 
 #[cfg(test)]
 mod history_storage;
+
+#[cfg(test)]
+mod selfdestruct_burn;
