@@ -78,6 +78,14 @@ pub enum SupraExtensionError {
     /// every error that wraps it.
     #[error("Automation task max gas amount {0} does not fit a u64 gas limit")]
     MaxGasAmountOutOfRange(alloy::primitives::U128),
+
+    /// Reported when the EIP-2935 history write is requested for the block at height 0.
+    ///
+    /// The write of the block at height `h` records the hash of its parent, block `h - 1`. The
+    /// block at height 0 has no parent, so no write exists for it; the history starts with the
+    /// write of the block at height 1.
+    #[error("No EIP-2935 history write exists for the block at height 0, which has no parent")]
+    HistoryStorageWriteWithoutParent,
 }
 
 /// Extracts value of the optional value or reports [`SupraExtensionError::MissingBuilderValue`].

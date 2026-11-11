@@ -14,6 +14,9 @@
 use crate::contracts::transaction::GenesisTransaction;
 use primitives::{address, Address, TxKind};
 
+/// Address of the EIP-2935 history contract, defined once in [`primitives::eip2935`].
+pub use primitives::eip2935::HISTORY_STORAGE_ADDRESS;
+
 /// The address that deploys the default CREATE2 deployer contract.
 pub const CREATE2_FACTORY_OWNER: Address = address!("0x3fAB184622Dc19b6109349B94811493BF2a45362");
 
@@ -79,6 +82,24 @@ pub const ERC1820_REGISTRY_ADDRESS: Address =
 pub const ERC1820_REGISTRY_CODE: &[u8] =
     include_bytes!("canonical_singletons_bytecode/erc1820_registry.bin");
 
+/// Deployer of the EIP-2935 block-hash history contract (Nick's-method deployment: the sender is
+/// recovered from a presigned transaction with a made-up signature, so no key for it exists).
+/// Retrieved from <https://eips.ethereum.org/EIPS/eip-2935> ("Deployment" section).
+pub const HISTORY_STORAGE_DEPLOYER: Address =
+    address!("0x3462413Af4609098e1E27A490f554f260213D685");
+/// EIP-2935 history contract init-code, extracted from the presigned deployment transaction's
+/// `input` field: a 9-byte constructor that returns the 83-byte runtime code following it.
+/// Retrieved from <https://eips.ethereum.org/EIPS/eip-2935> ("Deployment" section).
+///
+/// The runtime code serves the last [`primitives::eip2935::HISTORY_SERVE_WINDOW`] block hashes.
+/// It is deployed byte-identical to Ethereum's so that libraries and tools that read the
+/// contract (OpenZeppelin's `Blockhash`, Foundry, the execution-spec tests) behave as they do
+/// there. The node writes the parent block's hash into it before every block, with a system call
+/// from [`primitives::eip2935::SYSTEM_ADDRESS`]; see
+/// `crate::transactions::history_storage::history_storage_write_tx_env`.
+pub const HISTORY_STORAGE_CODE: &[u8] =
+    include_bytes!("canonical_singletons_bytecode/history_storage.bin");
+
 /// Generates the Create2Factory (Arachnid deterministic-deployment-proxy) deployment transaction.
 pub fn generate_create2_factory_transaction() -> GenesisTransaction {
     GenesisTransaction::new(
@@ -130,10 +151,35 @@ pub fn generate_erc1820_registry_transaction() -> GenesisTransaction {
     )
 }
 
+/// Generates the EIP-2935 history contract deployment transaction.
+///
+/// Executed at genesis it leaves the contract at [`HISTORY_STORAGE_ADDRESS`] with account nonce 1,
+/// as the EIP specifies, so the account is never empty and EIP-161 never clears it.
+pub fn generate_history_storage_transaction() -> GenesisTransaction {
+    GenesisTransaction::create(
+        HISTORY_STORAGE_DEPLOYER,
+        HISTORY_STORAGE_CODE.to_owned(),
+        0,
+        HISTORY_STORAGE_ADDRESS,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use primitives::{b256, keccak256};
+    use alloy_eips::{
+        eip2935::{
+            HISTORY_SERVE_WINDOW as ALLOY_HISTORY_SERVE_WINDOW,
+            HISTORY_STORAGE_ADDRESS as ALLOY_HISTORY_STORAGE_ADDRESS,
+            HISTORY_STORAGE_CODE as ALLOY_HISTORY_STORAGE_CODE,
+        },
+        eip4788::SYSTEM_ADDRESS as ALLOY_SYSTEM_ADDRESS,
+    };
+    use primitives::{
+        b256,
+        eip2935::{HISTORY_SERVE_WINDOW, SYSTEM_ADDRESS},
+        keccak256,
+    };
 
     /// For a plain-CREATE deployment, the resulting contract address depends only on the
     /// sender and nonce, not on the init-code. This asserts each fixed (deployer, address)
@@ -173,6 +219,11 @@ mod tests {
         ERC1820_REGISTRY_DEPLOYER,
         ERC1820_REGISTRY_ADDRESS
     );
+    create_address_derivation_test!(
+        history_storage_deployer_nonce_zero_produces_canonical_address,
+        HISTORY_STORAGE_DEPLOYER,
+        HISTORY_STORAGE_ADDRESS
+    );
 
     // keccak256 hash checks: a tripwire against accidental truncation/corruption of the
     // embedded init-code assets, strictly stronger than a byte-length check alone.
@@ -184,10 +235,12 @@ mod tests {
     // bytecode is 0x12ec8615..."), so this test also confirms our embedded asset matches that
     // publicly-published value, not just that it hasn't changed since we extracted it.
     //
-    // Arachnid's proxy, Multicall3, ERC-2470, and ERC-1820 don't publish an init-code hash in
-    // their own docs/spec the way CreateX does, so those four hashes below are self-computed
-    // (via this codebase's own `keccak256`) at the time each asset was extracted and pinned as
-    // a regression guard, not independently-published community values.
+    // Arachnid's proxy, Multicall3, ERC-2470, ERC-1820 and EIP-2935 don't publish an init-code
+    // hash in their own docs/spec the way CreateX does, so those five hashes below are
+    // self-computed (via this codebase's own `keccak256`) at the time each asset was extracted
+    // and pinned as a regression guard, not independently-published community values. The
+    // EIP-2935 asset is also checked against independently published values, in
+    // `history_storage_code_is_the_eip_constructor_and_runtime_code`.
     #[test]
     fn create2_factory_code_matches_expected_hash() {
         assert_eq!(
@@ -229,6 +282,44 @@ mod tests {
             keccak256(ERC1820_REGISTRY_CODE),
             b256!("141438dfbe77ba1a065eadf0ec62a4c90afa1c6355bc528d0f995015db252993")
         );
+    }
+
+    #[test]
+    fn history_storage_code_matches_expected_hash() {
+        assert_eq!(
+            keccak256(HISTORY_STORAGE_CODE),
+            b256!("d9a100b412a9e846fc9893402b583bb45f5d812b7a5c4fef9b49bc602b15520b")
+        );
+    }
+
+    /// Unlike the hash pins above, this checks the asset against values published independently
+    /// of it: the init-code is the EIP's 9-byte constructor followed by the runtime code that
+    /// alloy publishes for the contract, and the address and window are the EIP's.
+    #[test]
+    fn history_storage_code_is_the_eip_constructor_and_runtime_code() {
+        const CONSTRUCTOR: [u8; 9] = [0x60, 0x53, 0x80, 0x60, 0x09, 0x5f, 0x39, 0x5f, 0xf3];
+        let runtime = ALLOY_HISTORY_STORAGE_CODE.as_ref();
+        assert_eq!(
+            runtime.len(),
+            0x53,
+            "the constructor copies and returns 0x53 bytes"
+        );
+        assert_eq!(&HISTORY_STORAGE_CODE[..CONSTRUCTOR.len()], CONSTRUCTOR);
+        assert_eq!(&HISTORY_STORAGE_CODE[CONSTRUCTOR.len()..], runtime);
+
+        assert_eq!(HISTORY_STORAGE_ADDRESS, ALLOY_HISTORY_STORAGE_ADDRESS);
+        assert_eq!(HISTORY_SERVE_WINDOW, ALLOY_HISTORY_SERVE_WINDOW as u64);
+        assert_eq!(SYSTEM_ADDRESS, ALLOY_SYSTEM_ADDRESS);
+    }
+
+    #[test]
+    fn generate_history_storage_transaction_matches_constants() {
+        let txn = generate_history_storage_transaction();
+        assert_eq!(*txn.sender(), HISTORY_STORAGE_DEPLOYER);
+        assert_eq!(*txn.nonce(), 0);
+        assert_eq!(*txn.kind(), TxKind::Create);
+        assert_eq!(*txn.deploy_address(), Some(HISTORY_STORAGE_ADDRESS));
+        assert_eq!(txn.data().as_slice(), HISTORY_STORAGE_CODE);
     }
 
     #[test]
