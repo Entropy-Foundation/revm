@@ -2,11 +2,13 @@
 pragma solidity 0.8.34;
 
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {AdminAutomationTaskOwner} from "./AutomationTaskOwnerBase.t.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {TaskRegistrant, ConstructorTaskRegistrant} from "./TaskRegistrant.sol";
 import {AUTOMATION_TASK_OWNER_INTERFACE_ID} from "../src/interfaces/IAutomationTaskOwner.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
-import {IERC165} from "../src/interfaces/IERC165.sol";
+import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -22,9 +24,11 @@ contract EveryInterfaceClaimant {
     }
 }
 
-/// @notice Tasks whose owner is a contract: a user task registered by a contract, and a system
-/// task registered by an authorized submitter that is a MultiSignatureWallet (#4469). The registry records
-/// the calling contract as the owner, and only that contract can cancel or stop the task.
+/// @notice Tasks whose owner is a contract (#4469): a user task registered by a contract, and a
+/// system task registered by an authorized submitter that is a contract. The registry records the
+/// calling contract as the owner, and only that contract can cancel or stop the task. A
+/// MultiSignatureWallet is not such an owner (smr-moonshot #4922): the registry refuses it, and
+/// the wallet registers system tasks through a task owner contract it administers.
 contract ContractOwnedTasksTest is BaseDiamondTest {
     address constant WALLET_OWNER_1 = address(0x1001);
     address constant WALLET_OWNER_2 = address(0x1002);
@@ -77,36 +81,75 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
         wallet = MultiSignatureWallet(payable(address(proxy)));
     }
 
-    /// @dev Has `_wallet` call `_to` with `_data`: owner 1 submits, owner 2 confirms, owner 1 executes.
-    function walletCall(MultiSignatureWallet _wallet, address _to, bytes memory _data) internal {
-        uint256 txIndex = _wallet.getNextTransactionIndex();
-        bytes32 contentHash = _wallet.hashTransactionContent(_to, 0, _data);
+    /// @dev Has owner 1 submit and owner 2 confirm a call from `_wallet` to `_to` with `_data`,
+    /// which leaves it ready for execution.
+    function walletSubmitAndConfirm(MultiSignatureWallet _wallet, address _to, bytes memory _data)
+        internal
+        returns (uint256 txIndex, bytes32 contentHash)
+    {
+        txIndex = _wallet.getNextTransactionIndex();
+        contentHash = _wallet.hashTransactionContent(_to, 0, _data);
         vm.prank(WALLET_OWNER_1);
         _wallet.submitTransaction(_to, 0, WALLET_TX_TIMEOUT, _data);
         vm.prank(WALLET_OWNER_2);
         _wallet.confirmTransaction(txIndex, contentHash);
+    }
+
+    /// @dev Has `_wallet` call `_to` with `_data`: owner 1 submits, owner 2 confirms, owner 1
+    /// executes. Returns what the call returned.
+    function walletCall(MultiSignatureWallet _wallet, address _to, bytes memory _data)
+        internal
+        returns (bytes memory returnData)
+    {
+        (uint256 txIndex, bytes32 contentHash) = walletSubmitAndConfirm(_wallet, _to, _data);
         vm.prank(WALLET_OWNER_1);
+        returnData = _wallet.executeTransaction(txIndex, contentHash);
+    }
+
+    /// @dev Has `_wallet` call `_to` with `_data` and expects the execution to fail with the
+    /// registry's `UnsupportedTaskOwner(_wallet)`, carried in the wallet's `ExecutionFailed`.
+    function expectWalletCallRefusedAsTaskOwner(MultiSignatureWallet _wallet, address _to, bytes memory _data)
+        internal
+    {
+        (uint256 txIndex, bytes32 contentHash) = walletSubmitAndConfirm(_wallet, _to, _data);
+        vm.prank(WALLET_OWNER_1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMultiSignatureWallet.ExecutionFailed.selector,
+                abi.encodeWithSelector(IRegistryFacet.UnsupportedTaskOwner.selector, address(_wallet))
+            )
+        );
         _wallet.executeTransaction(txIndex, contentHash);
     }
 
-    /// @dev Authorizes `_wallet` as a system task submitter and has it register a system task.
-    function registerSystemTaskThroughWallet(MultiSignatureWallet _wallet) internal {
-        vm.prank(admin);
-        IConfigFacet(diamondAddr).grantAuthorization(address(_wallet));
+    /// @dev Has `_wallet` deploy a task owner contract through `deployContract`, which makes the
+    /// wallet its admin, and authorizes that contract as a system task submitter.
+    function deployWalletAdministeredTaskOwner(MultiSignatureWallet _wallet)
+        internal
+        returns (AdminAutomationTaskOwner taskOwner)
+    {
+        bytes memory creationCode = abi.encodePacked(type(AdminAutomationTaskOwner).creationCode, abi.encode(diamondAddr));
+        bytes memory returnData =
+            walletCall(_wallet, address(_wallet), abi.encodeCall(MultiSignatureWallet.deployContract, (creationCode, 0)));
+        taskOwner = AdminAutomationTaskOwner(payable(abi.decode(returnData, (address))));
 
-        bytes[] memory auxData;
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).grantAuthorization(address(taskOwner));
+    }
+
+    /// @dev Has `_wallet` register a system task through `_taskOwner`.
+    function registerSystemTaskThroughTaskOwner(MultiSignatureWallet _wallet, AdminAutomationTaskOwner _taskOwner)
+        internal
+    {
         walletCall(
             _wallet,
-            diamondAddr,
+            address(_taskOwner),
             abi.encodeCall(
-                IRegistryFacet.registerSystemTask,
+                AdminAutomationTaskOwner.registerSystemTask,
                 (
                     createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
                     createPredicate(diamondAddr),
-                    uint64(block.timestamp + 1250),
-                    uint128(100_000),
-                    2,
-                    auxData
+                    uint64(block.timestamp + 1250)
                 )
             )
         );
@@ -272,49 +315,119 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
         assertEq(registrant.AUTOMATION_TASK_OWNER_INTERFACE_ID(), AUTOMATION_TASK_OWNER_INTERFACE_ID);
     }
 
-    /// @dev The MultiSignatureWallet declares `IERC165` and `IAutomationTaskOwner`, and not
-    /// `0xffffffff`.
-    function testTheMultiSignatureWalletDeclaresTheOwnerInterface() public {
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::: A MultiSignatureWallet is not a task owner :::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev The MultiSignatureWallet declares neither `IERC165` nor `IAutomationTaskOwner`.
+    function testTheMultiSignatureWalletDeclaresNoOwnerInterface() public {
         MultiSignatureWallet wallet = deployWallet();
-        assertTrue(wallet.supportsInterface(type(IERC165).interfaceId));
-        assertTrue(wallet.supportsInterface(AUTOMATION_TASK_OWNER_INTERFACE_ID));
-        assertFalse(wallet.supportsInterface(0xffffffff));
+        assertFalse(ERC165Checker.supportsERC165(address(wallet)));
+        assertFalse(ERC165Checker.supportsInterface(address(wallet), AUTOMATION_TASK_OWNER_INTERFACE_ID));
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::: System tasks owned by a MultiSignatureWallet ::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @dev A system task registered by an authorized MultiSignatureWallet is owned by the wallet.
-    function testRegisterSystemTaskThroughMultiSignatureWallet() public {
+    /// @dev A wallet that is an authorized submitter still cannot register a system task.
+    function testRegisterSystemTaskFromAnAuthorizedMultiSignatureWalletIsRefused() public {
         MultiSignatureWallet wallet = deployWallet();
-        registerSystemTaskThroughWallet(wallet);
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).grantAuthorization(address(wallet));
+        bytes[] memory auxData;
+
+        expectWalletCallRefusedAsTaskOwner(
+            wallet,
+            diamondAddr,
+            abi.encodeCall(
+                IRegistryFacet.registerSystemTask,
+                (
+                    createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
+                    createPredicate(diamondAddr),
+                    uint64(block.timestamp + 1250),
+                    uint128(100_000),
+                    2,
+                    auxData
+                )
+            )
+        );
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+    }
+
+    /// @dev A wallet cannot register a user task either.
+    function testRegisterFromAMultiSignatureWalletIsRefused() public {
+        MultiSignatureWallet wallet = deployWallet();
+        bytes[] memory auxData;
+
+        expectWalletCallRefusedAsTaskOwner(
+            wallet,
+            diamondAddr,
+            abi.encodeCall(
+                IRegistryFacet.register,
+                (
+                    createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)),
+                    createPredicate(diamondAddr),
+                    uint64(block.timestamp + 1250),
+                    uint128(100_000),
+                    uint128(4 gwei),
+                    uint128(60.1 ether),
+                    4,
+                    auxData
+                )
+            )
+        );
+        assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::: System tasks of a task owner a MultiSignatureWallet administers ::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev A task owner contract the wallet deploys through `deployContract` has the wallet as
+    /// its admin, and a system task the wallet registers through it is owned by that contract,
+    /// not by the wallet.
+    function testRegisterSystemTaskThroughAWalletAdministeredTaskOwner() public {
+        MultiSignatureWallet wallet = deployWallet();
+        AdminAutomationTaskOwner taskOwner = deployWalletAdministeredTaskOwner(wallet);
+        assertEq(taskOwner.admin(), address(wallet));
+
+        registerSystemTaskThroughTaskOwner(wallet, taskOwner);
 
         TaskMetadata memory task = IRegistryViewFacet(diamondAddr).getTaskDetails(0);
-        assertEq(task.owner, address(wallet));
+        assertEq(task.owner, address(taskOwner));
         assertEq(uint8(task.taskType), uint8(LibCommon.TaskType.GST));
         assertTrue(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
-        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(address(wallet)).length, 1);
+        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(address(taskOwner)).length, 1);
+        assertEq(IRegistryViewFacet(diamondAddr).getTasksByAddress(address(wallet)).length, 0);
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 100_000);
     }
 
-    /// @dev The wallet cancels its system task through a wallet transaction.
-    function testCancelSystemTaskThroughMultiSignatureWallet() public {
+    /// @dev The wallet cancels the task through a wallet transaction to the task owner.
+    function testCancelSystemTaskThroughAWalletAdministeredTaskOwner() public {
         MultiSignatureWallet wallet = deployWallet();
-        registerSystemTaskThroughWallet(wallet);
+        AdminAutomationTaskOwner taskOwner = deployWalletAdministeredTaskOwner(wallet);
+        registerSystemTaskThroughTaskOwner(wallet, taskOwner);
 
-        walletCall(wallet, diamondAddr, abi.encodeCall(IRegistryFacet.cancelSystemTasks, (singleTask(0))));
+        walletCall(wallet, address(taskOwner), abi.encodeCall(AdminAutomationTaskOwner.cancelSystem, (singleTask(0))));
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
         assertEq(IRegistryViewFacet(diamondAddr).getSystemGasCommittedForNextCycle(), 0);
     }
 
-    /// @dev One wallet owner acting alone cannot stop the wallet's system task.
-    function testStopOfWalletSystemTaskByAWalletOwnerReverts() public {
+    /// @dev One wallet owner acting alone can stop the task neither through the task owner nor
+    /// on the registry, and neither can the wallet itself on the registry: the task is the task
+    /// owner's.
+    function testStopOfAWalletAdministeredSystemTaskOutsideTheWalletFlowReverts() public {
         MultiSignatureWallet wallet = deployWallet();
-        registerSystemTaskThroughWallet(wallet);
+        AdminAutomationTaskOwner taskOwner = deployWalletAdministeredTaskOwner(wallet);
+        registerSystemTaskThroughTaskOwner(wallet, taskOwner);
+
+        vm.prank(WALLET_OWNER_1);
+        vm.expectRevert(AdminAutomationTaskOwner.NotAdmin.selector);
+        taskOwner.stopSystem(singleTask(0));
 
         vm.prank(WALLET_OWNER_1);
         vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
         IRegistryFacet(diamondAddr).stopSystemTasks(singleTask(0));
+
+        vm.prank(address(wallet));
+        vm.expectRevert(IRegistryFacet.UnauthorizedAccount.selector);
+        IRegistryFacet(diamondAddr).stopSystemTasks(singleTask(0));
+
+        assertTrue(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
     }
 }

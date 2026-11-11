@@ -18,7 +18,10 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Grants authorization to the input account to submit system automation tasks.
-    /// It is foundation governance responsibility to make sure that the target is and instance of `MultiSignatureWallet`
+    /// It is the foundation governance's responsibility to make sure that the account is a task
+    /// owner that meets the obligations of `IAutomationTaskOwner`: a dedicated contract that the
+    /// foundation `MultiSignatureWallet` administers, not the wallet itself, which the registry
+    /// refuses as a task owner (smr-moonshot #4922).
     /// @param _account Address to grant authorization to.
     function grantAuthorization(address _account) external {
         LibDiamond.enforceIsContractOwner();

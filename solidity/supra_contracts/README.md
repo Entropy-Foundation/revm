@@ -171,3 +171,37 @@ cast call ${BlockMetadata} "getExecutionGasLimit(address,bytes4)(uint64)" \
 cast call ${AutomationRegistry} "isAutomationEnabled()(bool)" --rpc-url ${EVM_RPC_URL}
 cast call ${AutomationRegistry} "getCycleInfo()(uint64,uint64,uint64,uint8)" --rpc-url ${EVM_RPC_URL}
 ```
+
+## Automation tasks of the foundation
+
+The foundation wallet does not own automation tasks. It declares no ERC-165 interface, so the
+registry's `register` and `registerSystemTask` refuse it with `UnsupportedTaskOwner`, also after
+`AuthorizeAccount` has authorized it. The reason is how a task runs: the chain makes the task's
+call with the task's owner as the sender on every execution until the task expires or is
+cancelled, and no owner of the wallet confirms those executions. Every other action of the wallet
+carries the confirmations that are valid at the moment it executes.
+
+Tasks the foundation wants registered are owned by a separate task owner contract:
+
+1. Write the contract on `src/AutomationTaskOwnerBase.sol`. It adds external functions that
+   register, cancel, stop, fund and withdraw, each restricted to one admin fixed at construction.
+   `AdminAutomationTaskOwner` in `test/AutomationTaskOwnerBase.t.sol` is an example, with the
+   deployer as the admin.
+2. Deploy it from the wallet with `MultiSignatureWallet.deployContract`, so that the wallet is the
+   deployer and therefore the admin.
+3. For system tasks, authorize the contract (not the wallet) with the `AuthorizeAccount` action.
+4. Register, cancel and stop its tasks through wallet transactions to the contract.
+
+Rules for the task owner contract and its tasks:
+
+- The contract is used for nothing else. It is never made the owner, pending owner, admin or role
+  holder of any contract, and it is never authorized for anything except system task submission.
+  It holds only the WSUPRA and native SUPRA its own tasks need.
+- Confirming a registration confirms every execution of that payload until the task ends. The
+  owners review the payload, the target, the predicate and its target, the expiry time and, for a
+  user task, the value and gas each execution spends, as a standing instruction and not as a
+  single call.
+- A task that is no longer wanted is cancelled or stopped through the contract. Changing the
+  wallet's owners or threshold does not end a task.
+
+`test/ContractOwnedTasks.t.sol` covers the refusal of the wallet and the procedure above.
