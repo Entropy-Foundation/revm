@@ -26,7 +26,7 @@ The last section, "Registering a single task", covers the user-facing `register`
   `MAX_SUPPORTED_AUTOMATION_TASKS`.
 - `processTasks` submitted in batches of 25 tasks (8 batches to cover the full
   registry). 25 is the benchmark's measurement size, kept fixed so figures compare
-  across runs; the node sizes its records with `CoreFacet.getRecordMaxTaskCount`
+  across runs; the node sizes its records with `CoreViewFacet.getRecordMaxTaskCount`
   instead (Entropy-Foundation/smr-moonshot#4755), which
   `testCycleTransitionGas_DerivedRecordSize_*` exercise.
 - Tasks carry the test fixture's 640-byte payload and 128-byte predicate, except in
@@ -410,7 +410,7 @@ length read, about 5,700 gas per entry.
 The node builds every `processTasks` `AutomationRegistryRecord` with the per-transaction
 cap of the epoch's gas schedule as its gas limit (smr-moonshot#4084), and asks the
 registry how many tasks a record of that limit may carry,
-`CoreFacet.getRecordMaxTaskCount(cap)` (Entropy-Foundation/smr-moonshot#4755). The view
+`CoreViewFacet.getRecordMaxTaskCount(cap)` (Entropy-Foundation/smr-moonshot#4755). The view
 mirrors the Move registry's `automation_registry::get_record_max_task_count`:
 
 ```
@@ -442,7 +442,7 @@ count      = budget > reserve ? (budget − reserve) / taskGas : 0
 The three gas figures are constants in `LibCommon`, derived from this benchmark at 400
 tasks. They measure the transition code itself, so they change only with that code: a
 contract change that moves a cost fails the benchmark's assertions, and the upgrade that
-carries it re-derives the figures. The constants are inlined into CoreFacet (the view) and
+carries it re-derives the figures. The constants are inlined into CoreViewFacet (the view) and
 ConfigFacet (the pre-checks), so such an upgrade replaces both facets in one cut.
 
 | Figure | Value | Derived from |
@@ -529,7 +529,7 @@ cycle boundary; the fourth is outside the registry.
 | Capacity (`taskCapacity + sysTaskCapacity`, part of the config) | `ConfigFacet.updateConfigBuffer` | `getConfig`, `getConfigBuffer` | any cycle state | next cycle boundary |
 | Data-length caps | `ConfigFacet.updateDataLengthCaps` | `getDataLengthCaps`, `getDataLengthCapsBuffer`, `getTaskStoredWordsBound` | any cycle state | next cycle boundary |
 | Record sizing parameters (`taskSupportPercentage`, `maxCapacity`) | `ConfigFacet.updateRecordSizingParameters` | `getRecordSizingParameters`, `getRecordSizingParametersBuffer` | any cycle state | next cycle boundary |
-| Gas figures (`LibCommon.RECORD_GAS_*`) | contract upgrade replacing CoreFacet and ConfigFacet together | the guide's "Gas figures and record sizing parameters" | — | when the upgrade executes |
+| Gas figures (`LibCommon.RECORD_GAS_*`) | contract upgrade replacing CoreViewFacet and ConfigFacet together | the guide's "Gas figures and record sizing parameters" | — | when the upgrade executes |
 | Per-transaction gas cap | gas-schedule governance, outside the registry | `ISupraEvmGasConfig.txGasLimitCap` | — | at an epoch change |
 
 Each setter fully replaces its own buffer: a second call before the boundary overwrites the
@@ -573,7 +573,7 @@ finalizes, including for a node that restarts mid-transition and re-reads the vi
   lower `taskSupportPercentage`. It applies at the next boundary; a transition already in
   progress keeps its record size, and a record that fails is retried as single-task records
   by the node.
-- *Change the gas figures:* contract upgrade that re-runs this benchmark, replaces CoreFacet
+- *Change the gas figures:* contract upgrade that re-runs this benchmark, replaces CoreViewFacet
   and ConfigFacet in one cut, and updates the pinned bytecode hashes for genesis.
 - *Lower the per-transaction cap:* nothing in the registry re-checks it. Check
   `getRecordMaxTaskCount(newCap)` beforehand; a result of 0 means the node will pause

@@ -12,6 +12,7 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IDiamondCut} from "../src/interfaces/IDiamondCut.sol";
 import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {IFacetSelectors} from "../src/interfaces/IFacetSelectors.sol";
@@ -28,7 +29,7 @@ contract DiamondInitTest is BaseDiamondTest {
     function testInitialize() public view {
         assertEq(OwnershipFacet(diamondAddr).owner(), admin);
 
-        (uint64 index, uint64 startTime, uint64 durationSecs, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, uint64 startTime, uint64 durationSecs, LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
         assertEq(durationSecs, 1200);
@@ -37,7 +38,7 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 20_000_000);
         assertEq(IRegistryViewFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 20_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
-        assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
+        assertTrue(ICoreViewFacet(diamondAddr).isAutomationEnabled());
         assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(wsupra));
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
@@ -141,7 +142,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure 'facetAddresses' returns the address of all the facets.
     function testLoupeFacetAddresses() public view {
         address[] memory facets = IDiamondLoupe(diamondAddr).facetAddresses();
-        assertEq(facets.length, 7); // diamondCut, loupe, ownership, config, registry, registryView, core
+        assertEq(facets.length, 8); // diamondCut, loupe, ownership, config, registry, registryView, core, coreView
 
         bool diamondCutExists;
         bool loupeExists;
@@ -149,6 +150,7 @@ contract DiamondInitTest is BaseDiamondTest {
         bool registryExists;
         bool registryViewExists;
         bool coreExists;
+        bool coreViewExists;
 
         for (uint i; i < facets.length; i++) {
             if (facets[i] == deployment.facets.diamondCutFacet) diamondCutExists = true;
@@ -157,6 +159,7 @@ contract DiamondInitTest is BaseDiamondTest {
             if (facets[i] == deployment.facets.registryFacet) registryExists = true;
             if (facets[i] == deployment.facets.registryViewFacet) registryViewExists = true;
             if (facets[i] == deployment.facets.coreFacet) coreExists = true;
+            if (facets[i] == deployment.facets.coreViewFacet) coreViewExists = true;
         }
 
         assertTrue(diamondCutExists);
@@ -165,6 +168,7 @@ contract DiamondInitTest is BaseDiamondTest {
         assertTrue(registryExists);
         assertTrue(registryViewExists);
         assertTrue(coreExists);
+        assertTrue(coreViewExists);
     }
 
     /// @dev Test to ensure 'facetAddress' points to correct facet for a selector.
@@ -192,23 +196,8 @@ contract DiamondInitTest is BaseDiamondTest {
     /// (Entropy-Foundation/smr-moonshot#4101): moving a selector across facets without
     /// updating this test fails it.
     function testRegistryFacetSplitSelectorRouting() public view {
-        bytes4[] memory viewSelectors = IFacetSelectors(deployment.facets.registryViewFacet).getSelectors();
-        assertEq(viewSelectors.length, 29);
-        for (uint256 i; i < viewSelectors.length; i++) {
-            assertEq(
-                IDiamondLoupe(diamondAddr).facetAddress(viewSelectors[i]),
-                deployment.facets.registryViewFacet
-            );
-        }
-
-        bytes4[] memory writeSelectors = IFacetSelectors(deployment.facets.registryFacet).getSelectors();
-        assertEq(writeSelectors.length, 11);
-        for (uint256 i; i < writeSelectors.length; i++) {
-            assertEq(
-                IDiamondLoupe(diamondAddr).facetAddress(writeSelectors[i]),
-                deployment.facets.registryFacet
-            );
-        }
+        _assertFacetServesAllItsSelectors(deployment.facets.registryViewFacet, 29);
+        _assertFacetServesAllItsSelectors(deployment.facets.registryFacet, 11);
 
         assertEq(
             IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.isAuthorizedSubmitter.selector),
@@ -248,6 +237,50 @@ contract DiamondInitTest is BaseDiamondTest {
             IDiamondLoupe(diamondAddr).facetAddress(IRegistryViewFacet.getNextCycleSysTaskCapacity.selector),
             deployment.facets.registryViewFacet
         );
+    }
+
+    /// @dev Test to ensure every CoreFacet and CoreViewFacet selector routes to the facet that
+    /// actually implements it: CoreViewFacet's 7 cycle-state views resolve to coreViewFacet, and
+    /// CoreFacet's 5 state-changing functions resolve to coreFacet
+    /// (Entropy-Foundation/smr-moonshot#4989). Moving a selector across facets without updating
+    /// this test fails it.
+    function testCoreFacetSplitSelectorRouting() public view {
+        _assertFacetServesAllItsSelectors(deployment.facets.coreViewFacet, 7);
+        _assertFacetServesAllItsSelectors(deployment.facets.coreFacet, 5);
+
+        // Each ICoreViewFacet selector is served by coreViewFacet. Together with the count of 7
+        // above, and the diamond rejecting a selector added twice, this means the interface and
+        // the facet's getSelectors() list the same 7 selectors.
+        bytes4[7] memory views = [
+            ICoreViewFacet.getCycleInfo.selector,
+            ICoreViewFacet.getCycleDuration.selector,
+            ICoreViewFacet.getTransitionInfo.selector,
+            ICoreViewFacet.isAutomationEnabled.selector,
+            ICoreViewFacet.isAutomationReadyEnabled.selector,
+            ICoreViewFacet.getCycleStateDetails.selector,
+            ICoreViewFacet.getRecordMaxTaskCount.selector
+        ];
+        for (uint256 i; i < views.length; i++) {
+            assertEq(IDiamondLoupe(diamondAddr).facetAddress(views[i]), deployment.facets.coreViewFacet);
+        }
+
+        // The node's VM signer calls these three through the diamond. The values of the
+        // processTasks and removeRegisteredTask selectors are pinned by
+        // testProcessTasksSelectorIsPinned and testRemoveRegisteredTaskSelectorIsPinned
+        // (ConfigUpdateRemoval.t.sol).
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.processTasks.selector), deployment.facets.coreFacet);
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.monitorCycleEnd.selector), deployment.facets.coreFacet);
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.removeRegisteredTask.selector), deployment.facets.coreFacet);
+    }
+
+    /// @dev Asserts that `_facet` reports `_expectedCount` selectors through getSelectors() and
+    /// that the diamond routes every one of them to `_facet`.
+    function _assertFacetServesAllItsSelectors(address _facet, uint256 _expectedCount) internal view {
+        bytes4[] memory selectors = IFacetSelectors(_facet).getSelectors();
+        assertEq(selectors.length, _expectedCount);
+        for (uint256 i; i < selectors.length; i++) {
+            assertEq(IDiamondLoupe(diamondAddr).facetAddress(selectors[i]), _facet);
+        }
     }
 
     /// @dev Test to ensure 'transferOwnership' transfers the ownership.
@@ -754,7 +787,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure 'facets' returns all registered facets.
     function testFacets() public view {
         IDiamondLoupe.Facet[] memory facetList = IDiamondLoupe(diamondAddr).facets();
-        assertEq(facetList.length, 7);
+        assertEq(facetList.length, 8);
 
         for (uint256 i; i < facetList.length; i++) {
             assertTrue(facetList[i].facetAddress != address(0));

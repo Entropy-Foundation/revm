@@ -5,6 +5,7 @@ import {console} from "forge-std/console.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {LibAppStorage, RegistryState} from "../src/libraries/LibAppStorage.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
@@ -148,7 +149,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      target and its return data copying, as blockPrologue's call to it does.
     function _measureMonitorCycleEnd(address _diamond) internal returns (uint256 gasUsed) {
         // Warp to exactly the cycle boundary so the end condition triggers.
-        (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(_diamond).getCycleInfo();
+        (, uint64 startTime, uint64 durationSecs,) = ICoreViewFacet(_diamond).getCycleInfo();
         vm.warp(startTime + durationSecs);
 
         // monitorCycleEnd checks tx.origin, which meteredVmSignerCall sets to the VM signer.
@@ -410,7 +411,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
             // Confirms the vm.store calls above actually landed on orderedTaskIds -
             // see _assertStrictlyDescending's NatSpec for why this is load-bearing,
             // not decorative.
-            _assertStrictlyDescending(ICoreFacet(d).getCycleStateDetails().expectedTasksToBeProcessed);
+            _assertStrictlyDescending(ICoreViewFacet(d).getCycleStateDetails().expectedTasksToBeProcessed);
 
             vm.revertToState(cleanSnap);
 

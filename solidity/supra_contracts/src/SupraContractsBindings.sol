@@ -20,7 +20,7 @@ interface SupraContractsBindings {
     function getTaskDetails(uint64 _taskIndex) external view returns (TaskMetadata memory);
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
 
-    // View functions of CoreFacet
+    // View functions of CoreViewFacet
     function isAutomationReadyEnabled() external view returns (bool);
     function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
     function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);

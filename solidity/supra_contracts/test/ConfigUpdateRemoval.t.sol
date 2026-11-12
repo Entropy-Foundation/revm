@@ -5,6 +5,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -60,7 +61,7 @@ contract ConfigUpdateRemovalTest is BaseDiamondTest {
 
     /// @dev Ends the current cycle and returns the index processTasks takes for the transition.
     function endCycle() internal returns (uint64 nextIndex) {
-        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
@@ -180,7 +181,7 @@ contract ConfigUpdateRemovalTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450);
         registerUst(diamondAddr, 2450);
         processCycleTransition(diamondAddr, twoIndexes());
-        (, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        (, uint64 start, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration / 2);
         EvmGasConfigMock.mockTxGasLimitCap(vm, 50_000);
 
@@ -323,7 +324,7 @@ contract ConfigUpdateRemovalTest is BaseDiamondTest {
         vm.expectRevert(ICoreFacet.InvalidInputCycleIndex.selector);
         removeForConfigUpdate(2, 0);
 
-        (uint64 index, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, uint64 start, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(start + duration);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
