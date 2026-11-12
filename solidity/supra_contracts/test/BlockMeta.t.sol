@@ -810,7 +810,7 @@ contract BlockMetaTest is Test {
         blockMeta.upgradeToAndCall(address(newImpl), "");
     }
 
-    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to ownership (#4936) :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Tests related to ownership (Entropy-Foundation/smr-moonshot#4936) :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev A second BlockMeta implementation for the ownership helpers' upgrade checks, deployed on first use and
     ///      reused, so a test that checks owner powers several times pays for one deployment. Upgrading a proxy to

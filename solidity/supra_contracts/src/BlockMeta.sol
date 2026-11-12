@@ -177,8 +177,9 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable, IBlockMeta {
      * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
      */
     // IBlockMeta declares the ownership API so callers can bind it from one interface. Solidity then requires each
-    // function that both IBlockMeta and the OpenZeppelin base declare to name both in an override; apart from
-    // renounceOwnership, these only forward to the OpenZeppelin implementation and add no behaviour.
+    // function that both IBlockMeta and the OpenZeppelin base declare to name both in an override; these only
+    // forward to the OpenZeppelin implementation and add no behaviour. renounceOwnership is not in IBlockMeta and
+    // overrides OwnableUpgradeable alone.
 
     /// @inheritdoc IBlockMeta
     function owner() public view override(IBlockMeta, OwnableUpgradeable) returns (address) {
@@ -205,7 +206,7 @@ contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable, IBlockMeta {
     /// @dev Kept 'onlyOwner' so that a non-owner gets the usual OwnableUnauthorizedAccount error rather than a
     ///      message about renunciation, matching MultisigBeacon. Ownership moves only through
     ///      'transferOwnership' followed by 'acceptOwnership'.
-    function renounceOwnership() public view override(IBlockMeta, OwnableUpgradeable) onlyOwner {
+    function renounceOwnership() public view override onlyOwner {
         revert OwnershipRenunciationDisabled();
     }
 

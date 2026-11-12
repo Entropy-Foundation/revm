@@ -125,7 +125,8 @@ interface IBlockMeta {
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::: OWNERSHIP (Ownable2Step) :::::::::::::::::::::::::::::::::::::::::::::::::::::
     // Declared here so a caller that binds only IBlockMeta (a governance script, a multisig submitter) can read the
-    // owner and drive the two-step handover without importing OpenZeppelin's ABI.
+    // owner and drive the two-step handover without importing OpenZeppelin's ABI. 'renounceOwnership' is not declared
+    // here: on BlockMeta it always reverts (OwnershipRenunciationDisabled), so it is not part of the handover API.
 
     /// @notice Returns the current owner, the only account allowed to call the owner-only functions above.
     function owner() external view returns (address);
@@ -139,7 +140,4 @@ interface IBlockMeta {
 
     /// @notice Completes a transfer started by 'transferOwnership'. Callable only by the pending owner.
     function acceptOwnership() external;
-
-    /// @notice Always reverts with OwnershipRenunciationDisabled for the owner (OwnableUnauthorizedAccount for anyone else).
-    function renounceOwnership() external view;
 }
