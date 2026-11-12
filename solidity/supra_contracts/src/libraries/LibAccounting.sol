@@ -15,7 +15,7 @@ library LibAccounting {
     uint256 constant DECIMAL = 100_000_000;
 
     /// @dev 100% in the unit of the congestion percentages below: percent scaled by DECIMAL.
-    uint256 constant HUNDRED_PERCENT = 100 * DECIMAL;
+    uint256 constant HUNDRED_PERCENT_SCALED = uint256(LibCommon.HUNDRED_PERCENT) * DECIMAL;
 
     /// @dev Constants describing REFUND TYPE
     uint8 constant DEPOSIT_CYCLE_FEE = 0;
@@ -155,8 +155,10 @@ library LibAccounting {
         uint256 surplus = _occupancy.congestionSurplus();
         if (surplus == 0) { return 0; }
 
-        // The surplus as a fraction scaled by DECIMAL, the base of (1 + surplus)^exponent.
-        uint256 exponentResult = calculateExponentiation(surplus / 100, _occupancy.congestionExponent);
+        // The surplus, in percent scaled by DECIMAL, divided by 100% is a fraction scaled by
+        // DECIMAL: the base of (1 + surplus)^exponent.
+        uint256 exponentResult =
+            calculateExponentiation(surplus / LibCommon.HUNDRED_PERCENT, _occupancy.congestionExponent);
 
         // Multiply base fee (wei/sec) with exponentResult and downscale by DECIMAL
         uint256 acf = (uint256(_occupancy.congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
@@ -199,7 +201,8 @@ library LibAccounting {
     /// @notice Whether congestion is priced for the cycle: a threshold below 100% and a non-zero
     /// congestion base fee. Otherwise there is no congestion fee and no billed-gas ramp.
     function isCongestionPriced(CycleOccupancy memory _occupancy) internal pure returns (bool) {
-        return _occupancy.congestionThresholdPercentage < 100 && _occupancy.congestionBaseFeeWeiPerSec != 0;
+        return _occupancy.congestionThresholdPercentage < LibCommon.HUNDRED_PERCENT
+            && _occupancy.congestionBaseFeeWeiPerSec != 0;
     }
 
     /// @notice The committed gas as a share of the gas cap, in percent scaled by DECIMAL, at most
@@ -239,7 +242,7 @@ library LibAccounting {
     /// task capacity, so it occurs only for a limit no configuration has set.
     function percentageOf(uint256 _part, uint256 _whole) private pure returns (uint256) {
         if (_whole == 0) { return 0; }
-        return Math.min((_part * HUNDRED_PERCENT) / _whole, HUNDRED_PERCENT);
+        return Math.min((_part * HUNDRED_PERCENT_SCALED) / _whole, HUNDRED_PERCENT_SCALED);
     }
 
     /// @notice `_usage - _threshold` when the usage is above the threshold, zero otherwise.
@@ -284,7 +287,7 @@ library LibAccounting {
         // threshold below 100%, so the divisor is not zero, and the surplus is at most
         // 100% - threshold, so the addition is at most floorGas - g.
         uint256 addition =
-            ((floorGas - _maxGasAmount) * surplus) / (HUNDRED_PERCENT - _occupancy.congestionThreshold());
+            ((floorGas - _maxGasAmount) * surplus) / (HUNDRED_PERCENT_SCALED - _occupancy.congestionThreshold());
         // At most floorGas, which is at most registryMaxGasCap, a uint128.
         return uint128(_maxGasAmount + addition);
     }
