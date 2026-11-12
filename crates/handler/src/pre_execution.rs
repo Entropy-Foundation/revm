@@ -15,7 +15,8 @@ use context_interface::{
 use core::cmp::Ordering;
 use primitives::StorageKey;
 use primitives::{
-    eip7702, hardfork::SpecId, supra_constants::is_supra_reserved, KECCAK_EMPTY, U256,
+    eip2935::is_system_address, eip7702, hardfork::SpecId, supra_constants::is_supra_reserved,
+    KECCAK_EMPTY, U256,
 };
 use state::AccountInfo;
 use std::boxed::Box;
@@ -244,7 +245,11 @@ pub fn apply_eip7702_auth_list<
             // transaction. An authorization whose authority is a reserved address is skipped for
             // the same reason, so that no user transaction sets code on, or bumps the nonce of, a
             // reserved address. See #4534.
-            if is_supra_reserved(&authority) {
+            //
+            // The EIP-2935 system address is skipped likewise: `Handler::validate_caller` admits
+            // it as a sender of the history write only, and no transaction sets code on it or
+            // bumps its nonce.
+            if is_supra_reserved(&authority) || is_system_address(&authority) {
                 continue;
             }
 

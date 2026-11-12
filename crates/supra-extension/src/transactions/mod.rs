@@ -2,6 +2,7 @@
 pub mod automated_transaction;
 pub mod automation_record;
 pub mod block_metadata;
+pub mod history_storage;
 
 /// The effective tip per gas of a fixed-price system transaction charged `price` at `base_fee`:
 /// the part of the price above the base fee, or zero when the base fee is at or above the price.

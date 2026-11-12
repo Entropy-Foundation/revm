@@ -141,3 +141,9 @@ mod access_list_warmth;
 
 #[cfg(test)]
 mod reserved_addresses;
+
+#[cfg(test)]
+mod history_storage;
+
+#[cfg(test)]
+mod selfdestruct_burn;

@@ -2,6 +2,7 @@
 pragma solidity 0.8.34;
 
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {LibUtils} from "./libraries/LibUtils.sol";
 import {IBlockMeta} from "./interfaces/IBlockMeta.sol";
@@ -11,9 +12,20 @@ import {IBlockMeta} from "./interfaces/IBlockMeta.sol";
  * that the Supra VM fires once per block at block-start time via blockPrologue().
  * Think of it as a deterministic cron-within-a-block for system-level hooks (oracle updates, reward distributions, etc.)
  * that must run on every block without user transactions.
+ *
+ * Ownership (Entropy-Foundation/smr-moonshot#4936):
+ *  - The owner is the only account that can change the execution list, the block prologue gas cap, and authorise a
+ *    UUPS upgrade, so BlockMeta must always have a live owner.
+ *  - Transfer is two-step (Ownable2Step): 'transferOwnership' only nominates a pending owner, who must call
+ *    'acceptOwnership' to complete it. The current owner keeps full control until then and can replace or cancel
+ *    the nomination, so a transfer to a wrong address is correctable.
+ *  - A nomination does not expire, and it is kept across UUPS upgrades (Ownable2Step stores it in its own ERC-7201
+ *    slot). An owner that no longer wants a nominated account to take over must cancel explicitly with
+ *    'transferOwnership(address(0))' or replace it with a new nomination.
+ *  - 'renounceOwnership' always reverts with OwnershipRenunciationDisabled, as on MultisigBeacon.
  */
 
-contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
+contract BlockMeta is Ownable2StepUpgradeable, UUPSUpgradeable, IBlockMeta {
     using LibUtils for address;
 
     /// @dev Mask to extract the (target | selector) key, zeroing out the gas limit bits.
@@ -52,6 +64,8 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
     /// @param _gasCap Total gas cap for blockPrologue execution (sum of per-entry gas limits must not exceed this).
     function initialize(address _initialOwner, uint64 _gasCap) public initializer {
         __Ownable_init(_initialOwner);
+        // A no-op in OZ 5.x; called so the initializer chain stays complete if Ownable2Step gains state to set up.
+        __Ownable2Step_init();
         require(_gasCap > 0, InvalidGasCap());
         blockPrologueGasCap = _gasCap;
     }
@@ -155,6 +169,45 @@ contract BlockMeta is OwnableUpgradeable, UUPSUpgradeable, IBlockMeta {
         require(_cap > 0 && upperBound >= totalGasAllocated, InvalidGasCap());
         blockPrologueGasCap = _cap;
         emit BlockPrologueGasCapUpdated(_cap);
+    }
+
+    /**
+     * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+     *                                                                  OWNERSHIP FUNCTIONS
+     * :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+     */
+    // IBlockMeta declares the ownership API so callers can bind it from one interface. Solidity then requires each
+    // function that both IBlockMeta and the OpenZeppelin base declare to name both in an override; these only
+    // forward to the OpenZeppelin implementation and add no behaviour. renounceOwnership is not in IBlockMeta and
+    // overrides OwnableUpgradeable alone.
+
+    /// @inheritdoc IBlockMeta
+    function owner() public view override(IBlockMeta, OwnableUpgradeable) returns (address) {
+        return super.owner();
+    }
+
+    /// @inheritdoc IBlockMeta
+    function pendingOwner() public view override(IBlockMeta, Ownable2StepUpgradeable) returns (address) {
+        return super.pendingOwner();
+    }
+
+    /// @inheritdoc IBlockMeta
+    function transferOwnership(address newOwner) public override(IBlockMeta, Ownable2StepUpgradeable) {
+        // Ownable2StepUpgradeable.transferOwnership carries the onlyOwner check.
+        super.transferOwnership(newOwner);
+    }
+
+    /// @inheritdoc IBlockMeta
+    function acceptOwnership() public override(IBlockMeta, Ownable2StepUpgradeable) {
+        super.acceptOwnership();
+    }
+
+    /// @notice Always reverts: BlockMeta must always have an owner (see the contract-level comment).
+    /// @dev Kept 'onlyOwner' so that a non-owner gets the usual OwnableUnauthorizedAccount error rather than a
+    ///      message about renunciation, matching MultisigBeacon. Ownership moves only through
+    ///      'transferOwnership' followed by 'acceptOwnership'.
+    function renounceOwnership() public view override onlyOwner {
+        revert OwnershipRenunciationDisabled();
     }
 
     /// @notice Calls all registered functions for the targets.

@@ -83,13 +83,18 @@ pub trait JournalEntryTr {
     /// when the frame that wrote it reverts.
     fn is_state_mutating(&self, state: &EvmState) -> bool;
 
-    /// Returns the amount of native value this entry destroyed outright, with no
-    /// credit to any other account.
+    /// Returns the amount of native value this entry destroyed outright at the
+    /// `SELFDESTRUCT` itself, with no credit to any other account.
     ///
-    /// Only a self-destruct whose beneficiary is the self-destructing account itself
-    /// destroys value: the balance is zeroed and nothing is credited anywhere. A
-    /// self-destruct to any other address moves the balance, and every other journal
-    /// entry conserves it, so all of those return zero.
+    /// A self-destruct whose beneficiary is the self-destructing account itself
+    /// zeroes the balance and credits nothing anywhere, so that balance is
+    /// destroyed here. A self-destruct to any other address moves the balance, and
+    /// every other journal entry conserves it, so all of those return zero.
+    ///
+    /// This covers only the balance held at the opcode. The account is deleted with
+    /// whatever balance it holds when its transaction is committed;
+    /// `JournalInner::commit_tx` counts that balance, using
+    /// [`Self::selfdestructed_address`].
     ///
     /// The value is reported from the entry rather than from a state diff so that it
     /// disappears together with the entry when a frame or a transaction is reverted.
@@ -99,6 +104,17 @@ pub trait JournalEntryTr {
     fn selfdestruct_burn(&self) -> U256 {
         U256::ZERO
     }
+
+    /// Returns the address this entry marks as self-destructed, if it is a
+    /// self-destruct entry.
+    ///
+    /// `JournalInner::commit_tx` reads it from every entry of the transaction being
+    /// committed to find the accounts that the commit deletes, and counts the
+    /// balance each of them still holds as destroyed. An entry type that records
+    /// self-destructs must return the address from this method, or the balances
+    /// those accounts hold at commit leave the EVM without being counted, so there
+    /// is no default.
+    fn selfdestructed_address(&self) -> Option<Address>;
 
     /// Reverts the state change recorded by this journal entry
     ///
@@ -276,6 +292,13 @@ impl JournalEntryTr for JournalEntry {
                 ..
             } if address == target => *had_balance,
             _ => U256::ZERO,
+        }
+    }
+
+    fn selfdestructed_address(&self) -> Option<Address> {
+        match self {
+            JournalEntry::AccountDestroyed { address, .. } => Some(*address),
+            _ => None,
         }
     }
 
