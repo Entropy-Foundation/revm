@@ -75,6 +75,8 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
         uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
+        // Every removed UST is refunded against the same cycle occupancy and fee per second.
+        LibAccounting.CyclePricing memory pricing = LibAccounting.currentCyclePricing();
 
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
@@ -84,7 +86,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
             }
 
             (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
-                LibRegistry.removeTaskByGovernance(taskId, cycleEndTime, currentTime, residualInterval);
+                LibRegistry.removeTaskByGovernance(taskId, cycleEndTime, currentTime, residualInterval, pricing);
             // Zero for a GST; LibAccounting.refund transfers nothing for a zero amount.
             LibAccounting.refund(task.owner, refund);
 

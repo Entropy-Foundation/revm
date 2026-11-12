@@ -110,7 +110,10 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
             committedTasks: _tasks,
             registryMaxGasCap: 12_500_000,
             taskCapacity: 50,
-            congestionThresholdPercentage: THRESHOLD
+            congestionThresholdPercentage: THRESHOLD,
+            congestionExponent: EXPONENT,
+            automationBaseFeeWeiPerSec: BASE_FEE,
+            congestionBaseFeeWeiPerSec: CONGESTION_FEE
         });
     }
 
@@ -144,6 +147,13 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
     function testBilledGasRampIsDisabledByAFullThreshold() public pure {
         LibAccounting.CycleOccupancy memory occ = occupancy(50);
         occ.congestionThresholdPercentage = 100;
+        assertEq(LibAccounting.billedGas(77_000, occ), 77_000);
+    }
+
+    /// @dev A zero congestion base fee disables the ramp, as it disables the congestion fee.
+    function testBilledGasRampIsDisabledByAZeroCongestionBaseFee() public pure {
+        LibAccounting.CycleOccupancy memory occ = occupancy(50);
+        occ.congestionBaseFeeWeiPerSec = 0;
         assertEq(LibAccounting.billedGas(77_000, occ), 77_000);
     }
 
@@ -457,6 +467,85 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         assertEq(
             IRegistryFacet(diamond).estimateAutomationFeeWithCommittedOccupancy(SMALL_GAS, SMALL_GAS, 1),
             cycleFee(FULL_RATE, GAS_CAP / 2)
+        );
+    }
+
+    /// @dev After the capacity of the next cycle is lowered to the tasks already committed to it,
+    /// a further registration is refused although the active capacity has room.
+    function testRegistrationIsRefusedAtTheNextCycleCapacity() public {
+        setUpRegistry();
+        registerSmallTask();
+        registerSmallTask();
+        vm.prank(admin);
+        updateCapacity(2);
+
+        bytes[] memory aux;
+        vm.expectRevert(IRegistryFacet.TaskCapacityReached.selector);
+        vm.prank(owner);
+        IRegistryFacet(diamond).register(
+            createPayload(0, address(wsupra), abi.encodeCall(wsupra.withdraw, 1)),
+            createPredicate(diamond),
+            uint64(block.timestamp) + TASK_DURATION_CAP,
+            SMALL_GAS,
+            uint128(1 gwei),
+            FEE_CAP,
+            0,
+            aux
+        );
+    }
+
+    /// @dev A cycle that starts with no task registered reports no current-cycle commitment.
+    function testAnEmptyCycleHasNoCurrentCycleCommitment() public {
+        setUpRegistry();
+        uint64[] memory ids = registerAndActivate(3);
+        assertEq(IRegistryViewFacet(diamond).getTasksCommittedForCurrentCycle(), 3);
+
+        vm.prank(owner);
+        IRegistryFacet(diamond).stopTasks(ids);
+        endCycleAsVmSigner(diamond);
+
+        (, , , LibCommon.CycleState state) = ICoreFacet(diamond).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "an empty registry starts the next cycle directly");
+        assertEq(IRegistryViewFacet(diamond).getTasksCommittedForCurrentCycle(), 0);
+        assertEq(IRegistryViewFacet(diamond).getGasCommittedForCurrentCycle(), 0);
+        assertEq(IRegistryFacet(diamond).calculateAutomationFeeMultiplierForCurrentCycle(), BASE_FEE);
+    }
+
+    /// @dev The estimate's committed task count is an external input; the largest uint32 is
+    /// estimated as a full registry rather than reverting.
+    function testEstimateAcceptsTheLargestTaskCount() public {
+        setUpRegistry();
+        assertEq(
+            IRegistryFacet(diamond).estimateAutomationFeeWithCommittedOccupancy(SMALL_GAS, 0, type(uint32).max),
+            cycleFee(FULL_RATE, FLOOR_GAS)
+        );
+    }
+
+    /// @dev The estimate measures the occupancy against the next cycle's limits and prices it
+    /// with the active fee parameters: a buffered lower capacity changes the estimate, a buffered
+    /// threshold does not until it is applied.
+    function testEstimateUsesNextCycleLimitsAndActiveFeeParameters() public {
+        setUpRegistry();
+        for (uint256 i; i < 5; i++) {
+            registerSmallTask();
+        }
+        uint128 before = IRegistryFacet(diamond).estimateAutomationFee(SMALL_GAS);
+        assertEq(before, cycleFee(IRegistryFacet(diamond).calculateAutomationFeeMultiplierForCommittedOccupancy(0, 6), 90_000));
+
+        // A buffered threshold of 30% leaves the estimate unchanged.
+        vm.prank(admin);
+        IConfigFacet(diamond).updateConfigBuffer(
+            TASK_DURATION_CAP, GAS_CAP, BASE_FEE, FLAT_FEE, 30, CONGESTION_FEE, EXPONENT, EXPONENT,
+            CAPACITY, CYCLE, 180 days, GAS_CAP, 5
+        );
+        assertEq(IRegistryFacet(diamond).estimateAutomationFee(SMALL_GAS), before);
+
+        // A buffered capacity of 6 makes the sixth task fill the next cycle.
+        vm.prank(admin);
+        updateCapacity(6);
+        assertEq(
+            IRegistryFacet(diamond).estimateAutomationFee(SMALL_GAS),
+            cycleFee(FULL_RATE, GAS_CAP / 6)
         );
     }
 

@@ -133,6 +133,9 @@ library LibCommon {
         uint128 gas;
         uint128 sysGas;
         bool isRemoved;
+        // Whether the task is a UST committed to the cycle after the one being entered. Set on
+        // the same condition as `gas`, and counted into tasksCommittedForNextCycle.
+        bool committedToNextCycle;
     }
     
     /// @notice Struct representing a cancelled task.

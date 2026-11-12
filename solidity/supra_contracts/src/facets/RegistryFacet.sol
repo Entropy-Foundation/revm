@@ -182,6 +182,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         uint64 currentTime = uint64(block.timestamp);
         // Calculate refundable fee for this remaining time task in current cycle
         uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
+        // Every stopped task is refunded against the same cycle occupancy and fee per second.
+        LibAccounting.CyclePricing memory pricing = LibAccounting.currentCyclePricing();
 
         uint256 counter;
         uint128 totalRefundFee;
@@ -195,7 +197,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
                     cycleEndTime,
                     currentTime,
                     residualInterval,
-                    false
+                    false,
+                    pricing
                 );
                 stoppedTasksBuffer[counter++] = ts;
                 totalRefundFee += refund;
@@ -232,12 +235,14 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         uint64 cycleEndTime = LibCommon.getCycleEndTime();
         uint64 currentTime = uint64(block.timestamp);
         uint256 counter;
+        // A GST pays no fee, so its stop prices nothing and is given no cycle pricing.
+        LibAccounting.CyclePricing memory noPricing;
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
-                (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, currentTime, 0, true);
+                (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, currentTime, 0, true, noPricing);
                 stoppedTasksBuffer[counter++] = ts;
             }
         }

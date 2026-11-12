@@ -175,6 +175,14 @@ library LibRegistry {
         uint128 nextCycleRegistryMaxGasCap;
         if (_isUst) {
             if (_totalTasks >= activeConfig.taskCapacity) { revert IRegistryFacet.TaskCapacityReached(); }
+            // The task joins the next cycle, so it must also fit that cycle's task capacity, as its
+            // gas must fit that cycle's gas cap below. The check above bounds the tasks the
+            // registry holds under the active capacity; a buffered capacity below it applies from
+            // the next cycle and bounds the tasks committed to that cycle. It runs before the fee
+            // estimate, which prices the next cycle's occupancy with the task added.
+            if (uint256(registryState.tasksCommittedForNextCycle) + 1 > registryState.nextCycleTaskCapacity) {
+                revert IRegistryFacet.TaskCapacityReached();
+            }
             // A zero cap is refused with its own error, ahead of the floor check below. It is not
             // made redundant by that check: the floor is a governed figure, and a cap of zero
             // means a task that is never willing to pay for its execution whatever the floor is.
@@ -217,7 +225,7 @@ library LibRegistry {
         if (_isUst) {
             registryState.gasCommittedForNextCycle = gasCommitted;
             // validateTaskDuration above requires the task to outlive the current cycle, so it is
-            // committed to the next one. The capacity check above bounds the count.
+            // committed to the next one. The next-cycle capacity check above bounds the count.
             registryState.tasksCommittedForNextCycle += 1;
         } else {
             registryState.sysGasCommittedForNextCycle = gasCommitted;
@@ -283,7 +291,7 @@ library LibRegistry {
     /// @notice Releases a cancelled, stopped or removed task's commitment to the next cycle: its
     /// gas, and for a UST also its place in `tasksCommittedForNextCycle`. Gas and task count are
     /// released together so the two always describe the same set of tasks.
-    function reduceGasCommittedForNextCycle(bool _isGst, uint128 _maxGasAmount) private {
+    function releaseNextCycleCommitment(bool _isGst, uint128 _maxGasAmount) private {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint128 gasCommittedForNextCycle = _isGst ? registryState.sysGasCommittedForNextCycle : registryState.gasCommittedForNextCycle;        
@@ -381,10 +389,10 @@ library LibRegistry {
             registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.CANCELLED;
         }
 
-        // This check means the task was expected to be executed in the next cycle, but it has been cancelled.
-        // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
+        // A task expiring after the current cycle is committed to the next one; cancelling it
+        // releases that commitment, its gas and, for a UST, its place in the task count.
         if (task.expiryTime > LibCommon.getCycleEndTime()) {
-            reduceGasCommittedForNextCycle(_isGst, task.maxGasAmount);
+            releaseNextCycleCommitment(_isGst, task.maxGasAmount);
         }
 
         cancelledTask = LibCommon.TaskCancelled(_taskIndex, task.taskType, task.txHash);
@@ -406,14 +414,16 @@ library LibRegistry {
         uint64 _cycleEndTime,
         uint64 _currentTime,
         uint64 _residualInterval,
-        bool _isGst
+        bool _isGst,
+        LibAccounting.CyclePricing memory _pricing
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         RegistryState storage registryState = LibAppStorage.registryState();
         TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
 
-        (taskStopped, refund) = stopTaskUnchecked(_taskId, task, _cycleEndTime, _currentTime, _residualInterval, _isGst);
+        (taskStopped, refund) =
+            stopTaskUnchecked(_taskId, task, _cycleEndTime, _currentTime, _residualInterval, _isGst, _pricing);
     }
 
     /// @notice Removes a task, of either type, on the registry owner's request (#4636). The task
@@ -426,13 +436,15 @@ library LibRegistry {
         uint64 _taskId,
         uint64 _cycleEndTime,
         uint64 _currentTime,
-        uint64 _residualInterval
+        uint64 _residualInterval,
+        LibAccounting.CyclePricing memory _pricing
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund, TaskMetadataLW memory task) {
         task = LibCommon.toLW(LibAppStorage.registryState().tasks[_taskId]);
         bool isGst = task.taskType == LibCommon.TaskType.GST;
         // stopSystemTasks passes a zero residual interval for a GST, which has no fee to refund.
-        (taskStopped, refund) =
-            stopTaskUnchecked(_taskId, task, _cycleEndTime, _currentTime, isGst ? 0 : _residualInterval, isGst);
+        (taskStopped, refund) = stopTaskUnchecked(
+            _taskId, task, _cycleEndTime, _currentTime, isGst ? 0 : _residualInterval, isGst, _pricing
+        );
     }
 
     /// @notice Removes a task and computes the refund a stop pays: the whole deposit and half of
@@ -444,7 +456,8 @@ library LibRegistry {
         uint64 _cycleEndTime,
         uint64 _currentTime,
         uint64 _residualInterval,
-        bool _isGst
+        bool _isGst,
+        LibAccounting.CyclePricing memory _pricing
     ) private returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         (uint128 cycleFeeRefund, uint128 depositRefund) = removeTaskAndComputeRefund(
             _taskId,
@@ -457,7 +470,8 @@ library LibRegistry {
             _task.owner,
             _task.taskState,
             _isGst,
-            LibCommon.RefundPolicy.PARTIAL
+            LibCommon.RefundPolicy.PARTIAL,
+            _pricing
         );
 
         refund = cycleFeeRefund + depositRefund;
@@ -468,6 +482,8 @@ library LibRegistry {
     /// and unlocks and computes its refund under `_policy` (nothing for a GST). Paying the refund
     /// is the caller's.
     /// @param _policy The refund share the removal pays; see {LibCommon.RefundPolicy}.
+    /// @param _pricing The current cycle's occupancy and fee per second
+    /// ({LibAccounting.currentCyclePricing}), read once by a caller removing several tasks.
     function removeTaskAndComputeRefund(
         uint64 _taskId,
         uint64 _cycleEndTime,
@@ -479,7 +495,8 @@ library LibRegistry {
         address _owner,
         LibCommon.TaskState _taskState,
         bool _isGst,
-        LibCommon.RefundPolicy _policy
+        LibCommon.RefundPolicy _policy,
+        LibAccounting.CyclePricing memory _pricing
     ) internal returns (uint128 cycleFeeRefund, uint128 depositRefund) {
         // Remove task from the registry and active tasks
         LibCommon.removeTask(_taskId, _owner, _isGst, _taskState != LibCommon.TaskState.PENDING);
@@ -488,8 +505,9 @@ library LibRegistry {
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         // Also it checks that task should not be cancelled.
         if (_taskState != LibCommon.TaskState.CANCELLED && _expiryTime > _cycleEndTime) {
-            // Reduce committed gas by the stopped task's max gas
-            reduceGasCommittedForNextCycle(_isGst, _maxGasAmount);
+            // Release the stopped task's commitment: its gas and, for a UST, its place in the
+            // task count.
+            releaseNextCycleCommitment(_isGst, _maxGasAmount);
         }
 
         if (!_isGst) {
@@ -501,7 +519,8 @@ library LibRegistry {
                 _residualInterval,
                 _currentTime,
                 _depositFee,
-                _policy
+                _policy,
+                _pricing
             );
         }
     }
