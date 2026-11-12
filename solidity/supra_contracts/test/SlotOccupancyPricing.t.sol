@@ -175,6 +175,54 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         assertGe(LibAccounting.billedGas(gas, occupancy(tasks + 1)), billed);
     }
 
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::: Occupancy measures ::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev Shares are percentages scaled by 1e8 and counted as at most 100%.
+    function testCongestionPercentagesAreSharesOfTheLimits() public pure {
+        LibAccounting.CycleOccupancy memory occ = occupancy(30);
+        occ.committedGas = 2_500_000; // 20% of 12,500,000
+        assertEq(LibAccounting.congestionPercentageByGas(occ), 20e8);
+        assertEq(LibAccounting.congestionPercentageByTasks(occ), 60e8);
+        assertEq(LibAccounting.congestionThreshold(occ), 50e8);
+
+        occ.committedGas = 25_000_000;
+        occ.committedTasks = 75;
+        assertEq(LibAccounting.congestionPercentageByGas(occ), 100e8, "gas share counted as at most 100%");
+        assertEq(LibAccounting.congestionPercentageByTasks(occ), 100e8, "task share counted as at most 100%");
+    }
+
+    /// @dev The congestion surplus is the larger share's excess over the threshold; the task
+    /// surplus is the task share's alone; both are zero at or below the threshold.
+    function testCongestionSurplusesAreExcessesOverTheThreshold() public pure {
+        LibAccounting.CycleOccupancy memory occ = occupancy(30); // tasks 60%
+        occ.committedGas = 10_000_000; // gas 80%
+        assertEq(LibAccounting.congestionSurplus(occ), 30e8, "the larger share, gas");
+        assertEq(LibAccounting.congestionSurplusByTasks(occ), 10e8, "the task share alone");
+
+        occ.committedGas = 0;
+        occ.committedTasks = 25; // 50%, at the threshold
+        assertEq(LibAccounting.congestionSurplus(occ), 0);
+        assertEq(LibAccounting.congestionSurplusByTasks(occ), 0);
+    }
+
+    /// @dev Congestion is priced only with a threshold below 100% and a non-zero congestion base fee.
+    function testCongestionIsPricedOnlyWithAThresholdAndABaseFee() public pure {
+        LibAccounting.CycleOccupancy memory occ = occupancy(50);
+        assertTrue(LibAccounting.isCongestionPriced(occ));
+        occ.congestionThresholdPercentage = 100;
+        assertFalse(LibAccounting.isCongestionPriced(occ));
+        occ.congestionThresholdPercentage = THRESHOLD;
+        occ.congestionBaseFeeWeiPerSec = 0;
+        assertFalse(LibAccounting.isCongestionPriced(occ));
+    }
+
+    /// @dev A zero task capacity has no task share, so it bills a task its own gas.
+    function testBilledGasWithAZeroCapacityIsOwnGas() public pure {
+        LibAccounting.CycleOccupancy memory occ = occupancy(50);
+        occ.taskCapacity = 0;
+        assertEq(LibAccounting.billedGas(77_000, occ), 77_000);
+    }
+
     // ::::::::::::::::::::::::::::::::::::::::::::::::::: Congestion rate ::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev The task share is priced as the gas share is: a cycle with every slot taken and no

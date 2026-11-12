@@ -9,9 +9,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 library LibAccounting {
+    using LibAccounting for CycleOccupancy;
 
     /// @dev Constant for 10^8
     uint256 constant DECIMAL = 100_000_000;
+
+    /// @dev 100% in the unit of the congestion percentages below: percent scaled by DECIMAL.
+    uint256 constant HUNDRED_PERCENT = 100 * DECIMAL;
 
     /// @dev Constants describing REFUND TYPE
     uint8 constant DEPOSIT_CYCLE_FEE = 0;
@@ -145,41 +149,17 @@ library LibAccounting {
     function calculateAutomationCongestionFee(
         CycleOccupancy memory _occupancy
     ) private pure returns (uint128) {
-        uint8 congestionThresholdPercentage = _occupancy.congestionThresholdPercentage;
-        uint8 congestionExponent = _occupancy.congestionExponent;
-        uint128 congestionBaseFeeWeiPerSec = _occupancy.congestionBaseFeeWeiPerSec;
+        if (!_occupancy.isCongestionPriced()) { return 0; }
 
-        if (congestionThresholdPercentage == 100 || congestionBaseFeeWeiPerSec == 0) { return 0; }
+        // Usage above the threshold, in percent scaled by DECIMAL; zero when not congested.
+        uint256 surplus = _occupancy.congestionSurplus();
+        if (surplus == 0) { return 0; }
 
-        // usage = max(committedGas / maxGasCap, committedTasks / taskCapacity) * 100
-        uint256 thresholdUsageScaled = Math.max(
-            sharePercentScaled(_occupancy.committedGas, _occupancy.registryMaxGasCap),
-            sharePercentScaled(_occupancy.committedTasks, _occupancy.taskCapacity)
-        );
-
-        uint256 thresholdPercentageScaled = uint256(congestionThresholdPercentage) * DECIMAL;
-
-        // If usage is below threshold → no congestion fee
-        if (thresholdUsageScaled <= thresholdPercentageScaled) {
-            return 0;
-        }
-
-        // Calculate how much usage exceeds threshold
-        uint256 surplus;
-        if (thresholdUsageScaled > 100 * DECIMAL) {
-            surplus = (100 * DECIMAL) - thresholdPercentageScaled;
-        } else {
-            surplus = thresholdUsageScaled - thresholdPercentageScaled;
-        }
-        uint256 surplusScaled = surplus / 100;
-
-        uint256 exponentResult = calculateExponentiation(
-            surplusScaled,
-            congestionExponent
-        );
+        // The surplus as a fraction scaled by DECIMAL, the base of (1 + surplus)^exponent.
+        uint256 exponentResult = calculateExponentiation(surplus / 100, _occupancy.congestionExponent);
 
         // Multiply base fee (wei/sec) with exponentResult and downscale by DECIMAL
-        uint256 acf = (uint256(congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
+        uint256 acf = (uint256(_occupancy.congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
 
         return uint128(acf);
     }
@@ -208,13 +188,63 @@ library LibAccounting {
         return resultScaled - DECIMAL;      // subtract 1
     }
 
-    /// @notice `_part / _whole` as a percentage scaled by DECIMAL, the unit
-    /// {calculateAutomationCongestionFee} compares against the threshold. A zero `_whole`
-    /// counts as no usage: {LibCommon.validateConfigParameters} refuses a zero gas cap or task
-    /// capacity, so it occurs only for a limit no configuration has set.
-    function sharePercentScaled(uint256 _part, uint256 _whole) private pure returns (uint256) {
+    // :::::::::::::::::::::::::::::::::::::::::::::::::: CONGESTION OF A CYCLE OCCUPANCY ::::::::::::::::::::::::::::::::::::::::::::::::::
+    //
+    // The congestion of a cycle is measured on the gas and on the task count its user tasks committed,
+    // each as a share of its limit, in percent scaled by DECIMAL and counted as at most 100%. The
+    // congestion fee is priced on the surplus of the larger share over the threshold
+    // (congestionSurplus) and the billed-gas ramp on the surplus of the task share
+    // (congestionSurplusByTasks); both apply only while isCongestionPriced.
+
+    /// @notice Whether congestion is priced for the cycle: a threshold below 100% and a non-zero
+    /// congestion base fee. Otherwise there is no congestion fee and no billed-gas ramp.
+    function isCongestionPriced(CycleOccupancy memory _occupancy) internal pure returns (bool) {
+        return _occupancy.congestionThresholdPercentage < 100 && _occupancy.congestionBaseFeeWeiPerSec != 0;
+    }
+
+    /// @notice The committed gas as a share of the gas cap, in percent scaled by DECIMAL, at most
+    /// 100%.
+    function congestionPercentageByGas(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return percentageOf(_occupancy.committedGas, _occupancy.registryMaxGasCap);
+    }
+
+    /// @notice The committed task count as a share of the task capacity, in percent scaled by
+    /// DECIMAL, at most 100%.
+    function congestionPercentageByTasks(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return percentageOf(_occupancy.committedTasks, _occupancy.taskCapacity);
+    }
+
+    /// @notice The congestion threshold in percent scaled by DECIMAL.
+    function congestionThreshold(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return uint256(_occupancy.congestionThresholdPercentage) * DECIMAL;
+    }
+
+    /// @notice How far the larger of the gas and task shares is above the threshold, in percent
+    /// scaled by DECIMAL; zero at or below it.
+    function congestionSurplus(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return surplusOver(
+            Math.max(_occupancy.congestionPercentageByGas(), _occupancy.congestionPercentageByTasks()),
+            _occupancy.congestionThreshold()
+        );
+    }
+
+    /// @notice How far the task share is above the threshold, in percent scaled by DECIMAL; zero at
+    /// or below it.
+    function congestionSurplusByTasks(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return surplusOver(_occupancy.congestionPercentageByTasks(), _occupancy.congestionThreshold());
+    }
+
+    /// @notice `_part / _whole` in percent scaled by DECIMAL, counted as at most 100%. A zero
+    /// `_whole` counts as no usage: {LibCommon.validateConfigParameters} refuses a zero gas cap or
+    /// task capacity, so it occurs only for a limit no configuration has set.
+    function percentageOf(uint256 _part, uint256 _whole) private pure returns (uint256) {
         if (_whole == 0) { return 0; }
-        return (_part * DECIMAL * 100) / _whole;
+        return Math.min((_part * HUNDRED_PERCENT) / _whole, HUNDRED_PERCENT);
+    }
+
+    /// @notice `_usage - _threshold` when the usage is above the threshold, zero otherwise.
+    function surplusOver(uint256 _usage, uint256 _threshold) private pure returns (uint256) {
+        return _usage > _threshold ? _usage - _threshold : 0;
     }
 
     /// @notice The gas a task is billed for in a cycle with occupancy `_occupancy`
@@ -238,30 +268,23 @@ library LibAccounting {
     /// @param _maxGasAmount The task's max gas amount.
     /// @param _occupancy Occupancy of the cycle the fee is for.
     function billedGas(uint128 _maxGasAmount, CycleOccupancy memory _occupancy) internal pure returns (uint128) {
-        uint256 thresholdPercentage = _occupancy.congestionThresholdPercentage;
-        if (
-            _occupancy.taskCapacity == 0
-                || thresholdPercentage >= 100
-                || _occupancy.congestionBaseFeeWeiPerSec == 0
-        ) { return _maxGasAmount; }
+        if (!_occupancy.isCongestionPriced()) { return _maxGasAmount; }
+
+        // (s - T) in percent scaled by DECIMAL. Registration and ConfigFacet.updateConfigBuffer keep
+        // the committed count within the cycle's capacity; the task share is counted as at most
+        // 100%, so a count above it is billed as a full registry. A zero capacity has no share and
+        // so no surplus.
+        uint256 surplus = _occupancy.congestionSurplusByTasks();
+        if (surplus == 0) { return _maxGasAmount; }
 
         uint256 floorGas = uint256(_occupancy.registryMaxGasCap) / _occupancy.taskCapacity;
         if (_maxGasAmount >= floorGas) { return _maxGasAmount; }
 
-        // Task share and threshold as fractions scaled by DECIMAL. Registration and
-        // ConfigFacet.updateConfigBuffer keep the committed count within the cycle's capacity; the
-        // share is counted as at most 100% so that a count above it is billed as a full registry.
-        uint256 taskShareScaled = Math.min(
-            (uint256(_occupancy.committedTasks) * DECIMAL) / _occupancy.taskCapacity,
-            DECIMAL
-        );
-        uint256 thresholdScaled = (thresholdPercentage * DECIMAL) / 100;
-        if (taskShareScaled <= thresholdScaled) { return _maxGasAmount; }
-
-        // thresholdScaled < taskShareScaled <= DECIMAL, so the divisor is not zero and the ramp
-        // is at most DECIMAL.
-        uint256 rampScaled = ((taskShareScaled - thresholdScaled) * DECIMAL) / (DECIMAL - thresholdScaled);
-        uint256 addition = ((floorGas - _maxGasAmount) * rampScaled) / DECIMAL;
+        // (floorGas - g) * (s - T) / (1 - T), with one rounding. isCongestionPriced keeps the
+        // threshold below 100%, so the divisor is not zero, and the surplus is at most
+        // 100% - threshold, so the addition is at most floorGas - g.
+        uint256 addition =
+            ((floorGas - _maxGasAmount) * surplus) / (HUNDRED_PERCENT - _occupancy.congestionThreshold());
         // At most floorGas, which is at most registryMaxGasCap, a uint128.
         return uint128(_maxGasAmount + addition);
     }
