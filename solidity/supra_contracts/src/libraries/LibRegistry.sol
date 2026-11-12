@@ -415,21 +415,19 @@ library LibRegistry {
 
     /// @notice Stops a task on its owner's request. Reverts unless the caller is the task's owner
     /// and the task's type matches `_isGst`.
+    /// @param _context The current cycle's refund context ({LibAccounting.currentRefundContext}),
+    /// built once by the caller for all the tasks it stops.
     function stopTask(
         uint64 _taskId,
-        uint64 _cycleEndTime,
-        uint64 _currentTime,
-        uint64 _residualInterval,
         bool _isGst,
-        LibAccounting.CyclePricing memory _pricing
+        LibAccounting.RefundContext memory _context
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         RegistryState storage registryState = LibAppStorage.registryState();
         TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
 
-        (taskStopped, refund) =
-            stopTaskUnchecked(_taskId, task, _cycleEndTime, _currentTime, _residualInterval, _isGst, _pricing);
+        (taskStopped, refund) = stopTaskUnchecked(_taskId, task, _isGst, _context);
     }
 
     /// @notice Removes a task, of either type, on the registry owner's request (#4636). The task
@@ -440,17 +438,12 @@ library LibRegistry {
     /// @return task The task as it was before removal.
     function removeTaskByGovernance(
         uint64 _taskId,
-        uint64 _cycleEndTime,
-        uint64 _currentTime,
-        uint64 _residualInterval,
-        LibAccounting.CyclePricing memory _pricing
+        LibAccounting.RefundContext memory _context
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund, TaskMetadataLW memory task) {
         task = LibCommon.toLW(LibAppStorage.registryState().tasks[_taskId]);
-        bool isGst = task.taskType == LibCommon.TaskType.GST;
-        // stopSystemTasks passes a zero residual interval for a GST, which has no fee to refund.
-        (taskStopped, refund) = stopTaskUnchecked(
-            _taskId, task, _cycleEndTime, _currentTime, isGst ? 0 : _residualInterval, isGst, _pricing
-        );
+        // A GST is refunded nothing, so removeTaskAndComputeRefund does not price it and the
+        // context's remaining interval and pricing are unused for it.
+        (taskStopped, refund) = stopTaskUnchecked(_taskId, task, task.taskType == LibCommon.TaskType.GST, _context);
     }
 
     /// @notice Removes a task and computes the refund a stop pays: the whole deposit and half of
@@ -459,17 +452,11 @@ library LibRegistry {
     function stopTaskUnchecked(
         uint64 _taskId,
         TaskMetadataLW memory _task,
-        uint64 _cycleEndTime,
-        uint64 _currentTime,
-        uint64 _residualInterval,
         bool _isGst,
-        LibAccounting.CyclePricing memory _pricing
+        LibAccounting.RefundContext memory _context
     ) private returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         (uint128 cycleFeeRefund, uint128 depositRefund) = removeTaskAndComputeRefund(
             _taskId,
-            _cycleEndTime,
-            _currentTime,
-            _residualInterval,
             _task.expiryTime,
             _task.maxGasAmount,
             _task.depositFee,
@@ -477,7 +464,7 @@ library LibRegistry {
             _task.taskState,
             _isGst,
             LibCommon.RefundPolicy.PARTIAL,
-            _pricing
+            _context
         );
 
         refund = cycleFeeRefund + depositRefund;
@@ -488,13 +475,10 @@ library LibRegistry {
     /// and unlocks and computes its refund under `_policy` (nothing for a GST). Paying the refund
     /// is the caller's.
     /// @param _policy The refund share the removal pays; see {LibCommon.RefundPolicy}.
-    /// @param _pricing The current cycle's occupancy and fee per second
-    /// ({LibAccounting.currentCyclePricing}), read once by a caller removing several tasks.
+    /// @param _context The current cycle's refund context ({LibAccounting.currentRefundContext}),
+    /// built once by a caller removing several tasks.
     function removeTaskAndComputeRefund(
         uint64 _taskId,
-        uint64 _cycleEndTime,
-        uint64 _currentTime,
-        uint64 _residualInterval,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
         uint128 _depositFee,
@@ -502,7 +486,7 @@ library LibRegistry {
         LibCommon.TaskState _taskState,
         bool _isGst,
         LibCommon.RefundPolicy _policy,
-        LibAccounting.CyclePricing memory _pricing
+        LibAccounting.RefundContext memory _context
     ) internal returns (uint128 cycleFeeRefund, uint128 depositRefund) {
         // Remove task from the registry and active tasks
         LibCommon.removeTask(_taskId, _owner, _isGst, _taskState != LibCommon.TaskState.PENDING);
@@ -510,7 +494,7 @@ library LibRegistry {
         // This check means the task was expected to be executed in the next cycle, but it has been stopped.
         // We need to remove its gas commitment from `gasCommittedForNextCycle` for this particular task.
         // Also it checks that task should not be cancelled.
-        if (_taskState != LibCommon.TaskState.CANCELLED && _expiryTime > _cycleEndTime) {
+        if (_taskState != LibCommon.TaskState.CANCELLED && _expiryTime > _context.cycleEndTime) {
             // Release the stopped task's commitment: its gas and, for a UST, its place in the
             // task count.
             releaseNextCycleCommitment(_isGst, _maxGasAmount);
@@ -522,11 +506,9 @@ library LibRegistry {
                 _taskState,
                 _expiryTime,
                 _maxGasAmount,
-                _residualInterval,
-                _currentTime,
                 _depositFee,
                 _policy,
-                _pricing
+                _context
             );
         }
     }

@@ -61,11 +61,22 @@ library LibAccounting {
         uint128 congestionBaseFeeWeiPerSec;
     }
 
-    /// @notice A cycle's occupancy with the fee per second it yields, computed once by a call that
-    /// prices several tasks of the same cycle (`stopTasks`, `removeTasks`, a suspension batch).
+    /// @notice A cycle's occupancy with the fee per second it was charged at, read once by a call
+    /// that prices several tasks of the same cycle (`stopTasks`, `removeTasks`, a suspension batch).
     struct CyclePricing {
         CycleOccupancy occupancy;
         uint128 automationFeePerSec;
+    }
+
+    /// @notice What a stop or removal during the current cycle refunds against: the cycle's end,
+    /// the current time, the time left in the cycle and the cycle's pricing. One call builds it
+    /// once ({currentRefundContext}) for every task it removes.
+    struct RefundContext {
+        uint64 cycleEndTime;
+        uint64 currentTime;
+        /// Time left in the current cycle, the interval whose fee a refund pays back.
+        uint64 residualInterval;
+        CyclePricing pricing;
     }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -335,14 +346,12 @@ library LibAccounting {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Refunds the deposit fee and any automation fees of the task.
-    /// @param _automationFeePerSec The fee per second the current cycle was charged at.
-    /// @param _occupancy The current cycle's occupancy, {currentCycleOccupancy}, read once by the
-    /// caller for all the tasks it refunds.
+    /// @param _pricing The current cycle's occupancy and the fee per second it was charged at, read
+    /// once by the caller for all the tasks it refunds.
     function refundTaskFees(
         uint64 _currentTime,
         uint64 _refundDuration, 
-        uint128 _automationFeePerSec,
-        CycleOccupancy memory _occupancy,
+        CyclePricing memory _pricing,
         TaskMetadataLW memory _task
     ) internal {
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -357,8 +366,8 @@ library LibAccounting {
                 _task.maxGasAmount,
                 _refundDuration,
                 _currentTime,
-                _automationFeePerSec,
-                _occupancy
+                _pricing.automationFeePerSec,
+                _pricing.occupancy
             );
             ( , uint256 remainingCycleLockedFees) = safeFeeRefund(
                     _task.taskIndex,
@@ -488,6 +497,19 @@ library LibAccounting {
         pricing.automationFeePerSec = calculateAutomationFeeMultiplierForCycle(pricing.occupancy);
     }
 
+    /// @notice The refund context of the current cycle at the current block.
+    /// @param _priced Whether a removed task may be refunded a cycle fee. A call that removes only
+    /// system tasks, which pay no fee, passes false and is given no pricing.
+    function currentRefundContext(bool _priced) internal view returns (RefundContext memory context) {
+        context.cycleEndTime = LibCommon.getCycleEndTime();
+        context.currentTime = uint64(block.timestamp);
+        if (_priced) {
+            context.residualInterval =
+                context.cycleEndTime <= context.currentTime ? 0 : context.cycleEndTime - context.currentTime;
+            context.pricing = currentCyclePricing();
+        }
+    }
+
     /// @notice Calculates the automation fee multiplier for current cycle. 
     function calculateAutomationFeeMultiplierForCurrentCycle() internal view returns (uint128) {
         return calculateAutomationFeeMultiplierForCycle(currentCycleOccupancy());
@@ -560,18 +582,17 @@ library LibAccounting {
     /// the deposit for a PENDING task), which `stopTasks`, `removeTasks` and an ERROR removal apply. FULL: the owner gets
     /// the whole fee for the remaining cycle time and the whole deposit, which a CONFIG_UPDATE removal applies (#4087).
     /// See {LibCommon.RefundPolicy}.
-    /// @param _pricing The current cycle's occupancy and fee per second, {currentCyclePricing}.
-    /// Unused for a PENDING task, which was not charged for the cycle.
+    /// @param _context The current cycle's refund context, {currentRefundContext}: the remaining
+    /// interval, the current time and the cycle's pricing. The pricing is unused for a PENDING
+    /// task, which was not charged for the cycle.
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         LibCommon.TaskState _taskState,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
-        uint64 _residualInterval,
-        uint64 _currentTime,
         uint128 _depositFee,
         LibCommon.RefundPolicy _policy,
-        CyclePricing memory _pricing
+        RefundContext memory _context
     )  internal returns (uint128, uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -600,8 +621,8 @@ library LibAccounting {
             // snapshot, the same inputs the transition charged with, so the amount unlocked from
             // cycleLockedFees is the amount that was locked for the task. The residual-time fee
             // bills the same gas.
-            CycleOccupancy memory occupancy = _pricing.occupancy;
-            uint128 automationFeePerSec = _pricing.automationFeePerSec;
+            CycleOccupancy memory occupancy = _context.pricing.occupancy;
+            uint128 automationFeePerSec = _context.pricing.automationFeePerSec;
             uint64 chargedDuration = 0;
             if (_expiryTime > s.startTime) {
                 chargedDuration = uint64(Math.min(_expiryTime - s.startTime, s.durationSecs));
@@ -616,8 +637,8 @@ library LibAccounting {
                 _taskState,
                 _expiryTime,
                 _maxGasAmount,
-                _residualInterval,
-                _currentTime,
+                _context.residualInterval,
+                _context.currentTime,
                 automationFeePerSec,
                 occupancy
             );

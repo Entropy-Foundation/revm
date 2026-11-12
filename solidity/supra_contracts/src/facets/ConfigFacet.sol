@@ -72,28 +72,31 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         LibDiamond.enforceIsContractOwner();
         LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
-        uint64 cycleEndTime = LibCommon.getCycleEndTime();
-        uint64 currentTime = uint64(block.timestamp);
-        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
-        // Every removed UST is refunded against the same cycle occupancy and fee per second.
-        LibAccounting.CyclePricing memory pricing = LibAccounting.currentCyclePricing();
+        // Every removed UST is refunded against the same refund context.
+        LibAccounting.RefundContext memory context = LibAccounting.currentRefundContext(true);
 
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
-            uint64 taskId = _taskIndexes[i];
-            if (!LibCommon.ifTaskExists(taskId)) {
-                emit TaskRemovalByGovernanceSkipped(taskId);
-                continue;
-            }
-
-            (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
-                LibRegistry.removeTaskByGovernance(taskId, cycleEndTime, currentTime, residualInterval, pricing);
-            // Zero for a GST; LibAccounting.refund transfers nothing for a zero amount.
-            LibAccounting.refund(task.owner, refund);
-
-            emit TaskRemovedByGovernance(
-                taskId, task.owner, task.taskType, removed.txHash, removed.depositRefund, removed.cycleFeeRefund
-            );
+            removeTaskByGovernance(_taskIndexes[i], context);
         }
+    }
+
+    /// @notice Removes one task for {removeTasks}, refunds its owner and emits its event, or emits
+    /// TaskRemovalByGovernanceSkipped for a task that no longer exists.
+    /// @dev A separate function keeps removeTasks' loop within the stack limit.
+    function removeTaskByGovernance(uint64 _taskId, LibAccounting.RefundContext memory _context) private {
+        if (!LibCommon.ifTaskExists(_taskId)) {
+            emit TaskRemovalByGovernanceSkipped(_taskId);
+            return;
+        }
+
+        (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
+            LibRegistry.removeTaskByGovernance(_taskId, _context);
+        // Zero for a GST; LibAccounting.refund transfers nothing for a zero amount.
+        LibAccounting.refund(task.owner, refund);
+
+        emit TaskRemovedByGovernance(
+            _taskId, task.owner, task.taskType, removed.txHash, removed.depositRefund, removed.cycleFeeRefund
+        );
     }
 
     /// @notice Function to withdraw the accumulated fees.

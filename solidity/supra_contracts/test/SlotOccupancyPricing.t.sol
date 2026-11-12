@@ -560,6 +560,59 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         assertEq(IRegistryFacet(diamond).calculateAutomationFeeMultiplierForCurrentCycle(), BASE_FEE);
     }
 
+    /// @dev A cycle that starts with no task registered has nothing committed to the next cycle
+    /// either. A transition processed over two blocks counts a task expiring between the first
+    /// batch's time and the finalized start (plus the cycle duration) as committed to the next
+    /// cycle; stopping it in the new cycle does not release that count, and the empty-registry
+    /// start that follows clears it.
+    function testAnEmptyRegistryStartClearsTheNextCycleCommitments() public {
+        setUpRegistry();
+        (, uint64 start, , ) = ICoreFacet(diamond).getCycleInfo();
+        uint64 firstBatchTime = start + CYCLE;
+
+        // Task 0 expires 50 s after (first batch time + duration), task 1 is long-lived.
+        bytes[] memory aux;
+        vm.prank(owner);
+        IRegistryFacet(diamond).register(
+            createPayload(0, address(wsupra), abi.encodeCall(wsupra.withdraw, 1)),
+            createPredicate(diamond),
+            firstBatchTime + CYCLE + 50,
+            SMALL_GAS,
+            uint128(1 gwei),
+            FEE_CAP,
+            0,
+            aux
+        );
+        registerSmallTask();
+
+        uint64 index = endCycleAsVmSigner(diamond);
+        uint64[] memory first = new uint64[](1);
+        first[0] = 0;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamond).processTasks(index + 1, first);
+
+        // The transition finalizes 100 s later, so the new cycle ends after task 0 expires.
+        vm.warp(firstBatchTime + 100);
+        uint64[] memory second = new uint64[](1);
+        second[0] = 1;
+        vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
+        ICoreFacet(diamond).processTasks(index + 1, second);
+        assertEq(IRegistryViewFacet(diamond).getTasksCommittedForNextCycle(), 2, "both counted by their batches");
+
+        uint64[] memory both = new uint64[](2);
+        both[0] = 0;
+        both[1] = 1;
+        vm.prank(owner);
+        IRegistryFacet(diamond).stopTasks(both);
+        assertEq(IRegistryViewFacet(diamond).getTasksCommittedForNextCycle(), 1, "task 0's count is not released");
+
+        endCycleAsVmSigner(diamond);
+        assertEq(IRegistryViewFacet(diamond).totalTasks(), 0);
+        assertEq(IRegistryViewFacet(diamond).getTasksCommittedForNextCycle(), 0);
+        assertEq(IRegistryViewFacet(diamond).getGasCommittedForNextCycle(), 0);
+        assertEq(IRegistryViewFacet(diamond).getTasksCommittedForCurrentCycle(), 0);
+    }
+
     /// @dev The estimate's committed task count is an external input; the largest uint32 is
     /// estimated as a full registry rather than reverting.
     function testEstimateAcceptsTheLargestTaskCount() public {

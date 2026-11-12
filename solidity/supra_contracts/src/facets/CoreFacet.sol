@@ -209,12 +209,7 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         // If cycle index doesn't match, revert.
         if (s.index != _cycleIndex) { revert InvalidInputCycleIndex(); }
 
-        uint64 cycleEndTime = LibCommon.getCycleEndTime();
-        uint64 currentTime = uint64(block.timestamp);
-        // Calculate refundable fee for this remaining time task in current cycle
-        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
-
-        LibCore.handleTasksRemoval(_taskIndex, cycleEndTime, currentTime, residualInterval, _reason, _details);
+        LibCore.handleTasksRemoval(_taskIndex, _reason, _details);
     }
 
 

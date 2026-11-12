@@ -178,12 +178,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
-        uint64 cycleEndTime = LibCommon.getCycleEndTime();
-        uint64 currentTime = uint64(block.timestamp);
-        // Calculate refundable fee for this remaining time task in current cycle
-        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
-        // Every stopped task is refunded against the same cycle occupancy and fee per second.
-        LibAccounting.CyclePricing memory pricing = LibAccounting.currentCyclePricing();
+        // Every stopped task is refunded against the same refund context.
+        LibAccounting.RefundContext memory context = LibAccounting.currentRefundContext(true);
 
         uint256 counter;
         uint128 totalRefundFee;
@@ -192,14 +188,7 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
-                (LibCommon.TaskStopped memory ts, uint128 refund) = LibRegistry.stopTask(
-                    taskId,
-                    cycleEndTime,
-                    currentTime,
-                    residualInterval,
-                    false,
-                    pricing
-                );
+                (LibCommon.TaskStopped memory ts, uint128 refund) = LibRegistry.stopTask(taskId, false, context);
                 stoppedTasksBuffer[counter++] = ts;
                 totalRefundFee += refund;
             }
@@ -232,17 +221,15 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
         LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
         LibCommon.TaskStopped[] memory stoppedTasksBuffer = new LibCommon.TaskStopped[](_taskIndexes.length);
-        uint64 cycleEndTime = LibCommon.getCycleEndTime();
-        uint64 currentTime = uint64(block.timestamp);
         uint256 counter;
-        // A GST pays no fee, so its stop prices nothing and is given no cycle pricing.
-        LibAccounting.CyclePricing memory noPricing;
+        // A GST pays no fee, so its stop needs the cycle's end but no pricing.
+        LibAccounting.RefundContext memory context = LibAccounting.currentRefundContext(false);
 
         // Loop through each task index to validate and stop the task
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
             uint64 taskId = _taskIndexes[i];
             if (LibCommon.ifTaskExists(taskId)) {
-                (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, cycleEndTime, currentTime, 0, true, noPricing);
+                (LibCommon.TaskStopped memory ts,) = LibRegistry.stopTask(taskId, true, context);
                 stoppedTasksBuffer[counter++] = ts;
             }
         }
