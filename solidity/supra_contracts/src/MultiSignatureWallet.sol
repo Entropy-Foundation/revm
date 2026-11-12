@@ -9,18 +9,13 @@ import {IMultiSignatureWallet} from "./interfaces/IMultiSignatureWallet.sol";
 /**
  * @title MultiSignatureWallet
  * @dev A multisignature wallet contract that requires multiple owners to confirm transactions.
- * @dev Every action the wallet takes goes through submitTransaction, confirmTransaction and
- *      executeTransaction, so each one carries the confirmations that are valid when it executes.
- *      An automation task does not: the chain runs it with its owner as the sender on every
- *      execution, without a new confirmation. The wallet therefore does not own automation tasks.
- *      It deliberately declares no ERC-165 interface, and in particular not `IAutomationTaskOwner`,
- *      so the AutomationRegistry refuses it as the owner of a user task and of a system task alike.
- *      Tasks the wallet's owners want registered belong to a separate contract built on
- *      `AutomationTaskOwnerBase` that the wallet administers and that holds no other authority
- *      (see `IAutomationTaskOwner` and the README's "Automation tasks of the foundation").
- *      Do not add a `supportsInterface` that reports `IAutomationTaskOwner` here, and do not make
- *      the wallet inherit `AutomationTaskOwnerBase`: either would let actions run in the wallet's
- *      name outside the confirmation flow (smr-moonshot #4922).
+ * @dev The wallet does not own automation tasks. It declares no ERC-165 interface, and in
+ *      particular not `IAutomationTaskOwner`, so the AutomationRegistry refuses it as the owner of
+ *      a user task and of a system task alike. Tasks the wallet's owners want registered belong to
+ *      a separate contract built on `AutomationTaskOwnerBase` that the wallet administers (see the
+ *      README's "Automation tasks of the foundation"). Do not add a `supportsInterface` that
+ *      reports `IAutomationTaskOwner` here, and do not make the wallet inherit
+ *      `AutomationTaskOwnerBase` (smr-moonshot #4922).
  */
 contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     using EnumerableSet for EnumerableSet.AddressSet;

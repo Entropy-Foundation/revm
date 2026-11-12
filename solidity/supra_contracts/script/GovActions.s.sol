@@ -2,6 +2,8 @@
 pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {AUTOMATION_TASK_OWNER_INTERFACE_ID} from "../src/interfaces/IAutomationTaskOwner.sol";
 import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
@@ -167,6 +169,15 @@ contract AuthorizeAccount is GovSubmitAction {
             !IRegistryFacet(automationRegistry).isAuthorizedSubmitter(account),
             "AccountToAuthorize is already authorized"
         );
+        // An authorized account registers system tasks as their owner, and registerSystemTask
+        // refuses an owner the registry's validateTaskOwner (LibRegistry) does not accept. The
+        // same rule is applied here, so the owners are not asked to approve an authorization
+        // that no registration can use. The foundation wallet itself is refused by this check
+        // (smr-moonshot #4922).
+        require(
+            canOwnTasks(account),
+            "AccountToAuthorize has code but does not declare IAutomationTaskOwner, so the registry refuses it as a task owner"
+        );
 
         vm.startBroadcast();
 
@@ -174,6 +185,16 @@ contract AuthorizeAccount is GovSubmitAction {
         submit(automationRegistry, 0, data);
 
         vm.stopBroadcast();
+    }
+
+    /// @dev The registry's task owner rule: an account without code, an EIP-7702 delegated
+    /// account (`0xef0100 || address`), or a contract that declares `IAutomationTaskOwner`
+    /// through ERC-165. Kept in step with LibRegistry.validateTaskOwner, which is private.
+    function canOwnTasks(address _account) internal view returns (bool) {
+        bytes memory code = _account.code;
+        if (code.length == 0) return true;
+        if (code.length == 23 && code[0] == 0xef && code[1] == 0x01 && code[2] == 0x00) return true;
+        return ERC165Checker.supportsInterface(_account, AUTOMATION_TASK_OWNER_INTERFACE_ID);
     }
 }
 

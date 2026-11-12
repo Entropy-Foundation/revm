@@ -61,7 +61,7 @@ driver prints the chain id and checks that every listed keystore belongs to a wa
 |---|---|---|
 | `InitializeCycleMonitoring` | `BlockMeta.register(AutomationRegistry, monitorCycleEnd.selector, SelectorGasLimit)` | `BlockMetadata` is not owned by the wallet; `AutomationRegistry` has no code; `SelectorGasLimit` is zero; `monitorCycleEnd` is already registered; the allocated total would exceed 63/64 of the block prologue gas cap |
 | `EnableDisableAutomation` | `CoreFacet.enableAutomation()` or `disableAutomation()`, per `EnableAutomation` | `AutomationRegistry` is not owned by the wallet; automation is already in the requested state |
-| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks | `AutomationRegistry` is not owned by the wallet; `AccountToAuthorize` is the zero address or already authorized |
+| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks | `AutomationRegistry` is not owned by the wallet; `AccountToAuthorize` is the zero address or already authorized, or has code that is not an EIP-7702 delegation and does not declare `IAutomationTaskOwner` (the foundation wallet is such an account) |
 
 These are the conditions under which the submitted call would revert when the owners execute it.
 A refused submission costs nothing and prints the values it compared; an action that fails only at
@@ -174,12 +174,9 @@ cast call ${AutomationRegistry} "getCycleInfo()(uint64,uint64,uint64,uint8)" --r
 
 ## Automation tasks of the foundation
 
-The foundation wallet does not own automation tasks. It declares no ERC-165 interface, so the
-registry's `register` and `registerSystemTask` refuse it with `UnsupportedTaskOwner`, also after
-`AuthorizeAccount` has authorized it. The reason is how a task runs: the chain makes the task's
-call with the task's owner as the sender on every execution until the task expires or is
-cancelled, and no owner of the wallet confirms those executions. Every other action of the wallet
-carries the confirmations that are valid at the moment it executes.
+The foundation wallet does not own automation tasks (smr-moonshot #4922). It declares no ERC-165
+interface, so the registry's `register` and `registerSystemTask` refuse it with
+`UnsupportedTaskOwner`, and the `AuthorizeAccount` action refuses to authorize it.
 
 Tasks the foundation wants registered are owned by a separate task owner contract:
 
