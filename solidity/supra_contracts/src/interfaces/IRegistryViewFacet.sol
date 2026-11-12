@@ -17,6 +17,7 @@ interface IRegistryViewFacet {
     function getNextCycleRegistryMaxGasCap() external view returns (uint128);
     function getNextCycleSysRegistryMaxGasCap() external view returns (uint128);
     function getNextCycleTaskCapacity() external view returns (uint16);
+    function getNextCycleSysTaskCapacity() external view returns (uint16);
     function getNextTaskIndex() external view returns (uint64);
     function getSystemGasCommittedForCurrentCycle() external view returns (uint128);
     function getSystemGasCommittedForNextCycle() external view returns (uint128);

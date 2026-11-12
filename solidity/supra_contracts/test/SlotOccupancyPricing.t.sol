@@ -14,7 +14,8 @@ import {LibUtils} from "../src/libraries/LibUtils.sol";
 /// @notice Tests for pricing user tasks on task occupancy as well as gas occupancy
 /// (Entropy-Foundation/smr-moonshot#4921): the congestion fee on the larger of the gas share and
 /// the task share, the billed-gas ramp toward a slot's worth of gas above the congestion
-/// threshold, the per-cycle task-count snapshots, and refunds recomputed from those snapshots.
+/// threshold, the per-cycle task-count snapshots, refunds recomputed from those snapshots, and the
+/// next cycle's user and system task capacities bounding registration.
 /// @dev The registry under test has CAPACITY = 10 user tasks and a gas cap of 2,500,000, so a
 /// slot's worth of gas is FLOOR_GAS = 250,000, with a 50% congestion threshold, exponent 6, base
 /// and congestion fees of 0.5 SUPRA per second and 600-second cycles. Tasks declare SMALL_GAS =
@@ -549,7 +550,61 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         );
     }
 
+    // ::::::::::::::::::::::::::::::::::::::::::::::::::::: System tasks :::::::::::::::::::::::::::::::::::::::::::::::::::
+
+    /// @dev The registry starts with 5 system-task slots; `bob` is an authorized submitter.
+    function registerSystemTask() internal {
+        if (!IRegistryFacet(diamond).isAuthorizedSubmitter(bob)) {
+            vm.prank(admin);
+            IConfigFacet(diamond).grantAuthorization(bob);
+        }
+        registerGst(diamond, 30 days);
+    }
+
+    /// @dev After the system-task capacity of the next cycle is lowered to the system tasks
+    /// registered, a further system task is refused although the active capacity has room.
+    function testSystemTaskRegistrationIsRefusedAtTheNextCycleCapacity() public {
+        setUpRegistry();
+        registerSystemTask();
+        registerSystemTask();
+        vm.prank(admin);
+        updateCapacities(CAPACITY, 2);
+        assertEq(IRegistryViewFacet(diamond).getNextCycleSysTaskCapacity(), 2);
+
+        bytes[] memory aux;
+        vm.expectRevert(IRegistryFacet.TaskCapacityReached.selector);
+        vm.prank(bob);
+        IRegistryFacet(diamond).registerSystemTask(
+            createPayload(0, address(wsupra), abi.encodeCall(wsupra.withdraw, 1)),
+            createPredicate(diamond),
+            uint64(block.timestamp + 30 days),
+            uint128(100_000),
+            2,
+            aux
+        );
+    }
+
+    /// @dev A buffered system-task capacity must hold the system tasks already registered.
+    function testConfigBufferRefusesASysCapacityBelowTheRegisteredSystemTasks() public {
+        setUpRegistry();
+        registerSystemTask();
+        registerSystemTask();
+        registerSystemTask();
+
+        vm.prank(admin);
+        vm.expectRevert(IConfigFacet.UnacceptableSysTaskCapacity.selector);
+        updateCapacities(CAPACITY, 2);
+
+        vm.prank(admin);
+        updateCapacities(CAPACITY, 3);
+        assertEq(IRegistryViewFacet(diamond).getNextCycleSysTaskCapacity(), 3);
+    }
+
     function updateCapacity(uint16 _capacity) internal {
+        updateCapacities(_capacity, 5);
+    }
+
+    function updateCapacities(uint16 _capacity, uint16 _sysCapacity) internal {
         IConfigFacet(diamond).updateConfigBuffer(
             TASK_DURATION_CAP,
             GAS_CAP,
@@ -563,7 +618,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
             CYCLE,
             180 days,
             GAS_CAP,
-            5
+            _sysCapacity
         );
     }
 }

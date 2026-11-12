@@ -177,6 +177,10 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         // as their gas must fit its gas cap. The fees of that cycle are priced on the task share
         // (LibAccounting.CycleOccupancy), which this keeps at or below 100%.
         if (registryState.tasksCommittedForNextCycle > _taskCapacity) { revert UnacceptableTaskCapacity(); }
+        // The system tasks registered now must fit the next cycle's system-task capacity. GSTs pay
+        // no fee, so no next-cycle count is kept for them; every registered GST is counted,
+        // including one that expires in the current cycle.
+        if (registryState.sysTaskIds.length() > _sysTaskCapacity) { revert UnacceptableSysTaskCapacity(); }
 
         // Add new config to the buffer
         Config memory configBuffer = Config({ 
@@ -200,6 +204,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
         registryState.nextCycleTaskCapacity = _taskCapacity;
+        registryState.nextCycleSysTaskCapacity = _sysTaskCapacity;
 
         emit ConfigBufferUpdated(configBuffer);
     }

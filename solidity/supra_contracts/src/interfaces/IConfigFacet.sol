@@ -75,6 +75,7 @@ interface IConfigFacet {
     error UnacceptableRegistryMaxGasCap();    
     error UnacceptableSysRegistryMaxGasCap();
     error UnacceptableTaskCapacity();
+    error UnacceptableSysTaskCapacity();
 
     // =============================================================
     //                      View functions

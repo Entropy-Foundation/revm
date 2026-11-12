@@ -210,7 +210,13 @@ library LibRegistry {
             taskDurationCap = activeConfig.taskDurationCapSecs;
             nextCycleRegistryMaxGasCap = registryState.nextCycleRegistryMaxGasCap;
         } else {
-            if (_totalTasks >= activeConfig.sysTaskCapacity) { revert IRegistryFacet.TaskCapacityReached(); }
+            // The active capacity bounds the system tasks the registry holds now. A buffered
+            // capacity applies from the next cycle, which every registered GST may join, so the
+            // smaller of the two applies. ConfigFacet.updateConfigBuffer keeps the registered
+            // count within a buffered capacity.
+            if (_totalTasks >= activeConfig.sysTaskCapacity || _totalTasks >= registryState.nextCycleSysTaskCapacity) {
+                revert IRegistryFacet.TaskCapacityReached();
+            }
 
             gasCommittedForNextCycle = registryState.sysGasCommittedForNextCycle;
             taskDurationCap = activeConfig.sysTaskDurationCapSecs;

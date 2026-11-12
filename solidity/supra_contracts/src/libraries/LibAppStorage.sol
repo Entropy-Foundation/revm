@@ -154,6 +154,9 @@ struct RegistryState {
     // buffer exists, the active one otherwise. The registration fee estimate prices the next
     // cycle with it, as it does with nextCycleRegistryMaxGasCap.
     uint16 nextCycleTaskCapacity;
+    // System-task capacity in force from the next cycle, set like nextCycleTaskCapacity. GST
+    // registration is bounded by the smaller of it and the active Config.sysTaskCapacity.
+    uint16 nextCycleSysTaskCapacity;
 
     uint64 currentIndex;
     // Plain array, not EnumerableSet.UintSet: no .contains() call site needs O(1)

@@ -179,6 +179,11 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
         return LibAppStorage.registryState().nextCycleTaskCapacity;
     }
 
+    /// @notice Returns the system task capacity for the next cycle.
+    function getNextCycleSysTaskCapacity() external view returns (uint16) {
+        return LibAppStorage.registryState().nextCycleSysTaskCapacity;
+    }
+
     /// @notice Returns the locked fees for the cycle.
     function getCycleLockedFees() external view returns (uint256) {
         return LibAppStorage.registryState().cycleLockedFees;
@@ -196,7 +201,7 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](28);
+        selectors = new bytes4[](29);
         selectors[0]  = RegistryViewFacet.getTaskIdList.selector;
         selectors[1]  = RegistryViewFacet.getSystemTaskIds.selector;
         selectors[2]  = RegistryViewFacet.getTaskOwner.selector;
@@ -225,5 +230,6 @@ contract RegistryViewFacet is IRegistryViewFacet, IFacetSelectors {
         selectors[25] = RegistryViewFacet.getTasksCommittedForNextCycle.selector;
         selectors[26] = RegistryViewFacet.getTasksCommittedForCurrentCycle.selector;
         selectors[27] = RegistryViewFacet.getNextCycleTaskCapacity.selector;
+        selectors[28] = RegistryViewFacet.getNextCycleSysTaskCapacity.selector;
     }
 }
