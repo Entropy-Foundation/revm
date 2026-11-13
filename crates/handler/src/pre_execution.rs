@@ -348,6 +348,21 @@ pub fn apply_eip7702_auth_list<
     Ok(Some(regular_gas_refund))
 }
 
+/// Returns whether an EIP-7702 authorization whose authority is `authority` is skipped.
+///
+/// Supra reserved addresses are used by the system to initiate and execute internal
+/// transactions, and `Handler::validate_caller` refuses them as the sender of any other
+/// transaction. An authorization whose authority is a reserved address is skipped for the same
+/// reason, so that no user transaction sets code on, or bumps the nonce of, a reserved address.
+/// See smr-moonshot#4534.
+///
+/// The EIP-2935 system address is skipped likewise: `Handler::validate_caller` admits it as a
+/// sender of the history write only, and no transaction sets code on it or bumps its nonce.
+#[inline]
+fn is_refused_authority(authority: &Address) -> bool {
+    is_supra_reserved(authority) || is_system_address(authority)
+}
+
 /// Applies an EIP-7702 auth list under EIP-2780, recording the
 /// state-dependent runtime charges on the transaction-level `gas` instead of
 /// the pessimistic intrinsic-charge/refund bookkeeping of [`apply_auth_list`].
@@ -407,16 +422,7 @@ pub fn apply_auth_list_eip2780<
             continue;
         };
 
-        // Supra reserved addresses are used by the system to initiate and execute internal
-        // transactions, and `Handler::validate_caller` refuses them as the sender of any other
-        // transaction. An authorization whose authority is a reserved address is skipped for the
-        // same reason, so that no user transaction sets code on, or bumps the nonce of, a
-        // reserved address. See #4534.
-        //
-        // The EIP-2935 system address is skipped likewise: `Handler::validate_caller` admits it
-        // as a sender of the history write only, and no transaction sets code on it or bumps its
-        // nonce.
-        if is_supra_reserved(&authority) || is_system_address(&authority) {
+        if is_refused_authority(&authority) {
             continue;
         }
 
@@ -542,16 +548,7 @@ pub fn apply_auth_list<
             continue;
         };
 
-        // Supra reserved addresses are used by the system to initiate and execute internal
-        // transactions, and `Handler::validate_caller` refuses them as the sender of any other
-        // transaction. An authorization whose authority is a reserved address is skipped for the
-        // same reason, so that no user transaction sets code on, or bumps the nonce of, a
-        // reserved address. See #4534.
-        //
-        // The EIP-2935 system address is skipped likewise: `Handler::validate_caller` admits it
-        // as a sender of the history write only, and no transaction sets code on it or bumps its
-        // nonce.
-        if is_supra_reserved(&authority) || is_system_address(&authority) {
+        if is_refused_authority(&authority) {
             continue;
         }
 

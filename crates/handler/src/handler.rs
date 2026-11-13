@@ -203,9 +203,9 @@ pub trait Handler {
             None => self.runtime_oog_result(evm, &init_and_floor_gas, &mut gas)?,
         };
 
-        // A mode that charges no gas settles no gas: no refund cap, EIP-7623 gas floor,
-        // reimbursement or beneficiary reward. Its result reports the gas the execution used, so
-        // the floor is left out of the result as well.
+        // A mode that charges no gas settles no gas, so post-execution is skipped: no refund
+        // cap, EIP-7623 gas floor, reimbursement or beneficiary reward. Its result reports the
+        // gas spent less the refund the execution accumulated, uncapped, and no floor.
         let result_gas = if evm.ctx().cfg().execution_mode().charges_gas() {
             self.post_execution(evm, &mut exec_result, init_and_floor_gas, refund)?
         } else {
