@@ -85,7 +85,7 @@ contract CoreViewFacet is ICoreViewFacet, IFacetSelectors {
 
     /// @notice Returns if automation is enabled.
     function isAutomationEnabled() external view returns (bool) {
-        return LibAppStorage.appStorage().automationEnabled;
+        return automationEnabled();
     }
 
     /// @notice Returns true only if the Automation Registry is both fully initialized
@@ -100,7 +100,13 @@ contract CoreViewFacet is ICoreViewFacet, IFacetSelectors {
     /// Node's off-chain automation registry manager relies on existence of this function.
     /// Update/Replace is acceptable, but removal should be checked against node-runtime first.
     function isAutomationReadyEnabled() external view returns (bool) {
-        return IRegistryStatus(address(this)).isInitialized() && LibAppStorage.appStorage().automationEnabled;
+        return IRegistryStatus(address(this)).isInitialized() && automationEnabled();
+    }
+
+    /// @dev The one definition of "automation is enabled" that isAutomationEnabled and
+    ///      isAutomationReadyEnabled both report, so the two views cannot disagree on it.
+    function automationEnabled() private view returns (bool) {
+        return LibAppStorage.appStorage().automationEnabled;
     }
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
