@@ -1,5 +1,5 @@
 Crates version and their description:
-* ![revm](https://img.shields.io/crates/v/revm?height=50?label=revm) main crate, it reexports all other crates. 
+* ![revm](https://img.shields.io/crates/v/revm?height=50?label=revm) main crate. It reexports all other crates. 
 * ![revm-primitives](https://img.shields.io/crates/v/revm-primitives?label=revm-primitives) contains constants and primitives types that revm uses (alloy-primitives)
 * ![revm-interpreter](https://img.shields.io/crates/v/revm-interpreter?label=revm-interpreter) biggest crate in the project, it contains all instructions
 * ![revm-precompile](https://img.shields.io/crates/v/revm-precompile?label=revm-precompile) Precompiles defined by ethereum
@@ -11,5 +11,4 @@ Crates version and their description:
 * ![revm-context](https://img.shields.io/crates/v/revm-context?label=revm-context) default implementation for traits from context interface. 
 * ![revm-handler](https://img.shields.io/crates/v/revm-handler?label=revm-handler) Contains logic around validation, pre and post execution and handling of call frames.  
 * ![revm-inspector](https://img.shields.io/crates/v/revm-inspector?label=revm-inspector) Adds support for inspector and implements EIP-3155 tracer.
-* ![op-revm](https://img.shields.io/crates/v/op-revm?label=op-revm) Uses revm to create Optimism EVM.
 * ![revm-statetest-types](https://img.shields.io/crates/v/revm-statetest-types?label=revm-statetest-types) helpful structs for state test usage.

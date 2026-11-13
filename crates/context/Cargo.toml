@@ -1,7 +1,7 @@
 [package]
 name = "revm-context"
 description = "Revm context crates"
-version = "9.0.2"
+version = "43.0.3"
 authors.workspace = true
 edition.workspace = true
 keywords.workspace = true
@@ -37,6 +37,7 @@ serde = { workspace = true, features = ["derive", "rc"], optional = true }
 database.workspace = true
 
 [features]
+account-ext = ["context-interface/account-ext", "state/account-ext"]
 default = ["std"]
 std = [
 	"serde?/std",
@@ -65,13 +66,19 @@ dev = [
 	"optional_block_gas_limit",
 	"optional_eip3541",
 	"optional_eip3607",
+	"optional_eip7623",
 	"optional_no_base_fee",
 	"optional_priority_fee_check",
+	"optional_fee_charge",
 ]
+asyncdb = ["std", "database-interface/asyncdb"]
 memory_limit = []
 optional_balance_check = []
 optional_block_gas_limit = []
 optional_eip3541 = []
 optional_eip3607 = []
+optional_eip7623 = []
 optional_no_base_fee = []
 optional_priority_fee_check = []
+optional_fee_charge = []
+map-foldhash = ["primitives/map-foldhash", "state/map-foldhash"]

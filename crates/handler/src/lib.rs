@@ -31,14 +31,30 @@ pub mod system_call;
 /// Transaction and environment validation utilities.
 pub mod validation;
 
+pub use bytecode;
+pub use context;
+pub use context_interface;
+pub use database_interface;
+pub use interpreter;
+pub use precompile;
+pub use primitives;
+pub use state;
+
 // Public exports
+#[cfg(feature = "asyncdb")]
+pub use api::ExecuteEvmAsync;
 pub use api::{ExecuteCommitEvm, ExecuteEvm};
 pub use evm::{EvmTr, FrameTr};
-pub use frame::{return_create, ContextTrDbError, EthFrame};
+pub use frame::{handle_reservoir_remaining_gas, return_create, ContextTrDbError, EthFrame};
 pub use frame_data::{CallFrame, CreateFrame, FrameData, FrameResult};
 pub use handler::{EvmTrError, Handler};
 pub use item_or_result::{FrameInitOrResult, ItemOrResult};
 pub use mainnet_builder::{MainBuilder, MainContext, MainnetContext, MainnetEvm};
 pub use mainnet_handler::MainnetHandler;
-pub use precompile_provider::{EthPrecompiles, PrecompileProvider};
+pub use pre_execution::PreExecutionOutput;
+pub use precompile_provider::{
+    precompile_output_to_interpreter_result, EthPrecompiles, PrecompileProvider,
+};
+#[cfg(feature = "asyncdb")]
+pub use system_call::SystemCallEvmAsync;
 pub use system_call::{SystemCallCommitEvm, SystemCallEvm, SystemCallTx, SYSTEM_ADDRESS};

@@ -13,6 +13,10 @@ pub struct CreateOutcome {
     pub result: InterpreterResult,
     /// An optional address associated with the create operation
     pub address: Option<Address>,
+    /// EIP-8037: whether the CREATE opcode charged the conditional
+    /// `create_state_gas` on the parent's tracker (the destination did not
+    /// exist at access time). When the create fails the parent refunds it.
+    pub charged_create_state_gas: bool,
 }
 
 impl CreateOutcome {
@@ -26,8 +30,25 @@ impl CreateOutcome {
     /// # Returns
     ///
     /// A new [`CreateOutcome`] instance.
-    pub fn new(result: InterpreterResult, address: Option<Address>) -> Self {
-        Self { result, address }
+    pub const fn new(result: InterpreterResult, address: Option<Address>) -> Self {
+        Self {
+            result,
+            address,
+            charged_create_state_gas: false,
+        }
+    }
+
+    /// Constructs a new [`CreateOutcome`] for an out-of-gas error.
+    ///
+    /// # Arguments
+    ///
+    /// * `gas_limit` - The gas limit that was exceeded.
+    ///
+    /// # Returns
+    ///
+    /// A new [`CreateOutcome`] instance with no address.
+    pub fn new_oog(gas_limit: u64, reservoir: u64) -> Self {
+        Self::new(InterpreterResult::new_oog(gas_limit, reservoir), None)
     }
 
     /// Retrieves a reference to the [`InstructionResult`] from the [`InterpreterResult`].
@@ -41,7 +62,7 @@ impl CreateOutcome {
     /// # Returns
     ///
     /// A reference to the [`InstructionResult`].
-    pub fn instruction_result(&self) -> &InstructionResult {
+    pub const fn instruction_result(&self) -> &InstructionResult {
         &self.result.result
     }
 
@@ -55,7 +76,7 @@ impl CreateOutcome {
     /// # Returns
     ///
     /// A reference to the output [`Bytes`].
-    pub fn output(&self) -> &Bytes {
+    pub const fn output(&self) -> &Bytes {
         &self.result.output
     }
 
@@ -69,7 +90,7 @@ impl CreateOutcome {
     /// # Returns
     ///
     /// A reference to the [`Gas`] details.
-    pub fn gas(&self) -> &Gas {
+    pub const fn gas(&self) -> &Gas {
         &self.result.gas
     }
 }

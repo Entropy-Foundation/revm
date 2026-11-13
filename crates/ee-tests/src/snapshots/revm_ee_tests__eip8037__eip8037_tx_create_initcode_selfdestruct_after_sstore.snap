@@ -1,0 +1,42 @@
+---
+source: crates/ee-tests/src/eip8037.rs
+expression: "&(baseline_result, result)"
+---
+[
+  {
+    "Success": {
+      "reason": "Return",
+      "gas": {
+        "gas_spent": 50531,
+        "state_gas_spent": 0,
+        "gas_refunded": 0,
+        "floor_gas": 13728
+      },
+      "logs": [],
+      "output": {
+        "Create": [
+          "0x",
+          "0x84bcbaa99ae6d1f7f70b37d5f6c27c9631eeb2f2"
+        ]
+      }
+    }
+  },
+  {
+    "Success": {
+      "reason": "Return",
+      "gas": {
+        "gas_spent": 571531,
+        "state_gas_spent": 530000,
+        "gas_refunded": 0,
+        "floor_gas": 25728
+      },
+      "logs": [],
+      "output": {
+        "Create": [
+          "0x",
+          "0x84bcbaa99ae6d1f7f70b37d5f6c27c9631eeb2f2"
+        ]
+      }
+    }
+  }
+]

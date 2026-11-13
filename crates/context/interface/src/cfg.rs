@@ -1,7 +1,12 @@
 //! Configuration for the EVM. Containing [`SpecId`].
+
+pub mod gas;
+pub mod gas_params;
+
+pub use gas_params::{GasId, GasParams};
+
 use auto_impl::auto_impl;
-use core::fmt::Debug;
-use core::hash::Hash;
+use core::{fmt::Debug, hash::Hash};
 use primitives::{hardfork::SpecId, Address, TxKind, U256};
 
 /// Describes execution context of the transaction.
@@ -153,6 +158,9 @@ pub trait Cfg {
     /// Returns whether the EIP-3541 (disallowing new contracts with 0xEF prefix) is disabled.
     fn is_eip3541_disabled(&self) -> bool;
 
+    /// Returns whether the EIP-7623 (increased calldata cost) is disabled.
+    fn is_eip7623_disabled(&self) -> bool;
+
     /// Returns whether the balance check is disabled.
     fn is_balance_check_disabled(&self) -> bool;
 
@@ -170,6 +178,45 @@ pub trait Cfg {
 
     /// Returns whether the automation mode is enabled.
     fn execution_mode(&self) -> &ExecutionMode;
+    /// Returns whether the fee charge is disabled.
+    fn is_fee_charge_disabled(&self) -> bool;
+
+    /// Returns whether EIP-7708 (ETH transfers emit logs) is disabled.
+    fn is_eip7708_disabled(&self) -> bool;
+
+    /// Returns whether the EIP-8246 delayed clearing of self-destructed accounts is disabled.
+    ///
+    /// When enabled, revm tracks all self-destructed addresses and, at the end of the
+    /// transaction, clears the code, storage and nonce of any that still have a remaining
+    /// balance while preserving the balance ([EIP-8246]). This can be disabled for performance
+    /// reasons as it requires storing and iterating over all self-destructed accounts. When
+    /// disabled, this clearing can be done outside of revm when applying accounts to database
+    /// state.
+    ///
+    /// [EIP-8246]: https://eips.ethereum.org/EIPS/eip-8246
+    fn is_eip8246_delayed_clear_disabled(&self) -> bool;
+
+    /// Returns the limit in bytes for the memory buffer.
+    fn memory_limit(&self) -> u64;
+
+    /// Returns the gas params for the EVM.
+    fn gas_params(&self) -> &GasParams;
+
+    /// Returns whether EIP-8037 (Amsterdam) state creation gas cost increase is enabled.
+    ///
+    /// When enabled, storage creation gas is tracked separately from regular gas
+    /// via the reservoir model. EIP-8037 specifies concrete gas values based on
+    /// `cost_per_state_byte` and adds a hash cost for deployed bytecode.
+    fn is_amsterdam_eip8037_enabled(&self) -> bool;
+
+    /// Returns whether EIP-2780 (Amsterdam) reduced intrinsic transaction gas
+    /// is enabled.
+    ///
+    /// When enabled, the legacy `21,000` intrinsic base is replaced with the
+    /// decomposed `TX_BASE_COST + to-based + value-based` model and top-level
+    /// execution charges are applied for empty recipients with value and
+    /// EIP-7702-delegated recipients.
+    fn is_amsterdam_eip2780_enabled(&self) -> bool;
 }
 
 /// What bytecode analysis to perform

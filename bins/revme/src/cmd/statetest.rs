@@ -4,8 +4,9 @@ pub mod utils;
 
 pub use runner::{TestError as Error, TestErrorKind};
 
+use crate::dir_utils::find_all_json_tests;
 use clap::Parser;
-use runner::{find_all_json_tests, run, TestError};
+use runner::{run, TestError};
 use std::path::PathBuf;
 
 /// `statetest` subcommand
@@ -33,6 +34,9 @@ pub struct Cmd {
     /// It will stop second run of EVM on failure.
     #[arg(short = 'o', long)]
     json_outcome: bool,
+    /// Omit progress output
+    #[arg(long)]
+    omit_progress: bool,
     /// Keep going after a test failure
     #[arg(long, alias = "no-fail-fast")]
     keep_going: bool,
@@ -67,6 +71,7 @@ impl Cmd {
                 self.json,
                 self.json_outcome,
                 self.keep_going,
+                self.omit_progress,
             )?
         }
         Ok(())

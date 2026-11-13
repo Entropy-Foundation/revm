@@ -3,7 +3,6 @@
 /// Extended bytecode functionality.
 pub mod ext_bytecode;
 mod input;
-mod loop_control;
 mod return_data;
 mod runtime_flags;
 mod shared_memory;
@@ -19,15 +18,16 @@ pub use stack::{Stack, STACK_LIMIT};
 
 // imports
 use crate::{
-    host::DummyHost, instruction_context::InstructionContext, interpreter_types::*, Gas, Host,
-    InstructionResult, InstructionTable, InterpreterAction,
+    instruction_context::InstructionContext, interpreter_types::*, Gas, GasTable, Host,
+    InstructionExecResult, InstructionResult, InstructionTable, InterpreterAction,
 };
 use bytecode::Bytecode;
-use primitives::{hardfork::SpecId, Bytes};
+use context_interface::{cfg::GasParams, host::LoadError};
+use primitives::{hardfork::SpecId, hints_util::cold_path, Bytes};
 
 /// Main interpreter structure that contains all components defined in [`InterpreterTypes`].
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(::serde::Serialize, ::serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Interpreter<WIRE: InterpreterTypes = EthInterpreter> {
     /// Bytecode being executed.
     pub bytecode: WIRE::Bytecode,
@@ -90,7 +90,6 @@ impl<EXT: Default> Interpreter<EthInterpreter<EXT>> {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn new_inner(
         stack: Stack,
         memory: SharedMemory,
@@ -113,7 +112,8 @@ impl<EXT: Default> Interpreter<EthInterpreter<EXT>> {
     }
 
     /// Clears and reinitializes the interpreter with new parameters.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
+    #[inline(always)]
     pub fn clear(
         &mut self,
         memory: SharedMemory,
@@ -122,6 +122,7 @@ impl<EXT: Default> Interpreter<EthInterpreter<EXT>> {
         is_static: bool,
         spec_id: SpecId,
         gas_limit: u64,
+        reservoir_remaining_gas: u64,
     ) {
         let Self {
             bytecode: bytecode_ref,
@@ -134,7 +135,7 @@ impl<EXT: Default> Interpreter<EthInterpreter<EXT>> {
             extend,
         } = self;
         *bytecode_ref = bytecode;
-        *gas = Gas::new(gas_limit);
+        *gas = Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir_remaining_gas);
         if stack.data().capacity() == 0 {
             *stack = Stack::new();
         } else {
@@ -151,11 +152,6 @@ impl<EXT: Default> Interpreter<EthInterpreter<EXT>> {
     pub fn with_bytecode(mut self, bytecode: Bytecode) -> Self {
         self.bytecode = ExtBytecode::new(bytecode);
         self
-    }
-
-    /// Sets the specid for the interpreter.
-    pub fn set_spec_id(&mut self, spec_id: SpecId) {
-        self.runtime_flag.spec_id = spec_id;
     }
 }
 
@@ -185,9 +181,13 @@ impl<EXT> InterpreterTypes for EthInterpreter<EXT> {
 impl<IW: InterpreterTypes> Interpreter<IW> {
     /// Performs EVM memory resize.
     #[inline]
-    #[must_use]
-    pub fn resize_memory(&mut self, offset: usize, len: usize) -> bool {
-        resize_memory(&mut self.gas, &mut self.memory, offset, len)
+    pub fn resize_memory(
+        &mut self,
+        gas_params: &GasParams,
+        offset: usize,
+        len: usize,
+    ) -> Result<(), InstructionResult> {
+        resize_memory(&mut self.gas, &mut self.memory, gas_params, offset, len)
     }
 
     /// Takes the next action from the control and returns it.
@@ -205,8 +205,33 @@ impl<IW: InterpreterTypes> Interpreter<IW> {
     #[cold]
     #[inline(never)]
     pub fn halt(&mut self, result: InstructionResult) {
+        if result == InstructionResult::OutOfGas {
+            self.gas.spend_all();
+        }
         self.bytecode
             .set_action(InterpreterAction::new_halt(result, self.gas));
+    }
+
+    /// Halt the interpreter with the given result.
+    ///
+    /// This will set the action to [`InterpreterAction::Return`] and set the gas to the current gas.
+    #[cold]
+    #[inline(never)]
+    pub fn halt_fatal(&mut self) {
+        self.bytecode.set_action(InterpreterAction::new_halt(
+            InstructionResult::FatalExternalError,
+            self.gas,
+        ));
+    }
+
+    /// Halt the interpreter due to a [`LoadError`].
+    #[cold]
+    #[inline(never)]
+    pub fn halt_load_error(&mut self, err: LoadError) {
+        match err {
+            LoadError::ColdLoadSkipped => self.halt_oog(),
+            LoadError::DBError => self.halt_fatal(),
+        }
     }
 
     /// Halt the interpreter with an out-of-gas error.
@@ -221,6 +246,13 @@ impl<IW: InterpreterTypes> Interpreter<IW> {
     #[cold]
     #[inline(never)]
     pub fn halt_memory_oog(&mut self) {
+        self.halt(InstructionResult::MemoryOOG);
+    }
+
+    /// Halt the interpreter with an out-of-gas error.
+    #[cold]
+    #[inline(never)]
+    pub fn halt_memory_limit_oog(&mut self) {
         self.halt(InstructionResult::MemoryLimitOOG);
     }
 
@@ -263,8 +295,9 @@ impl<IW: InterpreterTypes> Interpreter<IW> {
     pub fn step<H: Host + ?Sized>(
         &mut self,
         instruction_table: &InstructionTable<IW, H>,
+        gas_table: &GasTable,
         host: &mut H,
-    ) {
+    ) -> InstructionExecResult {
         // Get current opcode.
         let opcode = self.bytecode.opcode();
 
@@ -273,26 +306,18 @@ impl<IW: InterpreterTypes> Interpreter<IW> {
         // it will do noop and just stop execution of this contract
         self.bytecode.relative_jump(1);
 
-        let instruction = unsafe { instruction_table.get_unchecked(opcode as usize) };
+        let instruction = instruction_table[opcode as usize];
+        let static_gas = unsafe { *gas_table.get_unchecked(opcode as usize) };
 
-        if self.gas.record_cost_unsafe(instruction.static_gas()) {
-            return self.halt_oog();
+        if self.gas.record_cost_unsafe(static_gas as u64) {
+            cold_path();
+            return Err(InstructionResult::OutOfGas);
         }
-        let context = InstructionContext {
+
+        instruction.execute(InstructionContext {
             interpreter: self,
             host,
-        };
-        instruction.execute(context);
-    }
-
-    /// Executes the instruction at the current instruction pointer.
-    ///
-    /// Internally it will increment instruction pointer by one.
-    ///
-    /// This uses dummy Host.
-    #[inline]
-    pub fn step_dummy(&mut self, instruction_table: &InstructionTable<IW, DummyHost>) {
-        self.step(instruction_table, &mut DummyHost);
+        })
     }
 
     /// Executes the interpreter until it returns or stops.
@@ -300,30 +325,33 @@ impl<IW: InterpreterTypes> Interpreter<IW> {
     pub fn run_plain<H: Host + ?Sized>(
         &mut self,
         instruction_table: &InstructionTable<IW, H>,
+        gas_table: &GasTable,
         host: &mut H,
     ) -> InterpreterAction {
-        while self.bytecode.is_not_end() {
-            self.step(instruction_table, host);
+        let e = loop {
+            if let Err(e) = self.step(instruction_table, gas_table, host) {
+                cold_path();
+                break e;
+            }
+        };
+        if self.bytecode.action().is_none() {
+            self.halt(e);
         }
+        debug_assert!(self.bytecode.is_end());
         self.take_next_action()
     }
 }
 
-/* used for cargo asm
-pub fn asm_step(
-    interpreter: &mut Interpreter<EthInterpreter>,
-    instruction_table: &InstructionTable<EthInterpreter, DummyHost>,
-    host: &mut DummyHost,
-) {
-    interpreter.step(instruction_table, host);
-}
-
+/*
+#[doc(hidden)]
+#[unsafe(no_mangle)]
 pub fn asm_run(
     interpreter: &mut Interpreter<EthInterpreter>,
-    instruction_table: &InstructionTable<EthInterpreter, DummyHost>,
-    host: &mut DummyHost,
+    host: &mut context_interface::DummyHost,
 ) {
-    interpreter.run_plain(instruction_table, host);
+    let table = crate::instruction_table();
+    let gas_table = crate::gas_table();
+    interpreter.run_plain(&table, &gas_table, host);
 }
 */
 
@@ -341,11 +369,20 @@ pub struct InterpreterResult {
 
 impl InterpreterResult {
     /// Returns a new `InterpreterResult` with the given values.
-    pub fn new(result: InstructionResult, output: Bytes, gas: Gas) -> Self {
+    pub const fn new(result: InstructionResult, output: Bytes, gas: Gas) -> Self {
         Self {
             result,
             output,
             gas,
+        }
+    }
+
+    /// Returns a new `InterpreterResult` for an out-of-gas error with the given gas limit.
+    pub fn new_oog(gas_limit: u64, reservoir: u64) -> Self {
+        Self {
+            result: InstructionResult::OutOfGas,
+            output: Bytes::default(),
+            gas: Gas::new_spent_with_reservoir(gas_limit, reservoir),
         }
     }
 
@@ -362,9 +399,16 @@ impl InterpreterResult {
     }
 
     /// Returns whether the instruction result is an error.
+    #[deprecated(note = "use `is_halt` instead")]
     #[inline]
     pub const fn is_error(&self) -> bool {
-        self.result.is_error()
+        self.result.is_halt()
+    }
+
+    /// Returns whether the instruction result is a halt (error).
+    #[inline]
+    pub const fn is_halt(&self) -> bool {
+        self.result.is_halt()
     }
 }
 
@@ -384,9 +428,10 @@ where
     pub fn run_plain_as_output<H: Host + ?Sized>(
         &mut self,
         instruction_table: &InstructionTable<IW, H>,
+        gas_table: &GasTable,
         host: &mut H,
     ) -> IW::Output {
-        From::from(self.run_plain(instruction_table, host))
+        From::from(self.run_plain(instruction_table, gas_table, host))
     }
 }
 
@@ -409,13 +454,8 @@ mod tests {
             u64::MAX,
         );
 
-        let serialized =
-            bincode::serde::encode_to_vec(&interpreter, bincode::config::legacy()).unwrap();
-
-        let deserialized: Interpreter<EthInterpreter> =
-            bincode::serde::decode_from_slice(&serialized, bincode::config::legacy())
-                .unwrap()
-                .0;
+        let serialized = serde_json::to_string_pretty(&interpreter).unwrap();
+        let deserialized: Interpreter<EthInterpreter> = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(
             interpreter.bytecode.pc(),
@@ -423,4 +463,87 @@ mod tests {
             "Program counter should be preserved"
         );
     }
+}
+
+#[test]
+fn test_mstore_big_offset_memory_oog() {
+    use super::*;
+    use crate::{
+        host::DummyHost,
+        instructions::{gas_table, instruction_table},
+    };
+    use bytecode::Bytecode;
+    use primitives::Bytes;
+
+    let code = Bytes::from(
+        &[
+            0x60, 0x00, // PUSH1 0x00
+            0x61, 0x27, 0x10, // PUSH2 0x2710  (10,000)
+            0x52, // MSTORE
+            0x00, // STOP
+        ][..],
+    );
+    let bytecode = Bytecode::new_raw(code);
+
+    let mut interpreter = Interpreter::<EthInterpreter>::new(
+        SharedMemory::new(),
+        ExtBytecode::new(bytecode),
+        InputsImpl::default(),
+        false,
+        SpecId::default(),
+        1000,
+    );
+
+    let table = instruction_table::<EthInterpreter, DummyHost>();
+    let gas = gas_table();
+    let mut host = DummyHost::default();
+    let action = interpreter.run_plain(&table, &gas, &mut host);
+
+    assert!(action.is_return());
+    assert_eq!(
+        action.instruction_result(),
+        Some(InstructionResult::MemoryOOG)
+    );
+}
+
+#[test]
+#[cfg(feature = "memory_limit")]
+fn test_mstore_big_offset_memory_limit_oog() {
+    use super::*;
+    use crate::{
+        host::DummyHost,
+        instructions::{gas_table, instruction_table},
+    };
+    use bytecode::Bytecode;
+    use primitives::Bytes;
+
+    let code = Bytes::from(
+        &[
+            0x60, 0x00, // PUSH1 0x00
+            0x61, 0x27, 0x10, // PUSH2 0x2710  (10,000)
+            0x52, // MSTORE
+            0x00, // STOP
+        ][..],
+    );
+    let bytecode = Bytecode::new_raw(code);
+
+    let mut interpreter = Interpreter::<EthInterpreter>::new(
+        SharedMemory::new_with_memory_limit(1000),
+        ExtBytecode::new(bytecode),
+        InputsImpl::default(),
+        false,
+        SpecId::default(),
+        100000,
+    );
+
+    let table = instruction_table::<EthInterpreter, DummyHost>();
+    let gas = gas_table();
+    let mut host = DummyHost::default();
+    let action = interpreter.run_plain(&table, &gas, &mut host);
+
+    assert!(action.is_return());
+    assert_eq!(
+        action.instruction_result(),
+        Some(InstructionResult::MemoryLimitOOG)
+    );
 }

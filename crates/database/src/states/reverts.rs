@@ -6,7 +6,7 @@ use core::{
     cmp::Ordering,
     ops::{Deref, DerefMut},
 };
-use primitives::{Address, HashMap, StorageKey, StorageValue};
+use primitives::{Address, StorageKeyMap, StorageValue};
 use state::AccountInfo;
 use std::vec::Vec;
 
@@ -31,7 +31,7 @@ impl DerefMut for Reverts {
 
 impl Reverts {
     /// Creates new reverts.
-    pub fn new(reverts: Vec<Vec<(Address, AccountRevert)>>) -> Self {
+    pub const fn new(reverts: Vec<Vec<(Address, AccountRevert)>>) -> Self {
         Self(reverts)
     }
 
@@ -145,7 +145,7 @@ pub struct AccountRevert {
     /// Account information revert.
     pub account: AccountInfoRevert,
     /// Storage slots to revert.
-    pub storage: HashMap<StorageKey, RevertToSlot>,
+    pub storage: StorageKeyMap<RevertToSlot>,
     /// Previous account status before the change.
     pub previous_status: AccountStatus,
     /// Whether to wipe the storage.
@@ -170,7 +170,7 @@ impl AccountRevert {
     ) -> Self {
         // Take present storage values as the storages that we are going to revert to.
         // As those values got destroyed.
-        let mut previous_storage: HashMap<StorageKey, RevertToSlot> = previous_storage
+        let mut previous_storage: StorageKeyMap<RevertToSlot> = previous_storage
             .drain()
             .map(|(key, value)| (key, RevertToSlot::Some(value.present_value)))
             .collect();
@@ -201,7 +201,7 @@ impl AccountRevert {
                 let mut ret = AccountRevert::new_selfdestructed_again(
                     bundle_account.status,
                     account_info_revert,
-                    bundle_account.storage.drain().collect(),
+                    core::mem::take(&mut bundle_account.storage),
                     updated_storage.clone(),
                 );
                 ret.wipe_storage = true;
@@ -325,7 +325,7 @@ pub enum RevertToSlot {
 
 impl RevertToSlot {
     /// Returns the previous value to set on revert.
-    pub fn to_previous_value(self) -> StorageValue {
+    pub const fn to_previous_value(self) -> StorageValue {
         match self {
             RevertToSlot::Some(value) => value,
             RevertToSlot::Destroyed => StorageValue::ZERO,

@@ -1,9 +1,8 @@
-use crate::InstructionResult;
-use core::{fmt, ptr};
-use primitives::U256;
-use std::vec::Vec;
-
 use super::StackTr;
+use crate::InstructionResult;
+use core::fmt;
+use primitives::{hints_util::cold_path, U256};
+use std::vec::Vec;
 
 /// EVM interpreter stack limit.
 pub const STACK_LIMIT: usize = 1024;
@@ -38,9 +37,9 @@ impl Default for Stack {
 
 impl Clone for Stack {
     fn clone(&self) -> Self {
-        // Use `Self::new()` to ensure the cloned Stack maintains the STACK_LIMIT capacity,
-        // and then copy the data. This preserves the invariant that Stack always has
-        // STACK_LIMIT capacity, which is crucial for the safety and correctness of other methods.
+        // Use `Self::new()` to ensure the cloned Stack is constructed with at least
+        // STACK_LIMIT capacity, and then copy the data. This preserves the invariant
+        // that Stack has sufficient capacity for operations that rely on it.
         let mut new_stack = Self::new();
         new_stack.data.extend_from_slice(&self.data);
         new_stack
@@ -54,26 +53,23 @@ impl StackTr for Stack {
     }
 
     #[inline]
+    fn data(&self) -> &[U256] {
+        &self.data
+    }
+
+    #[inline]
     fn clear(&mut self) {
         self.data.clear();
     }
 
     #[inline]
     fn popn<const N: usize>(&mut self) -> Option<[U256; N]> {
-        if self.len() < N {
-            return None;
-        }
-        // SAFETY: Stack length is checked above.
-        Some(unsafe { self.popn::<N>() })
+        self.popn()
     }
 
     #[inline]
     fn popn_top<const POPN: usize>(&mut self) -> Option<([U256; POPN], &mut U256)> {
-        if self.len() < POPN + 1 {
-            return None;
-        }
-        // SAFETY: Stack length is checked above.
-        Some(unsafe { self.popn_top::<POPN>() })
+        self.popn_top()
     }
 
     #[inline]
@@ -109,31 +105,31 @@ impl Stack {
 
     /// Instantiate a new invalid Stack.
     #[inline]
-    pub fn invalid() -> Self {
+    pub const fn invalid() -> Self {
         Self { data: Vec::new() }
     }
 
     /// Returns the length of the stack in words.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Returns whether the stack is empty.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Returns a reference to the underlying data buffer.
     #[inline]
-    pub fn data(&self) -> &Vec<U256> {
+    pub const fn data(&self) -> &Vec<U256> {
         &self.data
     }
 
     /// Returns a mutable reference to the underlying data buffer.
     #[inline]
-    pub fn data_mut(&mut self) -> &mut Vec<U256> {
+    pub const fn data_mut(&mut self) -> &mut Vec<U256> {
         &mut self.data
     }
 
@@ -158,9 +154,15 @@ impl Stack {
     /// The caller is responsible for checking the length of the stack.
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
-    pub unsafe fn pop_unsafe(&mut self) -> U256 {
-        assume!(!self.data.is_empty());
+    pub unsafe fn pop_unchecked(&mut self) -> U256 {
+        assume!(!self.is_empty());
         self.data.pop().unwrap_unchecked()
+    }
+
+    /// Peeks the top of the stack.
+    #[inline]
+    pub fn top(&mut self) -> Option<&mut U256> {
+        self.data.last_mut()
     }
 
     /// Peeks the top of the stack.
@@ -170,9 +172,19 @@ impl Stack {
     /// The caller is responsible for checking the length of the stack.
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
-    pub unsafe fn top_unsafe(&mut self) -> &mut U256 {
-        assume!(!self.data.is_empty());
+    pub unsafe fn top_unchecked(&mut self) -> &mut U256 {
+        assume!(!self.is_empty());
         self.data.last_mut().unwrap_unchecked()
+    }
+
+    /// Pops `N` values from the stack.
+    #[inline]
+    pub fn popn<const N: usize>(&mut self) -> Option<[U256; N]> {
+        if self.len() < N {
+            return None;
+        }
+        // SAFETY: Stack length is checked above.
+        Some(unsafe { self.popn_unchecked() })
     }
 
     /// Pops `N` values from the stack.
@@ -182,9 +194,20 @@ impl Stack {
     /// The caller is responsible for checking the length of the stack.
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
-    pub unsafe fn popn<const N: usize>(&mut self) -> [U256; N] {
-        assume!(self.data.len() >= N);
-        core::array::from_fn(|_| unsafe { self.pop_unsafe() })
+    pub unsafe fn popn_unchecked<const N: usize>(&mut self) -> [U256; N] {
+        assume!(self.len() >= N);
+        core::array::from_fn(|_| unsafe { self.pop_unchecked() })
+    }
+
+    /// Pops `N` values from the stack and returns the top of the stack.
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn popn_top<const N: usize>(&mut self) -> Option<([U256; N], &mut U256)> {
+        if self.len() < N + 1 {
+            return None;
+        }
+        // SAFETY: Stack length is checked above.
+        Some(unsafe { self.popn_top_unchecked() })
     }
 
     /// Pops `N` values from the stack and returns the top of the stack.
@@ -194,10 +217,8 @@ impl Stack {
     /// The caller is responsible for checking the length of the stack.
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
-    pub unsafe fn popn_top<const POPN: usize>(&mut self) -> ([U256; POPN], &mut U256) {
-        let result = self.popn::<POPN>();
-        let top = self.top_unsafe();
-        (result, top)
+    pub unsafe fn popn_top_unchecked<const N: usize>(&mut self) -> ([U256; N], &mut U256) {
+        unsafe { (self.popn_unchecked(), self.top_unchecked()) }
     }
 
     /// Push a new value onto the stack.
@@ -208,12 +229,18 @@ impl Stack {
     #[must_use]
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn push(&mut self, value: U256) -> bool {
-        // Allows the compiler to optimize out the `Vec::push` capacity check.
-        assume!(self.data.capacity() == STACK_LIMIT);
-        if self.data.len() == STACK_LIMIT {
+        // In debug builds, verify we have sufficient capacity provisioned.
+        debug_assert!(self.data.capacity() >= STACK_LIMIT);
+        let len = self.len();
+        if len == STACK_LIMIT {
+            cold_path();
             return false;
         }
-        self.data.push(value);
+        unsafe {
+            let end = self.data.as_mut_ptr().add(len);
+            core::ptr::write(end, value);
+            self.data.set_len(len + 1);
+        }
         true
     }
 
@@ -225,6 +252,7 @@ impl Stack {
         if self.data.len() > no_from_top {
             Ok(self.data[self.data.len() - no_from_top - 1])
         } else {
+            cold_path();
             Err(InstructionResult::StackUnderflow)
         }
     }
@@ -239,18 +267,18 @@ impl Stack {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn dup(&mut self, n: usize) -> bool {
         assume!(n > 0, "attempted to dup 0");
-        let len = self.data.len();
-        if len < n || len + 1 > STACK_LIMIT {
-            false
-        } else {
-            // SAFETY: Check for out of bounds is done above and it makes this safe to do.
-            unsafe {
-                let ptr = self.data.as_mut_ptr().add(len);
-                ptr::copy_nonoverlapping(ptr.sub(n), ptr, 1);
-                self.data.set_len(len + 1);
-            }
-            true
+        let len = self.len();
+        if (len < n) | (len + 1 > STACK_LIMIT) {
+            cold_path();
+            return false;
         }
+        // SAFETY: Check for out of bounds is done above and it makes this safe to do.
+        unsafe {
+            let ptr = self.data.as_mut_ptr().add(len);
+            *ptr = *ptr.sub(n);
+            self.data.set_len(len + 1);
+        }
+        true
     }
 
     /// Swaps the topmost value with the `N`th value from the top.
@@ -275,9 +303,10 @@ impl Stack {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn exchange(&mut self, n: usize, m: usize) -> bool {
         assume!(m > 0, "overlapping exchange");
-        let len = self.data.len();
+        let len = self.len();
         let n_m_index = n + m;
         if n_m_index >= len {
+            cold_path();
             return false;
         }
         // SAFETY: `n` and `n_m` are checked to be within bounds, and they don't overlap.
@@ -308,18 +337,23 @@ impl Stack {
     #[inline]
     fn push_slice_(&mut self, slice: &[u8]) -> bool {
         if slice.is_empty() {
+            cold_path();
             return true;
         }
 
         let n_words = slice.len().div_ceil(32);
-        let new_len = self.data.len() + n_words;
+        let new_len = self.len() + n_words;
         if new_len > STACK_LIMIT {
+            cold_path();
             return false;
         }
 
+        // In debug builds, ensure underlying capacity is sufficient for the write.
+        debug_assert!(self.data.capacity() >= new_len);
+
         // SAFETY: Length checked above.
         unsafe {
-            let dst = self.data.as_mut_ptr().add(self.data.len()).cast::<u64>();
+            let dst = self.data.as_mut_ptr().add(self.len()).cast::<u64>();
             self.data.set_len(new_len);
 
             let mut i = 0;
@@ -372,13 +406,13 @@ impl Stack {
     /// `StackError::Underflow` is returned.
     #[inline]
     pub fn set(&mut self, no_from_top: usize, val: U256) -> Result<(), InstructionResult> {
-        if self.data.len() > no_from_top {
-            let len = self.data.len();
-            self.data[len - no_from_top - 1] = val;
-            Ok(())
-        } else {
-            Err(InstructionResult::StackUnderflow)
+        if self.len() <= no_from_top {
+            cold_path();
+            return Err(InstructionResult::StackUnderflow);
         }
+        let len = self.len();
+        self.data[len - no_from_top - 1] = val;
+        Ok(())
     }
 }
 
@@ -388,16 +422,21 @@ impl<'de> serde::Deserialize<'de> for Stack {
     where
         D: serde::Deserializer<'de>,
     {
-        let mut data = Vec::<U256>::deserialize(deserializer)?;
-        if data.len() > STACK_LIMIT {
+        #[derive(serde::Deserialize)]
+        struct StackSerde {
+            data: Vec<U256>,
+        }
+
+        let mut stack = StackSerde::deserialize(deserializer)?;
+        if stack.data.len() > STACK_LIMIT {
             return Err(serde::de::Error::custom(std::format!(
                 "stack size exceeds limit: {} > {}",
-                data.len(),
+                stack.data.len(),
                 STACK_LIMIT
             )));
         }
-        data.reserve(STACK_LIMIT - data.len());
-        Ok(Self { data })
+        stack.data.reserve(STACK_LIMIT - stack.data.len());
+        Ok(Self { data: stack.data })
     }
 }
 
@@ -421,7 +460,7 @@ mod tests {
         // No-op
         run(|stack| {
             stack.push_slice(b"").unwrap();
-            assert!(stack.data.is_empty());
+            assert!(stack.is_empty());
         });
 
         // One word

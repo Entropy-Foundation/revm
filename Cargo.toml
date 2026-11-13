@@ -19,7 +19,6 @@ members = [
     "crates/supra-extension",
 
     # variants
-    "crates/op-revm",
     "crates/inspector",
 
     # utility
@@ -37,44 +36,45 @@ members = [
     "examples/my_evm",
     "examples/custom_opcodes",
     "examples/custom_precompile_journal",
-
+    "examples/bal_example",
 ]
 resolver = "2"
 default-members = ["crates/revm"]
 
 [workspace.dependencies]
 # revm
-revm = { path = "crates/revm", version = "29.0.0", default-features = false }
-primitives = { path = "crates/primitives", package = "revm-primitives", version = "20.2.1", default-features = false }
-bytecode = { path = "crates/bytecode", package = "revm-bytecode", version = "6.2.2", default-features = false }
-database = { path = "crates/database", package = "revm-database", version = "7.0.5", default-features = false }
-database-interface = { path = "crates/database/interface", package = "revm-database-interface", version = "7.0.5", default-features = false }
-state = { path = "crates/state", package = "revm-state", version = "7.0.5", default-features = false }
-interpreter = { path = "crates/interpreter", package = "revm-interpreter", version = "25.0.2", default-features = false }
-inspector = { path = "crates/inspector", package = "revm-inspector", version = "10.0.0", default-features = false }
-precompile = { path = "crates/precompile", package = "revm-precompile", version = "27.0.0", default-features = false }
-statetest-types = { path = "crates/statetest-types", package = "revm-statetest-types", version = "9.0.2", default-features = false }
-context = { path = "crates/context", package = "revm-context", version = "9.0.2", default-features = false }
-context-interface = { path = "crates/context/interface", package = "revm-context-interface", version = "10.1.0", default-features = false }
-handler = { path = "crates/handler", package = "revm-handler", version = "10.0.0", default-features = false }
-op-revm = { path = "crates/op-revm", package = "op-revm", version = "10.0.0", default-features = false }
-ee-tests = { path = "crates/ee-tests", package = "revm-ee-tests", version = "0.1.0", default-features = false }
+revm = { path = "crates/revm", version = "43.0.3", default-features = false }
+primitives = { path = "crates/primitives", package = "revm-primitives", version = "43.0.0", default-features = false }
+bytecode = { path = "crates/bytecode", package = "revm-bytecode", version = "43.0.0", default-features = false }
+database = { path = "crates/database", package = "revm-database", version = "43.0.1", default-features = false }
+database-interface = { path = "crates/database/interface", package = "revm-database-interface", version = "43.0.1", default-features = false }
+state = { path = "crates/state", package = "revm-state", version = "43.0.1", default-features = false }
+interpreter = { path = "crates/interpreter", package = "revm-interpreter", version = "43.0.2", default-features = false }
+inspector = { path = "crates/inspector", package = "revm-inspector", version = "43.0.3", default-features = false }
+precompile = { path = "crates/precompile", package = "revm-precompile", version = "43.0.3", default-features = false }
+statetest-types = { path = "crates/statetest-types", package = "revm-statetest-types", version = "43.0.2", default-features = false }
+context = { path = "crates/context", package = "revm-context", version = "43.0.3", default-features = false }
+context-interface = { path = "crates/context/interface", package = "revm-context-interface", version = "43.0.2", default-features = false }
+handler = { path = "crates/handler", package = "revm-handler", version = "43.0.3", default-features = false }
+ee-tests = { path = "crates/ee-tests", package = "revm-ee-tests", version = "43.0.0", default-features = false }
 supra-extension = { path = "crates/supra-extension", package = "revm-supra-extension", version = "0.1.0", default-features = false }
 
 # alloy
-alloy-eip2930 = { version = "0.2.1", default-features = false }
-alloy-eip7702 = { version = "0.6.1", default-features = false }
-alloy-primitives = { version = "1.2.0", default-features = false }
+alloy-eip2930 = { version = "0.2.3", default-features = false }
+alloy-eip7702 = { version = "0.6.3", default-features = false }
+alloy-eip7928 = { version = "0.4.11", default-features = false }
+alloy-primitives = { version = "1.5.2", default-features = false }
 
 # alloy in examples, revme or feature flagged.
 alloy-rlp = { version = "0.3.12", default-features = false }
-alloy-sol-types = { version = "1.2.0", default-features = false }
-alloy-consensus = { version = "1.0.12", default-features = false }
-alloy-eips = { version = "1.0.12", default-features = false }
-alloy-provider = { version = "1.0.12", default-features = false }
-alloy-signer = { version = "1.0.12", default-features = false }
-alloy-signer-local = { version = "1.0.12", default-features = false }
-alloy-transport = { version = "1.0.12", default-features = false }
+alloy-trie = { version = "0.9", default-features = false }
+alloy-sol-types = { version = "1.5.2", default-features = false }
+alloy-consensus = { version = "2.0.0", default-features = false }
+alloy-eips = { version = "2.0.0", default-features = false }
+alloy-provider = { version = "2.0.0", default-features = false }
+alloy-signer = { version = "2.0.0", default-features = false }
+alloy-signer-local = { version = "2.0.0", default-features = false }
+alloy-transport = { version = "2.0.0", default-features = false }
 
 alloy-contract = { version = "1.0.19"}
 alloy = { version = "1.0.19", features = ["sol-types", "contract"] }
@@ -86,67 +86,76 @@ foundry-config = { git = "https://github.com/foundry-rs/foundry.git", tag="v1.4.
 toml = { version = "0.9.8"}
 
 # precompiles
-ark-bls12-381 = { version = "0.5", default-features = false }
-ark-bn254 = { version = "0.5", default-features = false }
-ark-ec = { version = "0.5", default-features = false }
-ark-ff = { version = "0.5", default-features = false }
-ark-serialize = { version = "0.5", default-features = false }
-ark-std = { version = "0.5", default-features = false }
+ark-bls12-381 = { version = "0.6", default-features = false }
+ark-bn254 = { version = "0.6", default-features = false }
+ark-ec = { version = "0.6", default-features = false }
+ark-ff = { version = "0.6", default-features = false }
+ark-serialize = { version = "0.6", default-features = false }
+ark-std = { version = "0.6", default-features = false }
 aurora-engine-modexp = { version = "1.2", default-features = false }
-rug = { version = "1.27.0", default-features = false }
+gmp-mpfr-sys = { version = "1.6.8", default-features = false }
 blst = "0.3.15"
 bn = { package = "substrate-bn", version = "0.6", default-features = false }
-c-kzg = { version = "2.1.1", default-features = false }
+c-kzg = { version = "2.1.8", default-features = false }
 k256 = { version = "0.13.4", default-features = false }
-libsecp256k1 = { version = "0.7", default-features = false }
-kzg-rs = { version = "0.2.7", default-features = false }
-secp256k1 = { version = "0.31.0", default-features = false }
-sha2 = { version = "0.10.9", default-features = false }
-ripemd = { version = "0.1.3", default-features = false }
+secp256k1 = { version = "0.31.1", default-features = false }
+sha2 = { version = "0.11", default-features = false }
+ripemd = { version = "0.2", default-features = false }
 p256 = { version = "0.13.2", default-features = false }
+aws-lc-rs = { version = "1.16.2", default-features = false, features = [
+    "aws-lc-sys",
+] }
 
 # bytecode
 bitvec = { version = "1", default-features = false }
 paste = "1.0"
-phf = { version = "0.11", default-features = false }
+phf = { version = "0.14", default-features = false }
 
 # revme
-clap = { version = "4", features = ["derive"] }
-criterion = { package = "codspeed-criterion-compat", version = "2.10" }
+clap = { version = "4.5", features = ["derive"] }
+criterion = { package = "codspeed-criterion-compat", version = "5.0" }
 
 # serde
-serde = { version = "1.0", default-features = false }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "rc",
+] }
 serde_json = { version = "1.0.149", default-features = false }
 serde_with = "3.18.0"
 
 # misc
 auto_impl = "1.3.0"
-bitflags = { version = "2.9.1", default-features = false }
+postcard = { version = "1.1", default-features = false, features = [
+    "use-std",
+] }
+bitflags = { version = "2.10", default-features = false }
 cfg-if = { version = "1.0", default-features = false }
-derive-where = { version = "1.5.0", default-features = false }
-rand = "0.9"
-tokio = "1.45"
+corosensei = { version = "0.3.4", default-features = false, features = [
+    "default-stack",
+    "unwind",
+] }
+derive-where = { version = "1.6", default-features = false }
+derive_more = { version = "2.0.1", default-features = false, features = [
+    "debug",
+] }
+rand = "0.10"
+tokio = "1.47"
 either = { version = "1.15.0", default-features = false }
-derive_more = { version = "2.0.1" }
 derive-getters = { version = "0.5.0" }
 enum-kinds = { version = "0.5.1" }
 
 # dev-dependencies
-anyhow = "1.0.98"
-bincode = { version = "2.0", features = ["serde"] }
-eyre = "0.6.12"
-hash-db = "0.15"
-indicatif = "0.17"
-plain_hasher = "0.2"
-rstest = "0.25.0"
-serde_derive = "1.0"
-thiserror = "2.0"
-triehash = "0.8"
+anyhow = "1.0"
+indicatif = "0.18"
+rstest = "0.26.0"
+thiserror = { version = "2.0", default-features = false }
 walkdir = "2.5"
-gmp-mpfr-sys = "1.6.8"
 once_cell = "1.21.4"
+similar-asserts = "2.0"
+insta = { version = "1.43", default-features = false, features = ["json"] }
 
 [workspace.package]
+readme = "README.md"
 license = "MIT"
 authors = ["Dragan Rakita <dragan0rakita@gmail.com>"]
 categories = ["no-std", "compilers", "cryptography::cryptocurrencies"]
@@ -164,6 +173,7 @@ rust.rust_2018_idioms = { level = "deny", priority = -1 }
 rust.unreachable_pub = "warn"
 rust.unused_must_use = "deny"
 rustdoc.all = "warn"
+clippy.missing_const_for_fn = "warn"
 
 [workspace.metadata.docs.rs]
 all-features = true
@@ -186,9 +196,7 @@ strip = false
 
 # Make sure debug symbols are in the bench profile
 [profile.bench]
-debug = 2
-inherits = "release"
-strip = false
+inherits = "profiling"
 
 [profile.ethtests]
 inherits = "test"

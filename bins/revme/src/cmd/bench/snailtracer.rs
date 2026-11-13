@@ -1,9 +1,10 @@
-use context::TxEnv;
 use criterion::Criterion;
-use database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET};
-use inspector::CountInspector;
+
 use revm::{
     bytecode::Bytecode,
+    context::TxEnv,
+    database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET},
+    inspector::NoOpInspector,
     primitives::{bytes, hex, Bytes, TxKind},
     Context, ExecuteEvm, InspectEvm, MainBuilder, MainContext,
 };
@@ -12,10 +13,13 @@ pub fn run(criterion: &mut Criterion) {
     let bytecode = Bytecode::new_raw(Bytes::from(hex::decode(BYTES).unwrap()));
 
     let mut evm = Context::mainnet()
-        .with_db(BenchmarkDB::new_bytecode(bytecode.clone()))
-        .modify_cfg_chained(|c| c.disable_nonce_check = true)
+        .with_db(BenchmarkDB::new_bytecode(bytecode))
+        .modify_cfg_chained(|c| {
+            c.disable_nonce_check = true;
+            c.tx_gas_limit_cap = Some(u64::MAX);
+        })
         .build_mainnet()
-        .with_inspector(CountInspector::new());
+        .with_inspector(NoOpInspector {});
 
     let tx = TxEnv::builder()
         .caller(BENCH_CALLER)

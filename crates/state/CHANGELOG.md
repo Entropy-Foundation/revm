@@ -7,6 +7,145 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.1](https://github.com/bluealloy/revm/compare/revm-state-v43.0.0...revm-state-v43.0.1) - 2026-09-24
+
+### Added
+
+- Opt-in `account-ext` feature for shared chain-specific account payloads and their BAL history ([#3894](https://github.com/bluealloy/revm/pull/3894)). Enabling it adds fields to `AccountInfo` and `AccountInfoBal`; binary account serialization requires struct boundaries, as in MessagePack.
+
+### Other
+
+- Use `CodeChange` accessors with `alloy-eip7928` 0.4.11 ([#3916](https://github.com/bluealloy/revm/pull/3916)).
+
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-state-v42.0.0...revm-state-v43.0.0) - 2026-08-20
+
+### Fixed
+
+- *(state)* align Account's manual Deserialize field order with derived Serialize ([#3870](https://github.com/bluealloy/revm/pull/3870))
+
+### Other
+
+- *(deps)* replace unmaintained bincode with postcard in tests ([#3874](https://github.com/bluealloy/revm/pull/3874))
+
+## [41.1.0](https://github.com/bluealloy/revm/compare/revm-state-v41.0.0...revm-state-v41.1.0) - 2026-07-22
+
+### Added
+
+- *(amsterdam)* glamsterdam devnet-7 alignment (EIP-2780 runtime gas phase, fixtures v7.0.0) ([#3795](https://github.com/bluealloy/revm/pull/3795))
+- *(state)* accept BAL account change slices ([#3762](https://github.com/bluealloy/revm/pull/3762))
+
+### Fixed
+
+- *(state)* re-baseline storage original_value only across tx boundaries ([#3746](https://github.com/bluealloy/revm/pull/3746))
+
+### Other
+
+- avoid intermediate BAL account allocation ([#3775](https://github.com/bluealloy/revm/pull/3775))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-state-v12.0.1...revm-state-v41.0.0) - 2026-06-11
+
+### Added
+
+- wrap TransientStorage as AddressMap<StorageKeyMap<U256>> ([#3736](https://github.com/bluealloy/revm/pull/3736))
+- `Account::is_changed` ([#3727](https://github.com/bluealloy/revm/pull/3727))
+
+## [12.0.1](https://github.com/bluealloy/revm/compare/revm-state-v12.0.0...revm-state-v12.0.1) - 2026-05-26
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode
+
+## [12.0.0](https://github.com/bluealloy/revm/compare/revm-state-v11.0.1...revm-state-v12.0.0) - 2026-05-19
+
+### Added
+
+- *(eip8037)* Amsterdam bal-devnet-7 ([#3667](https://github.com/bluealloy/revm/pull/3667))
+- add borrowed alloy BAL conversion ([#3670](https://github.com/bluealloy/revm/pull/3670))
+- *(state)* add Bal::try_from_alloy ([#3665](https://github.com/bluealloy/revm/pull/3665))
+- show address or slot in BAL error ([#3619](https://github.com/bluealloy/revm/pull/3619))
+- *(state)* Optimized index type for transaction ID using non-max ([#3610](https://github.com/bluealloy/revm/pull/3610))
+- *(account)* Optimized index type for account ID using `non-max` ([#3605](https://github.com/bluealloy/revm/pull/3605))
+
+### Fixed
+
+- *(state)* canonicalize BAL alloy ordering ([#3618](https://github.com/bluealloy/revm/pull/3618))
+- *(bal)* record storage writes to zero for selfdestructed accounts ([#3573](https://github.com/bluealloy/revm/pull/3573))
+
+### Other
+
+- expand `BalError` documentation ([#3666](https://github.com/bluealloy/revm/pull/3666))
+- update alloy-eip7928 to newer version ([#3627](https://github.com/bluealloy/revm/pull/3627))
+- audit #[allow] attributes ([#3611](https://github.com/bluealloy/revm/pull/3611))
+- backport v107 release notes from branch ([#3617](https://github.com/bluealloy/revm/pull/3617))
+- enable and fix clippy::missing_const_for_fn ([#3592](https://github.com/bluealloy/revm/pull/3592))
+- no alloc for empty accounts ([#3590](https://github.com/bluealloy/revm/pull/3590))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+
+## [11.0.1](https://github.com/bluealloy/revm/compare/revm-state-v11.0.0...revm-state-v11.0.1) - 2026-04-17
+
+### Fixed
+
+- *(bal)* record storage writes to zero for selfdestructed accounts ([#3573](https://github.com/bluealloy/revm/pull/3573))
+
+## [11.0.0](https://github.com/bluealloy/revm/compare/revm-state-v10.0.0...revm-state-v11.0.0) - 2026-04-10
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode
+
+## [10.0.0](https://github.com/bluealloy/revm/compare/revm-state-v9.0.0...revm-state-v10.0.0) - 2026-03-02
+
+### Fixed
+
+- set transition_id to account ([#3353](https://github.com/bluealloy/revm/pull/3353))
+
+### Other
+
+- [**breaking**] flatten Bytecode ([#3375](https://github.com/bluealloy/revm/pull/3375))
+- *(state)* avoid unnecessary clone, prealloc, and fix typo ([#3387](https://github.com/bluealloy/revm/pull/3387))
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+- use fixed bytes hashmaps from alloy-core ([#3358](https://github.com/bluealloy/revm/pull/3358))
+
+## [9.0.0](https://github.com/bluealloy/revm/compare/revm-state-v8.1.1...revm-state-v9.0.0) - 2026-01-15
+
+### Added
+
+- move GasParams to Cfg ([#3229](https://github.com/bluealloy/revm/pull/3229))
+- Propagate `map-foldhash` Feature Through Dependency Chain ([#3252](https://github.com/bluealloy/revm/pull/3252))
+- BAL EIP-7928 ([#3070](https://github.com/bluealloy/revm/pull/3070))
+
+### Other
+
+- apply improvements from ai-bot labeled PRs ([#3297](https://github.com/bluealloy/revm/pull/3297))
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- deduplicate local/global flags setup ([#3190](https://github.com/bluealloy/revm/pull/3190))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [8.1.1](https://github.com/bluealloy/revm/compare/revm-state-v8.1.0...revm-state-v8.1.1) - 2025-11-07
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode
+
+## [8.1.0](https://github.com/bluealloy/revm/compare/revm-state-v8.0.2...revm-state-v8.1.0) - 2025-10-30
+
+### Added
+
+- JournaledAccount, a nice way to update and track changes ([#3086](https://github.com/bluealloy/revm/pull/3086))
+
+## [8.0.2](https://github.com/bluealloy/revm/compare/revm-state-v8.0.1...revm-state-v8.0.2) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-bytecode
+
+## [8.0.1](https://github.com/bluealloy/revm/compare/revm-state-v8.0.0...revm-state-v8.0.1) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode
+
 ## [7.0.5](https://github.com/bluealloy/revm/compare/revm-state-v7.0.4...revm-state-v7.0.5) - 2025-08-23
 
 ### Other
@@ -37,11 +176,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [4.0.0](https://github.com/bluealloy/revm/compare/revm-state-v3.0.1...revm-state-v4.0.0) - 2025-05-07
+## [7.0.6](https://github.com/bluealloy/revm/compare/revm-state-v7.0.5...revm-state-v7.0.6) - 2025-10-07
 
-Dependency bump
+### Fixed
 
-## [Unreleased]
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+- skip cold load on oog ([#2903](https://github.com/bluealloy/revm/pull/2903))
+
+### Other
+
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- helper caller_initial_modification added ([#3032](https://github.com/bluealloy/revm/pull/3032))
+- *(state)* remove unnecessary core::hash::Hash import from lib.rs ([#2959](https://github.com/bluealloy/revm/pull/2959))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+- use primitives::HashMap default ([#2916](https://github.com/bluealloy/revm/pull/2916))
 
 ## [7.0.2](https://github.com/bluealloy/revm/compare/revm-state-v7.0.1...revm-state-v7.0.2) - 2025-07-23
 

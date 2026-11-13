@@ -1,13 +1,13 @@
 //! KZG point evaluation precompile using Arkworks BLS12-381 implementation.
-use crate::bls12_381::arkworks::pairing_check;
-use crate::bls12_381_const::TRUSTED_SETUP_TAU_G2_BYTES;
-use crate::PrecompileError;
+use crate::{
+    bls12_381::arkworks::pairing_check, bls12_381_const::TRUSTED_SETUP_TAU_G2_BYTES, PrecompileHalt,
+};
 use ark_bls12_381::{Fr, G1Affine, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::CanonicalDeserialize;
 use core::ops::Neg;
-use std::string::ToString;
+use primitives::OnceLock;
 
 /// Verify KZG proof using BLS12-381 implementation.
 ///
@@ -52,7 +52,7 @@ pub fn verify_kzg_proof(
 
     // Compute X_minus_z = [τ]G₂ - [z]G₂
     let z_g2 = p2_scalar_mul(&g2, &z_fr);
-    let x_minus_z = p2_sub_affine(&tau_g2, &z_g2);
+    let x_minus_z = p2_sub_affine(tau_g2, &z_g2);
 
     // Verify: P - y = Q * (X - z)
     // Using pairing check: e(P - y, -G₂) * e(proof, X - z) == 1
@@ -63,30 +63,30 @@ pub fn verify_kzg_proof(
 
 /// Get the trusted setup G2 point `[τ]₂` from the Ethereum KZG ceremony.
 /// This is g2_monomial_1 from trusted_setup_4096.json
-fn get_trusted_setup_g2() -> G2Affine {
-    // Parse the compressed G2 point using unchecked deserialization since we trust this point
-    // This should never fail since we're using a known valid point from the trusted setup
-    G2Affine::deserialize_compressed_unchecked(&TRUSTED_SETUP_TAU_G2_BYTES[..])
-        .expect("Failed to parse trusted setup G2 point")
+fn get_trusted_setup_g2() -> &'static G2Affine {
+    static TAU_G2: OnceLock<G2Affine> = OnceLock::new();
+    TAU_G2.get_or_init(|| {
+        // Parse the compressed G2 point using unchecked deserialization since we trust this point
+        // This should never fail since we're using a known valid point from the trusted setup
+        G2Affine::deserialize_compressed_unchecked(&TRUSTED_SETUP_TAU_G2_BYTES[..])
+            .expect("Failed to parse trusted setup G2 point")
+    })
 }
 
 /// Parse a G1 point from compressed format (48 bytes)
-fn parse_g1_compressed(bytes: &[u8; 48]) -> Result<G1Affine, PrecompileError> {
-    G1Affine::deserialize_compressed(&bytes[..])
-        .map_err(|_| PrecompileError::Other("Invalid compressed G1 point".to_string()))
+fn parse_g1_compressed(bytes: &[u8; 48]) -> Result<G1Affine, PrecompileHalt> {
+    G1Affine::deserialize_compressed(&bytes[..]).map_err(|_| PrecompileHalt::KzgInvalidG1Point)
 }
 
 /// Read a scalar field element from bytes and verify it's canonical
-fn read_scalar_canonical(bytes: &[u8; 32]) -> Result<Fr, PrecompileError> {
+fn read_scalar_canonical(bytes: &[u8; 32]) -> Result<Fr, PrecompileHalt> {
     let fr = Fr::from_be_bytes_mod_order(bytes);
 
     // Check if the field element is canonical by serializing back and comparing
     let bytes_roundtrip = fr.into_bigint().to_bytes_be();
 
     if bytes_roundtrip.as_slice() != bytes {
-        return Err(PrecompileError::Other(
-            "Non-canonical scalar field element".to_string(),
-        ));
+        return Err(PrecompileHalt::NonCanonicalFp);
     }
 
     Ok(fr)
