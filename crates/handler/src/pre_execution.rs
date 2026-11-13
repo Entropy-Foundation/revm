@@ -175,19 +175,55 @@ pub fn validate_against_state_and_deduct_caller<
     context: &mut CTX,
 ) -> Result<(), ERROR> {
     let (block, tx, cfg, journal, _, _) = context.all_mut();
+    let execution_mode = cfg.execution_mode().clone();
+    let updates_nonce = execution_mode.updates_nonce();
 
     // Load caller's account.
     let mut caller = journal.load_account_with_code_mut(tx.caller())?.data;
 
-    validate_account_nonce_and_code_with_components(&caller.account().info, tx, cfg)?;
+    // EIP-3607 is applied only where the execution mode applies it (see
+    // `ExecutionMode::enforces_eip3607`), or not at all if the configuration disables it. The
+    // nonce is checked only in a mode that updates it.
+    validate_account_nonce_and_code(
+        &caller.account().info,
+        tx.nonce(),
+        cfg.is_eip3607_disabled() || !execution_mode.enforces_eip3607(),
+        cfg.is_nonce_check_disabled() || !updates_nonce,
+    )?;
 
-    let new_balance = calculate_caller_fee(*caller.balance(), tx, block, cfg)?;
+    let new_balance = if execution_mode.charges_gas() {
+        calculate_caller_fee(*caller.balance(), tx, block, cfg)?
+    } else {
+        caller_balance_without_fee(*caller.balance(), tx.value(), cfg.is_balance_check_disabled())?
+    };
 
     caller.set_balance(new_balance);
-    if tx.kind().is_call() {
+    // The nonce for CREATE is bumped when the create frame is made.
+    if updates_nonce && tx.kind().is_call() {
         caller.bump_nonce();
     }
     Ok(())
+}
+
+/// Returns the caller's balance for a transaction in an execution mode that charges no gas.
+///
+/// No fee is deducted. The caller must still hold the value the transaction transfers, unless
+/// the balance check is disabled, in which case the balance is raised to at least that value.
+fn caller_balance_without_fee(
+    balance: U256,
+    value: U256,
+    is_balance_check_disabled: bool,
+) -> Result<U256, InvalidTransaction> {
+    if is_balance_check_disabled {
+        return Ok(balance.max(value));
+    }
+    if value > balance {
+        return Err(InvalidTransaction::LackOfFundForMaxFee {
+            fee: Box::new(value),
+            balance: Box::new(balance),
+        });
+    }
+    Ok(balance)
 }
 
 /// Gas decisions made by the pre-execution phase, carried to the execution
@@ -366,6 +402,19 @@ pub fn apply_auth_list_eip2780<
             continue;
         };
 
+        // Supra reserved addresses are used by the system to initiate and execute internal
+        // transactions, and `Handler::validate_caller` refuses them as the sender of any other
+        // transaction. An authorization whose authority is a reserved address is skipped for the
+        // same reason, so that no user transaction sets code on, or bumps the nonce of, a
+        // reserved address. See #4534.
+        //
+        // The EIP-2935 system address is skipped likewise: `Handler::validate_caller` admits it
+        // as a sender of the history write only, and no transaction sets code on it or bumps its
+        // nonce.
+        if is_supra_reserved(&authority) || is_system_address(&authority) {
+            continue;
+        }
+
         // warm authority account and check nonce.
         // 4. Add `authority` to `accessed_addresses` (as defined in [EIP-2929](./eip-2929.md).)
         let mut authority_acc = journal.load_account_with_code_mut(authority)?;
@@ -377,6 +426,7 @@ pub fn apply_auth_list_eip2780<
             if !bytecode.is_empty() && !bytecode.is_eip7702() {
                 continue;
             }
+        }
 
         // 6. Verify the nonce of `authority` is equal to `nonce`. In case `authority` does not exist in the trie, verify that `nonce` is equal to `0`.
         if authorization.nonce() != authority_acc_info.nonce {
@@ -486,6 +536,19 @@ pub fn apply_auth_list<
         let Some(authority) = authorization.authority() else {
             continue;
         };
+
+        // Supra reserved addresses are used by the system to initiate and execute internal
+        // transactions, and `Handler::validate_caller` refuses them as the sender of any other
+        // transaction. An authorization whose authority is a reserved address is skipped for the
+        // same reason, so that no user transaction sets code on, or bumps the nonce of, a
+        // reserved address. See #4534.
+        //
+        // The EIP-2935 system address is skipped likewise: `Handler::validate_caller` admits it
+        // as a sender of the history write only, and no transaction sets code on it or bumps its
+        // nonce.
+        if is_supra_reserved(&authority) || is_system_address(&authority) {
+            continue;
+        }
 
         // warm authority account and check nonce.
         // 4. Add `authority` to `accessed_addresses` (as defined in [EIP-2929](./eip-2929.md).)
