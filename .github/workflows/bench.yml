@@ -8,38 +8,25 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-permissions: {}
-
 jobs:
   codspeed:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - name: Secure runner
-        uses: tempoxyz/gh-actions/actions/secure-runner@117919c943b804057be733b0c4034c5542e58959 # 2026-09-23T05-09-41Z-117919c9
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v5
         with:
           submodules: true
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
       - name: Install cargo-codspeed
-        uses: tempoxyz/gh-actions/vendor/taiki-e/install-action@117919c943b804057be733b0c4034c5542e58959 # 2026-09-23T05-09-41Z-117919c9
+        uses: taiki-e/install-action@v2
         with:
-          tool: cargo-codspeed@5.0.1
-          checksum: true
-          fallback: cargo-binstall
+          tool: cargo-codspeed
       - name: Build the benchmark target(s)
-        run: cargo codspeed build --locked --profile profiling --workspace --exclude '*example*'
+        run: cargo codspeed build --profile profiling --workspace --exclude '*example*' --exclude op-revm
       - name: Run the benchmarks
-        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        uses: CodSpeedHQ/action@v3
         with:
           run: cargo codspeed run --workspace
           token: ${{ secrets.CODSPEED_TOKEN }}
-          mode: simulation
