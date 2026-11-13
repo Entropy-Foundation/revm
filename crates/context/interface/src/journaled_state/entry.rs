@@ -329,8 +329,11 @@ impl JournalEntryTr for JournalEntry {
             JournalEntry::AccountCreated { .. } => true,
             // SELFDESTRUCT destroyed a contract.
             JournalEntry::AccountDestroyed { .. } => true,
-            // Nonce was incremented (must not occur in ReadOnly mode).
-            JournalEntry::NonceChange { .. } => true,
+            // Nonce was set or incremented (must not occur in ReadOnly mode).
+            JournalEntry::NonceChange { .. } | JournalEntry::NonceBump { .. } => true,
+            // The account extension was changed.
+            #[cfg(feature = "account-ext")]
+            JournalEntry::ExtensionChange { .. } => true,
             // Contract bytecode was replaced.
             JournalEntry::CodeChange { .. } => true,
             // ETH transferred via a CALL with non-zero value.

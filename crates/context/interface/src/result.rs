@@ -1194,6 +1194,7 @@ impl fmt::Display for HaltReason {
             Self::CallNotAllowedInsideStatic => write!(f, "call not allowed inside static call"),
             Self::OutOfFunds => write!(f, "out of funds"),
             Self::CallTooDeep => write!(f, "call too deep"),
+            Self::ReservedAddressTarget => write!(f, "reserved address target"),
         }
     }
 }
