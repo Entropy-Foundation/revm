@@ -353,6 +353,17 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
         assertFalse(IRegistryFacet(diamondAddr).isAuthorizedSubmitter(address(wallet)));
     }
 
+    /// @dev grantAuthorization's refusal decodes with the ConfigFacet ABI: `IConfigFacet` declares
+    /// `UnsupportedTaskOwner` with the registry's selector.
+    function testGrantAuthorizationRefusalIsDeclaredByIConfigFacet() public {
+        assertEq(IConfigFacet.UnsupportedTaskOwner.selector, IRegistryFacet.UnsupportedTaskOwner.selector);
+
+        MultiSignatureWallet wallet = deployWallet();
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IConfigFacet.UnsupportedTaskOwner.selector, address(wallet)));
+        IConfigFacet(diamondAddr).grantAuthorization(address(wallet));
+    }
+
     /// @dev A wallet cannot register a user task either.
     function testRegisterFromAMultiSignatureWalletIsRefused() public {
         MultiSignatureWallet wallet = deployWallet();
