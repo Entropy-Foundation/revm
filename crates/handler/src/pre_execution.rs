@@ -11,6 +11,7 @@ use context_interface::{
     Block, Cfg, ContextTr, Database,
 };
 use core::cmp::Ordering;
+use std::boxed::Box;
 use interpreter::GasTracker;
 use primitives::{
     eip2935::is_system_address, hardfork::SpecId, supra_constants::is_supra_reserved, Address,
