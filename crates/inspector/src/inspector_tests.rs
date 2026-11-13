@@ -1166,6 +1166,8 @@ mod tests {
         assert_eq!(logs.len(), 1, "CREATE transfer log missing: {logs:?}");
         assert_eq!(logs[0].0, BENCH_TARGET);
         assert_eq!(logs[0].2, U256::from(7));
+    }
+
     #[test]
     fn test_inspect_read_only_gas_used_matches_non_inspector_path() {
         // Large non-zero-byte calldata pushes the EIP-7623 floor well above what this
@@ -1208,7 +1210,7 @@ mod tests {
         let inspected_result = inspected_evm.inspect_one_tx(tx).unwrap();
         assert!(inspected_result.is_success());
 
-        assert_eq!(inspected_result.gas_used(), plain_result.gas_used());
+        assert_eq!(inspected_result.tx_gas_used(), plain_result.tx_gas_used());
     }
 
     #[test]

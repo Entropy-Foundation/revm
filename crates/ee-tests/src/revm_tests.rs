@@ -1100,6 +1100,9 @@ fn test_custom_opcode_transaction() {
         slot0.present_value(),
         U256::from(14),
         "DOUBLE(7) should store 14 in slot 0"
+    );
+}
+
 /// Funds `addr` with a large balance in a fresh `CacheDB`.
 fn funded_cache_db(
     addr: revm::primitives::Address,
@@ -1317,7 +1320,7 @@ fn test_sender_extcodesize_stays_warm_after_prior_committed_tx() {
     // 21000 (intrinsic) + 2 (CALLER) + 100 (EXTCODESIZE, warm) + 2 (POP) + 0 (STOP) = 21104.
     // Comes out 23604 if EXTCODESIZE(CALLER) is incorrectly charged cold (2600) instead.
     assert_eq!(
-        result1.gas_used(),
+        result1.tx_gas_used(),
         21104,
         "EXTCODESIZE(CALLER) must be charged the warm price (100 gas): `caller` is T1's own \
          sender and must be pre-warmed by T1's own validation, regardless of T0 having already \

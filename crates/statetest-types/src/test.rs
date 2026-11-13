@@ -146,6 +146,8 @@ impl Test {
                 Some(add) => TxKind::Call(add),
                 None => TxKind::Create,
             },
+            // State test fixtures do not carry the transaction hash.
+            tx_hash: B256::ZERO,
         };
 
         Ok(tx)

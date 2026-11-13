@@ -432,7 +432,7 @@ pub fn selfdestruct<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Resu
 mod tests {
     use crate::{
         host::DummyHost,
-        instructions::instruction_table,
+        instructions::{gas_table, instruction_table},
         interpreter::{EthInterpreter, ExtBytecode},
         InputsImpl, InstructionResult, Interpreter, InterpreterAction, SharedMemory,
     };
@@ -446,9 +446,8 @@ mod tests {
     /// Runs `PUSH20 beneficiary; SELFDESTRUCT` against `DummyHost` and returns the result the
     /// frame ends with.
     ///
-    /// `DummyHost::selfdestruct` returns `None`, which the instruction turns into
-    /// `FatalExternalError`. A run that ends with any other result therefore never reached the
-    /// host.
+    /// `DummyHost::selfdestruct` succeeds, so a run that reaches the host ends with
+    /// `SelfDestruct`. A run that ends with any other result never reached the host.
     fn selfdestruct_result(beneficiary: Address, is_static: bool) -> InstructionResult {
         let mut code = vec![opcode::PUSH20];
         code.extend_from_slice(beneficiary.as_slice());
@@ -463,7 +462,8 @@ mod tests {
             1_000_000,
         );
         let table = instruction_table::<EthInterpreter, DummyHost>();
-        match interpreter.run_plain(&table, &mut DummyHost) {
+        let gas = gas_table();
+        match interpreter.run_plain(&table, &gas, &mut DummyHost::default()) {
             InterpreterAction::Return(result) => result.result,
             other => panic!("SELFDESTRUCT must end the frame, got: {other:?}"),
         }
@@ -492,7 +492,7 @@ mod tests {
         for beneficiary in [u64_to_address(0x5355_4FFF), u64_to_address(0x5355_5100)] {
             assert_eq!(
                 selfdestruct_result(beneficiary, false),
-                InstructionResult::FatalExternalError,
+                InstructionResult::SelfDestruct,
                 "beneficiary {beneficiary}"
             );
         }
