@@ -5,6 +5,7 @@ import {AppStorage, Config, DataLengthCaps, RecordSizingParameters, RegistryStat
 import {LibAccounting} from "../libraries/LibAccounting.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibRegistry} from "../libraries/LibRegistry.sol";
+import {LibTaskOwner} from "../libraries/LibTaskOwner.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {IConfigFacet} from "../interfaces/IConfigFacet.sol";
 import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
@@ -18,10 +19,18 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: ADMIN FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Grants authorization to the input account to submit system automation tasks.
-    /// It is foundation governance responsibility to make sure that the target is and instance of `MultiSignatureWallet`
+    /// An authorized account registers system tasks as their owner, so it must be an account the
+    /// registry accepts as a task owner (`LibTaskOwner.isAccepted`); any other account reverts with
+    /// `UnsupportedTaskOwner`. The foundation `MultiSignatureWallet` is not such an account.
+    /// Any accepted account may be authorized. It is the foundation governance's responsibility
+    /// not to authorize an account that holds authority over other contracts, and to register the
+    /// foundation's own system tasks through a task owner contract that the wallet administers
+    /// and uses for nothing except its tasks (smr-moonshot #4922; README, "Automation tasks of
+    /// the foundation").
     /// @param _account Address to grant authorization to.
     function grantAuthorization(address _account) external {
         LibDiamond.enforceIsContractOwner();
+        LibTaskOwner.requireAccepted(_account);
 
         AppStorage storage s = LibAppStorage.appStorage();
         require(s.authorizedAccounts.add(_account), AddressAlreadyExists());

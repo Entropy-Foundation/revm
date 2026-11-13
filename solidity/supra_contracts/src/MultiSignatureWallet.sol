@@ -5,14 +5,19 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {LowLevelCall} from "@openzeppelin/contracts/utils/LowLevelCall.sol";
 import {IMultiSignatureWallet} from "./interfaces/IMultiSignatureWallet.sol";
-import {IERC165} from "./interfaces/IERC165.sol";
-import {AUTOMATION_TASK_OWNER_INTERFACE_ID, IAutomationTaskOwner} from "./interfaces/IAutomationTaskOwner.sol";
 
 /**
  * @title MultiSignatureWallet
  * @dev A multisignature wallet contract that requires multiple owners to confirm transactions.
+ * @dev The wallet does not own automation tasks. It declares no ERC-165 interface, and in
+ *      particular not `IAutomationTaskOwner`, so the AutomationRegistry refuses it as the owner of
+ *      a user task and of a system task alike. Tasks the wallet's owners want registered belong to
+ *      a separate contract built on `AutomationTaskOwnerBase` that the wallet administers (see the
+ *      README's "Automation tasks of the foundation"). Do not add a `supportsInterface` that
+ *      reports `IAutomationTaskOwner` here, and do not make the wallet inherit
+ *      `AutomationTaskOwnerBase` (smr-moonshot #4922).
  */
-contract MultiSignatureWallet is Initializable, IMultiSignatureWallet, IAutomationTaskOwner {
+contract MultiSignatureWallet is Initializable, IMultiSignatureWallet {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     EnumerableSet.AddressSet private owners;
@@ -195,12 +200,6 @@ contract MultiSignatureWallet is Initializable, IMultiSignatureWallet, IAutomati
 
         numConfirmationsRequired = _numConfirmationsRequired;
         maxTimeoutDuration = DEFAULT_MAX_TIMEOUT_DURATION;
-    }
-
-    /// @notice ERC-165: the wallet declares `IAutomationTaskOwner`, so that it can register and own
-    /// system automation tasks as an authorized submitter (#4469).
-    function supportsInterface(bytes4 _interfaceId) external pure returns (bool) {
-        return _interfaceId == type(IERC165).interfaceId || _interfaceId == AUTOMATION_TASK_OWNER_INTERFACE_ID;
     }
 
     /**

@@ -12,6 +12,8 @@ import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
+import {AUTOMATION_TASK_OWNER_INTERFACE_ID} from "../src/interfaces/IAutomationTaskOwner.sol";
+import {IERC165} from "../src/interfaces/IERC165.sol";
 import {Counter} from "./Counter.sol";
 import {
     InitializeCycleMonitoring,
@@ -72,6 +74,14 @@ contract ExecuteTxnHarness is ExecuteTxn {
         multisigWalletAddr = _wallet;
         txIndex = _txIndex;
         contentHash = _contentHash;
+    }
+}
+
+/// @dev Declares `IAutomationTaskOwner` through ERC-165, as a task owner contract built on
+/// `AutomationTaskOwnerBase` does.
+contract DeclaredTaskOwner {
+    function supportsInterface(bytes4 _interfaceId) external pure returns (bool) {
+        return _interfaceId == type(IERC165).interfaceId || _interfaceId == AUTOMATION_TASK_OWNER_INTERFACE_ID;
     }
 }
 
@@ -292,6 +302,36 @@ contract GovActionsTest is Test {
         vm.expectRevert(bytes("AccountToAuthorize is already authorized"));
         script.run();
         assertEq(wallet.txCount(), 0);
+    }
+
+    /// @dev The registry refuses the foundation wallet as a task owner, so an authorization of it
+    /// could never be used to register a system task.
+    function test_refusesToAuthorizeTheFoundationWallet() public {
+        vm.mockCall(
+            registry, abi.encodeCall(IRegistryFacet.isAuthorizedSubmitter, (address(wallet))), abi.encode(false)
+        );
+
+        AuthorizeAccountHarness script = authorizeAccount(address(wallet));
+        vm.expectRevert(
+            bytes(
+                "AccountToAuthorize has code but does not declare IAutomationTaskOwner, so the registry refuses it as a task owner"
+            )
+        );
+        script.run();
+        assertEq(wallet.txCount(), 0);
+    }
+
+    /// @dev A contract that declares `IAutomationTaskOwner`, such as a task owner the wallet
+    /// administers, is authorized.
+    function test_authorizationIsSubmittedForADeclaredTaskOwner() public {
+        address account = address(new DeclaredTaskOwner());
+        vm.mockCall(registry, abi.encodeCall(IRegistryFacet.isAuthorizedSubmitter, (account)), abi.encode(false));
+
+        authorizeAccount(account).run();
+
+        (address to,,,, bytes memory data) = wallet.getTransaction(0);
+        assertEq(to, registry);
+        assertEq(data, abi.encodeCall(IConfigFacet.grantAuthorization, (account)));
     }
 
     function test_refusesToAuthorizeTheZeroAddress() public {
