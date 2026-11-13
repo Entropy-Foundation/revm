@@ -74,7 +74,7 @@ pub trait JournalEntryTr {
 
     /// Returns `true` if this journal entry represents an operation that mutates persistent state.
     ///
-    /// Used to verify that an [`context_interface::ExecutionMode::ReadOnly`] run leaves no lasting
+    /// Used to verify that an [`crate::cfg::ExecutionMode::ReadOnly`] run leaves no lasting
     /// change to accounts or storage, before it is discarded.
     ///
     /// `BalanceChange` requires the current `state` snapshot: the old balance stored in the entry
