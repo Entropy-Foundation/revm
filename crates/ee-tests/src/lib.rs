@@ -146,4 +146,7 @@ mod reserved_addresses;
 mod history_storage;
 
 #[cfg(test)]
+mod history_block_hash;
+
+#[cfg(test)]
 mod selfdestruct_burn;

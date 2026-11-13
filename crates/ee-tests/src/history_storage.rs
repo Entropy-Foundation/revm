@@ -42,7 +42,7 @@ use supra_extension::{
 };
 
 /// Sender of the user transactions in these tests.
-const SENDER: Address = address!("0x1000000000000000000000000000000000000001");
+pub(crate) const SENDER: Address = address!("0x1000000000000000000000000000000000000001");
 /// An account without code, the target of the sender matrix.
 const EMPTY_ACCOUNT: Address = address!("0x1000000000000000000000000000000000000005");
 /// Balance of [`SENDER`].
@@ -58,12 +58,12 @@ const ALL_MODES: [ExecutionMode; 6] = [
     ExecutionMode::Genesis,
 ];
 
-type Db = CacheDB<EmptyDB>;
-type TestEvm = MainnetEvm<MainnetContext<Db>>;
-type TestError = EVMError<Infallible>;
+pub(crate) type Db = CacheDB<EmptyDB>;
+pub(crate) type TestEvm = MainnetEvm<MainnetContext<Db>>;
+pub(crate) type TestError = EVMError<Infallible>;
 
 /// A Prague EVM over a database in which only [`SENDER`] is funded.
-fn new_evm() -> TestEvm {
+pub(crate) fn new_evm() -> TestEvm {
     let mut db = Db::default();
     db.insert_account_info(SENDER, AccountInfo::from_balance(U256::from(FUNDS)));
     Context::mainnet()
@@ -75,7 +75,7 @@ fn new_evm() -> TestEvm {
 /// Executes `tx` in `mode` and commits its state, on the path the node takes for that mode: a
 /// System transaction is checked by `validate_caller` and run by `run_system_call`; every other
 /// transaction runs the full handler.
-fn execute_commit(
+pub(crate) fn execute_commit(
     evm: &mut TestEvm,
     mode: ExecutionMode,
     tx: TxEnv,
@@ -100,7 +100,7 @@ fn execute_commit(
 }
 
 /// Deploys the history contract from the genesis transaction `supra_extension` generates.
-fn deploy_history_contract(evm: &mut TestEvm) {
+pub(crate) fn deploy_history_contract(evm: &mut TestEvm) {
     let genesis = generate_history_storage_transaction();
     let tx = TxEnv {
         caller: *genesis.sender(),
@@ -115,12 +115,12 @@ fn deploy_history_contract(evm: &mut TestEvm) {
 }
 
 /// A distinct stand-in for the hash of block `number`.
-fn hash_of(number: u64) -> B256 {
+pub(crate) fn hash_of(number: u64) -> B256 {
     keccak256(number.to_be_bytes())
 }
 
 /// Runs the history write of the block at `height` and returns its result.
-fn write_history(evm: &mut TestEvm, height: u64) -> Result<ExecutionResult, TestError> {
+pub(crate) fn write_history(evm: &mut TestEvm, height: u64) -> Result<ExecutionResult, TestError> {
     evm.ctx.block.number = U256::from(height);
     let tx = history_storage_write_tx_env(height, hash_of(height - 1))
         .expect("every height the tests write has a parent");
@@ -128,7 +128,7 @@ fn write_history(evm: &mut TestEvm, height: u64) -> Result<ExecutionResult, Test
 }
 
 /// The value of the history contract's slot `slot` in the committed state.
-fn history_slot(evm: &TestEvm, slot: U256) -> U256 {
+pub(crate) fn history_slot(evm: &TestEvm, slot: U256) -> U256 {
     evm.ctx
         .db()
         .storage_ref(HISTORY_STORAGE_ADDRESS, slot)
