@@ -57,8 +57,9 @@ library LibRandomness {
     /// @notice The randomness precompile. Frozen.
     ISupraRandomness internal constant RANDOMNESS = ISupraRandomness(0x0000000000000000000000000000000053555003);
 
-    /// @notice How many blocks back {seedAt} will serve. Matches `BLOCKHASH`'s window.
-    uint64 internal constant SEED_WINDOW = 256;
+    /// @notice How many blocks back {seedAt} will serve. Equal to the window of the EIP-2935 block
+    /// hash history.
+    uint64 internal constant SEED_WINDOW = 8191;
 
     /// @notice Thrown when the range passed to a `*Range` helper is empty or inverted.
     error EmptyRange(uint256 minIncl, uint256 maxExcl);
@@ -148,8 +149,8 @@ library LibRandomness {
     }
 
     /// @notice The seed of the committed block at `height`.
-    /// @dev Reverts unless `height` is in `[block.number - 256, block.number - 1]`; the block being
-    /// executed is not served. Use {value} for the current block's randomness.
+    /// @dev Reverts unless `height` is in `[block.number - SEED_WINDOW, block.number - 1]`; the
+    /// block being executed is not served. Use {value} for the current block's randomness.
     function seedAt(uint64 height) internal view returns (bytes32) {
         return RANDOMNESS.seedAt(height);
     }
