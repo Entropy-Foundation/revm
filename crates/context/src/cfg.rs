@@ -1,5 +1,5 @@
 //! This module contains [`CfgEnv`] and implements [`Cfg`] trait for it.
-use context_interface::cfg::ExecutionMode;
+use context_interface::cfg::{BlockHashSource, ExecutionMode};
 pub use context_interface::Cfg;
 use primitives::{eip170, eip3860, eip7825, hardfork::SpecId};
 
@@ -107,6 +107,10 @@ pub struct CfgEnv<SPEC = SpecId> {
     pub disable_priority_fee_check: bool,
     /// Execution mode the EVM is configured to run.
     pub execution_mode: ExecutionMode,
+    /// Where the host reads the block hashes that `BLOCKHASH` returns.
+    ///
+    /// Defaults to [`BlockHashSource::Database`].
+    pub block_hash_source: BlockHashSource,
 }
 
 impl CfgEnv {
@@ -163,6 +167,7 @@ impl<SPEC> CfgEnv<SPEC> {
             #[cfg(feature = "optional_priority_fee_check")]
             disable_priority_fee_check: false,
             execution_mode: ExecutionMode::User,
+            block_hash_source: BlockHashSource::Database,
         }
     }
 
@@ -211,6 +216,7 @@ impl<SPEC> CfgEnv<SPEC> {
             #[cfg(feature = "optional_priority_fee_check")]
             disable_priority_fee_check: self.disable_priority_fee_check,
             execution_mode: self.execution_mode,
+            block_hash_source: self.block_hash_source,
         }
     }
 
@@ -228,6 +234,17 @@ impl<SPEC> CfgEnv<SPEC> {
     /// Clears the blob target and max count over hardforks.
     pub fn clear_max_blobs_per_tx(&mut self) {
         self.max_blobs_per_tx = None;
+    }
+
+    /// Consumes `self` and returns a new `CfgEnv` with the specified block hash source.
+    pub fn with_block_hash_source(mut self, block_hash_source: BlockHashSource) -> Self {
+        self.set_block_hash_source(block_hash_source);
+        self
+    }
+
+    /// Sets where the host reads the block hashes that `BLOCKHASH` returns.
+    pub fn set_block_hash_source(&mut self, block_hash_source: BlockHashSource) {
+        self.block_hash_source = block_hash_source;
     }
 
     /// Sets the disable priority fee check flag.
@@ -352,6 +369,10 @@ impl<SPEC: Into<SpecId> + Copy> Cfg for CfgEnv<SPEC> {
 
     fn execution_mode(&self) -> &ExecutionMode {
         &self.execution_mode
+    }
+
+    fn block_hash_source(&self) -> BlockHashSource {
+        self.block_hash_source
     }
 }
 

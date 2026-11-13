@@ -112,6 +112,15 @@ impl<DB: Database, ENTRY: JournalEntryTr> JournalTr for Journal<DB, ENTRY> {
         self.inner.sload(&mut self.database, address, key)
     }
 
+    fn storage_value_unwarmed(
+        &mut self,
+        address: Address,
+        key: StorageKey,
+    ) -> Result<StorageValue, <Self::Database as Database>::Error> {
+        self.inner
+            .storage_value_unwarmed(&mut self.database, address, key)
+    }
+
     fn sstore(
         &mut self,
         address: Address,

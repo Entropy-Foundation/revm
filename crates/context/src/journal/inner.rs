@@ -918,6 +918,30 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         )
     }
 
+    /// Returns the present value of a storage slot without loading or warming the account or the
+    /// slot, and without adding a journal entry.
+    ///
+    /// The value is the slot's present value if the account and the slot are in the state; zero if
+    /// the account is in the state and was created there, as in [`sload_with_account`]; otherwise
+    /// `db.storage`.
+    #[inline]
+    pub fn storage_value_unwarmed<DB: Database>(
+        &self,
+        db: &mut DB,
+        address: Address,
+        key: StorageKey,
+    ) -> Result<StorageValue, DB::Error> {
+        if let Some(account) = self.state.get(&address) {
+            if let Some(slot) = account.storage.get(&key) {
+                return Ok(slot.present_value);
+            }
+            if account.is_created() {
+                return Ok(StorageValue::ZERO);
+            }
+        }
+        db.storage(address, key)
+    }
+
     /// Stores storage slot.
     ///
     /// And returns (original,present,new) slot value.
@@ -2199,5 +2223,95 @@ mod eip6780_selfdestruct_burn_tests {
 
         assert_eq!(journal.take_selfdestruct_burn(), U256::from(ENDOWMENT));
         assert_eq!(journal.selfdestruct_burn, U256::ZERO);
+    }
+}
+
+#[cfg(test)]
+mod storage_value_unwarmed_tests {
+    use super::*;
+    use crate::JournalEntry;
+    use database::{CacheDB, EmptyDB};
+
+    const KEY: StorageKey = StorageKey::from_limbs([7, 0, 0, 0]);
+
+    /// A database in which slot [`KEY`] of `address` holds `value`.
+    fn db_with_slot(address: Address, value: StorageValue) -> CacheDB<EmptyDB> {
+        let mut db = CacheDB::new(EmptyDB::new());
+        db.insert_account_storage(address, KEY, value)
+            .expect("in-memory write");
+        db
+    }
+
+    /// An account that is not in the journal's state is read from the database and stays out of
+    /// the state.
+    #[test]
+    fn reads_the_database_for_an_account_not_in_the_state() {
+        let address = Address::with_last_byte(1);
+        let mut db = db_with_slot(address, StorageValue::from(5));
+        let journal = JournalInner::<JournalEntry>::new();
+
+        let value = journal
+            .storage_value_unwarmed(&mut db, address, KEY)
+            .expect("in-memory read");
+        assert_eq!(value, StorageValue::from(5));
+        assert!(journal.state.is_empty());
+        assert!(journal.journal.is_empty());
+    }
+
+    /// A slot in the journal's state is read from the state, whatever the database holds, and is
+    /// neither warmed nor journaled; a slot of the same account that is not in the state is read
+    /// from the database and is not added to the state.
+    #[test]
+    fn reads_a_slot_in_the_state_without_warming_it() {
+        let address = Address::with_last_byte(1);
+        let mut db = db_with_slot(address, StorageValue::from(5));
+        let mut journal = JournalInner::<JournalEntry>::new();
+        journal
+            .load_account(&mut db, address)
+            .expect("in-memory read");
+        journal
+            .sstore(&mut db, address, KEY, StorageValue::from(9))
+            .expect("in-memory write");
+        journal.commit_tx();
+
+        let value = journal
+            .storage_value_unwarmed(&mut db, address, KEY)
+            .expect("in-memory read");
+        assert_eq!(value, StorageValue::from(9));
+        let slot = &journal.state[&address].storage[&KEY];
+        // A slot is warm in the current transaction only once its transaction id is the current
+        // one.
+        assert_ne!(slot.transaction_id, journal.transaction_id);
+        assert!(journal.journal.is_empty());
+
+        let other = StorageKey::from(8);
+        let value = journal
+            .storage_value_unwarmed(&mut db, address, other)
+            .expect("in-memory read");
+        assert_eq!(value, StorageValue::ZERO);
+        assert!(!journal.state[&address].storage.contains_key(&other));
+    }
+
+    /// An account created in the journal has empty storage: a slot not in the state is zero, as
+    /// `sload` reads it, whatever the database holds.
+    #[test]
+    fn reads_zero_for_a_created_account() {
+        let address = Address::with_last_byte(1);
+        let mut db = db_with_slot(address, StorageValue::from(5));
+        let mut journal = JournalInner::<JournalEntry>::new();
+        journal
+            .load_account(&mut db, address)
+            .expect("in-memory read");
+        journal
+            .state
+            .get_mut(&address)
+            .expect("loaded")
+            .mark_created();
+
+        let value = journal
+            .storage_value_unwarmed(&mut db, address, KEY)
+            .expect("in-memory read");
+        assert_eq!(value, StorageValue::ZERO);
+        assert!(journal.state[&address].storage.is_empty());
     }
 }

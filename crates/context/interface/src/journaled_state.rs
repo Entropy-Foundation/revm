@@ -35,6 +35,22 @@ pub trait JournalTr {
         key: StorageKey,
     ) -> Result<StateLoad<StorageValue>, <Self::Database as Database>::Error>;
 
+    /// Returns the present value of a storage slot without loading or warming the account or the
+    /// slot, and without adding a journal entry.
+    ///
+    /// The value is, in order: the slot's present value if the account and the slot are in the
+    /// journal's state; zero if the account is in the journal's state and was created there, so
+    /// that its storage starts empty (as [`JournalTr::sload`] decides); otherwise
+    /// `Database::storage`.
+    ///
+    /// The host reads the EIP-2935 history contract with it to serve `BLOCKHASH`, whose gas does
+    /// not depend on whether the slot was accessed before.
+    fn storage_value_unwarmed(
+        &mut self,
+        address: Address,
+        key: StorageKey,
+    ) -> Result<StorageValue, <Self::Database as Database>::Error>;
+
     /// Stores the storage value in Journal state.
     fn sstore(
         &mut self,

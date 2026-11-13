@@ -79,6 +79,14 @@ impl JournalTr for Backend {
         self.journaled_state.sload(address, key)
     }
 
+    fn storage_value_unwarmed(
+        &mut self,
+        address: Address,
+        key: StorageKey,
+    ) -> Result<StorageValue, <Self::Database as Database>::Error> {
+        self.journaled_state.storage_value_unwarmed(address, key)
+    }
+
     fn sstore(
         &mut self,
         address: Address,

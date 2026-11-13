@@ -1,13 +1,18 @@
 //! This module contains [`Context`] struct and implements [`ContextTr`] trait for it.
 use crate::{block::BlockEnv, cfg::CfgEnv, journal::Journal, tx::TxEnv, LocalContext};
 use context_interface::{
+    cfg::BlockHashSource,
     context::{ContextError, ContextSetters, SStoreResult, SelfDestructResult, StateLoad},
     journaled_state::AccountLoad,
     Block, Cfg, ContextTr, Host, JournalTr, LocalContextTr, Transaction, TransactionType,
 };
 use database_interface::{Database, DatabaseRef, EmptyDB, WrapDatabaseRef};
 use derive_where::derive_where;
-use primitives::{hardfork::SpecId, Address, Bytes, Log, StorageKey, StorageValue, B256, U256};
+use primitives::{
+    eip2935::{HISTORY_SERVE_WINDOW, HISTORY_STORAGE_ADDRESS},
+    hardfork::SpecId,
+    Address, Bytes, Log, StorageKey, StorageValue, B256, U256,
+};
 
 /// EVM context contains data that EVM needs for execution.
 #[derive_where(Clone, Debug; BLOCK, CFG, CHAIN, TX, DB, JOURNAL, <DB as Database>::Error, LOCAL)]
@@ -519,13 +524,51 @@ impl<
 
     /* Database */
 
+    /// Returns the hash of block `requested_number` from the source the configuration selects.
+    ///
+    /// With [`BlockHashSource::HistoryContract`] the hash is slot
+    /// `requested_number % HISTORY_SERVE_WINDOW` of the EIP-2935 history contract, read with
+    /// [`JournalTr::storage_value_unwarmed`]: the journal is read before the database because the
+    /// history write of the current block is in the journal until the block's state is finalized,
+    /// and the read neither warms nor journals the slot, so `BLOCKHASH` keeps its fixed gas.
     fn block_hash(&mut self, requested_number: u64) -> Option<B256> {
-        self.db_mut()
-            .block_hash(requested_number)
-            .map_err(|e| {
-                *self.error() = Err(e.into());
-            })
-            .ok()
+        match self.cfg().block_hash_source() {
+            BlockHashSource::Database => self
+                .db_mut()
+                .block_hash(requested_number)
+                .map_err(|e| {
+                    *self.error() = Err(e.into());
+                })
+                .ok(),
+            BlockHashSource::HistoryContract { floor } => {
+                let slot = requested_number % HISTORY_SERVE_WINDOW;
+                let value = match self
+                    .journal_mut()
+                    .storage_value_unwarmed(HISTORY_STORAGE_ADDRESS, StorageKey::from(slot))
+                {
+                    Ok(value) => value,
+                    Err(e) => {
+                        *self.error() = Err(e.into());
+                        return None;
+                    }
+                };
+                if !value.is_zero() {
+                    return Some(B256::from(value));
+                }
+                if requested_number < floor {
+                    // No EVM block recorded this height.
+                    return Some(B256::ZERO);
+                }
+                // The host writes each block's parent hash before the block's transactions, so
+                // every height from `floor` within the opcode's 256-block range has a non-zero slot.
+                *self.error() = Err(ContextError::Custom(std::format!(
+                    "BLOCKHASH({requested_number}): slot {slot} of the EIP-2935 history contract \
+                     at {HISTORY_STORAGE_ADDRESS} is zero, and the contract holds the hash of \
+                     every block from the floor {floor}"
+                )));
+                None
+            }
+        }
     }
 
     /* Journal */

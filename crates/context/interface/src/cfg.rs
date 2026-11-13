@@ -113,6 +113,35 @@ impl ExecutionMode {
     }
 }
 
+/// Where the host reads the block hashes that the `BLOCKHASH` opcode returns.
+///
+/// The opcode asks the host only for the 256 blocks before the current one; it returns zero for
+/// every other height without asking. This setting selects how the host answers for those 256.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Default)]
+pub enum BlockHashSource {
+    /// `Database::block_hash`, as upstream `revm` reads it.
+    #[default]
+    Database,
+    /// Slot `n % HISTORY_SERVE_WINDOW` of the EIP-2935 history contract at
+    /// `HISTORY_STORAGE_ADDRESS`, which holds the hash of block `n`.
+    ///
+    /// The slot is read through the journal before the database, because the history write of the
+    /// current block, which stores the parent's hash, stays in the journal until the block's state
+    /// is finalized. The read neither loads nor warms the contract's account or slot, and adds no
+    /// journal entry, so `BLOCKHASH` keeps its fixed 20 gas and leaves the gas of later reads of
+    /// the same slot unchanged. This is Ethereum mainnet's pricing; EIP-7709 (Draft) would charge
+    /// the storage read in addition.
+    ///
+    /// A zero slot for a block below `floor` is returned as a zero hash. A zero slot for a block
+    /// at or above `floor` is a host error.
+    HistoryContract {
+        /// The lowest block height whose hash the history contract holds: the height of the block
+        /// that applied the genesis of the EVM, or `0` for a chain whose EVM began at its genesis.
+        floor: u64,
+    },
+}
+
 /// Configuration for the EVM.
 #[auto_impl(&, &mut, Box, Arc)]
 pub trait Cfg {
@@ -170,6 +199,9 @@ pub trait Cfg {
 
     /// Returns whether the automation mode is enabled.
     fn execution_mode(&self) -> &ExecutionMode;
+
+    /// Returns where the host reads the block hashes that `BLOCKHASH` returns.
+    fn block_hash_source(&self) -> BlockHashSource;
 }
 
 /// What bytecode analysis to perform
