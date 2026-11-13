@@ -14,7 +14,8 @@ library LibCommon {
     /// that change only with that code: a contract change that moves a cost re-runs
     /// `test/CycleTransitionGas.t.sol` and re-derives them in the same upgrade.
     /// @dev Inlined into every facet that sizes records (CoreViewFacet's view, ConfigFacet's
-    ///      pre-checks), so an upgrade that changes them replaces both facets in one cut.
+    ///      pre-checks). The transition code they measure is inlined into CoreFacet through
+    ///      LibCore, so an upgrade that changes them replaces all three facets in one cut.
     ///      Derived from `test/CycleTransitionGas.t.sol` at a registry of
     ///      `RECORD_GAS_BENCHMARK_CAPACITY` (400) tasks. Each measured call runs as its own
     ///      transaction after the registrations, and its execution gas is taken before refunds,

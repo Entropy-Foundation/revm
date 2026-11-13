@@ -442,8 +442,9 @@ count      = budget > reserve ? (budget − reserve) / taskGas : 0
 The three gas figures are constants in `LibCommon`, derived from this benchmark at 400
 tasks. They measure the transition code itself, so they change only with that code: a
 contract change that moves a cost fails the benchmark's assertions, and the upgrade that
-carries it re-derives the figures. The constants are inlined into CoreViewFacet (the view) and
-ConfigFacet (the pre-checks), so such an upgrade replaces both facets in one cut.
+carries it re-derives the figures. The transition code is inlined into CoreFacet (through
+LibCore) and the constants into CoreViewFacet (the view) and ConfigFacet (the pre-checks), so
+such an upgrade replaces all three facets in one cut.
 
 | Figure | Value | Derived from |
 | --- | --- | --- |
@@ -529,7 +530,7 @@ cycle boundary; the fourth is outside the registry.
 | Capacity (`taskCapacity + sysTaskCapacity`, part of the config) | `ConfigFacet.updateConfigBuffer` | `getConfig`, `getConfigBuffer` | any cycle state | next cycle boundary |
 | Data-length caps | `ConfigFacet.updateDataLengthCaps` | `getDataLengthCaps`, `getDataLengthCapsBuffer`, `getTaskStoredWordsBound` | any cycle state | next cycle boundary |
 | Record sizing parameters (`taskSupportPercentage`, `maxCapacity`) | `ConfigFacet.updateRecordSizingParameters` | `getRecordSizingParameters`, `getRecordSizingParametersBuffer` | any cycle state | next cycle boundary |
-| Gas figures (`LibCommon.RECORD_GAS_*`) | contract upgrade replacing CoreViewFacet and ConfigFacet together | the guide's "Gas figures and record sizing parameters" | — | when the upgrade executes |
+| Gas figures (`LibCommon.RECORD_GAS_*`) | contract upgrade replacing CoreFacet, CoreViewFacet and ConfigFacet together | the guide's "Gas figures and record sizing parameters" | — | when the upgrade executes |
 | Per-transaction gas cap | gas-schedule governance, outside the registry | `ISupraEvmGasConfig.txGasLimitCap` | — | at an epoch change |
 
 Each setter fully replaces its own buffer: a second call before the boundary overwrites the
@@ -573,8 +574,8 @@ finalizes, including for a node that restarts mid-transition and re-reads the vi
   lower `taskSupportPercentage`. It applies at the next boundary; a transition already in
   progress keeps its record size, and a record that fails is retried as single-task records
   by the node.
-- *Change the gas figures:* contract upgrade that re-runs this benchmark, replaces CoreViewFacet
-  and ConfigFacet in one cut, and updates the pinned bytecode hashes for genesis.
+- *Change the gas figures:* contract upgrade that re-runs this benchmark, replaces CoreFacet
+  (the transition code), CoreViewFacet and ConfigFacet in one cut, and updates the pinned bytecode hashes for genesis.
 - *Lower the per-transaction cap:* nothing in the registry re-checks it. Check
   `getRecordMaxTaskCount(newCap)` beforehand; a result of 0 means the node will pause
   automation once the cap applies.

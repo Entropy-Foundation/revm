@@ -14,14 +14,14 @@ import {LibDiamond} from "../libraries/LibDiamond.sol";
 /// @dev The registry's cycle-state views are served by CoreViewFacet
 /// (Entropy-Foundation/smr-moonshot#4989), which keeps this facet's deployed bytecode clear of
 /// EIP-170's 24,576-byte limit.
-/// After that split this facet is still the largest contract in the genesis set (21,957 bytes
-/// under the production profile, 2,619 bytes below the limit), and any change to it, or to a
-/// library it inlines (LibCore, LibAccounting, LibCommon), can grow its deployed bytecode. A new
-/// external function therefore belongs in a facet of its own rather than in this one. When a
-/// change here would bring this facet close to the limit, the next step is to move
-/// `removeRegisteredTask` and the removal paths it alone reaches into a separate facet, as the
-/// views were moved to CoreViewFacet; the node calls it by selector through the diamond, so a
-/// move keeps the selector unchanged.
+/// This facet is still the largest contract in the genesis set (foundry.toml records the
+/// optimizer_runs values at which it fits, and EIP170_DEPLOYED_CODE_LIMIT in build_utils_impl.rs
+/// rejects a build in which it does not), and any change to it, or to a library it inlines (LibCore,
+/// LibAccounting, LibCommon), can grow its deployed bytecode. A new external function therefore
+/// belongs in a facet of its own rather than in this one. When a change here would bring this
+/// facet close to the limit, the next step is to move `removeRegisteredTask` and the removal
+/// paths it alone reaches into a separate facet, as CoreViewFacet serves the views; the node
+/// calls it by selector through the diamond, so a move keeps the selector unchanged.
 contract CoreFacet is ICoreFacet, IFacetSelectors {
     using LibUtils for address;
 

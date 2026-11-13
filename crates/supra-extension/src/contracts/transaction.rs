@@ -78,8 +78,10 @@ impl Debug for GenesisTransaction {
 /// `deployment_rank` states that order and is the only thing that decides it. Declaration
 /// order and any discriminant a variant might carry do not enter into it.
 ///
-/// Serde encodes this enum by declaration position, so a variant belongs at the end of the list
-/// whatever position it is given in the deployment order.
+/// Serde encodes this enum by declaration position. Until a genesis built with this enum is
+/// released, a variant is declared next to the contracts it belongs with; once one is released,
+/// a new variant goes at the end of the list whatever position it is given in the deployment
+/// order, so that released genesis files still decode.
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(missing_docs)]
 pub enum GenesisTransactionTags {
