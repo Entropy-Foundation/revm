@@ -3,6 +3,10 @@ pragma solidity 0.8.34;
 
 import {LibCommon} from "../libraries/LibCommon.sol";
 
+/// @notice Events, errors and state-changing functions of CoreFacet.
+/// @dev The cycle-state views are declared on ICoreViewFacet
+///      (Entropy-Foundation/smr-moonshot#4989); callers cast the diamond to that interface to
+///      call them.
 interface ICoreFacet {
     // =============================================================
     //                          Events
@@ -163,17 +167,6 @@ interface ICoreFacet {
     /// @notice `removeRegisteredTask` was given a {LibCommon.TaskRemovalReason} that
     /// {LibCore.handleTasksRemoval} has no handling for.
     error UnsupportedTaskRemovalReason();
-
-    // =============================================================
-    //                      View functions
-    // =============================================================
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommon.CycleState);
-    function getCycleDuration() external view returns (uint64);
-    function getTransitionInfo() external view returns (uint64, uint128);
-    function isAutomationEnabled() external view returns (bool);
-    function isAutomationReadyEnabled() external view returns (bool);
-    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory);
-    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64);
 
     // =============================================================
     //                  State update functions

@@ -41,7 +41,7 @@ struct DataLengthCaps {
 
 /// @notice Owner-set parameters that, with the benchmark-derived gas figures in `LibCommon`
 /// (`RECORD_GAS_PER_TASK`, `RECORD_GAS_PER_STORED_WORD`, `RECORD_FINALIZATION_GAS_PER_TASK`),
-/// size a `processTasks` bookkeeping record (`CoreFacet.getRecordMaxTaskCount`,
+/// size a `processTasks` bookkeeping record (`CoreViewFacet.getRecordMaxTaskCount`,
 /// Entropy-Foundation/smr-moonshot#4755); see `LibCommon.recordMaxTaskCount` for the formula.
 /// @dev The gas figures measure the code of the transition itself, so they change only with that
 ///      code, through a contract upgrade that re-runs `test/CycleTransitionGas.t.sol`. These two
@@ -215,7 +215,7 @@ struct AppStorage {
     bool ifDataLengthCapsBufferExists;
 
     /// @notice Upper bound on the storage words of payload, predicate and auxData any task in
-    /// the registry holds (`LibCommon.recordStoredWords`), which `CoreFacet.getRecordMaxTaskCount`
+    /// the registry holds (`LibCommon.recordStoredWords`), which `CoreViewFacet.getRecordMaxTaskCount`
     /// sizes records with. It is the bound of the caps in force, except during the transition
     /// that applies lower caps: the tasks registered under the higher caps are still in the
     /// registry until that transition drops them, so the bound stays at the higher caps until
@@ -234,7 +234,7 @@ struct AppStorage {
     bool ifRecordSizingParametersBufferExists;
 
     /// @notice Owner-configurable parameters from which, with the gas figures in `LibCommon`,
-    /// `CoreFacet.getRecordMaxTaskCount` derives how many tasks one `processTasks` bookkeeping
+    /// `CoreViewFacet.getRecordMaxTaskCount` derives how many tasks one `processTasks` bookkeeping
     /// record may carry (Entropy-Foundation/smr-moonshot#4755); see `RecordSizingParameters`.
     /// Double-buffered like `configuration` and `dataLengthCaps`:
     /// the `ACTIVE_ENTRY` holds the parameters in force

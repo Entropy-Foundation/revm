@@ -1,19 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.34;
 
-import {AppStorage, LibAppStorage, TransitionState} from "../libraries/LibAppStorage.sol";
+import {AppStorage, LibAppStorage} from "../libraries/LibAppStorage.sol";
 import {LibCommon} from "../libraries/LibCommon.sol";
 import {LibCore} from "../libraries/LibCore.sol";
 import {LibUtils} from "../libraries/LibUtils.sol";
 import {ICoreFacet} from "../interfaces/ICoreFacet.sol";
 import {IFacetSelectors} from "../interfaces/IFacetSelectors.sol";
-import {IRegistryStatus} from "../interfaces/IRegistryStatus.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+/// @notice Cycle bookkeeping and automation enablement for the automation registry: the VM signer's
+/// per-block and per-transition calls, and the owner's enable/disable switch.
+/// @dev The registry's cycle-state views are served by CoreViewFacet
+/// (Entropy-Foundation/smr-moonshot#4989), which keeps this facet's deployed bytecode clear of
+/// EIP-170's 24,576-byte limit.
+/// This facet is still the largest contract in the genesis set (foundry.toml records the
+/// optimizer_runs values at which it fits, and EIP170_DEPLOYED_CODE_LIMIT in build_utils_impl.rs
+/// rejects a build in which it does not), and any change to it, or to a library it inlines (LibCore,
+/// LibAccounting, LibCommon), can grow its deployed bytecode. A new external function therefore
+/// belongs in a facet of its own rather than in this one. When a change here would bring this
+/// facet close to the limit, the next step is to move `removeRegisteredTask` and the removal
+/// paths it alone reaches into a separate facet, as CoreViewFacet serves the views; the node
+/// calls it by selector through the diamond, so a move keeps the selector unchanged.
 contract CoreFacet is ICoreFacet, IFacetSelectors {
     using LibUtils for address;
-    using EnumerableSet for EnumerableSet.UintSet;
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VM FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -86,87 +96,6 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
         emit AutomationDisabled(s.automationEnabled);
     }
 
-    // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: VIEW FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-    /// @notice Returns the index, start time, duration and state of the current cycle. 
-    function getCycleInfo() external view returns (uint64, uint64, uint64, LibCommon.CycleState) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        return (s.index, s.startTime, s.durationSecs, s.cycleState);
-    }
-
-    /// @notice Returns the duration of the current cycle.
-    function getCycleDuration() external view returns (uint64) {
-        AppStorage storage s = LibAppStorage.appStorage();
-        return s.durationSecs;
-    }
-
-    /// @notice Returns the refund duration and automation fee per sec of the transition state.
-    /// @return Refund duration
-    /// @return Automation fee per sec
-    function getTransitionInfo() external view returns (uint64, uint128) {
-        TransitionState storage transitionState = LibAppStorage.transitionState();
-        return (transitionState.refundDuration, transitionState.automationFeePerSec);
-    }
-
-    /// @notice Returns the index, start time, duration, state, transition details if any of the current cycle.
-    /// @dev Node's off-chain automation registry manager relies on existence of it.
-    /// Update/Replace is acceptable,  but removal should be checked against node-runtime first.
-    function getCycleStateDetails() external view returns (LibCommon.CycleDetails memory details)  {
-        AppStorage storage s = LibAppStorage.appStorage();
-        details.index = s.index;
-        details.startTime = s.startTime;
-        details.durationSecs = s.durationSecs;
-        details.state = s.cycleState;
-        TransitionState storage transitionState = LibAppStorage.transitionState();
-        details.nextTaskIndexPosition = transitionState.nextTaskIndexPosition;
-        details.expectedTasksToBeProcessed = transitionState.expectedTasksToBeProcessed;
-    }
-
-    /// @notice Returns the number of tasks one `processTasks` bookkeeping record with gas limit
-    /// `_recordGasLimit` may carry (Entropy-Foundation/smr-moonshot#4755). The node passes the
-    /// gas limit it builds the record with, the epoch's per-transaction cap, and chunks a
-    /// transition's tasks into records of this many tasks. The Move registry's counterpart is
-    /// `automation_registry::get_record_max_task_count`.
-    /// @dev The count is `LibCommon.recordMaxTaskCount` over the benchmark-derived gas figures in
-    ///      `LibCommon`, the owner-set task-support percentage
-    ///      (`ConfigFacet.updateRecordSizingParameters`), the registry's stored-words bound
-    ///      (`AppStorage.taskStoredWordsBound`) and the active config's capacity. All are the
-    ///      ones the transition runs under: `monitorCycleEnd` applies buffered caps, parameters
-    ///      and config before the transition's first `processTasks`, and keeps the bound at the higher caps
-    ///      until a transition that applies lower caps has dropped the tasks above them. Returns 0
-    ///      when no record at this gas limit can carry a task, and the node then pauses
-    ///      automation. Reverts with `LibCommon.InvalidRecordSizingParameters` if the parameters
-    ///      were never set.
-    ///      Node's off-chain automation registry manager relies on existence of this function.
-    ///      Update/Replace is acceptable, but removal should be checked against node-runtime first.
-    /// @param _recordGasLimit Gas limit of the record.
-    function getRecordMaxTaskCount(uint64 _recordGasLimit) external view returns (uint64) {
-        return LibCommon.recordMaxTaskCount(
-            _recordGasLimit,
-            LibAppStorage.activeRecordSizingParameters().taskSupportPercentage,
-            LibAppStorage.appStorage().taskStoredWordsBound,
-            LibCommon.recordCapacity(LibAppStorage.activeConfig())
-        );
-    }
-
-    /// @notice Returns if automation is enabled.
-    function isAutomationEnabled() public view returns (bool) {
-        return LibAppStorage.appStorage().automationEnabled;
-    }
-
-    /// @notice Returns true only if the Automation Registry is both fully initialized
-    /// (see IRegistryStatus.isInitialized) and automation is currently enabled -- a single
-    /// combined readiness check for callers (e.g. node-runtime) that need both facts before
-    /// treating the registry as usable.
-    /// @dev Calls isInitialized() through the diamond (address(this)), not a private copy of
-    /// that check, so this always reflects whichever facet currently serves that selector --
-    /// it can't drift out of sync after a future diamondCut replaces the loupe facet alone.
-    /// Node's off-chain automation registry manager relies on existence of this function.
-    /// Update/Replace is acceptable, but removal should be checked against node-runtime first.
-    function isAutomationReadyEnabled() external view returns (bool) {
-        return IRegistryStatus(address(this)).isInitialized() && isAutomationEnabled();
-    }
-
     /// @notice Removes a registered task on the VM signer's request.
     /// @dev The node's off-chain VM-signer decoder hardcodes this function's selector and calls
     ///      it when a task fails at runtime, and when the EVM gas config of a new epoch no longer
@@ -214,18 +143,11 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
 
 
     function getSelectors() external pure override returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](12);
+        selectors = new bytes4[](5);
         selectors[0] = CoreFacet.processTasks.selector;
         selectors[1] = CoreFacet.monitorCycleEnd.selector;
         selectors[2] = CoreFacet.enableAutomation.selector;
         selectors[3] = CoreFacet.disableAutomation.selector;
         selectors[4] = CoreFacet.removeRegisteredTask.selector;
-        selectors[5] = CoreFacet.getCycleInfo.selector;
-        selectors[6] = CoreFacet.getCycleDuration.selector;
-        selectors[7] = CoreFacet.getTransitionInfo.selector;
-        selectors[8] = this.isAutomationEnabled.selector;
-        selectors[9] = CoreFacet.getCycleStateDetails.selector;
-        selectors[10] = CoreFacet.isAutomationReadyEnabled.selector;
-        selectors[11] = CoreFacet.getRecordMaxTaskCount.selector;
     }
 }

@@ -472,11 +472,11 @@ library LibCore {
             }
         }
 
-        uint64[] memory removedTasks = new uint64[](removedCount);
-        for (uint256 j = 0; j < removedCount; j++) {
-            removedTasks[j] = removedBuffer[j];
-        }
-        intermediateState.removedTasks = removedTasks;
+        // Shrink the buffer's length in place to the removed count. removedCount is at most the
+        // length the buffer was allocated with, so the array stays within its own allocation;
+        // the words past the new length are left unused.
+        assembly ("memory-safe") { mstore(removedBuffer, removedCount) }
+        intermediateState.removedTasks = removedBuffer;
     }
 
     /// @notice Drops or charges the input task.
@@ -511,12 +511,7 @@ library LibCore {
 
         // Task is cancelled or expired
         if (task.taskState == LibCommon.TaskState.CANCELLED || _currentTime >= task.expiryTime) {
-            if (isUst) {
-                LibAccounting.refundDepositAndDrop(_taskIndex, task.owner, task.depositFee, task.depositFee);
-            } else {
-                // Remove the task from registry and system registry
-                LibCommon.removeTask(_taskIndex, task.owner, true, false);
-            }
+            dropWithWholeDeposit(_taskIndex, task);
             result.isRemoved = true;
         } else if (!isAdmittedByGasConfig(task, _txGasLimitCap, _minGasPrice)) {
             // The EVM gas config changed at an epoch boundary since the task was registered, and
@@ -557,7 +552,7 @@ library LibCore {
             // For more details see calculateTaskFee function.
 
             registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
-            (result.isRemoved, result.gas, result.fees, result.committedToNextCycle) = tryWithdrawTaskAutomationFee(
+            result = tryWithdrawTaskAutomationFee(
                 _cycleIndex,
                 _taskIndex,
                 task.owner,
@@ -573,6 +568,10 @@ library LibCore {
     }
 
     /// @notice Helper function to withdraw automation task fees for an active task.
+    /// @dev Returns its outcome as a TransitionResult that starts zeroed: isRemoved when the task
+    ///      is dropped; fees, gas and committedToNextCycle when it is charged. Returning one
+    ///      struct instead of several values keeps dropOrChargeTasks, which the optimizer inlines
+    ///      this into, within the EVM stack limit.
     /// @param _cycleIndex Index of the cycle the fee pays for, reported by TaskCycleFeeWithdraw.
     /// @param _taskIndex Index of the task.
     /// @param _owner Owner of the task.
@@ -583,10 +582,7 @@ library LibCore {
     /// @param _currentCycleEndTime End time of the current cycle.
     /// @param _automationFeeCapForCycle Max automation fee for a cycle to be paid.
     /// @param _regHash Tx hash of the task.
-    /// @return Bool representing if the task was removed.
-    /// @return Amount to add to gasCommittedForNextCycle 
-    /// @return Amount to add to cycleLockedFees 
-    /// @return Whether the task is committed to the cycle after the one being entered
+    /// @return result The task's outcome for this transition.
     function tryWithdrawTaskAutomationFee(
         uint64 _cycleIndex,
         uint64 _taskIndex,
@@ -598,21 +594,17 @@ library LibCore {
         uint64 _currentCycleEndTime,
         uint128 _automationFeeCapForCycle,
         bytes32 _regHash
-    ) private returns (bool, uint128, uint128, bool) {
+    ) private returns (LibCommon.TransitionResult memory result) {
         AppStorage storage s = LibAppStorage.appStorage();
 
         // Remove the automation task if the cycle fee cap is exceeded.
         // It might happen that task has been expired by the time charging is being done.
         // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
         
-        bool isRemoved;
-        bool committedToNextCycle;
-        uint128 gas;
-        uint128 fees;
         if (_fee > _automationFeeCapForCycle) {
             LibAccounting.refundDepositAndDrop(_taskIndex, _owner, _depositRefund, _depositRefund);
 
-            isRemoved = true;
+            result.isRemoved = true;
 
             emit ICoreFacet.TaskCancelledCapacitySurpassed(
                 _taskIndex,
@@ -633,7 +625,7 @@ library LibCore {
                 LibAccounting.safeUnlockLockedDeposit(_taskIndex, _depositRefund);
                 LibCommon.removeTask(_taskIndex, _owner, false, false);
 
-                isRemoved = true;
+                result.isRemoved = true;
 
                 emit ICoreFacet.TaskCancelledInsufficientBalanceAllowance(
                     _taskIndex,
@@ -649,7 +641,7 @@ library LibCore {
                     bool sent = IERC20(erc20Supra).transferFrom(_owner, address(this), _fee);
                     if (!sent) { revert ICoreFacet.TransferFailed(); }
 
-                    fees = _fee;
+                    result.fees = _fee;
                 }
               
                 // The fee pays for the cycle the transition enters: onCycleTransition's validated
@@ -663,13 +655,12 @@ library LibCore {
 
                 // Calculate gas commitment for the next cycle only for valid active tasks
                 if (_expiryTime > _currentCycleEndTime) {
-                    gas = _maxGasAmount;
-                    committedToNextCycle = true;
+                    result.gas = _maxGasAmount;
+                    result.committedToNextCycle = true;
                 }
             }
         }
 
-        return (isRemoved, gas, fees, committedToNextCycle);
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

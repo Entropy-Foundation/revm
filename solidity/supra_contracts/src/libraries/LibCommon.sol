@@ -8,13 +8,14 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    /// @notice Benchmark-derived gas figures from which `CoreFacet.getRecordMaxTaskCount` sizes a
+    /// @notice Benchmark-derived gas figures from which `CoreViewFacet.getRecordMaxTaskCount` sizes a
     /// `processTasks` record (Entropy-Foundation/smr-moonshot#4755), with the owner-set
     /// `RecordSizingParameters`. They measure the transition code itself, so they are constants
     /// that change only with that code: a contract change that moves a cost re-runs
     /// `test/CycleTransitionGas.t.sol` and re-derives them in the same upgrade.
-    /// @dev Inlined into every facet that sizes records (CoreFacet's view, ConfigFacet's
-    ///      pre-checks), so an upgrade that changes them replaces both facets in one cut.
+    /// @dev Inlined into every facet that sizes records (CoreViewFacet's view, ConfigFacet's
+    ///      pre-checks). The transition code they measure is inlined into CoreFacet through
+    ///      LibCore, so an upgrade that changes them replaces all three facets in one cut.
     ///      Derived from `test/CycleTransitionGas.t.sol` at a registry of
     ///      `RECORD_GAS_BENCHMARK_CAPACITY` (400) tasks. Each measured call runs as its own
     ///      transaction after the registrations, and its execution gas is taken before refunds,
@@ -386,7 +387,7 @@ library LibCommon {
     ///      and a buffer only changes what is in force when it applies, so the combination in force
     ///      after the boundary has been checked whatever order the setters were called in. The
     ///      per-transaction cap itself is governed in the gas schedule and can fall later;
-    ///      `CoreFacet.getRecordMaxTaskCount` then returns 0 and the node pauses automation. Not
+    ///      `CoreViewFacet.getRecordMaxTaskCount` then returns 0 and the node pauses automation. Not
     ///      called from `DiamondInit`: the registry is initialised before the gas config
     ///      precompile serves a value, both at genesis and in the test fixtures.
     function requireRecordSizingFits(

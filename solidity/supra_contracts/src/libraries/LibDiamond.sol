@@ -157,14 +157,15 @@ library LibDiamond {
     // The following functions are also utilized by the node's off-chain logic to manage automation registry at runtime
     // And should not be removed unless node binary and automation registry runtime management is updated accordingly:
     //    - DiamondLoupeFacet::isInitialized
-    //    - CoreFacet::getCycleStateDetails
+    //    - CoreViewFacet::getCycleStateDetails
+    //    - CoreViewFacet::getRecordMaxTaskCount
     //    - RegistryViewFacet::getTaskDetails
     //    - RegistryViewFacet::getTaskIdList
     //    - RegistryViewFacet::getActiveTaskIds
-    //    - CoreFacet::isAutomationReadyEnabled
+    //    - CoreViewFacet::isAutomationReadyEnabled
     // Whoever operates diamondCut post-genesis must never submit a Remove action for
     // these selectors (Replace, to ship a fix, is fine and unaffected by
-    // this note) — see CoreFacet.sol for the selector list.
+    // this note) — see CoreFacet.sol and CoreViewFacet.sol for the selector lists.
     function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();

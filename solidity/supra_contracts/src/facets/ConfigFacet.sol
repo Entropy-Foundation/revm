@@ -269,7 +269,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     }
 
     /// @notice Buffers new owner-set parameters from which, with the benchmark-derived gas figures
-    /// in `LibCommon`, `CoreFacet.getRecordMaxTaskCount` sizes a `processTasks` bookkeeping record
+    /// in `LibCommon`, `CoreViewFacet.getRecordMaxTaskCount` sizes a `processTasks` bookkeeping record
     /// (Entropy-Foundation/smr-moonshot#4755); see `RecordSizingParameters`. Like a config change,
     /// they apply at the next cycle boundary, before the node sizes that transition's records,
     /// and a second call before the boundary replaces the buffer.
@@ -334,7 +334,7 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     }
 
     /// @notice Returns the upper bound on the storage words any task in the registry holds, which
-    /// `CoreFacet.getRecordMaxTaskCount` sizes records with (`AppStorage.taskStoredWordsBound`).
+    /// `CoreViewFacet.getRecordMaxTaskCount` sizes records with (`AppStorage.taskStoredWordsBound`).
     function getTaskStoredWordsBound() external view returns (uint32) {
         return LibAppStorage.appStorage().taskStoredWordsBound;
     }

@@ -8,8 +8,8 @@ The contracts the Supra EVM deploys at genesis (`crates/supra-extension/src/cont
 - `BlockMeta`, behind an `ERC1967Proxy`. Runs its registered `(target, selector, gasLimit)` entries
   once per block from the `BlockMetadata` system transaction (`blockPrologue`).
 - The automation registry, an EIP-2535 `Diamond` (`AutomationRegistry`) with `DiamondCutFacet`,
-  `DiamondLoupeFacet`, `OwnershipFacet`, `ConfigFacet`, `RegistryFacet`, `RegistryViewFacet` and
-  `CoreFacet`.
+  `DiamondLoupeFacet`, `OwnershipFacet`, `ConfigFacet`, `RegistryFacet`, `RegistryViewFacet`,
+  `CoreFacet` and `CoreViewFacet`.
 
 The tooling is [Foundry](https://book.getfoundry.sh/).
 

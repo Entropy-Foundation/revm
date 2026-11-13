@@ -6,6 +6,7 @@ import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 
@@ -193,7 +194,7 @@ contract EnableDisableAutomation is GovSubmitAction {
         // enableAutomation and disableAutomation are owner-only, and each reverts when the
         // feature is already in the requested state.
         requireOwnedByWallet(automationRegistry, "AutomationRegistry");
-        bool enabled = ICoreFacet(automationRegistry).isAutomationEnabled();
+        bool enabled = ICoreViewFacet(automationRegistry).isAutomationEnabled();
         console.log("Automation enabled: ", enabled);
         require(enabled != enable, "Automation is already in the requested state");
 

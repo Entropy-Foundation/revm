@@ -5,6 +5,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {SupraContractsBindings} from "../src/SupraContractsBindings.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -160,7 +161,7 @@ contract RegistryViewFacetTest is BaseDiamondTest {
         IRegistryFacet(diamondAddr).cancelTasks(single);
         assertTrue(registry.hasActiveTaskOfType(alice, 1, LibCommon.TaskType.UST), "cancelled");
 
-        (uint64 cycleIndex, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 cycleIndex, , , ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.prank(LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).removeRegisteredTask(
             cycleIndex, 2, LibCommon.TaskRemovalReason.ERROR, "MalformedPayload"

@@ -9,6 +9,7 @@ import {MultiSignatureWallet} from "../src/MultiSignatureWallet.sol";
 import {MultisigBeacon} from "../src/MultisigBeacon.sol";
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
@@ -310,7 +311,7 @@ contract GovActionsTest is Test {
     }
 
     function test_enableIsSubmittedWhenAutomationIsDisabled() public {
-        vm.mockCall(registry, abi.encodeCall(ICoreFacet.isAutomationEnabled, ()), abi.encode(false));
+        vm.mockCall(registry, abi.encodeCall(ICoreViewFacet.isAutomationEnabled, ()), abi.encode(false));
         EnableDisableAutomationHarness script = new EnableDisableAutomationHarness();
         script.configure(payable(address(wallet)), registry, true);
 
@@ -322,7 +323,7 @@ contract GovActionsTest is Test {
     }
 
     function test_disableIsSubmittedWhenAutomationIsEnabled() public {
-        vm.mockCall(registry, abi.encodeCall(ICoreFacet.isAutomationEnabled, ()), abi.encode(true));
+        vm.mockCall(registry, abi.encodeCall(ICoreViewFacet.isAutomationEnabled, ()), abi.encode(true));
         EnableDisableAutomationHarness script = new EnableDisableAutomationHarness();
         script.configure(payable(address(wallet)), registry, false);
 
@@ -334,7 +335,7 @@ contract GovActionsTest is Test {
 
     function test_refusesToEnableOnARegistryTheWalletDoesNotOwn() public {
         vm.mockCall(registry, abi.encodeCall(IERC173.owner, ()), abi.encode(address(this)));
-        vm.mockCall(registry, abi.encodeCall(ICoreFacet.isAutomationEnabled, ()), abi.encode(false));
+        vm.mockCall(registry, abi.encodeCall(ICoreViewFacet.isAutomationEnabled, ()), abi.encode(false));
         EnableDisableAutomationHarness script = new EnableDisableAutomationHarness();
         script.configure(payable(address(wallet)), registry, true);
 
@@ -344,7 +345,7 @@ contract GovActionsTest is Test {
     }
 
     function test_refusesToRequestTheStateAutomationIsAlreadyIn() public {
-        vm.mockCall(registry, abi.encodeCall(ICoreFacet.isAutomationEnabled, ()), abi.encode(true));
+        vm.mockCall(registry, abi.encodeCall(ICoreViewFacet.isAutomationEnabled, ()), abi.encode(true));
         EnableDisableAutomationHarness script = new EnableDisableAutomationHarness();
         script.configure(payable(address(wallet)), registry, true);
 

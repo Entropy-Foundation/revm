@@ -6,6 +6,7 @@ import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Deployment, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
@@ -99,7 +100,7 @@ contract TaskMetadataLWGasTest is BaseDiamondTest {
     /// @dev Warps to cycle end, finalizes it, and charges the sole task (index 0) on `_diamond`,
     /// returning the gas used by that single `processTasks` call.
     function chargeSoleTaskAndMeasureGas(address _diamond) internal returns (uint256 gasUsed) {
-        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore,) = ICoreFacet(_diamond).getCycleInfo();
+        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore,) = ICoreViewFacet(_diamond).getCycleInfo();
         vm.warp(startTimeBefore + durationBefore);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
