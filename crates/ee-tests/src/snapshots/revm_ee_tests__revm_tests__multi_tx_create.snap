@@ -132,7 +132,7 @@ expression: "&(result1, result2, result3, output)"
       },
       "transaction_id": 2,
       "storage": {},
-      "status": "Created | CreatedLocal | SelfDestructed | Touched | LoadedAsNotExisting",
+      "status": "Created | CreatedLocal | Touched | LoadedAsNotExisting",
       "original_info": {
         "balance": "0x0",
         "nonce": 0,
