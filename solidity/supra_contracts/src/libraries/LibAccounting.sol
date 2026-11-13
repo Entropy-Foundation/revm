@@ -9,9 +9,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 library LibAccounting {
+    using LibAccounting for CycleOccupancy;
 
     /// @dev Constant for 10^8
     uint256 constant DECIMAL = 100_000_000;
+
+    /// @dev 100% in the unit of the congestion percentages below: percent scaled by DECIMAL.
+    uint256 constant HUNDRED_PERCENT_SCALED = uint256(LibCommon.HUNDRED_PERCENT) * DECIMAL;
 
     /// @dev Constants describing REFUND TYPE
     uint8 constant DEPOSIT_CYCLE_FEE = 0;
@@ -24,6 +28,56 @@ library LibAccounting {
     /// @dev Divisor for refunds without penalty: the whole amount is refunded. Applied to a task
     /// removed because the EVM gas config no longer admits it (#4087).
     uint8 constant FULL_REFUND_FACTOR = 1;
+
+    /// @notice The user-task occupancy of one cycle, the limits it is measured against and the fee
+    /// parameters it is priced with: every input of a UST fee for that cycle other than the task
+    /// itself and the time interval (Entropy-Foundation/smr-moonshot#4921).
+    /// @dev The registry has two limited resources, the gas cap and the task capacity, and an
+    /// occupancy carries both. {calculateAutomationCongestionFee} prices the per-second rate on
+    /// the larger of the two shares, and {billedGas} bills a task for part of a slot's worth of
+    /// gas once the task share passes the congestion threshold.
+    /// A cycle's fees are charged at the transition into it and recomputed when a task is stopped
+    /// or removed during it, to unlock the charged fee and refund its unused part. Both use the
+    /// same occupancy, read from the per-cycle snapshots (`gasCommittedForThisCycle`,
+    /// `tasksCommittedForThisCycle`, or their transition counterparts) and never from a count that
+    /// changes during the cycle, so the recomputed fee equals the charged one.
+    struct CycleOccupancy {
+        /// Gas committed by USTs to the cycle.
+        uint128 committedGas;
+        /// Number of USTs committed to the cycle, one per task whatever its gas.
+        uint32 committedTasks;
+        /// Registry max gas cap of the cycle.
+        uint128 registryMaxGasCap;
+        /// UST capacity of the cycle.
+        uint16 taskCapacity;
+        /// Config.congestionThresholdPercentage: the share, of gas or of tasks, above which the
+        /// cycle is congested. 100 disables congestion pricing.
+        uint8 congestionThresholdPercentage;
+        /// Config.congestionExponent.
+        uint8 congestionExponent;
+        /// Config.automationBaseFeeWeiPerSec.
+        uint128 automationBaseFeeWeiPerSec;
+        /// Config.congestionBaseFeeWeiPerSec. Zero disables congestion pricing.
+        uint128 congestionBaseFeeWeiPerSec;
+    }
+
+    /// @notice A cycle's occupancy with the fee per second it was charged at, read once by a call
+    /// that prices several tasks of the same cycle (`stopTasks`, `removeTasks`, a suspension batch).
+    struct CyclePricing {
+        CycleOccupancy occupancy;
+        uint128 automationFeePerSec;
+    }
+
+    /// @notice What a stop or removal during the current cycle refunds against: the cycle's end,
+    /// the current time, the time left in the cycle and the cycle's pricing. One call builds it
+    /// once ({currentRefundContext}) for every task it removes.
+    struct RefundContext {
+        uint64 cycleEndTime;
+        uint64 currentTime;
+        /// Time left in the current cycle, the interval whose fee a refund pays back.
+        uint64 residualInterval;
+        CyclePricing pricing;
+    }
 
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: PRIVATE FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -84,61 +138,41 @@ library LibAccounting {
         return sent;
     }
 
-     /// @notice Calculates the automation fee multiplier for cycle.
-    /// @param _totalCommittedGas Total committed gas.
-    /// @param _registryMaxGasCap Registry max gas cap.
-    /// @param _automationBaseFeeWeiPerSec Automation base fee in wei per sec.
+    /// @notice Calculates the automation fee per second, base fee plus congestion fee, for a cycle
+    /// with occupancy `_occupancy`.
+    /// @param _occupancy Occupancy and fee parameters of the cycle the fee is for.
     function calculateAutomationFeeMultiplierForCycle(
-        uint128 _totalCommittedGas,
-        uint128 _registryMaxGasCap,
-        uint128 _automationBaseFeeWeiPerSec
-    ) private view returns (uint128) {
-        uint128 congesionFee = calculateAutomationCongestionFee(_totalCommittedGas, _registryMaxGasCap);
-        return (congesionFee + _automationBaseFeeWeiPerSec);
+        CycleOccupancy memory _occupancy
+    ) private pure returns (uint128) {
+        uint128 congesionFee = calculateAutomationCongestionFee(_occupancy);
+        return (congesionFee + _occupancy.automationBaseFeeWeiPerSec);
     }
 
-    /// @notice Function to calculate the automation congestion fee.
-    /// @param _totalCommittedGas Total committed gas.
-    /// @param _registryMaxGasCap Registry max gas cap.
+    /// @notice Calculates the automation congestion fee per second for a cycle with occupancy
+    /// `_occupancy`.
+    /// @dev The usage priced is the larger of the gas share (`committedGas / registryMaxGasCap`)
+    /// and the task share (`committedTasks / taskCapacity`), so a cycle whose task capacity is
+    /// taken is congested in the same way as one whose gas cap is (#4921). Above the threshold
+    /// the fee grows with the surplus as `congestionBaseFee * ((1 + surplus)^exponent - 1)`, with
+    /// the usage counted as at most 100%.
+    /// @param _occupancy Occupancy of the cycle the fee is for.
     /// @return Returns the automation congestion fee.
     function calculateAutomationCongestionFee(
-        uint128 _totalCommittedGas,
-        uint128 _registryMaxGasCap
-    ) private view returns (uint128) {
-        Config storage activeConfig = LibAppStorage.activeConfig();
+        CycleOccupancy memory _occupancy
+    ) private pure returns (uint128) {
+        if (!_occupancy.isCongestionPriced()) { return 0; }
 
-        uint8 congestionThresholdPercentage = activeConfig.congestionThresholdPercentage;
-        uint8 congestionExponent = activeConfig.congestionExponent;
-        uint128 congestionBaseFeeWeiPerSec = activeConfig.congestionBaseFeeWeiPerSec;
+        // Usage above the threshold, in percent scaled by DECIMAL; zero when not congested.
+        uint256 surplus = _occupancy.congestionSurplus();
+        if (surplus == 0) { return 0; }
 
-        if (congestionThresholdPercentage == 100 || congestionBaseFeeWeiPerSec == 0) { return 0; }
-    
-        // thresholdUsage = (totalCommittedGas / maxGasCap) * 100
-        uint256 thresholdUsageScaled = (uint256(_totalCommittedGas) * DECIMAL * 100) / uint256(_registryMaxGasCap);
-
-        uint256 thresholdPercentageScaled = uint256(congestionThresholdPercentage) * DECIMAL;
-
-        // If usage is below threshold → no congestion fee
-        if (thresholdUsageScaled <= thresholdPercentageScaled) {
-            return 0;
-        }
-
-        // Calculate how much usage exceeds threshold
-        uint256 surplus;
-        if (thresholdUsageScaled > 100 * DECIMAL) {
-            surplus = (100 * DECIMAL) - thresholdPercentageScaled;
-        } else {
-            surplus = thresholdUsageScaled - thresholdPercentageScaled;
-        }
-        uint256 surplusScaled = surplus / 100;
-
-        uint256 exponentResult = calculateExponentiation(
-            surplusScaled,
-            congestionExponent
-        );
+        // The surplus, in percent scaled by DECIMAL, divided by 100% is a fraction scaled by
+        // DECIMAL: the base of (1 + surplus)^exponent.
+        uint256 exponentResult =
+            calculateExponentiation(surplus / LibCommon.HUNDRED_PERCENT, _occupancy.congestionExponent);
 
         // Multiply base fee (wei/sec) with exponentResult and downscale by DECIMAL
-        uint256 acf = (uint256(congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
+        uint256 acf = (uint256(_occupancy.congestionBaseFeeWeiPerSec) * exponentResult) / DECIMAL;
 
         return uint128(acf);
     }
@@ -165,6 +199,108 @@ library LibAccounting {
         }
 
         return resultScaled - DECIMAL;      // subtract 1
+    }
+
+    // :::::::::::::::::::::::::::::::::::::::::::::::::: CONGESTION OF A CYCLE OCCUPANCY ::::::::::::::::::::::::::::::::::::::::::::::::::
+    //
+    // The congestion of a cycle is measured on the gas and on the task count its user tasks committed,
+    // each as a share of its limit, in percent scaled by DECIMAL and counted as at most 100%. The
+    // congestion fee is priced on the surplus of the larger share over the threshold
+    // (congestionSurplus) and the billed-gas ramp on the surplus of the task share
+    // (congestionSurplusByTasks); both apply only while isCongestionPriced.
+
+    /// @notice Whether congestion is priced for the cycle: a threshold below 100% and a non-zero
+    /// congestion base fee. Otherwise there is no congestion fee and no billed-gas ramp.
+    function isCongestionPriced(CycleOccupancy memory _occupancy) internal pure returns (bool) {
+        return _occupancy.congestionThresholdPercentage < LibCommon.HUNDRED_PERCENT
+            && _occupancy.congestionBaseFeeWeiPerSec != 0;
+    }
+
+    /// @notice The committed gas as a share of the gas cap, in percent scaled by DECIMAL, at most
+    /// 100%.
+    function congestionPercentageByGas(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return percentageOf(_occupancy.committedGas, _occupancy.registryMaxGasCap);
+    }
+
+    /// @notice The committed task count as a share of the task capacity, in percent scaled by
+    /// DECIMAL, at most 100%.
+    function congestionPercentageByTasks(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return percentageOf(_occupancy.committedTasks, _occupancy.taskCapacity);
+    }
+
+    /// @notice The congestion threshold in percent scaled by DECIMAL.
+    function congestionThreshold(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return uint256(_occupancy.congestionThresholdPercentage) * DECIMAL;
+    }
+
+    /// @notice How far the larger of the gas and task shares is above the threshold, in percent
+    /// scaled by DECIMAL; zero at or below it.
+    function congestionSurplus(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return surplusOver(
+            Math.max(_occupancy.congestionPercentageByGas(), _occupancy.congestionPercentageByTasks()),
+            _occupancy.congestionThreshold()
+        );
+    }
+
+    /// @notice How far the task share is above the threshold, in percent scaled by DECIMAL; zero at
+    /// or below it.
+    function congestionSurplusByTasks(CycleOccupancy memory _occupancy) internal pure returns (uint256) {
+        return surplusOver(_occupancy.congestionPercentageByTasks(), _occupancy.congestionThreshold());
+    }
+
+    /// @notice `_part / _whole` in percent scaled by DECIMAL, counted as at most 100%. A zero
+    /// `_whole` counts as no usage: {LibCommon.validateConfigParameters} refuses a zero gas cap or
+    /// task capacity, so it occurs only for a limit no configuration has set.
+    function percentageOf(uint256 _part, uint256 _whole) private pure returns (uint256) {
+        if (_whole == 0) { return 0; }
+        return Math.min((_part * HUNDRED_PERCENT_SCALED) / _whole, HUNDRED_PERCENT_SCALED);
+    }
+
+    /// @notice `_usage - _threshold` when the usage is above the threshold, zero otherwise.
+    function surplusOver(uint256 _usage, uint256 _threshold) private pure returns (uint256) {
+        return _usage > _threshold ? _usage - _threshold : 0;
+    }
+
+    /// @notice The gas a task is billed for in a cycle with occupancy `_occupancy`
+    /// (Entropy-Foundation/smr-moonshot#4921).
+    /// @dev A slot's worth of gas is `floorGas = registryMaxGasCap / taskCapacity`. While the task
+    /// share `s = committedTasks / taskCapacity` is at or below the congestion threshold `T`, a
+    /// task is billed its own `_maxGasAmount`. Above it, a task declaring less than `floorGas` is
+    /// billed an additional part of the difference that grows linearly with the task share:
+    ///
+    ///     billed = g + (floorGas - g) * (s - T) / (1 - T)
+    ///
+    /// so the addition is zero at the threshold and the whole difference when every slot is
+    /// taken, where a task declaring less than `floorGas` is billed exactly `floorGas`. A task
+    /// declaring `floorGas` or more is always billed its own gas. The addition is part of
+    /// congestion pricing and is disabled by what disables the congestion fee: a threshold of
+    /// 100% or a zero congestion base fee.
+    /// Worked example, `floorGas` 250,000, `T` 50%, `g` 77,000: billed 77,000 at a task share
+    /// of 50%, 111,600 at 60%, 215,400 at 90% and 250,000 at 100%.
+    /// The result depends only on `_occupancy`, so a fee recomputed during the cycle from the
+    /// cycle's snapshot bills the same gas the transition charged for.
+    /// @param _maxGasAmount The task's max gas amount.
+    /// @param _occupancy Occupancy of the cycle the fee is for.
+    function billedGas(uint128 _maxGasAmount, CycleOccupancy memory _occupancy) internal pure returns (uint128) {
+        if (!_occupancy.isCongestionPriced()) { return _maxGasAmount; }
+
+        // (s - T) in percent scaled by DECIMAL. Registration and ConfigFacet.updateConfigBuffer keep
+        // the committed count within the cycle's capacity; the task share is counted as at most
+        // 100%, so a count above it is billed as a full registry. A zero capacity has no share and
+        // so no surplus.
+        uint256 surplus = _occupancy.congestionSurplusByTasks();
+        if (surplus == 0) { return _maxGasAmount; }
+
+        uint256 floorGas = uint256(_occupancy.registryMaxGasCap) / _occupancy.taskCapacity;
+        if (_maxGasAmount >= floorGas) { return _maxGasAmount; }
+
+        // (floorGas - g) * (s - T) / (1 - T), with one rounding. isCongestionPriced keeps the
+        // threshold below 100%, so the divisor is not zero, and the surplus is at most
+        // 100% - threshold, so the addition is at most floorGas - g.
+        uint256 addition =
+            ((floorGas - _maxGasAmount) * surplus) / (HUNDRED_PERCENT_SCALED - _occupancy.congestionThreshold());
+        // At most floorGas, which is at most registryMaxGasCap, a uint128.
+        return uint128(_maxGasAmount + addition);
     }
 
     /// @notice Unlocks the locked fee paid by the task for cycle.
@@ -210,23 +346,28 @@ library LibAccounting {
     // :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @notice Refunds the deposit fee and any automation fees of the task.
+    /// @param _pricing The current cycle's occupancy and the fee per second it was charged at, read
+    /// once by the caller for all the tasks it refunds.
     function refundTaskFees(
         uint64 _currentTime,
         uint64 _refundDuration, 
-        uint128 _automationFeePerSec,
+        CyclePricing memory _pricing,
         TaskMetadataLW memory _task
     ) internal {
         RegistryState storage registryState = LibAppStorage.registryState();
 
         // Do not attempt fee refund if remaining duration is 0
         if (_task.taskState != LibCommon.TaskState.PENDING && _refundDuration != 0) {
+            // The refund is for the current cycle, so the task is billed as the transition into
+            // it charged it: against the cycle's occupancy snapshot.
             uint128 _refundFee = calculateTaskFee(
                 _task.taskState,
                 _task.expiryTime,
                 _task.maxGasAmount,
                 _refundDuration,
                 _currentTime,
-                _automationFeePerSec
+                _pricing.automationFeePerSec,
+                _pricing.occupancy
             );
             ( , uint256 remainingCycleLockedFees) = safeFeeRefund(
                     _task.taskIndex,
@@ -307,55 +448,128 @@ library LibAccounting {
         _refund(erc20Supra, _to, _amount);
     }
 
+    /// @notice Occupancy of the current cycle: the gas and task snapshots taken when the cycle
+    /// started, measured against the active configuration. A stop, removal or suspension during
+    /// the cycle recomputes the cycle's fees from it.
+    function currentCycleOccupancy() internal view returns (CycleOccupancy memory) {
+        RegistryState storage registryState = LibAppStorage.registryState();
+        return committedOccupancy(registryState.gasCommittedForThisCycle, registryState.tasksCommittedForThisCycle);
+    }
+
+    /// @notice Occupancy `_committedGas` / `_committedTasks` measured against the active
+    /// configuration. The transition into a cycle charges against it after applying the config
+    /// buffer, so it is the active configuration of the cycle being entered.
+    function committedOccupancy(
+        uint128 _committedGas,
+        uint32 _committedTasks
+    ) internal view returns (CycleOccupancy memory) {
+        Config storage activeConfig = LibAppStorage.activeConfig();
+        return occupancyWithActiveFees(
+            _committedGas, _committedTasks, activeConfig.registryMaxGasCap, activeConfig.taskCapacity
+        );
+    }
+
+    /// @notice An occupancy measured against `_registryMaxGasCap` and `_taskCapacity`, priced with
+    /// the active configuration's fee parameters.
+    function occupancyWithActiveFees(
+        uint128 _committedGas,
+        uint32 _committedTasks,
+        uint128 _registryMaxGasCap,
+        uint16 _taskCapacity
+    ) private view returns (CycleOccupancy memory) {
+        Config storage activeConfig = LibAppStorage.activeConfig();
+        return CycleOccupancy({
+            committedGas: _committedGas,
+            committedTasks: _committedTasks,
+            registryMaxGasCap: _registryMaxGasCap,
+            taskCapacity: _taskCapacity,
+            congestionThresholdPercentage: activeConfig.congestionThresholdPercentage,
+            congestionExponent: activeConfig.congestionExponent,
+            automationBaseFeeWeiPerSec: activeConfig.automationBaseFeeWeiPerSec,
+            congestionBaseFeeWeiPerSec: activeConfig.congestionBaseFeeWeiPerSec
+        });
+    }
+
+    /// @notice The current cycle's occupancy and the fee per second it yields, for a call that
+    /// prices several of the cycle's tasks.
+    function currentCyclePricing() internal view returns (CyclePricing memory pricing) {
+        pricing.occupancy = currentCycleOccupancy();
+        pricing.automationFeePerSec = calculateAutomationFeeMultiplierForCycle(pricing.occupancy);
+    }
+
+    /// @notice The refund context of the current cycle at the current block.
+    /// @param _priced Whether a removed task may be refunded a cycle fee. A call that removes only
+    /// system tasks, which pay no fee, passes false and is given no pricing.
+    function currentRefundContext(bool _priced) internal view returns (RefundContext memory context) {
+        context.cycleEndTime = LibCommon.getCycleEndTime();
+        context.currentTime = uint64(block.timestamp);
+        if (_priced) {
+            context.residualInterval =
+                context.cycleEndTime <= context.currentTime ? 0 : context.cycleEndTime - context.currentTime;
+            context.pricing = currentCyclePricing();
+        }
+    }
+
     /// @notice Calculates the automation fee multiplier for current cycle. 
     function calculateAutomationFeeMultiplierForCurrentCycle() internal view returns (uint128) {
-        Config storage activeConfig = LibAppStorage.activeConfig();
-
-        // Compute the automation fee multiplier for this cycle
-        return calculateAutomationFeeMultiplierForCycle(
-            LibAppStorage.registryState().gasCommittedForThisCycle,
-            activeConfig.registryMaxGasCap,
-            activeConfig.automationBaseFeeWeiPerSec
-        );
+        return calculateAutomationFeeMultiplierForCycle(currentCycleOccupancy());
     }
 
-    /// @notice Calculates automation fee per second for the specified task occupancy
-    /// referencing the current automation registry fee parameters, specified total/committed occupancy and current registry
-    /// maximum allowed occupancy.
+    /// @notice Calculates the automation fee per second for a cycle to which USTs have committed
+    /// `_totalCommittedMaxGas` gas and `_totalCommittedTasks` tasks, under the active registry
+    /// fee parameters, max gas cap and task capacity.
     function calculateAutomationFeeMultiplierForCommittedOccupancy(
-        uint128 _totalCommittedMaxGas
+        uint128 _totalCommittedMaxGas,
+        uint32 _totalCommittedTasks
     ) internal view returns (uint128) {
-        Config storage activeConfig = LibAppStorage.activeConfig();
-
-        // Compute the automation fee multiplier for cycle        
         return calculateAutomationFeeMultiplierForCycle(
-            _totalCommittedMaxGas,
-            activeConfig.registryMaxGasCap,
-            activeConfig.automationBaseFeeWeiPerSec
+            committedOccupancy(_totalCommittedMaxGas, _totalCommittedTasks)
         );
     }
 
-    /// @notice Estimates automation fee the next cycle for specified task occupancy for the configured cycle interval
-    /// referencing the current automation registry fee parameters, specified total/committed occupancy and registry
-    /// maximum allowed occupancy for the next cycle.
-    /// Note it is expected that committed_occupancy does not include current task's occupancy.
+    /// @notice Estimates the fee for the next cycle of a task of `_taskOccupancy` max gas joining
+    /// USTs that have committed `_committedOccupancy` gas and `_committedTasks` tasks to it,
+    /// over the current cycle interval.
+    /// @dev The occupancy is measured against the next cycle's max gas cap and task capacity and
+    /// priced with the active fee parameters, as the Move registry's estimate is. The two limits
+    /// are taken from the next cycle because `ConfigFacet.updateConfigBuffer` guards them against
+    /// the registry's current commitment, so they are the limits the task joins. The fee
+    /// parameters, the threshold and the cycle duration are set independently of the registry's
+    /// state and can be buffered again before the cycle ends, so the estimate uses the ones in
+    /// force when it is made.
+    /// The transition charges against the occupancy committed when the cycle ends and the
+    /// configuration applied at that boundary. The charge therefore equals this estimate when
+    /// neither changes after the registration; a later registration or a buffered change of the
+    /// fee parameters can make it differ.
+    /// `_committedOccupancy` and `_committedTasks` exclude the task being estimated, which is
+    /// added here.
     function estimateAutomationFeeWithCommittedOccupancyInternal(
         uint128 _taskOccupancy,
-        uint128 _committedOccupancy
+        uint128 _committedOccupancy,
+        uint32 _committedTasks
     ) internal view returns (uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
         RegistryState storage registryState = LibAppStorage.registryState();
 
-        uint128 totalCommittedGas = _taskOccupancy + _committedOccupancy;
-         
-        uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(
-            totalCommittedGas, 
+        // The count is an external input; it is added to in uint256 and counted as at most
+        // type(uint32).max, a share {billedGas} and the congestion fee count as 100% for any
+        // capacity.
+        CycleOccupancy memory nextCycleOccupancy = occupancyWithActiveFees(
+            _taskOccupancy + _committedOccupancy,
+            uint32(Math.min(uint256(_committedTasks) + 1, type(uint32).max)),
             registryState.nextCycleRegistryMaxGasCap,
-            LibAppStorage.activeConfig().automationBaseFeeWeiPerSec
+            registryState.nextCycleTaskCapacity
         );
 
+        uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(nextCycleOccupancy);
+
         if (automationFeePerSec == 0) return 0;
-        return calculateAutomationFeeForInterval(s.durationSecs, _taskOccupancy, automationFeePerSec, registryState.nextCycleRegistryMaxGasCap);
+        return calculateAutomationFeeForInterval(
+            s.durationSecs,
+            billedGas(_taskOccupancy, nextCycleOccupancy),
+            automationFeePerSec,
+            nextCycleOccupancy.registryMaxGasCap
+        );
     }
 
     /// @notice Helper function to unlock locked deposit and cycle fees when a task is stopped by its owner or removed by
@@ -368,15 +582,17 @@ library LibAccounting {
     /// the deposit for a PENDING task), which `stopTasks`, `removeTasks` and an ERROR removal apply. FULL: the owner gets
     /// the whole fee for the remaining cycle time and the whole deposit, which a CONFIG_UPDATE removal applies (#4087).
     /// See {LibCommon.RefundPolicy}.
+    /// @param _context The current cycle's refund context, {currentRefundContext}: the remaining
+    /// interval, the current time and the cycle's pricing. The pricing is unused for a PENDING
+    /// task, which was not charged for the cycle.
     function unlockDepositAndCycleFee(
         uint64 _taskIndex,
         LibCommon.TaskState _taskState,
         uint64 _expiryTime,
         uint128 _maxGasAmount,
-        uint64 _residualInterval,
-        uint64 _currentTime,
         uint128 _depositFee,
-        LibCommon.RefundPolicy _policy
+        LibCommon.RefundPolicy _policy,
+        RefundContext memory _context
     )  internal returns (uint128, uint128) {
         AppStorage storage s = LibAppStorage.appStorage();
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -401,25 +617,30 @@ library LibAccounting {
         }
 
         if (_taskState != LibCommon.TaskState.PENDING) {
-            // Compute the automation fee multiplier for cycle
-            Config storage activeConfig = LibAppStorage.activeConfig();
-            uint128 automationFeePerSec = calculateAutomationFeeMultiplierForCycle(
-                registryState.gasCommittedForThisCycle, 
-                activeConfig.registryMaxGasCap,
-                activeConfig.automationBaseFeeWeiPerSec
-            );
+            // The fee charged for the current cycle is recomputed from the cycle's occupancy
+            // snapshot, the same inputs the transition charged with, so the amount unlocked from
+            // cycleLockedFees is the amount that was locked for the task. The residual-time fee
+            // bills the same gas.
+            CycleOccupancy memory occupancy = _context.pricing.occupancy;
+            uint128 automationFeePerSec = _context.pricing.automationFeePerSec;
             uint64 chargedDuration = 0;
             if (_expiryTime > s.startTime) {
                 chargedDuration = uint64(Math.min(_expiryTime - s.startTime, s.durationSecs));
             }
-            uint128 taskFeeForCurrentCycle = calculateAutomationFeeForInterval(chargedDuration, _maxGasAmount, automationFeePerSec, activeConfig.registryMaxGasCap);
+            uint128 taskFeeForCurrentCycle = calculateAutomationFeeForInterval(
+                chargedDuration,
+                billedGas(_maxGasAmount, occupancy),
+                automationFeePerSec,
+                occupancy.registryMaxGasCap
+            );
             uint128 taskFeeForResidualTime = calculateTaskFee(
                 _taskState,
                 _expiryTime,
                 _maxGasAmount,
-                _residualInterval,
-                _currentTime,
-                automationFeePerSec
+                _context.residualInterval,
+                _context.currentTime,
+                automationFeePerSec,
+                occupancy
             );
 
             // Refund the full deposit and the remaining run-time fee divided by refundDivisor when a task is in active
@@ -476,6 +697,7 @@ library LibAccounting {
     /// @param _potentialFeeTimeframe Potential time frame to calculate task fees for.
     /// @param _currentTime Current time
     /// @param _automationFeePerSec Automation fee per sec
+    /// @param _occupancy Occupancy of the cycle the fee is for; the task is billed {billedGas}.
     /// @return Calculated task fee for the interval the task will be active.
     function calculateTaskFee(
         LibCommon.TaskState _state,
@@ -483,8 +705,9 @@ library LibAccounting {
         uint128 _maxGasAmount,
         uint64 _potentialFeeTimeframe,
         uint64 _currentTime,
-        uint128 _automationFeePerSec
-    ) internal view returns (uint128) {
+        uint128 _automationFeePerSec,
+        CycleOccupancy memory _occupancy
+    ) internal pure returns (uint128) {
         if (_automationFeePerSec == 0) { return 0; }
         if (_expiryTime <= _currentTime) { return 0; }
         
@@ -507,9 +730,9 @@ library LibAccounting {
 
         return calculateAutomationFeeForInterval(
             actualFeeTimeframe,
-            _maxGasAmount,
+            billedGas(_maxGasAmount, _occupancy),
             _automationFeePerSec,
-            LibAppStorage.activeConfig().registryMaxGasCap
+            _occupancy.registryMaxGasCap
         );
     }
 }

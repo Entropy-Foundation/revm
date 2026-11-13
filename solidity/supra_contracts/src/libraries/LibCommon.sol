@@ -46,6 +46,10 @@ library LibCommon {
     uint64 internal constant RECORD_FINALIZATION_GAS_PER_TASK = 10_000;
     /// Equal to the Move registry's `automation_registry::TASK_SUPPORT_FACTOR`.
     uint8 internal constant MAX_RECORD_TASK_SUPPORT_PERCENTAGE = 80;
+
+    /// @dev 100% for a parameter given in whole percent, such as
+    /// `Config.congestionThresholdPercentage` and `RecordSizingParameters.taskSupportPercentage`.
+    uint8 internal constant HUNDRED_PERCENT = 100;
     /// Registry capacity the gas figures above are measured at, and the default
     /// `RecordSizingParameters.maxCapacity`.
     uint32 internal constant RECORD_GAS_BENCHMARK_CAPACITY = 400;
@@ -122,6 +126,8 @@ library LibCommon {
         uint256 cycleLockedFees;
         uint128 gasCommittedForNextCycle;
         uint128 sysGasCommittedForNextCycle;
+        // USTs of the batch that stay committed to the cycle after the one being entered.
+        uint32 tasksCommittedForNextCycle;
         uint64[] removedTasks;
     }
 
@@ -131,6 +137,9 @@ library LibCommon {
         uint128 gas;
         uint128 sysGas;
         bool isRemoved;
+        // Whether the task is a UST committed to the cycle after the one being entered. Set on
+        // the same condition as `gas`, and counted into tasksCommittedForNextCycle.
+        bool committedToNextCycle;
     }
     
     /// @notice Struct representing a cancelled task.
@@ -355,7 +364,7 @@ library LibCommon {
         if (_taskSupportPercentage == 0 || _taskSupportPercentage > MAX_RECORD_TASK_SUPPORT_PERCENTAGE) {
             revert InvalidRecordSizingParameters();
         }
-        uint256 budget = uint256(_recordGasLimit) * uint256(_taskSupportPercentage) / 100;
+        uint256 budget = uint256(_recordGasLimit) * uint256(_taskSupportPercentage) / HUNDRED_PERCENT;
         uint256 finalizationReserve = _capacity * uint256(RECORD_FINALIZATION_GAS_PER_TASK);
         if (budget <= finalizationReserve) { return 0; }
         // The quotient is at most budget, which is below 2^64 since _recordGasLimit is a uint64
@@ -407,7 +416,7 @@ library LibCommon {
     ) internal pure {
         if (_taskDurationCapSecs <= _cycleDurationSecs) { revert InvalidTaskDuration(); }
         if (_registryMaxGasCap == 0) { revert InvalidRegistryMaxGasCap(); }
-        if (_congestionThresholdPercentage > 100) { revert InvalidCongestionThreshold(); }
+        if (_congestionThresholdPercentage > HUNDRED_PERCENT) { revert InvalidCongestionThreshold(); }
         if (_congestionExponent == 0) { revert InvalidCongestionExponent(); }
         if (_maxCongestionExponent == 0) { revert InvalidMaxCongestionExponent(); }
         if (_congestionExponent > _maxCongestionExponent) { revert CongestionExponentExceedsMax(); }

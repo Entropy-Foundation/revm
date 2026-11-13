@@ -16,6 +16,8 @@ interface IRegistryViewFacet {
     function getGasCommittedForNextCycle() external view returns (uint128);
     function getNextCycleRegistryMaxGasCap() external view returns (uint128);
     function getNextCycleSysRegistryMaxGasCap() external view returns (uint128);
+    function getNextCycleTaskCapacity() external view returns (uint16);
+    function getNextCycleSysTaskCapacity() external view returns (uint16);
     function getNextTaskIndex() external view returns (uint64);
     function getSystemGasCommittedForCurrentCycle() external view returns (uint128);
     function getSystemGasCommittedForNextCycle() external view returns (uint128);
@@ -24,6 +26,8 @@ interface IRegistryViewFacet {
     function getTaskDetailsBulk(uint64[] memory _taskIndexes) external view returns (TaskMetadata[] memory);
     function getTaskIdList() external view returns (uint256[] memory);
     function getTaskOwner(uint64 _taskIndex) external view returns (address);
+    function getTasksCommittedForCurrentCycle() external view returns (uint32);
+    function getTasksCommittedForNextCycle() external view returns (uint32);
     function getTotalActiveTasks() external view returns (uint256);
     function getTotalDepositedAutomationFees() external view returns (uint256);
     function getTotalLockedBalance() external view returns (uint256);

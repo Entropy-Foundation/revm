@@ -72,26 +72,31 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         LibDiamond.enforceIsContractOwner();
         LibRegistry.validateTaskIndexesInput(_taskIndexes);
 
-        uint64 cycleEndTime = LibCommon.getCycleEndTime();
-        uint64 currentTime = uint64(block.timestamp);
-        uint64 residualInterval = cycleEndTime <= currentTime ? 0 : (cycleEndTime - currentTime);
+        // Every removed UST is refunded against the same refund context.
+        LibAccounting.RefundContext memory context = LibAccounting.currentRefundContext(true);
 
         for (uint256 i = 0; i < _taskIndexes.length; i++) {
-            uint64 taskId = _taskIndexes[i];
-            if (!LibCommon.ifTaskExists(taskId)) {
-                emit TaskRemovalByGovernanceSkipped(taskId);
-                continue;
-            }
-
-            (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
-                LibRegistry.removeTaskByGovernance(taskId, cycleEndTime, currentTime, residualInterval);
-            // Zero for a GST; LibAccounting.refund transfers nothing for a zero amount.
-            LibAccounting.refund(task.owner, refund);
-
-            emit TaskRemovedByGovernance(
-                taskId, task.owner, task.taskType, removed.txHash, removed.depositRefund, removed.cycleFeeRefund
-            );
+            removeTaskByGovernance(_taskIndexes[i], context);
         }
+    }
+
+    /// @notice Removes one task for {removeTasks}, refunds its owner and emits its event, or emits
+    /// TaskRemovalByGovernanceSkipped for a task that no longer exists.
+    /// @dev A separate function keeps removeTasks' loop within the stack limit.
+    function removeTaskByGovernance(uint64 _taskId, LibAccounting.RefundContext memory _context) private {
+        if (!LibCommon.ifTaskExists(_taskId)) {
+            emit TaskRemovalByGovernanceSkipped(_taskId);
+            return;
+        }
+
+        (LibCommon.TaskStopped memory removed, uint128 refund, TaskMetadataLW memory task) =
+            LibRegistry.removeTaskByGovernance(_taskId, _context);
+        // Zero for a GST; LibAccounting.refund transfers nothing for a zero amount.
+        LibAccounting.refund(task.owner, refund);
+
+        emit TaskRemovedByGovernance(
+            _taskId, task.owner, task.taskType, removed.txHash, removed.depositRefund, removed.cycleFeeRefund
+        );
     }
 
     /// @notice Function to withdraw the accumulated fees.
@@ -171,6 +176,14 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
         RegistryState storage registryState = LibAppStorage.registryState();
         if (registryState.gasCommittedForNextCycle > _registryMaxGasCap) { revert UnacceptableRegistryMaxGasCap(); }
         if (registryState.sysGasCommittedForNextCycle > _sysRegistryMaxGasCap) { revert UnacceptableSysRegistryMaxGasCap(); }
+        // The user tasks already committed to the next cycle must fit the capacity it will have,
+        // as their gas must fit its gas cap. The fees of that cycle are priced on the task share
+        // (LibAccounting.CycleOccupancy), which this keeps at or below 100%.
+        if (registryState.tasksCommittedForNextCycle > _taskCapacity) { revert UnacceptableTaskCapacity(); }
+        // The system tasks registered now must fit the next cycle's system-task capacity. GSTs pay
+        // no fee, so no next-cycle count is kept for them; every registered GST is counted,
+        // including one that expires in the current cycle.
+        if (registryState.sysTaskIds.length() > _sysTaskCapacity) { revert UnacceptableSysTaskCapacity(); }
 
         // Add new config to the buffer
         Config memory configBuffer = Config({ 
@@ -193,6 +206,8 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
 
         registryState.nextCycleRegistryMaxGasCap = _registryMaxGasCap;
         registryState.nextCycleSysRegistryMaxGasCap = _sysRegistryMaxGasCap;
+        registryState.nextCycleTaskCapacity = _taskCapacity;
+        registryState.nextCycleSysTaskCapacity = _sysTaskCapacity;
 
         emit ConfigBufferUpdated(configBuffer);
     }

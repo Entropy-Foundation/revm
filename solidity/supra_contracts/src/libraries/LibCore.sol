@@ -81,6 +81,9 @@ library LibCore {
     /// @param _sysGasCommittedForNextCycle Updated system gas committed for next cycle 
     /// @param _gasCommittedForNextCycle Updated gas committed for next cycle
     /// @param _gasCommittedForNewCycle Updated gas committed for new cycle
+    /// @param _tasksCommittedForNextCycle Updated number of USTs committed for next cycle
+    /// @param _tasksCommittedForNewCycle Number of USTs committed for the new cycle, the snapshot
+    ///        its fees are charged and refunded against
     /// @param _state Cycle transition state executing the update.
     /// @return activeTaskIds The new cycle's active task IDs as written to storage: the transition's
     ///         survivors for FINISHED, empty for SUSPENDED. Returned so a caller that logs them
@@ -90,6 +93,8 @@ library LibCore {
         uint128 _sysGasCommittedForNextCycle,
         uint128 _gasCommittedForNextCycle,
         uint128 _gasCommittedForNewCycle,
+        uint32 _tasksCommittedForNextCycle,
+        uint32 _tasksCommittedForNewCycle,
         LibCommon.CycleState _state
     ) private returns (uint64[] memory activeTaskIds) {
         RegistryState storage registryState = LibAppStorage.registryState();
@@ -105,6 +110,8 @@ library LibCore {
         registryState.sysGasCommittedForNextCycle = _sysGasCommittedForNextCycle;
         registryState.gasCommittedForNextCycle = _gasCommittedForNextCycle;
         registryState.gasCommittedForThisCycle = _gasCommittedForNewCycle;
+        registryState.tasksCommittedForNextCycle = _tasksCommittedForNextCycle;
+        registryState.tasksCommittedForThisCycle = _tasksCommittedForNewCycle;
 
         if (_state == LibCommon.CycleState.FINISHED) {
             // transitionState.survivedTaskIds was accumulated incrementally, one
@@ -229,6 +236,21 @@ library LibCore {
         return LibCommon.auxDataLengthAboveCap(totalLength);
     }
 
+    /// @notice Zeroes the gas and task commitments of the current and the next cycle.
+    /// {moveToStartedState} calls it when a cycle starts with no task registered: no task is
+    /// committed to either cycle then, and the paths that start such a cycle (an empty registry at
+    /// cycle end, a restart after an empty suspension) run no transition, which is where the
+    /// commitments are otherwise set and the next cycle's rebuilt from the surviving tasks.
+    function clearCommitments() private {
+        RegistryState storage registryState = LibAppStorage.registryState();
+        registryState.gasCommittedForThisCycle = 0;
+        registryState.gasCommittedForNextCycle = 0;
+        registryState.sysGasCommittedForThisCycle = 0;
+        registryState.sysGasCommittedForNextCycle = 0;
+        registryState.tasksCommittedForThisCycle = 0;
+        registryState.tasksCommittedForNextCycle = 0;
+    }
+
     /// @notice Updates the state of the cycle.
     /// @param _state Input state to update cycle state with.
     function updateCycleStateTo(LibCommon.CycleState _state) private {
@@ -283,6 +305,8 @@ library LibCore {
                 transitionState.gasCommittedForNewCycle = 0;
                 transitionState.gasCommittedForNextCycle = 0;
                 transitionState.sysGasCommittedForNextCycle = 0;
+                transitionState.tasksCommittedForNewCycle = 0;
+                transitionState.tasksCommittedForNextCycle = 0;
                 transitionState.lockedFees = 0;
                 transitionState.nextTaskIndexPosition = 0;
                 delete transitionState.expectedTasksToBeProcessed;
@@ -311,7 +335,7 @@ library LibCore {
             return; 
         }
         
-        updateRegistryState(0, 0, 0, 0, LibCommon.CycleState.SUSPENDED);
+        updateRegistryState(0, 0, 0, 0, 0, 0, LibCommon.CycleState.SUSPENDED);
         // Every task has been removed, so none is stored above the caps in force.
         resetTaskStoredWordsBound();
 
@@ -357,6 +381,8 @@ library LibCore {
                 transitionState.sysGasCommittedForNextCycle,
                 transitionState.gasCommittedForNextCycle,
                 transitionState.gasCommittedForNewCycle,
+                transitionState.tasksCommittedForNextCycle,
+                transitionState.tasksCommittedForNewCycle,
                 LibCommon.CycleState.FINISHED
             );
             // The transition processed every task and dropped those above the caps in force.
@@ -397,6 +423,14 @@ library LibCore {
         // batch rather than once per task.
         uint64 txGasLimitCap = LibEvmGasConfig.txGasLimitCap();
         uint256 minGasPrice = LibEvmGasConfig.minGasPrice();
+        // Every UST of the transition is charged against the occupancy committed to the cycle
+        // being entered, fixed when the previous cycle ended; it becomes that cycle's snapshot
+        // when the transition finalizes. The config buffer has been applied by then, so the
+        // active configuration is the new cycle's. Read once per batch.
+        LibAccounting.CycleOccupancy memory newCycleOccupancy = LibAccounting.committedOccupancy(
+            transitionState.gasCommittedForNewCycle,
+            transitionState.tasksCommittedForNewCycle
+        );
 
         uint64[] memory removedBuffer = new uint64[](taskIndexes.length);
         uint256 removedCount;
@@ -410,14 +444,24 @@ library LibCore {
                 currentTime,
                 currentCycleEndTime,
                 txGasLimitCap,
-                minGasPrice
+                minGasPrice,
+                newCycleOccupancy
             );
 
             if (result.isRemoved) {
                 removedBuffer[removedCount] = taskId;
                 removedCount += 1;
             } else {
+                // A surviving task is committed to the cycle after the one being entered when it
+                // expires after this batch's time plus the new cycle's duration. That cycle starts
+                // when the transition finalizes, possibly in a later block, so a task expiring
+                // between the two is counted here and expires before the next transition, which
+                // drops it. It is counted in that transition's occupancy snapshot and not in the
+                // one after; the gas commitment is computed the same way.
                 intermediateState.gasCommittedForNextCycle += result.gas;
+                if (result.committedToNextCycle) {
+                    intermediateState.tasksCommittedForNextCycle += 1;
+                }
                 intermediateState.sysGasCommittedForNextCycle += result.sysGas;
                 intermediateState.cycleLockedFees += result.fees;
                 // Accumulate survivors incrementally across every processTasks batch of this
@@ -454,7 +498,8 @@ library LibCore {
         uint64 _currentTime,
         uint64 _currentCycleEndTime,
         uint64 _txGasLimitCap,
-        uint256 _minGasPrice
+        uint256 _minGasPrice,
+        LibAccounting.CycleOccupancy memory _newCycleOccupancy
     ) private returns (LibCommon.TransitionResult memory result) {
         require(LibCommon.ifTaskExists(_taskIndex), ICoreFacet.UnknownTaskToProcess(_taskIndex));
         markTaskProcessed(_taskIndex);
@@ -501,7 +546,8 @@ library LibCore {
                 task.maxGasAmount,
                 transitionState.newCycleDuration,
                 _currentTime,
-                transitionState.automationFeePerSec
+                transitionState.automationFeePerSec,
+                _newCycleOccupancy
             );
 
             // If the task reached this phase that means it is a valid active task for the new cycle.
@@ -511,7 +557,7 @@ library LibCore {
             // For more details see calculateTaskFee function.
 
             registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
-            (result.isRemoved, result.gas, result.fees) = tryWithdrawTaskAutomationFee(
+            (result.isRemoved, result.gas, result.fees, result.committedToNextCycle) = tryWithdrawTaskAutomationFee(
                 _cycleIndex,
                 _taskIndex,
                 task.owner,
@@ -540,6 +586,7 @@ library LibCore {
     /// @return Bool representing if the task was removed.
     /// @return Amount to add to gasCommittedForNextCycle 
     /// @return Amount to add to cycleLockedFees 
+    /// @return Whether the task is committed to the cycle after the one being entered
     function tryWithdrawTaskAutomationFee(
         uint64 _cycleIndex,
         uint64 _taskIndex,
@@ -551,7 +598,7 @@ library LibCore {
         uint64 _currentCycleEndTime,
         uint128 _automationFeeCapForCycle,
         bytes32 _regHash
-    ) private returns (bool, uint128, uint128) {
+    ) private returns (bool, uint128, uint128, bool) {
         AppStorage storage s = LibAppStorage.appStorage();
 
         // Remove the automation task if the cycle fee cap is exceeded.
@@ -559,6 +606,7 @@ library LibCore {
         // This may be caused by the fact that bookkeeping transactions has been withheld due to cycle transition.
         
         bool isRemoved;
+        bool committedToNextCycle;
         uint128 gas;
         uint128 fees;
         if (_fee > _automationFeeCapForCycle) {
@@ -616,11 +664,12 @@ library LibCore {
                 // Calculate gas commitment for the next cycle only for valid active tasks
                 if (_expiryTime > _currentCycleEndTime) {
                     gas = _maxGasAmount;
+                    committedToNextCycle = true;
                 }
             }
         }
 
-        return (isRemoved, gas, fees);
+        return (isRemoved, gas, fees, committedToNextCycle);
     }
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: INTERNAL FUNCTIONS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -660,6 +709,7 @@ library LibCore {
         transitionState.lockedFees += intermediateState.cycleLockedFees;
         transitionState.gasCommittedForNextCycle += intermediateState.gasCommittedForNextCycle;        
         transitionState.sysGasCommittedForNextCycle += intermediateState.sysGasCommittedForNextCycle;
+        transitionState.tasksCommittedForNextCycle += intermediateState.tasksCommittedForNextCycle;
 
         // The drops are logged before finalizing, so they precede this call's ActiveTasks and
         // AutomationCycleEvent logs, in the order the state changes.
@@ -690,6 +740,15 @@ library LibCore {
         // NatSpec for why this contract does not sort them itself.
         requireSortedAscending(_taskIndexes);
 
+        // Every UST of the batch is refunded at the rate the current cycle was charged at and
+        // against the cycle's occupancy snapshot, both read once.
+        TransitionState storage transitionState = LibAppStorage.transitionState();
+        uint64 refundDuration = transitionState.refundDuration;
+        LibAccounting.CyclePricing memory pricing = LibAccounting.CyclePricing({
+            occupancy: LibAccounting.currentCycleOccupancy(),
+            automationFeePerSec: transitionState.automationFeePerSec
+        });
+
         // Every task in the batch is removed or the call reverts, so the batch itself is the list
         // of removed tasks that RemovedTasks reports below.
         for (uint i = 0; i < _taskIndexes.length; i++) {
@@ -706,13 +765,7 @@ library LibCore {
 
             // Nothing to refund for GST tasks
             if (task.taskType == LibCommon.TaskType.UST) {
-                TransitionState storage transitionState = LibAppStorage.transitionState();
-                LibAccounting.refundTaskFees(
-                    currentTime,
-                    transitionState.refundDuration,
-                    transitionState.automationFeePerSec,
-                    task
-                );
+                LibAccounting.refundTaskFees(currentTime, refundDuration, pricing, task);
             }
         }
 
@@ -729,16 +782,10 @@ library LibCore {
     /// @notice Removes a registered task on the VM signer's request; see
     /// {CoreFacet.removeRegisteredTask} for the two policies.
     /// @param _taskId Task index to remove.
-    /// @param _cycleEndTime Cycle end time.
-    /// @param _currentTime Current time.
-    /// @param _residualInterval Remaining time of the current cycle.
     /// @param _reason Why the task is removed; selects the refund policy.
     /// @param _details Human-readable description of the reason, carried in the record's call data.
     function handleTasksRemoval(
         uint64 _taskId,
-        uint64 _cycleEndTime,
-        uint64 _currentTime,
-        uint64 _residualInterval,
         LibCommon.TaskRemovalReason _reason,
         string memory _details
     ) internal {
@@ -778,16 +825,15 @@ library LibCore {
 
         (uint128 cycleFeeRefund, uint128 depositRefund) = LibRegistry.removeTaskAndComputeRefund(
             _taskId,
-            _cycleEndTime,
-            _currentTime,
-            _residualInterval,
             task.expiryTime,
             task.maxGasAmount,
             task.depositFee,
             task.owner,
             task.taskState,
             isGst,
-            refundPolicy
+            refundPolicy,
+            // The pricing is used only for a UST's refund; a GST pays no fee.
+            LibAccounting.currentRefundContext(true)
         );
 
         if (!isGst) {
@@ -894,6 +940,8 @@ library LibCore {
                 transitionState.gasCommittedForNewCycle = LibAppStorage.registryState().gasCommittedForNextCycle;
                 transitionState.gasCommittedForNextCycle = 0;
                 transitionState.sysGasCommittedForNextCycle = 0;
+                transitionState.tasksCommittedForNewCycle = LibAppStorage.registryState().tasksCommittedForNextCycle;
+                transitionState.tasksCommittedForNextCycle = 0;
                 transitionState.lockedFees = 0;
                 transitionState.nextTaskIndexPosition = 0;
                 // Must be cleared explicitly: unlike expectedTasksToBeProcessed (a full
@@ -911,7 +959,10 @@ library LibCore {
                 // Calculate automation fee per second for the new cycle only after configuration is updated.
                 // As we already know the committed gas for the new cycle it is being calculated using updated fee parameters
                 // and will be used to charge tasks during transition process.
-                transitionState.automationFeePerSec = LibAccounting.calculateAutomationFeeMultiplierForCommittedOccupancy(transitionState.gasCommittedForNewCycle);
+                transitionState.automationFeePerSec = LibAccounting.calculateAutomationFeeMultiplierForCommittedOccupancy(
+                    transitionState.gasCommittedForNewCycle,
+                    transitionState.tasksCommittedForNewCycle
+                );
                 updateCycleStateTo(LibCommon.CycleState.FINISHED);
             }
         }
@@ -963,6 +1014,8 @@ library LibCore {
             transitionState.gasCommittedForNewCycle = 0;
             transitionState.gasCommittedForNextCycle = 0;
             transitionState.sysGasCommittedForNextCycle = 0;
+            transitionState.tasksCommittedForNewCycle = 0;
+            transitionState.tasksCommittedForNextCycle = 0;
             transitionState.lockedFees = 0;
             transitionState.nextTaskIndexPosition = 0;
             // Defensive parity with onCycleEndInternal's setup — this branch only runs
@@ -984,6 +1037,7 @@ library LibCore {
             transitionState.refundDuration = 0;
             transitionState.automationFeePerSec = 0;
             transitionState.gasCommittedForNewCycle = 0;
+            transitionState.tasksCommittedForNewCycle = 0;
             
             updateCycleStateTo(LibCommon.CycleState.SUSPENDED);
         }
@@ -1004,6 +1058,10 @@ library LibCore {
             // Deleting the whole struct already recursively clears expectedTasksToBeProcessed
             // since it is a plain dynamic array — no separate reset needed.
             delete s.transitionState[LibAppStorage.TRANSITION_STATE];
+        }
+
+        if (totalTasks() == 0) {
+            clearCommitments();
         }
 
         updateCycleStateTo(LibCommon.CycleState.STARTED);

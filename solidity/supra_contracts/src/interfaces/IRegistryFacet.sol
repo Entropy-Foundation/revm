@@ -106,6 +106,7 @@ interface IRegistryFacet {
     error FailedToCallTxHashPrecompile();
     error GasCommittedExceedsMaxGasCap();
     error GasCommittedValueUnderflow();
+    error TasksCommittedValueUnderflow();
     /// @notice Thrown when a UST's gas price cap is below the chain's minimum gas price (the base
     /// fee, read from {ISupraEvmGasConfig-minGasPrice}), so its transaction could never be admitted.
     error GasPriceCapBelowMinimum(uint128 gasPriceCap, uint256 minGasPrice);
@@ -145,10 +146,10 @@ interface IRegistryFacet {
     // =============================================================
     //                      View functions
     // =============================================================
-    function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas) external view returns (uint128);
+    function calculateAutomationFeeMultiplierForCommittedOccupancy(uint128 _totalCommittedMaxGas, uint32 _totalCommittedTasks) external view returns (uint128);
     function calculateAutomationFeeMultiplierForCurrentCycle() external view returns (uint128);
     function estimateAutomationFee(uint128 _taskOccupancy) external view returns (uint128);
-    function estimateAutomationFeeWithCommittedOccupancy(uint128 _taskOccupancy, uint128 _committedOccupancy) external view returns (uint128);
+    function estimateAutomationFeeWithCommittedOccupancy(uint128 _taskOccupancy, uint128 _committedOccupancy, uint32 _committedTasks) external view returns (uint128);
     function isAuthorizedSubmitter(address _account) external view returns (bool);
 
     // =============================================================
