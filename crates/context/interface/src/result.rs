@@ -1163,7 +1163,8 @@ pub enum HaltReason {
     /// returns its unspent gas to its caller, so a transaction that halts with this reason is
     /// charged the gas it used rather than its gas limit.
     ///
-    /// Declared last so that the serialized index of every variant above is unchanged.
+    /// Declared after upstream's variants, so that adding it does not change their serialized
+    /// indices.
     ReservedAddressTarget,
 }
 

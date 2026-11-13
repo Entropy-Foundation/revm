@@ -77,9 +77,9 @@ pub trait JournalEntryTr {
     /// Used to verify that an [`context_interface::ExecutionMode::ReadOnly`] run leaves no lasting
     /// change to accounts or storage, before it is discarded.
     ///
-    /// `BalanceChange` requires the current `state` snapshot to filter out zero-delta entries
-    /// produced unconditionally by `pre_execution` for zero-fee predicate calls — the old
-    /// balance stored in the entry is compared against the account's current balance.
+    /// `BalanceChange` requires the current `state` snapshot: the old balance stored in the entry
+    /// is compared against the account's current balance, and an entry whose balance has
+    /// returned to its old value is not a mutation.
     ///
     /// Read-only / gas-metering entries (`AccountWarmed`, `AccountTouched`, `StorageWarmed`) always
     /// return `false`. So does `TransientStorageChange`: transient storage is cleared at the end
@@ -338,9 +338,8 @@ impl JournalEntryTr for JournalEntry {
             JournalEntry::CodeChange { .. } => true,
             // ETH transferred via a CALL with non-zero value.
             JournalEntry::BalanceTransfer { balance, .. } => !balance.is_zero(),
-            // Balance was changed.  pre_execution unconditionally pushes a BalanceChange
-            // entry even for zero-fee predicate calls, so filter those out by comparing
-            // the stored old_balance against the account's current balance in state.
+            // Balance was changed. An entry whose stored old_balance equals the account's
+            // current balance in state leaves no lasting change.
             JournalEntry::BalanceChange {
                 address,
                 old_balance,

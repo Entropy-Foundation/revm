@@ -336,8 +336,8 @@ pub trait JournalTr {
     /// State-mutating entries are: storage writes (`SSTORE`), account creation (`CREATE`/`CREATE2`),
     /// selfdestruct (`SELFDESTRUCT`), ETH transfers (`CALL` with non-zero value), nonce increments,
     /// and code changes. `BalanceChange` entries are filtered by comparing the stored old balance
-    /// against the account's current balance in state, which eliminates false positives from the
-    /// unconditional `pre_execution` caller accounting entry emitted for zero-fee predicate calls.
+    /// against the account's current balance in state, so a balance that has returned to its old
+    /// value is not counted.
     ///
     /// **Must be called before [`JournalTr::commit_tx`] or [`JournalTr::discard_tx`]** — both
     /// of those methods clear the entry list, making detection impossible afterward.
