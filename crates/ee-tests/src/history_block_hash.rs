@@ -2,7 +2,8 @@
 //!
 //! With `BlockHashSource::HistoryContract` the host answers `BLOCKHASH(n)` from slot
 //! `n % HISTORY_SERVE_WINDOW` of the history contract, through the journal first and without
-//! warming the slot. These tests run a probe contract that executes `BLOCKHASH(n)` and then calls
+//! warming the slot; a zero slot from the configured floor up is referred to
+//! `Database::block_hash`. These tests run a probe contract that executes `BLOCKHASH(n)` and then calls
 //! the history contract's `get(n)` twice, so each run shows both the hash and whether the
 //! `BLOCKHASH` read warmed the contract's account or slot.
 
@@ -11,21 +12,25 @@ use crate::history_storage::{
     SENDER,
 };
 use revm::{
-    context::{ContextSetters, ContextTr, TxEnv},
+    context::{Context, ContextSetters, ContextTr, TxEnv},
     context_interface::{
         cfg::{BlockHashSource, Cfg, ExecutionMode},
         result::{EVMError, ExecutionResult},
     },
+    database::CacheDB,
+    database_interface::DBErrorMarker,
     handler::{EthFrame, Handler, MainnetHandler},
     interpreter::interpreter::EthInterpreter,
     primitives::{
         address,
         eip2935::{HISTORY_SERVE_WINDOW, HISTORY_STORAGE_ADDRESS},
+        hardfork::SpecId,
         Address, Bytes, TxKind, B256, U256,
     },
     state::{AccountInfo, Bytecode},
-    DatabaseRef, ExecuteEvm,
+    DatabaseRef, ExecuteEvm, MainBuilder, MainContext,
 };
+use std::{error::Error, fmt};
 use supra_extension::transactions::history_storage::history_storage_write_tx_env;
 
 /// Address of the probe contract.
@@ -227,8 +232,9 @@ fn a_hash_in_the_database_is_served_without_warming() {
     probe.assert_history_was_cold();
 }
 
-/// A zero slot for a block below the floor is a block no EVM block recorded: `BLOCKHASH` returns
-/// zero and the transaction succeeds. The block just below the floor is the boundary.
+/// A zero slot for a block below the floor is a height no block of this EVM recorded: `BLOCKHASH`
+/// returns zero and the transaction succeeds, although the database's `block_hash` is non-zero for
+/// every height. The block just below the floor is the boundary.
 #[test]
 fn a_zero_slot_below_the_floor_is_a_zero_hash() {
     let mut evm = new_probe_evm(BlockHashSource::HistoryContract { floor: 50 });
@@ -237,36 +243,102 @@ fn a_zero_slot_below_the_floor_is_a_zero_hash() {
     assert_eq!(probe.block_hash, B256::ZERO);
 }
 
-/// A zero slot for a block at or above the floor contradicts the history write the node makes
-/// before every block: the transaction fails with a host error naming the height, the slot and the
-/// floor. The floor itself is the boundary.
-#[test]
-fn a_zero_slot_at_or_above_the_floor_is_a_host_error() {
-    for (floor, n) in [(49, 49), (0, 49)] {
-        let mut evm = new_probe_evm(BlockHashSource::HistoryContract { floor });
-        let result = run_probe(&mut evm, 50, n);
-        let Err(EVMError::Custom(message)) = &result else {
-            panic!("floor {floor}, BLOCKHASH({n}) must be a host error, got {result:?}");
-        };
-        assert_eq!(
-            *message,
-            format!(
-                "BLOCKHASH({n}): slot {n} of the EIP-2935 history contract at \
-                 {HISTORY_STORAGE_ADDRESS} is zero, and the contract holds the hash of every \
-                 block from the floor {floor}"
-            )
-        );
+/// The error of [`NoBlockHashesDb`]'s `block_hash`, carrying the height asked for.
+#[derive(Debug, PartialEq, Eq)]
+struct NoBlockHashes(u64);
+
+impl fmt::Display for NoBlockHashes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "no block hash for height {}", self.0)
+    }
+}
+
+impl Error for NoBlockHashes {}
+
+impl DBErrorMarker for NoBlockHashes {}
+
+/// An empty backing database whose `block_hash` fails for every height, as a host database that
+/// does not serve block hashes does.
+#[derive(Debug, Default)]
+struct NoBlockHashesDb;
+
+impl DatabaseRef for NoBlockHashesDb {
+    type Error = NoBlockHashes;
+
+    fn basic_ref(&self, _address: Address) -> Result<Option<AccountInfo>, Self::Error> {
+        Ok(None)
     }
 
-    // The slot of a block above the window wraps: block 8191 + 9 reads slot 9.
-    let n = HISTORY_SERVE_WINDOW + 9;
-    let mut evm = new_probe_evm(BlockHashSource::HistoryContract { floor: 0 });
-    let result = run_probe(&mut evm, n + 1, n);
-    assert!(
-        matches!(&result, Err(EVMError::Custom(message))
-            if message.starts_with(&format!("BLOCKHASH({n}): slot 9 "))),
-        "got {result:?}"
-    );
+    fn code_by_hash_ref(&self, _code_hash: B256) -> Result<Bytecode, Self::Error> {
+        Ok(Bytecode::default())
+    }
+
+    fn storage_ref(&self, _address: Address, _index: U256) -> Result<U256, Self::Error> {
+        Ok(U256::ZERO)
+    }
+
+    fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+        Err(NoBlockHashes(number))
+    }
+}
+
+/// The heights at or above the floor whose slot is zero, as `(floor, height of the block, n)`: the
+/// floor itself, a height above it, and a height whose slot wraps (block 8191 + 9 reads slot 9).
+const UNRECORDED: [(u64, u64, u64); 3] = [
+    (49, 50, 49),
+    (0, 50, 49),
+    (0, HISTORY_SERVE_WINDOW + 10, HISTORY_SERVE_WINDOW + 9),
+];
+
+/// A zero slot for a block at or above the floor is referred to `Database::block_hash`, and
+/// `BLOCKHASH` returns the database's hash.
+#[test]
+fn a_zero_slot_at_or_above_the_floor_returns_the_database_hash() {
+    for (floor, height, n) in UNRECORDED {
+        let mut evm = new_probe_evm(BlockHashSource::HistoryContract { floor });
+        let from_database = B256::repeat_byte(0xdb);
+        evm.ctx
+            .db_mut()
+            .cache
+            .block_hashes
+            .insert(U256::from(n), from_database);
+        let result = run_probe(&mut evm, height, n).expect("the probe executes");
+        let probe = Probe::decode(&result);
+        assert_eq!(
+            probe.block_hash, from_database,
+            "floor {floor}, BLOCKHASH({n}) in block {height}"
+        );
+    }
+}
+
+/// A zero slot for a block at or above the floor is referred to `Database::block_hash`, and its
+/// error fails the transaction as a database error.
+#[test]
+fn a_zero_slot_at_or_above_the_floor_returns_the_database_error() {
+    for (floor, height, n) in UNRECORDED {
+        // The history contract and the probe are set up over the usual database, whose cache then
+        // moves over the database that does not serve block hashes.
+        let source = new_probe_evm(BlockHashSource::HistoryContract { floor });
+        let tx = probe_tx(&source, n);
+        let db = CacheDB {
+            cache: source.ctx.db().cache.clone(),
+            db: NoBlockHashesDb,
+        };
+        let mut evm = Context::mainnet()
+            .modify_cfg_chained(|cfg| {
+                cfg.spec = SpecId::PRAGUE;
+                cfg.set_block_hash_source(BlockHashSource::HistoryContract { floor });
+            })
+            .modify_block_chained(|block| block.number = U256::from(height))
+            .with_db(db)
+            .build_mainnet();
+
+        let result = evm.transact(tx);
+        assert!(
+            matches!(&result, Err(EVMError::Database(NoBlockHashes(asked))) if *asked == n),
+            "floor {floor}, BLOCKHASH({n}) in block {height}: got {result:?}"
+        );
+    }
 }
 
 /// The default source is `Database::block_hash`; the history contract is not read.
@@ -299,8 +371,8 @@ fn the_database_source_reads_the_database_block_hash() {
 }
 
 /// The opcode returns zero without asking the host for the current block, a future block, and a
-/// block more than 256 blocks back. With an empty ring and floor 0 each of these would otherwise
-/// be a host error.
+/// block more than 256 blocks back. With an empty ring and floor 0 the host would refer each of
+/// these to the database, whose `block_hash` is non-zero for every height.
 #[test]
 fn heights_outside_the_256_block_range_are_zero_without_a_host_read() {
     let height = 1000;
@@ -315,12 +387,19 @@ fn heights_outside_the_256_block_range_are_zero_without_a_host_read() {
         );
     }
 
-    // The oldest height in the range is read from the ring.
+    // The oldest height in the range is asked of the host: its slot is zero, so the host refers it
+    // to the database.
+    let n = height - 256;
     let mut evm = new_probe_evm(BlockHashSource::HistoryContract { floor: 0 });
-    let result = run_probe(&mut evm, height, height - 256);
-    assert!(
-        matches!(&result, Err(EVMError::Custom(message))
-            if message.starts_with(&format!("BLOCKHASH({}): ", height - 256))),
-        "got {result:?}"
+    let from_database = B256::repeat_byte(0xdb);
+    evm.ctx
+        .db_mut()
+        .cache
+        .block_hashes
+        .insert(U256::from(n), from_database);
+    let probe = Probe::decode(&run_probe(&mut evm, height, n).expect("the probe executes"));
+    assert_eq!(
+        probe.block_hash, from_database,
+        "BLOCKHASH({n}) in block {height}"
     );
 }

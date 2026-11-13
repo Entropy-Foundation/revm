@@ -193,6 +193,18 @@ where
     JOURNAL: JournalTr<Database = DB>,
     LOCAL: LocalContextTr,
 {
+    /// Returns `Database::block_hash(requested_number)`, storing a database error in
+    /// [`Context::error`] as [`ContextError::Db`] and returning `None` for it.
+    fn database_block_hash(&mut self, requested_number: u64) -> Option<B256> {
+        self.journaled_state
+            .db_mut()
+            .block_hash(requested_number)
+            .map_err(|e| {
+                self.error = Err(e.into());
+            })
+            .ok()
+    }
+
     /// Creates a new context with a new journal type. New journal needs to have the same database type.
     pub fn with_new_journal<OJOURNAL: JournalTr<Database = DB>>(
         self,
@@ -530,21 +542,18 @@ impl<
     /// `requested_number % HISTORY_SERVE_WINDOW` of the EIP-2935 history contract, read with
     /// [`JournalTr::storage_value_unwarmed`]: the journal is read before the database because the
     /// history write of the current block is in the journal until the block's state is finalized,
-    /// and the read neither warms nor journals the slot, so `BLOCKHASH` keeps its fixed gas.
+    /// and the read neither warms nor journals the slot, so `BLOCKHASH` keeps its fixed gas. A zero
+    /// slot below the floor is a zero hash. A zero slot at or above the floor is a height the
+    /// history contract should hold but does not, and is referred to `Database::block_hash`, whose
+    /// result or error is the answer; a database error is stored as [`ContextError::Db`].
     fn block_hash(&mut self, requested_number: u64) -> Option<B256> {
         match self.cfg().block_hash_source() {
-            BlockHashSource::Database => self
-                .db_mut()
-                .block_hash(requested_number)
-                .map_err(|e| {
-                    *self.error() = Err(e.into());
-                })
-                .ok(),
+            BlockHashSource::Database => self.database_block_hash(requested_number),
             BlockHashSource::HistoryContract { floor } => {
-                let slot = requested_number % HISTORY_SERVE_WINDOW;
+                let slot = StorageKey::from(requested_number % HISTORY_SERVE_WINDOW);
                 let value = match self
                     .journal_mut()
-                    .storage_value_unwarmed(HISTORY_STORAGE_ADDRESS, StorageKey::from(slot))
+                    .storage_value_unwarmed(HISTORY_STORAGE_ADDRESS, slot)
                 {
                     Ok(value) => value,
                     Err(e) => {
@@ -553,20 +562,13 @@ impl<
                     }
                 };
                 if !value.is_zero() {
-                    return Some(B256::from(value));
+                    Some(B256::from(value))
+                } else if requested_number < floor {
+                    // No block of this EVM recorded this height.
+                    Some(B256::ZERO)
+                } else {
+                    self.database_block_hash(requested_number)
                 }
-                if requested_number < floor {
-                    // No EVM block recorded this height.
-                    return Some(B256::ZERO);
-                }
-                // The host writes each block's parent hash before the block's transactions, so
-                // every height from `floor` within the opcode's 256-block range has a non-zero slot.
-                *self.error() = Err(ContextError::Custom(std::format!(
-                    "BLOCKHASH({requested_number}): slot {slot} of the EIP-2935 history contract \
-                     at {HISTORY_STORAGE_ADDRESS} is zero, and the contract holds the hash of \
-                     every block from the floor {floor}"
-                )));
-                None
             }
         }
     }

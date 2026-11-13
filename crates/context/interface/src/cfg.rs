@@ -133,8 +133,11 @@ pub enum BlockHashSource {
     /// the same slot unchanged. This is Ethereum mainnet's pricing; EIP-7709 (Draft) would charge
     /// the storage read in addition.
     ///
-    /// A zero slot for a block below `floor` is returned as a zero hash. A zero slot for a block
-    /// at or above `floor` is a host error.
+    /// A zero slot for a block below `floor` is returned as a zero hash: no block of this EVM
+    /// recorded that height. A zero slot for a block at or above `floor` is a height the history
+    /// contract should hold but does not, and is referred to `Database::block_hash`, whose result
+    /// or error is the answer. A host whose database cannot serve block hashes, such as SupraEVM's
+    /// node, thereby fails the transaction with a database error.
     HistoryContract {
         /// The lowest block height whose hash the history contract holds: the height of the block
         /// that applied the genesis of the EVM, or `0` for a chain whose EVM began at its genesis.
