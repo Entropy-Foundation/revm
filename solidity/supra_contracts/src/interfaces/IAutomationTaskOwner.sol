@@ -30,10 +30,6 @@ bytes4 constant AUTOMATION_TASK_OWNER_INTERFACE_ID = bytes4(keccak256("IAutomati
 ///      - For user tasks, it holds WSUPRA and approves the registry for the registration and
 ///        cycle fees, and holds native SUPRA for each execution's gas and any value the task
 ///        sends.
-///      - It is used for nothing except its tasks: it is not the owner, admin or role holder of
-///        another contract, and holds no funds or allowances beyond those its tasks need.
-///        `MultiSignatureWallet` does not declare this interface; it administers a dedicated task
-///        owner contract instead (smr-moonshot #4922).
 ///
 ///      `AutomationTaskOwnerBase` implements `supportsInterface` and the registry calls as
 ///      internal functions, leaving the access control to the contract that inherits it.

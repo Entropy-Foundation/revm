@@ -178,16 +178,21 @@ The foundation wallet does not own automation tasks (smr-moonshot #4922). It dec
 interface, so the registry's `register` and `registerSystemTask` refuse it with
 `UnsupportedTaskOwner`, and the `AuthorizeAccount` action refuses to authorize it.
 
-Tasks the foundation wants registered are owned by a separate task owner contract:
+Tasks the foundation wants registered are owned by a separate task owner contract that the wallet
+administers:
 
-1. Write the contract on `src/AutomationTaskOwnerBase.sol`. It adds external functions that
-   register, cancel, stop, fund and withdraw, each restricted to one admin fixed at construction.
-   `AdminAutomationTaskOwner` in `test/AutomationTaskOwnerBase.t.sol` is an example, with the
-   deployer as the admin.
+1. Write the contract on `src/AutomationTaskOwnerBase.sol`, with external functions that act on
+   the registry restricted to its owner. `src/SystemTaskOwner.sol` is a reference for system
+   tasks: an `Ownable2Step` owner that cannot be renounced, registration, cancellation and stopping
+   of system tasks, and a refusal of native SUPRA, since system tasks are charged no fees. It is
+   not deployed at genesis; adapt it to the task's requirements.
 2. Deploy it from the wallet with `MultiSignatureWallet.deployContract`, so that the wallet is the
-   deployer and therefore the admin.
+   deployer and therefore the owner.
 3. For system tasks, authorize the contract (not the wallet) with the `AuthorizeAccount` action.
 4. Register, cancel and stop its tasks through wallet transactions to the contract.
+
+Steps 2 and 4 have no governance action yet: the actions are written once the foundation has a
+concrete task, against that task's requirements.
 
 Rules for the task owner contract and its tasks:
 
@@ -201,4 +206,5 @@ Rules for the task owner contract and its tasks:
 - A task that is no longer wanted is cancelled or stopped through the contract. Changing the
   wallet's owners or threshold does not end a task.
 
-`test/ContractOwnedTasks.t.sol` covers the refusal of the wallet and the procedure above.
+`test/ContractOwnedTasks.t.sol` covers the refusal of the wallet and the procedure above with a
+`SystemTaskOwner`; `test/SystemTaskOwner.t.sol` covers the reference contract itself.
