@@ -33,7 +33,12 @@ pub struct GenesisTransaction {
 
 impl GenesisTransaction {
     /// Creates a new genesis transaction with the given parameters to deploy a contract via standard create API.
-    pub const fn create(sender: Address, data: Vec<u8>, nonce: u64, deploy_address: Address) -> Self {
+    pub const fn create(
+        sender: Address,
+        data: Vec<u8>,
+        nonce: u64,
+        deploy_address: Address,
+    ) -> Self {
         Self::new(sender, nonce, data, TxKind::Create, Some(deploy_address))
     }
 

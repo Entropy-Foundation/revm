@@ -277,8 +277,8 @@ impl EthFrame<EthInterpreter> {
         // whatever the designation points to. A designation that points to a reserved address
         // holding no code executes nothing, exactly as a designation to any other empty account
         // does.
-        let frame_is_reserved =
-            is_supra_reserved(&inputs.target_address) || is_supra_reserved(&inputs.bytecode_address);
+        let frame_is_reserved = is_supra_reserved(&inputs.target_address)
+            || is_supra_reserved(&inputs.bytecode_address);
         if frame_is_reserved || !bytecode.is_empty() {
             let own_code = &ctx
                 .journal_mut()

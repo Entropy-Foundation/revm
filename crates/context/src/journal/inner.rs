@@ -1418,7 +1418,10 @@ mod eip2200_original_value_tests {
 
         // --- Transaction 1 (of this block): slot goes 0 -> A, then commits ---
         journal.load_account(&mut db, addr).unwrap();
-        let t1 = journal.sstore(&mut db, addr, key, value_a, false).unwrap().data;
+        let t1 = journal
+            .sstore(&mut db, addr, key, value_a, false)
+            .unwrap()
+            .data;
         assert_eq!(
             t1.original_value,
             StorageValue::ZERO,
@@ -1470,7 +1473,10 @@ mod eip2200_original_value_tests {
         // --- Session 1 (transaction 1): fresh journal, 0 -> A ---
         let mut journal1 = JournalInner::<JournalEntry>::new();
         journal1.load_account(&mut db, addr).unwrap();
-        let t1 = journal1.sstore(&mut db, addr, key, value_a, false).unwrap().data;
+        let t1 = journal1
+            .sstore(&mut db, addr, key, value_a, false)
+            .unwrap()
+            .data;
         assert_eq!(t1.original_value, StorageValue::ZERO);
         // A real transaction touches every account it modifies (e.g. via
         // deduct_caller / account-load accounting); CacheDB::commit() silently
@@ -2151,7 +2157,9 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         assert_eq!(
             journal.selfdestruct_burn,
@@ -2194,7 +2202,9 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         let checkpoint = journal.checkpoint();
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
 
         journal.checkpoint_revert(checkpoint);
@@ -2219,7 +2229,9 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         // Committed burn: the whole endowment.
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         // A second contract is created and destroyed inside a frame that reverts.
         let outer = journal.checkpoint();
@@ -2230,7 +2242,9 @@ mod eip6780_selfdestruct_burn_tests {
             .unwrap();
         journal.checkpoint_commit();
         journal.checkpoint();
-        journal.selfdestruct(&mut db, second, second, false).unwrap();
+        journal
+            .selfdestruct(&mut db, second, second, false)
+            .unwrap();
         journal.checkpoint_commit();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT + 7));
 
@@ -2248,7 +2262,9 @@ mod eip6780_selfdestruct_burn_tests {
     fn discarded_transaction_reports_nothing() {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
 
         journal.discard_tx();
@@ -2269,7 +2285,9 @@ mod eip6780_selfdestruct_burn_tests {
         journal.load_account(&mut db, CONTRACT).unwrap();
         journal.state.get_mut(&CONTRACT).unwrap().info.balance = U256::from(ENDOWMENT);
 
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         assert_eq!(
             journal.selfdestruct_burn,
@@ -2307,7 +2325,9 @@ mod eip6780_selfdestruct_burn_tests {
         // A cold reload in the next transaction clears the local "created" flag.
         journal.load_account(&mut db, CONTRACT).unwrap();
 
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         assert_eq!(
             journal.selfdestruct_burn,
@@ -2333,7 +2353,9 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         let checkpoint = journal.checkpoint();
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         // The contract violation: the burn is taken while its journal entry is still
         // revertible.
         assert_eq!(journal.take_selfdestruct_burn(), U256::from(ENDOWMENT));
@@ -2370,7 +2392,9 @@ mod eip6780_selfdestruct_burn_tests {
     fn self_targeting_selfdestruct_then_credit_counts_both() {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         journal
             .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
             .unwrap();
@@ -2394,8 +2418,12 @@ mod eip6780_selfdestruct_burn_tests {
             .unwrap();
         journal.checkpoint_commit();
 
-        journal.selfdestruct(&mut db, CONTRACT, second, false).unwrap();
-        journal.selfdestruct(&mut db, second, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, second, false)
+            .unwrap();
+        journal
+            .selfdestruct(&mut db, second, CONTRACT, false)
+            .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::ZERO);
 
         journal.commit_tx();
@@ -2509,7 +2537,9 @@ mod eip6780_selfdestruct_burn_tests {
     fn total_survives_finalize_and_is_drained_by_take() {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT, false).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         journal.commit_tx();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));

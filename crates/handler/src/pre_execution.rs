@@ -11,13 +11,13 @@ use context_interface::{
     Block, Cfg, ContextTr, Database,
 };
 use core::cmp::Ordering;
-use std::boxed::Box;
 use interpreter::GasTracker;
 use primitives::{
     eip2935::is_system_address, hardfork::SpecId, supra_constants::is_supra_reserved, Address,
     AddressMap, HashSet, StorageKey, TxKind, U256,
 };
 use state::AccountInfo;
+use std::boxed::Box;
 
 /// Loads and warms accounts for execution, including precompiles and access list.
 pub fn load_accounts<
@@ -195,7 +195,11 @@ pub fn validate_against_state_and_deduct_caller<
     let new_balance = if execution_mode.charges_gas() {
         calculate_caller_fee(*caller.balance(), tx, block, cfg)?
     } else {
-        caller_balance_without_fee(*caller.balance(), tx.value(), cfg.is_balance_check_disabled())?
+        caller_balance_without_fee(
+            *caller.balance(),
+            tx.value(),
+            cfg.is_balance_check_disabled(),
+        )?
     };
 
     caller.set_balance(new_balance);
