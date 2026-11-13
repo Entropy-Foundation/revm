@@ -7,7 +7,7 @@ use context_interface::{
     context::{take_error, ContextError},
     journaled_state::{account::JournaledAccountTr, JournalCheckpoint, JournalTr},
     local::{FrameToken, OutFrame},
-    Cfg, ContextTr, Database,
+    Cfg, ContextTr, Database, Transaction,
 };
 use core::cmp::min;
 use derive_where::derive_where;
@@ -19,10 +19,10 @@ use interpreter::{
     FrameInput, Gas, GasTracker, InputsImpl, InstructionResult, Interpreter, InterpreterAction,
     InterpreterResult, InterpreterTypes, SharedMemory,
 };
-use precompile::PrecompileId;
 use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
+    supra_constants::{is_supra_reserved, TX_HASH_ADDRESS},
     Address, Bytes, U256,
 };
 use state::Bytecode;
@@ -152,7 +152,7 @@ impl EthFrame<EthInterpreter> {
         precompiles: &mut PRECOMPILES,
         depth: usize,
         memory: SharedMemory,
-        inputs: Box<CallInputs>,
+        mut inputs: Box<CallInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
         let reservoir_remaining_gas = inputs.reservoir;
         let charged_new_account_state_gas = inputs.charged_new_account_state_gas;
@@ -178,6 +178,38 @@ impl EthFrame<EthInterpreter> {
             return return_result(InstructionResult::CallTooDeep);
         }
 
+        // Value reaches a Supra reserved address only through a call to a precompile registered
+        // there that declares, through `PrecompileProvider::accepts_value`, that it is
+        // responsible for the value it receives. Value sent to any other reserved address, or to
+        // a reserved precompile that only reads, would be held by an account that nothing can
+        // spend from, so such a transfer is refused in every execution mode. Both provider
+        // methods are consulted so that a provider whose `accepts_value` names an address it
+        // does not serve still cannot admit value there. See smr-moonshot#3117.
+        //
+        // The refusal is revert-class, like `CallTooDeep` above and `OutOfFunds` below: the
+        // caller gets back the gas it forwarded, and the outcome is still reported as a halt.
+        //
+        // The check runs before the checkpoint and the value transfer, so the refusal itself
+        // writes nothing to the journal. `DELEGATECALL` and `CALLCODE` do not move value to
+        // `target_address` from another account (`CallValue::Apparent`, and a transfer to the
+        // caller itself, respectively), and a zero-value `CALL` moves nothing, so only a
+        // non-zero `CallValue::Transfer` is examined.
+        if let CallValue::Transfer(value) = inputs.value {
+            if !value.is_zero() && is_supra_reserved(&inputs.target_address) {
+                let is_value_accepting_precompile = precompiles.contains(&inputs.target_address)
+                    && precompiles.accepts_value(&inputs.target_address);
+                if !is_value_accepting_precompile {
+                    return return_result(InstructionResult::ReservedAddressTarget);
+                }
+            }
+        }
+
+        // A call to the TxHash precompile address receives the transaction hash as its input.
+        if inputs.bytecode_address == TX_HASH_ADDRESS {
+            let tx_hash = ctx.tx().tx_hash();
+            inputs.input = CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
+        }
+
         // Create subroutine checkpoint
         let checkpoint = ctx.journal_mut().checkpoint();
         // Touch address. For "EIP-158 State Clear", this will erase empty accounts.
@@ -193,7 +225,7 @@ impl EthFrame<EthInterpreter> {
             }
         }
 
-        let mut interpreter_input = InputsImpl {
+        let interpreter_input = InputsImpl {
             target_address: inputs.target_address,
             caller_address: inputs.caller,
             bytecode_address: Some(inputs.bytecode_address),
@@ -227,6 +259,46 @@ impl EthFrame<EthInterpreter> {
 
         // Get bytecode and hash - either from known_bytecode or load from account
         let (bytecode_hash, bytecode) = inputs.known_bytecode.clone();
+
+        // Code never executes from a Supra reserved address, in any execution mode: neither as
+        // the executing account (`target_address`, which becomes `msg.sender` of every call the
+        // code makes), nor as the account the code is loaded from (`bytecode_address`), nor as
+        // the account an EIP-7702 delegation designation points to. Precompiles were dispatched
+        // above and are not bytecode. See smr-moonshot#3117.
+        //
+        // This is a second line of defence. The reserved range is meant never to hold code, and
+        // this guard keeps that rule in force at execution should code ever be placed there, so
+        // it must not be removed on the grounds that the range is empty. Like the value check,
+        // the refusal is revert-class and returns the forwarded gas to the caller.
+        //
+        // `bytecode` is the code that runs, with any delegation already resolved, so the
+        // account's own code is read from the journal: a reserved frame is refused if its own
+        // code is non-empty, so a reserved account holding a delegation designation is refused
+        // whatever the designation points to. A designation that points to a reserved address
+        // holding no code executes nothing, exactly as a designation to any other empty account
+        // does.
+        let frame_is_reserved =
+            is_supra_reserved(&inputs.target_address) || is_supra_reserved(&inputs.bytecode_address);
+        if frame_is_reserved || !bytecode.is_empty() {
+            let own_code = &ctx
+                .journal_mut()
+                .load_account_with_code(inputs.bytecode_address)?
+                .data
+                .info
+                .code;
+            let refused = if frame_is_reserved {
+                own_code.as_ref().is_some_and(|code| !code.is_empty())
+            } else {
+                own_code
+                    .as_ref()
+                    .and_then(Bytecode::eip7702_address)
+                    .is_some_and(|delegated| is_supra_reserved(&delegated))
+            };
+            if refused {
+                ctx.journal_mut().checkpoint_revert(checkpoint);
+                return return_result(InstructionResult::ReservedAddressTarget);
+            }
+        }
 
         // Returns success if bytecode is empty.
         if bytecode.is_empty() {

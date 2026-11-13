@@ -28,7 +28,7 @@ use context::{result::ExecResultAndState, ContextSetters, ContextTr, Evm, Journa
 use database_interface::async_db::{on_fiber_result_with_stack, AsyncResult};
 use database_interface::DatabaseCommit;
 use interpreter::{interpreter::EthInterpreter, InterpreterResult};
-use primitives::{address, eip8037, Address, Bytes, TxKind};
+use primitives::{eip8037, Address, Bytes, TxKind};
 use state::EvmState;
 #[cfg(feature = "asyncdb")]
 use std::ptr::NonNull;
