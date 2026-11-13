@@ -552,8 +552,7 @@ library LibCore {
             // For more details see calculateTaskFee function.
 
             registryState.tasks[_taskIndex].taskState = LibCommon.TaskState.ACTIVE;
-            tryWithdrawTaskAutomationFee(
-                result,
+            result = tryWithdrawTaskAutomationFee(
                 _cycleIndex,
                 _taskIndex,
                 task.owner,
@@ -569,11 +568,10 @@ library LibCore {
     }
 
     /// @notice Helper function to withdraw automation task fees for an active task.
-    /// @dev Writes its outcome into `result`, which the caller passes zero-initialised: isRemoved
-    ///      when the task is dropped; fees, gas and committedToNextCycle when it is charged. A
-    ///      struct parameter instead of a multi-value return keeps dropOrChargeTasks, which the
-    ///      optimizer inlines this into, within the EVM stack limit.
-    /// @param result The task's TransitionResult, updated in place.
+    /// @dev Returns its outcome as a TransitionResult that starts zeroed: isRemoved when the task
+    ///      is dropped; fees, gas and committedToNextCycle when it is charged. Returning one
+    ///      struct instead of several values keeps dropOrChargeTasks, which the optimizer inlines
+    ///      this into, within the EVM stack limit.
     /// @param _cycleIndex Index of the cycle the fee pays for, reported by TaskCycleFeeWithdraw.
     /// @param _taskIndex Index of the task.
     /// @param _owner Owner of the task.
@@ -584,8 +582,8 @@ library LibCore {
     /// @param _currentCycleEndTime End time of the current cycle.
     /// @param _automationFeeCapForCycle Max automation fee for a cycle to be paid.
     /// @param _regHash Tx hash of the task.
+    /// @return result The task's outcome for this transition.
     function tryWithdrawTaskAutomationFee(
-        LibCommon.TransitionResult memory result,
         uint64 _cycleIndex,
         uint64 _taskIndex,
         address _owner,
@@ -596,7 +594,7 @@ library LibCore {
         uint64 _currentCycleEndTime,
         uint128 _automationFeeCapForCycle,
         bytes32 _regHash
-    ) private {
+    ) private returns (LibCommon.TransitionResult memory result) {
         AppStorage storage s = LibAppStorage.appStorage();
 
         // Remove the automation task if the cycle fee cap is exceeded.
