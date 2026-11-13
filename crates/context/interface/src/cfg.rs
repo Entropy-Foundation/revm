@@ -37,7 +37,7 @@ pub enum ExecutionMode {
 
 impl ExecutionMode {
     /// Returns true if gas should be charged for execution.
-    pub fn charges_gas(&self) -> bool {
+    pub const fn charges_gas(&self) -> bool {
         match self {
             ExecutionMode::User | ExecutionMode::Automated => true,
             ExecutionMode::AutomatedGasless
@@ -66,24 +66,24 @@ impl ExecutionMode {
     ///
     /// Replay protection for the modes that return false is the node's responsibility: revm
     /// executes the transaction it is given in the mode it is given.
-    pub fn updates_nonce(&self) -> bool {
+    pub const fn updates_nonce(&self) -> bool {
         matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }
 
     /// Returns true if the execution context is for governance native transaction
-    pub fn is_system(&self) -> bool {
+    pub const fn is_system(&self) -> bool {
         matches!(self, ExecutionMode::System)
     }
 
     /// Returns true if the execution context is for governance genesis transaction
-    pub fn is_genesis(&self) -> bool {
+    pub const fn is_genesis(&self) -> bool {
         matches!(self, ExecutionMode::Genesis)
     }
 
     /// Returns true if the execution context is configured for read-only execution, which leaves
     /// no lasting change to accounts or storage. See [`ExecutionMode::ReadOnly`] for what is
     /// permitted.
-    pub fn is_read_only(&self) -> bool {
+    pub const fn is_read_only(&self) -> bool {
         matches!(self, ExecutionMode::ReadOnly)
     }
 
@@ -105,7 +105,7 @@ impl ExecutionMode {
     ///
     /// The EIP-7702 delegation exemption applies in every mode. The `disable_eip3607` option of the
     /// EVM configuration, where it is compiled in, disables the rule for a `User` transaction too.
-    pub fn enforces_eip3607(&self) -> bool {
+    pub const fn enforces_eip3607(&self) -> bool {
         matches!(self, ExecutionMode::User)
     }
 
@@ -113,7 +113,7 @@ impl ExecutionMode {
     /// In Automation*, System mode contract deployment is not supported, as nonce update is not
     /// expected in these 2 modes.
     /// [`ExecutionMode::ReadOnly`] permits no lasting state change, and creating a contract is one.
-    pub fn supports_contract_creation(&self) -> bool {
+    pub const fn supports_contract_creation(&self) -> bool {
         matches!(self, ExecutionMode::User | ExecutionMode::Genesis)
     }
 }

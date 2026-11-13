@@ -294,7 +294,7 @@ impl Typed2718 for AutomatedTransaction {
 impl AutomatedTransaction {
     /// Returns true if automated transaction is gas-less, otherwise false.
     /// GST type transactions are considered as gas-less.
-    pub fn is_gasless(&self) -> bool {
+    pub const fn is_gasless(&self) -> bool {
         matches!(self.txn_type, AutomatedTransactionType::GST)
     }
 }
@@ -486,66 +486,66 @@ impl AutomatedTransactionBuilder {
         }
     }
 
-    pub fn with_block_height(mut self, block_height: u64) -> Self {
+    pub const fn with_block_height(mut self, block_height: u64) -> Self {
         self.block_height = Some(block_height);
         self
     }
 
-    pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
+    pub const fn with_chain_id(mut self, chain_id: ChainId) -> Self {
         self.chain_id = Some(chain_id);
         self
     }
 
-    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+    pub const fn with_gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
     }
 
-    pub fn with_gas_price(mut self, gas_price: u128) -> Self {
+    pub const fn with_gas_price(mut self, gas_price: u128) -> Self {
         self.gas_price = Some(gas_price);
         self
     }
 
-    pub fn with_gas_price_cap(mut self, gas_price_cap: u128) -> Self {
+    pub const fn with_gas_price_cap(mut self, gas_price_cap: u128) -> Self {
         self.gas_price_cap = Some(gas_price_cap);
         self
     }
 
-    pub fn with_registration_hash(mut self, registration_hash: B256) -> Self {
+    pub const fn with_registration_hash(mut self, registration_hash: B256) -> Self {
         self.registration_hash = Some(registration_hash);
         self
     }
 
-    pub fn with_task_index(mut self, task_index: u64) -> Self {
+    pub const fn with_task_index(mut self, task_index: u64) -> Self {
         self.task_index = Some(task_index);
         self
     }
 
-    pub fn with_expiry_timestamp(mut self, expiry_timestamp: u64) -> Self {
+    pub const fn with_expiry_timestamp(mut self, expiry_timestamp: u64) -> Self {
         self.expiry_timestamp = Some(expiry_timestamp);
         self
     }
 
-    pub fn with_owner(mut self, owner: Address) -> Self {
+    pub const fn with_owner(mut self, owner: Address) -> Self {
         self.owner = Some(owner);
         self
     }
-    pub fn with_typ(mut self, typ: AutomatedTransactionType) -> Self {
+    pub const fn with_typ(mut self, typ: AutomatedTransactionType) -> Self {
         self.typ = Some(typ);
         self
     }
 
-    pub fn with_priority(mut self, priority: u64) -> Self {
+    pub const fn with_priority(mut self, priority: u64) -> Self {
         self.priority = Some(priority);
         self
     }
 
-    pub fn with_to(mut self, to: Address) -> Self {
+    pub const fn with_to(mut self, to: Address) -> Self {
         self.to = Some(to);
         self
     }
 
-    pub fn with_value(mut self, value: U256) -> Self {
+    pub const fn with_value(mut self, value: U256) -> Self {
         self.value = Some(value);
         self
     }

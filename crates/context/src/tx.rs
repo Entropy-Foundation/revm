@@ -396,7 +396,7 @@ impl TxEnvBuilder {
     }
 
     /// Set the transaction hash
-    pub fn tx_hash(mut self, tx_hash: B256) -> Self {
+    pub const fn tx_hash(mut self, tx_hash: B256) -> Self {
         self.tx_hash = tx_hash;
         self
     }
