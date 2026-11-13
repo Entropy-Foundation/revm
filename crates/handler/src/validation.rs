@@ -421,6 +421,47 @@ mod tests {
         );
     }
 
+    /// A mode that charges no gas reports the gas its execution used. The EIP-7623 calldata floor,
+    /// which post-execution applies to a mode that charges gas, is not part of its result.
+    #[test]
+    fn gas_floor_is_not_reported_for_modes_that_charge_no_gas() {
+        // 4,000 non-zero calldata bytes cost 21,000 + 16 * 4,000 = 85,000, below the floor of
+        // 21,000 + 10 * 4 * 4,000 = 181,000. The callee holds no code, so nothing else is charged.
+        const CALLDATA_LEN: u64 = 4_000;
+        const STANDARD_COST: u64 = 21_000 + 16 * CALLDATA_LEN;
+        for mode in [
+            ExecutionMode::AutomatedGasless,
+            ExecutionMode::System,
+            ExecutionMode::ReadOnly,
+            ExecutionMode::Genesis,
+        ] {
+            let caller = if mode == ExecutionMode::System {
+                VM_SIGNER
+            } else {
+                Address::ZERO
+            };
+            let ctx = Context::mainnet()
+                .modify_cfg_chained(|c| c.execution_mode = mode.clone())
+                .with_db(CacheDB::<EmptyDB>::default());
+            let mut evm = ctx.build_mainnet();
+            let result = evm
+                .transact_commit(
+                    TxEnv::builder()
+                        .caller(caller)
+                        .gas_limit(1_000_000)
+                        .kind(TxKind::Call(address!(
+                            "0x1000000000000000000000000000000000000000"
+                        )))
+                        .data(Bytes::from(vec![0xff; CALLDATA_LEN as usize]))
+                        .build()
+                        .expect("a complete call environment builds"),
+                )
+                .unwrap_or_else(|error| panic!("{mode:?}: {error:?}"));
+            assert!(result.is_success(), "{mode:?}: {result:?}");
+            assert_eq!(result.tx_gas_used(), STANDARD_COST, "{mode:?}");
+        }
+    }
+
     fn deploy_contract(
         bytecode: Bytes,
         spec_id: Option<SpecId>,
