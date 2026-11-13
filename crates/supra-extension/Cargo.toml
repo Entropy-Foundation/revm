@@ -19,7 +19,7 @@ alloy-consensus = { workspace = true }
 alloy-eips = { workspace = true }
 serde = { workspace = true }
 alloy = { workspace = true }
-derive_more = { workspace = true, features = ["full"] }
+derive_more = { workspace = true, features = ["full", "std"] }
 derive-getters = { workspace = true }
 thiserror = { workspace = true }
 primitives = { workspace = true , features = ["rand"]}

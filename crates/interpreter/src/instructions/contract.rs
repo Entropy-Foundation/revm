@@ -1,27 +1,34 @@
 mod call_helpers;
 
-pub use call_helpers::{calc_call_gas, get_memory_input_and_out_ranges, resize_memory};
+pub use call_helpers::{
+    get_memory_input_and_out_ranges, load_acc_and_calc_gas, load_account_delegated,
+    load_account_delegated_handle_error, resize_memory,
+};
 
 use crate::{
-    gas,
     instructions::utility::IntoAddress,
     interpreter_action::FrameInput,
-    interpreter_types::{InputsTr, InterpreterTypes, LoopControl, MemoryTr, RuntimeFlag, StackTr},
-    CallInput, CallInputs, CallScheme, CallValue, CreateInputs, Host, InstructionResult,
-    InterpreterAction,
+    interpreter_types::{
+        InputsTr, InterpreterTypes as ITy, LoopControl, MemoryTr, ReturnData, RuntimeFlag, StackTr,
+    },
+    CallInput, CallInputs, CallScheme, CallValue, CreateInputs, Host,
+    InstructionExecResult as Result, InstructionResult, InterpreterAction,
 };
 use context_interface::CreateScheme;
-use primitives::{hardfork::SpecId, Address, Bytes, B256, U256};
+use primitives::{constants::CALL_STACK_LIMIT, hardfork::SpecId, Bytes, U256};
 use std::boxed::Box;
 
-use crate::InstructionContext;
+use crate::InstructionContext as Ictx;
 
 /// Implements the CREATE/CREATE2 instruction.
 ///
 /// Creates a new contract with provided bytecode.
-pub fn create<WIRE: InterpreterTypes, const IS_CREATE2: bool, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
+pub fn create<const IS_CREATE2: bool, IT: ITy, H: Host + ?Sized>(
+    context: Ictx<'_, H, IT>,
+) -> Result {
+    // Static call check is before gas charging (unlike execution-specs where it's
+    // inside generic_create). This is safe because CREATE in a static context is
+    // always an error regardless of gas accounting.
     require_non_staticcall!(context.interpreter);
 
     // EIP-1014: Skinny CREATE2
@@ -43,16 +50,19 @@ pub fn create<WIRE: InterpreterTypes, const IS_CREATE2: bool, H: Host + ?Sized>(
         {
             // Limit is set as double of max contract bytecode size
             if len > context.host.max_initcode_size() {
-                context
-                    .interpreter
-                    .halt(InstructionResult::CreateInitCodeSizeLimit);
-                return;
+                return Err(InstructionResult::CreateInitCodeSizeLimit);
             }
-            gas!(context.interpreter, gas::initcode_cost(len));
+            gas!(
+                context.interpreter,
+                context.host.gas_params().initcode_cost(len)
+            );
         }
 
         let code_offset = as_usize_or_fail!(context.interpreter, code_offset);
-        resize_memory!(context.interpreter, code_offset, len);
+        context
+            .interpreter
+            .resize_memory(context.host.gas_params(), code_offset, len)?;
+
         code = Bytes::copy_from_slice(
             context
                 .interpreter
@@ -66,12 +76,66 @@ pub fn create<WIRE: InterpreterTypes, const IS_CREATE2: bool, H: Host + ?Sized>(
     let scheme = if IS_CREATE2 {
         popn!([salt], context.interpreter);
         // SAFETY: `len` is reasonable in size as gas for it is already deducted.
-        gas_or_fail!(context.interpreter, gas::create2_cost(len));
+        gas!(
+            context.interpreter,
+            context.host.gas_params().create2_cost(len)
+        );
         CreateScheme::Create2 { salt }
     } else {
-        gas!(context.interpreter, gas::CREATE);
+        gas!(context.interpreter, context.host.gas_params().create_cost());
         CreateScheme::Create
     };
+
+    // Build the inputs before the gas split so the created address (and the
+    // CREATE2 init-code hash) is computed once and cached for frame creation.
+    let mut create_inputs = CreateInputs::new(
+        context.interpreter.input.target_address(),
+        scheme,
+        value,
+        code,
+        0,
+        0,
+    );
+
+    // State gas for account creation + contract metadata (EIP-8037).
+    if context.host.is_amsterdam_eip8037_enabled() {
+        // The charge is conditional at access, applied in
+        // the creating frame before the 63/64 split. The destination is read
+        // (and charged for) only after the pre-access checks — endowment
+        // balance, sender nonce overflow, and call depth — pass; failing those
+        // pushes 0 without touching the destination, keeping it out of the
+        // EIP-7928 block access list and the warm set.
+        let caller = create_inputs.caller();
+        let caller_info = context
+            .host
+            .load_account_info_skip_cold_load(caller, false, false)?;
+        let caller_balance = caller_info.account.balance;
+        let caller_nonce = caller_info.account.nonce;
+        if caller_balance < value
+            || caller_nonce == u64::MAX
+            || context.interpreter.input.depth() + 1 > CALL_STACK_LIMIT as usize
+        {
+            context.interpreter.return_data.clear();
+            push!(context.interpreter, U256::ZERO);
+            return Ok(());
+        }
+
+        // Single read of the destination: decides the charge by existence
+        // alone (independently of the collision outcome checked at frame
+        // creation) and adds it to the accessed addresses.
+        let created_address = create_inputs.created_address(caller_nonce);
+        let destination_alive = !context
+            .host
+            .load_account_info_skip_cold_load(created_address, false, false)?
+            .is_empty;
+        if !destination_alive {
+            state_gas!(
+                context.interpreter,
+                context.host.gas_params().create_state_gas()
+            );
+            create_inputs.set_charged_create_state_gas(true);
+        }
+    }
 
     let mut gas_limit = context.interpreter.gas.remaining();
 
@@ -83,243 +147,141 @@ pub fn create<WIRE: InterpreterTypes, const IS_CREATE2: bool, H: Host + ?Sized>(
         .is_enabled_in(SpecId::TANGERINE)
     {
         // Take remaining gas and deduce l64 part of it.
-        gas_limit -= gas_limit / 64
+        gas_limit = context.host.gas_params().call_stipend_reduction(gas_limit);
     }
     gas!(context.interpreter, gas_limit);
 
-    // Call host to interact with target contract
+    create_inputs.set_gas_limit(gas_limit);
+    create_inputs.set_reservoir(context.interpreter.gas.reservoir());
     context
         .interpreter
         .bytecode
         .set_action(InterpreterAction::NewFrame(FrameInput::Create(Box::new(
-            CreateInputs {
-                caller: context.interpreter.input.target_address(),
-                scheme,
-                value,
-                init_code: code,
-                gas_limit,
-            },
+            create_inputs,
         ))));
+    Err(InstructionResult::Suspend)
 }
 
-/// Implements the CALL instruction.
-///
-/// Message call with value transfer to another account.
-pub fn call<WIRE: InterpreterTypes, H: Host + ?Sized>(context: InstructionContext<'_, H, WIRE>) {
-    popn!([local_gas_limit, to, value], context.interpreter);
+/// Implements the CALL, CALLCODE, DELEGATECALL, and STATICCALL instructions.
+pub fn call<const KIND: u8, IT: ITy, H: Host + ?Sized>(mut context: Ictx<'_, H, IT>) -> Result {
+    use bytecode::opcode::{CALL, CALLCODE, DELEGATECALL, STATICCALL};
+
+    if !matches!(KIND, CALL | CALLCODE | DELEGATECALL | STATICCALL) {
+        unreachable!("invalid call kind")
+    }
+
+    if KIND == DELEGATECALL {
+        check!(context.interpreter, HOMESTEAD);
+    } else if KIND == STATICCALL {
+        check!(context.interpreter, BYZANTIUM);
+    }
+
+    let (local_gas_limit, to, value) = if matches!(KIND, CALL | CALLCODE) {
+        popn!([local_gas_limit, to, value], context.interpreter);
+        (local_gas_limit, to, value)
+    } else {
+        popn!([local_gas_limit, to], context.interpreter);
+        (local_gas_limit, to, U256::ZERO)
+    };
     let to = to.into_address();
     // Max gas limit is not possible in real ethereum situation.
     let local_gas_limit = u64::try_from(local_gas_limit).unwrap_or(u64::MAX);
-
     let has_transfer = !value.is_zero();
-    if context.interpreter.runtime_flag.is_static() && has_transfer {
-        context
-            .interpreter
-            .halt(InstructionResult::CallNotAllowedInsideStatic);
-        return;
+
+    if KIND == CALL && context.interpreter.runtime_flag.is_static() && has_transfer {
+        return Err(InstructionResult::CallNotAllowedInsideStatic);
     }
 
-    let Some((input, return_memory_offset)) = get_memory_input_and_out_ranges(context.interpreter)
-    else {
-        return;
+    let (input, return_memory_offset) =
+        get_memory_input_and_out_ranges(context.interpreter, context.host.gas_params())?;
+
+    let is_call = KIND == CALL;
+    let (gas_limit, bytecode, bytecode_hash, charged_new_account_state_gas) =
+        load_acc_and_calc_gas(&mut context, to, has_transfer, is_call, local_gas_limit)?;
+
+    let target_address = if matches!(KIND, CALLCODE | DELEGATECALL) {
+        context.interpreter.input.target_address()
+    } else {
+        to
     };
-
-    let Some(account_load) = context.host.load_account_delegated(to) else {
-        context
-            .interpreter
-            .halt(InstructionResult::FatalExternalError);
-        return;
+    let caller = if KIND == DELEGATECALL {
+        context.interpreter.input.caller_address()
+    } else {
+        context.interpreter.input.target_address()
     };
-
-    let Some(mut gas_limit) = calc_call_gas(
-        context.interpreter,
-        account_load,
-        has_transfer,
-        local_gas_limit,
-    ) else {
-        return;
+    let value = if KIND == DELEGATECALL {
+        CallValue::Apparent(context.interpreter.input.call_value())
+    } else {
+        CallValue::Transfer(value)
     };
+    let scheme = match KIND {
+        CALL => CallScheme::Call,
+        CALLCODE => CallScheme::CallCode,
+        DELEGATECALL => CallScheme::DelegateCall,
+        STATICCALL => CallScheme::StaticCall,
+        _ => unreachable!(),
+    };
+    let is_static = context.interpreter.runtime_flag.is_static() || KIND == STATICCALL;
 
-    gas!(context.interpreter, gas_limit);
+    // Call host to interact with target contract
+    context
+        .interpreter
+        .bytecode
+        .set_action(InterpreterAction::NewFrame(FrameInput::Call(Box::new(
+            CallInputs {
+                input: CallInput::SharedBuffer(input),
+                gas_limit,
+                target_address,
+                caller,
+                bytecode_address: to,
+                known_bytecode: (bytecode_hash, bytecode),
+                value,
+                scheme,
+                is_static,
+                return_memory_offset,
+                reservoir: context.interpreter.gas.reservoir(),
+                charged_new_account_state_gas,
+            },
+        ))));
+    Err(InstructionResult::Suspend)
+}
 
-    // Add call stipend if there is value to be transferred.
-    if has_transfer {
-        gas_limit = gas_limit.saturating_add(gas::CALL_STIPEND);
+#[cfg(test)]
+mod tests {
+    use crate::{
+        host::DummyHost,
+        instructions::{gas_table, instruction_table},
+        interpreter::{EthInterpreter, ExtBytecode, InputsImpl, SharedMemory},
+        Interpreter, InterpreterAction,
+    };
+    use bytecode::opcode::*;
+    use bytecode::Bytecode;
+    use primitives::{constants::CALL_STACK_LIMIT, hardfork::SpecId, Bytes, U256};
+
+    #[test]
+    fn create_too_deep_pushes_zero_without_destination_access_eip8037() {
+        // EIP-8037: the depth pre-check fails in the opcode itself, pushing 0 without
+        // requesting a create frame or reading the destination account, which would
+        // otherwise leak the address into the EIP-7928 block access list.
+        let bytecode =
+            Bytecode::new_raw(Bytes::copy_from_slice(&[PUSH0, PUSH0, PUSH0, CREATE, STOP]));
+        let mut interpreter = Interpreter::<EthInterpreter>::new(
+            SharedMemory::new(),
+            ExtBytecode::new(bytecode),
+            InputsImpl {
+                depth: CALL_STACK_LIMIT as usize,
+                ..Default::default()
+            },
+            false,
+            SpecId::AMSTERDAM,
+            1_000_000,
+        );
+        let table = instruction_table::<EthInterpreter, DummyHost>();
+        let gas = gas_table();
+        let mut host = DummyHost::new(SpecId::AMSTERDAM);
+        let action = interpreter.run_plain(&table, &gas, &mut host);
+        assert!(!matches!(action, InterpreterAction::NewFrame(_)));
+        assert_eq!(interpreter.stack.len(), 1);
+        assert_eq!(interpreter.stack.data()[0], U256::ZERO);
     }
-
-    // Call host to interact with target contract
-    context
-        .interpreter
-        .bytecode
-        .set_action(InterpreterAction::NewFrame(FrameInput::Call(Box::new(
-            CallInputs {
-                input: CallInput::SharedBuffer(input),
-                gas_limit,
-                target_address: to,
-                caller: context.interpreter.input.target_address(),
-                bytecode_address: to,
-                value: CallValue::Transfer(value),
-                scheme: CallScheme::Call,
-                is_static: context.interpreter.runtime_flag.is_static(),
-                return_memory_offset,
-            },
-        ))));
-}
-
-/// Implements the CALLCODE instruction.
-///
-/// Message call with alternative account's code.
-pub fn call_code<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    popn!([local_gas_limit, to, value], context.interpreter);
-    let to = Address::from_word(B256::from(to));
-    // Max gas limit is not possible in real ethereum situation.
-    let local_gas_limit = u64::try_from(local_gas_limit).unwrap_or(u64::MAX);
-
-    //pop!(context.interpreter, value);
-    let Some((input, return_memory_offset)) = get_memory_input_and_out_ranges(context.interpreter)
-    else {
-        return;
-    };
-
-    let Some(mut load) = context.host.load_account_delegated(to) else {
-        context
-            .interpreter
-            .halt(InstructionResult::FatalExternalError);
-        return;
-    };
-
-    // Set `is_empty` to false as we are not creating this account.
-    load.is_empty = false;
-    let Some(mut gas_limit) =
-        calc_call_gas(context.interpreter, load, !value.is_zero(), local_gas_limit)
-    else {
-        return;
-    };
-
-    gas!(context.interpreter, gas_limit);
-
-    // Add call stipend if there is value to be transferred.
-    if !value.is_zero() {
-        gas_limit = gas_limit.saturating_add(gas::CALL_STIPEND);
-    }
-
-    // Call host to interact with target contract
-    context
-        .interpreter
-        .bytecode
-        .set_action(InterpreterAction::NewFrame(FrameInput::Call(Box::new(
-            CallInputs {
-                input: CallInput::SharedBuffer(input),
-                gas_limit,
-                target_address: context.interpreter.input.target_address(),
-                caller: context.interpreter.input.target_address(),
-                bytecode_address: to,
-                value: CallValue::Transfer(value),
-                scheme: CallScheme::CallCode,
-                is_static: context.interpreter.runtime_flag.is_static(),
-                return_memory_offset,
-            },
-        ))));
-}
-
-/// Implements the DELEGATECALL instruction.
-///
-/// Message call with alternative account's code but same sender and value.
-pub fn delegate_call<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    check!(context.interpreter, HOMESTEAD);
-    popn!([local_gas_limit, to], context.interpreter);
-    let to = Address::from_word(B256::from(to));
-    // Max gas limit is not possible in real ethereum situation.
-    let local_gas_limit = u64::try_from(local_gas_limit).unwrap_or(u64::MAX);
-
-    let Some((input, return_memory_offset)) = get_memory_input_and_out_ranges(context.interpreter)
-    else {
-        return;
-    };
-
-    let Some(mut load) = context.host.load_account_delegated(to) else {
-        context
-            .interpreter
-            .halt(InstructionResult::FatalExternalError);
-        return;
-    };
-
-    // Set is_empty to false as we are not creating this account.
-    load.is_empty = false;
-    let Some(gas_limit) = calc_call_gas(context.interpreter, load, false, local_gas_limit) else {
-        return;
-    };
-
-    gas!(context.interpreter, gas_limit);
-
-    // Call host to interact with target contract
-    context
-        .interpreter
-        .bytecode
-        .set_action(InterpreterAction::NewFrame(FrameInput::Call(Box::new(
-            CallInputs {
-                input: CallInput::SharedBuffer(input),
-                gas_limit,
-                target_address: context.interpreter.input.target_address(),
-                caller: context.interpreter.input.caller_address(),
-                bytecode_address: to,
-                value: CallValue::Apparent(context.interpreter.input.call_value()),
-                scheme: CallScheme::DelegateCall,
-                is_static: context.interpreter.runtime_flag.is_static(),
-                return_memory_offset,
-            },
-        ))));
-}
-
-/// Implements the STATICCALL instruction.
-///
-/// Static message call (cannot modify state).
-pub fn static_call<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    check!(context.interpreter, BYZANTIUM);
-    popn!([local_gas_limit, to], context.interpreter);
-    let to = Address::from_word(B256::from(to));
-    // Max gas limit is not possible in real ethereum situation.
-    let local_gas_limit = u64::try_from(local_gas_limit).unwrap_or(u64::MAX);
-
-    let Some((input, return_memory_offset)) = get_memory_input_and_out_ranges(context.interpreter)
-    else {
-        return;
-    };
-
-    let Some(mut load) = context.host.load_account_delegated(to) else {
-        context
-            .interpreter
-            .halt(InstructionResult::FatalExternalError);
-        return;
-    };
-    // Set `is_empty` to false as we are not creating this account.
-    load.is_empty = false;
-    let Some(gas_limit) = calc_call_gas(context.interpreter, load, false, local_gas_limit) else {
-        return;
-    };
-    gas!(context.interpreter, gas_limit);
-
-    // Call host to interact with target contract
-    context
-        .interpreter
-        .bytecode
-        .set_action(InterpreterAction::NewFrame(FrameInput::Call(Box::new(
-            CallInputs {
-                input: CallInput::SharedBuffer(input),
-                gas_limit,
-                target_address: to,
-                caller: context.interpreter.input.target_address(),
-                bytecode_address: to,
-                value: CallValue::Transfer(U256::ZERO),
-                scheme: CallScheme::StaticCall,
-                is_static: true,
-                return_memory_offset,
-            },
-        ))));
 }

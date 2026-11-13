@@ -68,14 +68,6 @@ impl ExtBytecode {
         }
     }
 
-    /// Regenerates the bytecode hash.
-    #[inline]
-    #[deprecated(note = "use `get_or_calculate_hash` or `calculate_hash` instead")]
-    #[doc(hidden)]
-    pub fn regenerate_hash(&mut self) -> B256 {
-        self.calculate_hash()
-    }
-
     /// Re-calculates the bytecode hash.
     ///
     /// Prefer [`get_or_calculate_hash`](Self::get_or_calculate_hash) if you just need to get the hash.
@@ -88,7 +80,7 @@ impl ExtBytecode {
 
     /// Returns the bytecode hash.
     #[inline]
-    pub fn hash(&mut self) -> Option<B256> {
+    pub const fn hash(&self) -> Option<B256> {
         self.bytecode_hash
     }
 
@@ -148,15 +140,14 @@ impl Jumps for ExtBytecode {
 
     #[inline]
     fn is_valid_legacy_jump(&mut self, offset: usize) -> bool {
-        self.base
-            .legacy_jump_table()
-            .expect("Panic if not legacy")
-            .is_valid(offset)
+        let jt = self.base.legacy_jump_table();
+        // SAFETY: Only called by legacy bytecode. Panics in debug mode.
+        unsafe { jt.unwrap_unchecked() }.is_valid(offset)
     }
 
     #[inline]
     fn opcode(&self) -> u8 {
-        // SAFETY: `instruction_pointer` always point to bytecode.
+        // SAFETY: `instruction_pointer` always points to bytecode.
         unsafe { *self.instruction_pointer }
     }
 
@@ -166,7 +157,7 @@ impl Jumps for ExtBytecode {
         // In practice this is always true unless a caller modifies the `instruction_pointer` field manually.
         unsafe {
             self.instruction_pointer
-                .offset_from(self.base.bytes_ref().as_ptr()) as usize
+                .offset_from_unsigned(self.base.bytes_ref().as_ptr())
         }
     }
 }

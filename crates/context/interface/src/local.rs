@@ -3,7 +3,7 @@ use core::{
     cell::{Ref, RefCell},
     ops::Range,
 };
-use std::{rc::Rc, vec::Vec};
+use std::{rc::Rc, string::String, vec::Vec};
 
 /// Non-empty, item-pooling Vec.
 #[derive(Debug, Clone)]
@@ -21,10 +21,23 @@ impl<T> Default for FrameStack<T> {
 impl<T> FrameStack<T> {
     /// Creates a new, empty stack. It must be initialized with init before use.
     pub fn new() -> Self {
+        // p99.9 of call frame depth is 8,
+        // per: https://ethresear.ch/t/evm-stack-and-memory-usage-statistics-report/24209
         Self {
-            stack: Vec::with_capacity(4),
+            stack: Vec::with_capacity(8),
             index: None,
         }
+    }
+
+    /// Creates a new stack with preallocated items by calling `T::default()` `len` times.
+    /// Index will still be `None` until `end_init` is called.
+    pub fn new_prealloc(len: usize) -> Self
+    where
+        T: Default,
+    {
+        let mut stack = Vec::with_capacity(len);
+        stack.resize_with(len, T::default);
+        Self { stack, index: None }
     }
 
     /// Initializes the stack with a single item.
@@ -32,14 +45,18 @@ impl<T> FrameStack<T> {
     pub fn start_init(&mut self) -> OutFrame<'_, T> {
         self.index = None;
         if self.stack.is_empty() {
-            self.stack.reserve(1);
+            self.stack.reserve(8);
         }
         self.out_frame_at(0)
     }
 
     /// Finishes initialization.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe because it assumes that the `token` is initialized from this FrameStack object.
     #[inline]
-    pub fn end_init(&mut self, token: FrameToken) {
+    pub unsafe fn end_init(&mut self, token: FrameToken) {
         token.assert();
         if self.stack.is_empty() {
             unsafe { self.stack.set_len(1) };
@@ -49,26 +66,36 @@ impl<T> FrameStack<T> {
 
     /// Returns the current index of the stack.
     #[inline]
-    pub fn index(&self) -> Option<usize> {
+    pub const fn index(&self) -> Option<usize> {
         self.index
     }
 
     /// Increments the index.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe because it assumes that the `token` is obtained from `get_next` and
+    /// that `end_init` is called to initialize the FrameStack.
     #[inline]
-    pub fn push(&mut self, token: FrameToken) {
+    pub unsafe fn push(&mut self, token: FrameToken) {
         token.assert();
         let index = self.index.as_mut().unwrap();
-        if *index + 1 == self.stack.len() {
-            unsafe { self.stack.set_len(self.stack.len() + 1) };
-            self.stack.reserve(1);
-        }
         *index += 1;
+        // capacity of stack is incremented in `get_next`
+        debug_assert!(
+            *index < self.stack.capacity(),
+            "Stack capacity is not enough for index"
+        );
+        // If the index is the last one, we need to increase the length.
+        if *index == self.stack.len() {
+            unsafe { self.stack.set_len(self.stack.len() + 1) };
+        }
     }
 
     /// Clears the stack by setting the index to 0.
     /// It does not destroy the stack.
     #[inline]
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.index = None;
     }
 
@@ -81,13 +108,20 @@ impl<T> FrameStack<T> {
     /// Returns the current item.
     #[inline]
     pub fn get(&mut self) -> &mut T {
-        debug_assert!(self.stack.capacity() > self.index.unwrap() + 1);
+        debug_assert!(
+            self.stack.capacity() > self.index.unwrap(),
+            "Stack capacity is not enough for index"
+        );
         unsafe { &mut *self.stack.as_mut_ptr().add(self.index.unwrap()) }
     }
 
     /// Get next uninitialized item.
     #[inline]
     pub fn get_next(&mut self) -> OutFrame<'_, T> {
+        if self.index.unwrap() + 1 == self.stack.capacity() {
+            // allocate 8 more items
+            self.stack.reserve(8);
+        }
         self.out_frame_at(self.index.unwrap() + 1)
     }
 
@@ -99,7 +133,7 @@ impl<T> FrameStack<T> {
 }
 
 /// A potentially initialized frame. Used when initializing a new frame in the main loop.
-#[allow(missing_debug_implementations)]
+#[expect(missing_debug_implementations)]
 pub struct OutFrame<'a, T> {
     ptr: *mut T,
     init: bool,
@@ -160,13 +194,13 @@ impl<'a, T> OutFrame<'a, T> {
     }
 
     /// Consumes the `OutFrame`, returning a `FrameToken` that indicates the frame has been initialized.
-    pub fn consume(self) -> FrameToken {
+    pub const fn consume(self) -> FrameToken {
         FrameToken(self.init)
     }
 }
 
 /// Used to guarantee that a frame is initialized before use.
-#[allow(missing_debug_implementations)]
+#[expect(missing_debug_implementations)]
 pub struct FrameToken(bool);
 
 impl FrameToken {
@@ -184,15 +218,22 @@ pub trait LocalContextTr {
 
     /// Slice of the shared memory buffer returns None if range is not valid or buffer can't be borrowed.
     fn shared_memory_buffer_slice(&self, range: Range<usize>) -> Option<Ref<'_, [u8]>> {
-        let buffer = self.shared_memory_buffer();
-        buffer.borrow().get(range.clone())?;
-        Some(Ref::map(buffer.borrow(), |b| {
-            b.get(range).unwrap_or_default()
-        }))
+        Ref::filter_map(self.shared_memory_buffer().borrow(), |b| b.get(range)).ok()
     }
 
     /// Clear the local context.
     fn clear(&mut self);
+
+    /// Set the error message for a precompile error, if any.
+    ///
+    /// This is used to bubble up precompile error messages when the
+    /// transaction directly targets a precompile (depth == 1).
+    fn set_precompile_error_context(&mut self, _output: String);
+
+    /// Take and clear the precompile error context, if present.
+    ///
+    /// Returns `Some(String)` if a precompile error message was recorded.
+    fn take_precompile_error_context(&mut self) -> Option<String>;
 }
 
 #[cfg(test)]
@@ -201,11 +242,13 @@ mod tests {
 
     #[test]
     fn frame_stack() {
-        let mut stack = FrameStack::new();
+        let mut stack = FrameStack::new_prealloc(1);
         let mut frame = stack.start_init();
-        frame.get(|| 1);
+        // it is already initialized to zero.
+        *frame.get(|| 2) += 1;
+
         let token = frame.consume();
-        stack.end_init(token);
+        unsafe { stack.end_init(token) };
 
         assert_eq!(stack.index(), Some(0));
         assert_eq!(stack.stack.len(), 1);
@@ -216,7 +259,7 @@ mod tests {
         assert!(!b.init);
         assert_eq!(b.get(|| 2), &mut 2);
         let token = b.consume(); // TODO: remove
-        stack.push(token);
+        unsafe { stack.push(token) };
 
         assert_eq!(stack.index(), Some(1));
         assert_eq!(stack.stack.len(), 2);

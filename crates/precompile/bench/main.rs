@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![expect(missing_docs)]
 //! Benchmarks for the crypto precompiles
 
 pub mod blake2;
@@ -6,6 +6,8 @@ pub mod ecrecover;
 pub mod eip1962;
 pub mod eip2537;
 pub mod eip4844;
+pub mod modexp;
+pub mod secp256r1;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -14,13 +16,9 @@ pub fn benchmark_crypto_precompiles(c: &mut Criterion) {
     let mut group = c.benchmark_group("Crypto Precompile benchmarks");
 
     // Run BLS12-381 benchmarks (EIP-2537)
-    eip2537::add_g1_add_benches(&mut group);
-    eip2537::add_g2_add_benches(&mut group);
+    eip2537::add_benches(&mut group);
     eip2537::add_g1_msm_benches(&mut group);
     eip2537::add_g2_msm_benches(&mut group);
-    eip2537::add_pairing_benches(&mut group);
-    eip2537::add_map_fp_to_g1_benches(&mut group);
-    eip2537::add_map_fp2_to_g2_benches(&mut group);
 
     // Run BN254 benchmarks
     eip1962::add_bn254_add_benches(&mut group);
@@ -35,6 +33,12 @@ pub fn benchmark_crypto_precompiles(c: &mut Criterion) {
 
     // Run Blake2 benchmarks
     blake2::add_benches(&mut group);
+
+    // Run MODEXP benchmarks
+    modexp::add_benches(&mut group);
+
+    // Run secp256r1 benchmarks
+    secp256r1::add_benches(&mut group);
 }
 
 criterion_group! {

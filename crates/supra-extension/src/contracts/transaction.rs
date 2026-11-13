@@ -33,7 +33,12 @@ pub struct GenesisTransaction {
 
 impl GenesisTransaction {
     /// Creates a new genesis transaction with the given parameters to deploy a contract via standard create API.
-    pub fn create(sender: Address, data: Vec<u8>, nonce: u64, deploy_address: Address) -> Self {
+    pub const fn create(
+        sender: Address,
+        data: Vec<u8>,
+        nonce: u64,
+        deploy_address: Address,
+    ) -> Self {
         Self::new(sender, nonce, data, TxKind::Create, Some(deploy_address))
     }
 
@@ -52,7 +57,7 @@ impl GenesisTransaction {
     }
 
     /// Creates a new genesis call transaction with the given parameters.
-    pub fn call(sender: Address, target: Address, data: Vec<u8>, nonce: u64) -> Self {
+    pub const fn call(sender: Address, target: Address, data: Vec<u8>, nonce: u64) -> Self {
         Self::new(sender, nonce, data, TxKind::Call(target), None)
     }
 }
@@ -125,7 +130,7 @@ impl GenesisTransactionTags {
     ///
     /// Changing a value here changes the addresses the genesis contracts are deployed at. The order
     /// is pinned by `deployment_order_is_pinned`.
-    fn deployment_rank(&self) -> u8 {
+    const fn deployment_rank(&self) -> u8 {
         match self {
             Self::Create2Factory => 0,
             Self::Multicall3 => 1,

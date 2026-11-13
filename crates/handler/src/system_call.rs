@@ -24,13 +24,27 @@ use crate::{
     MainnetHandler, PrecompileProvider,
 };
 use context::{result::ExecResultAndState, ContextSetters, ContextTr, Evm, JournalTr, TxEnv};
+#[cfg(feature = "asyncdb")]
+use database_interface::async_db::{on_fiber_result_with_stack, AsyncResult};
 use database_interface::DatabaseCommit;
 use interpreter::{interpreter::EthInterpreter, InterpreterResult};
-use primitives::{Address, Bytes, TxKind};
+use primitives::{eip8037, Address, Bytes, TxKind};
 use state::EvmState;
+#[cfg(feature = "asyncdb")]
+use std::ptr::NonNull;
 
 /// The system address used for system calls, defined once in [`primitives::eip2935`].
 pub use primitives::eip2935::SYSTEM_ADDRESS;
+
+/// Maximum number of SSTOREs a system call reserves state gas for under EIP-8037.
+pub const SYSTEM_MAX_SSTORES_PER_CALL: u64 = 16;
+
+/// Gas limit for system calls under EIP-8037.
+///
+/// System calls get the base 30M regular-gas budget plus
+/// a state-gas reservoir sized for `SYSTEM_MAX_SSTORES_PER_CALL` storage writes.
+pub const SYSTEM_CALL_GAS_LIMIT: u64 = 30_000_000
+    + eip8037::SSTORE_SET_BYTES * eip8037::CPSB_GLAMSTERDAM * SYSTEM_MAX_SSTORES_PER_CALL;
 
 /// Creates the system transaction with default values and set data and tx call target to system contract address
 /// that is going to be called.
@@ -62,7 +76,7 @@ impl SystemCallTx for TxEnv {
             .caller(caller)
             .data(data)
             .kind(TxKind::Call(system_contract_address))
-            .gas_limit(30_000_000)
+            .gas_limit(SYSTEM_CALL_GAS_LIMIT)
             .build()
             .unwrap()
     }
@@ -217,6 +231,51 @@ pub trait SystemCallCommitEvm: SystemCallEvm + ExecuteCommitEvm {
     }
 }
 
+/// Async extension of the [`SystemCallEvm`] trait that runs execution on an async fiber.
+#[cfg(feature = "asyncdb")]
+pub trait SystemCallEvmAsync: SystemCallEvm {
+    /// System call executed on an async fiber.
+    fn system_call_one_with_caller_async(
+        &mut self,
+        caller: Address,
+        system_contract_address: Address,
+        data: Bytes,
+    ) -> impl core::future::Future<Output = AsyncResult<Self::ExecutionResult, Self::Error>> + Send + '_;
+
+    /// System call executed on an async fiber.
+    fn system_call_one_async(
+        &mut self,
+        system_contract_address: Address,
+        data: Bytes,
+    ) -> impl core::future::Future<Output = AsyncResult<Self::ExecutionResult, Self::Error>> + Send + '_
+    {
+        self.system_call_one_with_caller_async(SYSTEM_ADDRESS, system_contract_address, data)
+    }
+
+    /// System call executed and finalized on an async fiber.
+    fn system_call_with_caller_async(
+        &mut self,
+        caller: Address,
+        system_contract_address: Address,
+        data: Bytes,
+    ) -> impl core::future::Future<
+        Output = AsyncResult<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error>,
+    > + Send
+           + '_;
+
+    /// System call executed and finalized on an async fiber.
+    fn system_call_async(
+        &mut self,
+        system_contract_address: Address,
+        data: Bytes,
+    ) -> impl core::future::Future<
+        Output = AsyncResult<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error>,
+    > + Send
+           + '_ {
+        self.system_call_with_caller_async(SYSTEM_ADDRESS, system_contract_address, data)
+    }
+}
+
 impl<CTX, INSP, INST, PRECOMPILES> SystemCallEvm
     for Evm<CTX, INSP, INST, PRECOMPILES, EthFrame<EthInterpreter>>
 where
@@ -238,6 +297,57 @@ where
         ));
         // create handler
         MainnetHandler::default().run_system_call(self)
+    }
+}
+
+#[cfg(feature = "asyncdb")]
+impl<CTX, INSP, INST, PRECOMPILES> SystemCallEvmAsync
+    for Evm<CTX, INSP, INST, PRECOMPILES, EthFrame<EthInterpreter>>
+where
+    CTX: ContextTr<Journal: JournalTr<State = EvmState>, Tx: SystemCallTx> + ContextSetters,
+    INST: InstructionProvider<Context = CTX, InterpreterTypes = EthInterpreter>,
+    PRECOMPILES: PrecompileProvider<CTX, Output = InterpreterResult>,
+    Self: ExecuteEvm,
+    <Self as ExecuteEvm>::ExecutionResult: Send,
+    <Self as ExecuteEvm>::State: Send,
+    <Self as ExecuteEvm>::Error: Send,
+{
+    #[inline]
+    fn system_call_one_with_caller_async(
+        &mut self,
+        caller: Address,
+        system_contract_address: Address,
+        data: Bytes,
+    ) -> impl core::future::Future<Output = AsyncResult<Self::ExecutionResult, Self::Error>> + Send + '_
+    {
+        let stack = NonNull::from(&mut self.async_stack);
+        // SAFETY: The returned future owns the exclusive `&mut self` borrow, so nothing else can
+        // access the EVM stack slot until that future is dropped.
+        unsafe {
+            on_fiber_result_with_stack(stack, move || {
+                self.system_call_one_with_caller(caller, system_contract_address, data)
+            })
+        }
+    }
+
+    #[inline]
+    fn system_call_with_caller_async(
+        &mut self,
+        caller: Address,
+        system_contract_address: Address,
+        data: Bytes,
+    ) -> impl core::future::Future<
+        Output = AsyncResult<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error>,
+    > + Send
+           + '_ {
+        let stack = NonNull::from(&mut self.async_stack);
+        // SAFETY: The returned future owns the exclusive `&mut self` borrow, so nothing else can
+        // access the EVM stack slot until that future is dropped.
+        unsafe {
+            on_fiber_result_with_stack(stack, move || {
+                self.system_call_with_caller(caller, system_contract_address, data)
+            })
+        }
     }
 }
 
@@ -269,7 +379,7 @@ mod tests {
 
     use super::*;
     use context::{
-        result::{ExecutionResult, Output, SuccessReason},
+        result::{ExecutionResult, Output, ResultGas, SuccessReason},
         Context, Transaction,
     };
     use database::InMemoryDB;
@@ -298,15 +408,14 @@ mod tests {
             .system_call(HISTORY_STORAGE_ADDRESS, block_hash.0.into())
             .unwrap();
 
-        // system call gas limit is 30M
-        assert_eq!(evm.ctx.tx().gas_limit(), 30_000_000);
+        // EIP-8037 adds a state-gas reservoir on top of the 30M base limit.
+        assert_eq!(evm.ctx.tx().gas_limit(), SYSTEM_CALL_GAS_LIMIT);
 
         assert_eq!(
             output.result,
             ExecutionResult::Success {
                 reason: SuccessReason::Stop,
-                gas_used: 22143,
-                gas_refunded: 0,
+                gas: ResultGas::default().with_total_gas_spent(22143),
                 logs: vec![],
                 output: Output::Call(Bytes::default())
             }

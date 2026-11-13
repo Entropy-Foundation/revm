@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-primitives-v42.0.0...revm-primitives-v43.0.0) - 2026-08-20
+
+### Added
+
+- glamsterdam devnet-8 gas repricing ([#3850](https://github.com/bluealloy/revm/pull/3850))
+
+### Other
+
+- remove duplicate Amsterdam gas overrides and dead CPSB constants ([#3857](https://github.com/bluealloy/revm/pull/3857))
+
+## [42.0.0](https://github.com/bluealloy/revm/compare/revm-primitives-v41.0.0...revm-primitives-v42.0.0) - 2026-07-22
+
+### Added
+
+- *(amsterdam)* glamsterdam devnet-7 alignment (EIP-2780 runtime gas phase, fixtures v7.0.0) ([#3795](https://github.com/bluealloy/revm/pull/3795))
+- *(amsterdam)* glam devnet-6 gas accounting & EIP alignment ([#3782](https://github.com/bluealloy/revm/pull/3782))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-primitives-v24.0.0...revm-primitives-v41.0.0) - 2026-05-26
+
+### Other
+
+- explain CPSB acronym ([#3716](https://github.com/bluealloy/revm/pull/3716))
+
+## [24.0.0](https://github.com/bluealloy/revm/compare/revm-primitives-v23.0.0...revm-primitives-v24.0.0) - 2026-05-19
+
+### Added
+
+- *(eip8037)* Amsterdam bal-devnet-7 ([#3667](https://github.com/bluealloy/revm/pull/3667))
+
+### Other
+
+- remove unused spec ids ([#3649](https://github.com/bluealloy/revm/pull/3649))
+- audit #[allow] attributes ([#3611](https://github.com/bluealloy/revm/pull/3611))
+- *(precompile)* use static OnceLock array for Precompiles init ([#3602](https://github.com/bluealloy/revm/pull/3602))
+- *(primitives)* add SpecId::NEXT, drop num_enum dependency ([#3593](https://github.com/bluealloy/revm/pull/3593))
+- enable and fix clippy::missing_const_for_fn ([#3592](https://github.com/bluealloy/revm/pull/3592))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+
+## [23.0.0](https://github.com/bluealloy/revm/compare/revm-primitives-v22.1.0...revm-primitives-v23.0.0) - 2026-04-10
+
+### Added
+
+- Part of amsterdam devnet3 EIP updates ([#3438](https://github.com/bluealloy/revm/pull/3438))
+
+## [22.1.0](https://github.com/bluealloy/revm/compare/revm-primitives-v22.0.0...revm-primitives-v22.1.0) - 2026-03-02
+
+### Added
+
+- Implement EIP-7708 ETH transfers emit a log ([#3334](https://github.com/bluealloy/revm/pull/3334))
+
+### Fixed
+
+- *(journal)* emit EIP-7708 log for selfdestructed accounts with remaining balance ([#3394](https://github.com/bluealloy/revm/pull/3394))
+
+### Other
+
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+- use fixed bytes hashmaps from alloy-core ([#3358](https://github.com/bluealloy/revm/pull/3358))
+- update default hardfork to Osaka (Ethereum) and Jovian (Optimism) ([#3326](https://github.com/bluealloy/revm/pull/3326))
+
+## [21.1.0](https://github.com/bluealloy/revm/compare/revm-primitives-v21.0.2...revm-primitives-v21.1.0) - 2026-01-15
+
+### Added
+
+- BAL EIP-7928 ([#3070](https://github.com/bluealloy/revm/pull/3070))
+- JournaledAccount sload/sstore ([#3201](https://github.com/bluealloy/revm/pull/3201))
+
+### Other
+
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- *(database)* use fixed hashmaps in cache db ([#3231](https://github.com/bluealloy/revm/pull/3231))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [21.0.2](https://github.com/bluealloy/revm/compare/revm-primitives-v21.0.1...revm-primitives-v21.0.2) - 2025-11-07
+
+### Other
+
+- tag v96 revm v31.0.0 ([#3135](https://github.com/bluealloy/revm/pull/3135))
+
+## [21.0.1](https://github.com/bluealloy/revm/compare/revm-primitives-v21.0.0...revm-primitives-v21.0.1) - 2025-10-15
+
+### Other
+
+- resize short addresses bitvec instead of reallocating ([#3083](https://github.com/bluealloy/revm/pull/3083))
+
+## [21.0.0](https://github.com/bluealloy/revm/compare/revm-primitives-v20.2.1...revm-primitives-v21.0.0) - 2025-10-07
+
+### Added
+
+- *(revme)* ef blockchain tests cli ([#2935](https://github.com/bluealloy/revm/pull/2935))
+
+### Fixed
+
+- Align no_std OnceLock semantics with std ([#3026](https://github.com/bluealloy/revm/pull/3026))
+- racecondition return on install_crypto fn ([#2997](https://github.com/bluealloy/revm/pull/2997))
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+
+### Other
+
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+- add amsterdam in spec id ([#2934](https://github.com/bluealloy/revm/pull/2934))
+- *(cleanup)* Remove EIP-7918 related functions and EIP file  ([#2925](https://github.com/bluealloy/revm/pull/2925))
+- cargo update ([#2930](https://github.com/bluealloy/revm/pull/2930))
+
 ## [20.2.1](https://github.com/bluealloy/revm/compare/revm-primitives-v20.2.0...revm-primitives-v20.2.1) - 2025-08-12
 
 ### Other
@@ -31,8 +137,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
 
 ## [20.1.0](https://github.com/bluealloy/revm/compare/revm-primitives-v20.0.0...revm-primitives-v20.1.0) - 2025-07-23
 
@@ -219,12 +323,6 @@ Stable version
 ### Other
 
 - *(deps)* bump alloy-primitives from 0.8.0 to 0.8.2 ([#1761](https://github.com/bluealloy/revm/pull/1761))
-
-## [9.0.1](https://github.com/bluealloy/revm/compare/revm-primitives-v9.0.0...revm-primitives-v9.0.1) - 2024-08-30
-
-### Other
-- Bump new logo ([#1735](https://github.com/bluealloy/revm/pull/1735))
-- bump kzg-rs version ([#1734](https://github.com/bluealloy/revm/pull/1734))
 
 ## [9.0.1](https://github.com/bluealloy/revm/compare/revm-primitives-v9.0.0...revm-primitives-v9.0.1) - 2024-08-30
 

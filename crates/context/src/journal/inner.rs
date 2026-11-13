@@ -1,21 +1,59 @@
 //! Module containing the [`JournalInner`] that is part of [`crate::Journal`].
-use crate::{entry::SelfdestructionRevertStatus, warm_addresses::WarmAddresses};
-
-use super::JournalEntryTr;
+use super::warm_addresses::WarmAddresses;
 use bytecode::Bytecode;
 use context_interface::{
     context::{SStoreResult, SelfDestructResult, StateLoad},
-    journaled_state::{AccountLoad, JournalCheckpoint, TransferError},
+    journaled_state::{
+        account::{JournaledAccount, JournaledAccountTr},
+        entry::{JournalEntryTr, SelfdestructionRevertStatus},
+        AccountLoad, JournalCheckpoint, JournalLoadError, TransferError,
+    },
 };
 use core::mem;
 use database_interface::Database;
 use primitives::{
+    eip7708::{ETH_TRANSFER_LOG_ADDRESS, ETH_TRANSFER_LOG_TOPIC},
     hardfork::SpecId::{self, *},
     hash_map::Entry,
-    Address, HashMap, Log, StorageKey, StorageValue, B256, KECCAK_EMPTY, U256,
+    hints_util::unlikely,
+    Address, Bytes, HashMap, Log, LogData, StorageKey, StorageValue, B256, KECCAK_EMPTY, U256,
 };
-use state::{Account, EvmState, EvmStorageSlot, TransientStorage};
+use state::{Account, EvmState, TransactionId, TransientStorage};
 use std::vec::Vec;
+
+/// Configuration for the journal that affects EVM execution behavior.
+///
+/// This struct bundles the spec ID and EIP-7708 configuration flags.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct JournalCfg {
+    /// The spec ID for the EVM. Spec is required for some journal entries and needs to be set for
+    /// JournalInner to be functional.
+    ///
+    /// If spec is set it assumed that precompile addresses are set as well for this particular spec.
+    ///
+    /// This spec is used for two things:
+    ///
+    /// - [EIP-161]: Prior to this EIP, Ethereum had separate definitions for empty and non-existing accounts.
+    /// - [EIP-6780]: `SELFDESTRUCT` only in same transaction
+    ///
+    /// [EIP-161]: https://eips.ethereum.org/EIPS/eip-161
+    /// [EIP-6780]: https://eips.ethereum.org/EIPS/eip-6780
+    pub spec: SpecId,
+    /// Whether EIP-7708 (ETH transfers emit logs) is disabled.
+    pub eip7708_disabled: bool,
+    /// Whether the EIP-8246 delayed clearing of self-destructed accounts is disabled.
+    ///
+    /// When enabled, revm tracks all self-destructed addresses and, at the end of the
+    /// transaction, clears the code, storage and nonce of any that still have a remaining
+    /// balance while preserving the balance (see [EIP-8246]). This can be disabled for
+    /// performance reasons as it requires storing and iterating over all self-destructed
+    /// accounts. When disabled, this clearing can be done outside of revm when applying
+    /// accounts to database state.
+    ///
+    /// [EIP-8246]: https://eips.ethereum.org/EIPS/eip-8246
+    pub eip8246_delayed_clear_disabled: bool,
+}
 /// Inner journal state that contains journal and state changes.
 ///
 /// Spec Id is a essential information for the Journal.
@@ -39,20 +77,9 @@ pub struct JournalInner<ENTRY> {
     /// reverted or had a error on execution.
     ///
     /// This ID is used in `Self::state` to determine if account/storage is touched/warm/cold.
-    pub transaction_id: usize,
-    /// The spec ID for the EVM. Spec is required for some journal entries and needs to be set for
-    /// JournalInner to be functional.
-    ///
-    /// If spec is set it assumed that precompile addresses are set as well for this particular spec.
-    ///
-    /// This spec is used for two things:
-    ///
-    /// - [EIP-161]: Prior to this EIP, Ethereum had separate definitions for empty and non-existing accounts.
-    /// - [EIP-6780]: `SELFDESTRUCT` only in same transaction
-    ///
-    /// [EIP-161]: https://eips.ethereum.org/EIPS/eip-161
-    /// [EIP-6780]: https://eips.ethereum.org/EIPS/eip-6780
-    pub spec: SpecId,
+    pub transaction_id: TransactionId,
+    /// Journal configuration containing spec ID and EIP-7708 flags.
+    pub cfg: JournalCfg,
     /// Warm addresses containing both coinbase and current precompiles.
     pub warm_addresses: WarmAddresses,
     /// Running total of native value removed from circulation by self-destructed
@@ -98,6 +125,16 @@ pub struct JournalInner<ENTRY> {
     /// per-transaction total from the same field, and those still compose, because
     /// each drain covers exactly the destructions since the previous one.
     pub selfdestruct_burn: U256,
+    /// Addresses that were self-destructed for the first time in this transaction.
+    ///
+    /// This is used by [EIP-8246] to clear (code, storage and nonce) self-destructed accounts
+    /// that still have balance at the end of the transaction, preserving their balance.
+    ///
+    /// The vec is indexed by checkpoint - on revert, entries added after the checkpoint
+    /// are removed.
+    ///
+    /// [EIP-8246]: https://eips.ethereum.org/EIPS/eip-8246
+    pub selfdestructed_addresses: Vec<Address>,
 }
 
 impl<ENTRY: JournalEntryTr> Default for JournalInner<ENTRY> {
@@ -117,11 +154,12 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             transient_storage: TransientStorage::default(),
             logs: Vec::new(),
             journal: Vec::default(),
-            transaction_id: 0,
+            transaction_id: TransactionId::ZERO,
             depth: 0,
-            spec: SpecId::default(),
+            cfg: JournalCfg::default(),
             warm_addresses: WarmAddresses::new(),
             selfdestruct_burn: U256::ZERO,
+            selfdestructed_addresses: Vec::new(),
         }
     }
 
@@ -137,9 +175,15 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         mem::take(&mut self.selfdestruct_burn)
     }
 
-    /// Returns the logs
+    /// Returns the logs.
+    ///
+    /// Before returning, this function applies EIP-8246 to any self-destructed
+    /// accounts that still have a non-zero balance, clearing their code, storage and
+    /// nonce while preserving the balance.
     #[inline]
     pub fn take_logs(&mut self) -> Vec<Log> {
+        // EIP-8246: clear self-destructed accounts that still hold a balance.
+        self.eip8246_clear_selfdestructed_accounts();
         mem::take(&mut self.logs)
     }
 
@@ -164,12 +208,13 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             depth,
             journal,
             transaction_id,
-            spec,
+            cfg,
             warm_addresses,
             selfdestruct_burn,
+            selfdestructed_addresses,
         } = self;
-        // Spec precompiles and state are not changed. It is always set again execution.
-        let _ = spec;
+        // Cfg and state are not changed. They are always set again before execution.
+        let _ = cfg;
         // Preserved across the transaction boundary so the host can still read it after
         // execution; see the field docs. Counted before `journal` is cleared below,
         // since the journal is what names the accounts this transaction destroyed.
@@ -182,10 +227,12 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         journal.clear();
 
         // Clear coinbase address warming for next tx
-        warm_addresses.clear_coinbase();
+        warm_addresses.clear_coinbase_and_access_list();
         // increment transaction id.
-        *transaction_id += 1;
+        transaction_id.increment();
+
         logs.clear();
+        selfdestructed_addresses.clear();
     }
 
     /// Returns the summed balance of the accounts that `journal` marks as
@@ -221,11 +268,12 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             depth,
             journal,
             transaction_id,
-            spec,
+            cfg,
             warm_addresses,
             selfdestruct_burn,
+            selfdestructed_addresses,
         } = self;
-        let is_spurious_dragon_enabled = spec.is_enabled_in(SPURIOUS_DRAGON);
+        let is_spurious_dragon_enabled = cfg.spec.is_enabled_in(SPURIOUS_DRAGON);
         // iterate over all journals entries and revert our global state
         let mut reverted_burn = U256::ZERO;
         journal.drain(..).rev().for_each(|entry| {
@@ -243,10 +291,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         transient_storage.clear();
         *depth = 0;
         logs.clear();
-        *transaction_id += 1;
+        selfdestructed_addresses.clear();
+        transaction_id.increment();
 
         // Clear coinbase address warming for next tx
-        warm_addresses.clear_coinbase();
+        warm_addresses.clear_coinbase_and_access_list();
     }
 
     /// Take the [`EvmState`] and clears the journal by resetting it to initial state.
@@ -264,19 +313,42 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             depth,
             journal,
             transaction_id,
-            spec,
+            cfg,
             warm_addresses,
             selfdestruct_burn,
+            selfdestructed_addresses,
         } = self;
-        // Spec is not changed. And it is always set again in execution.
-        let _ = spec;
         // Preserved across the transaction boundary so the host can still read it after
         // execution; see the field docs.
         let _ = selfdestruct_burn;
         // Clear coinbase address warming for next tx
-        warm_addresses.clear_coinbase();
+        warm_addresses.clear_coinbase_and_access_list();
+        selfdestructed_addresses.clear();
 
-        let state = mem::take(state);
+        let mut state = mem::take(state);
+
+        // Pre-EIP-161 normalization: adjust empty touched accounts so the database
+        // layer can always apply post-EIP-161 commit semantics (destroy empty touched
+        // accounts). For pre-Spurious Dragon blocks, we prevent destruction by either
+        // marking the account as created (materialized) or clearing the touched flag.
+        if !cfg.spec.is_enabled_in(SPURIOUS_DRAGON) {
+            for acc in state.values_mut() {
+                if acc.is_touched()
+                    && acc.is_empty()
+                    && !acc.is_selfdestructed()
+                    && !acc.is_created()
+                {
+                    if acc.is_loaded_as_not_existing() {
+                        // Materialize empty account that didn't exist before.
+                        acc.mark_created();
+                    } else {
+                        // Preserve existing empty account, don't let the DB layer destroy it.
+                        acc.unmark_touch();
+                    }
+                }
+            }
+        }
+
         logs.clear();
         transient_storage.clear();
 
@@ -284,21 +356,90 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         journal.clear();
         *depth = 0;
         // reset transaction id.
-        *transaction_id = 0;
+        *transaction_id = TransactionId::ZERO;
 
         state
     }
 
+    /// Apply [EIP-8246] to self-destructed accounts that still have a balance.
+    ///
+    /// This should be called before `take_logs()` at the end of transaction execution.
+    /// It iterates over all accounts that were self-destructed in this transaction and,
+    /// for any that still hold a non-zero balance, clears the rest of the account instead
+    /// of letting the balance be burned: the nonce is reset to `0`, the code and storage are
+    /// cleared, the balance is left unchanged and the self-destruct flag is removed so the
+    /// account is preserved in state as a balance-only account.
+    ///
+    /// A non-zero balance can remain when an account receives ETH after being self-destructed
+    /// in the same transaction, or when a contract created in the same transaction
+    /// self-destructs to itself (see [`Self::selfdestruct`]).
+    ///
+    /// Accounts with a zero balance keep their self-destruct flag and are removed from state as
+    /// before (they are *empty* and deleted by [EIP-161]).
+    ///
+    /// Self-destructed accounts can only reach this point if they were created in the same
+    /// transaction (EIP-6780 is always active alongside EIP-8246), so they never have storage
+    /// stored in the database and clearing the in-memory storage is sufficient.
+    ///
+    /// [EIP-8246]: https://eips.ethereum.org/EIPS/eip-8246
+    /// [EIP-161]: https://eips.ethereum.org/EIPS/eip-161
+    #[inline]
+    pub fn eip8246_clear_selfdestructed_accounts(&mut self) {
+        if !self.cfg.spec.is_enabled_in(AMSTERDAM) || self.cfg.eip8246_delayed_clear_disabled {
+            return;
+        }
+
+        for address in &self.selfdestructed_addresses {
+            let Some(account) = self.state.get_mut(address) else {
+                continue;
+            };
+
+            // Zero-balance accounts stay self-destructed and are removed from state (EIP-161).
+            if account.info.balance.is_zero() {
+                continue;
+            }
+
+            // EIP-8246: keep the balance but clear the rest of the account.
+            account.info.nonce = 0;
+            account.info.code_hash = KECCAK_EMPTY;
+            account.info.code = Some(Bytecode::default());
+            // Wipe storage to zero in place rather than dropping the entries: the
+            // slots were accessed during the (now self-destructed) execution and
+            // EIP-7928 records those accesses in the block access list. Keeping the
+            // entries (present_value = 0) preserves the access — read-only slots
+            // stay read-only and written slots become writes-to-zero — while the
+            // committed state is still an empty (balance-only) account.
+            for slot in account.storage.values_mut() {
+                slot.present_value = StorageValue::ZERO;
+            }
+
+            // Remove the self-destruct flags so the account is preserved instead of destroyed.
+            account.unmark_selfdestruct();
+            account.unmark_selfdestructed_locally();
+        }
+    }
+
     /// Return reference to state.
     #[inline]
-    pub fn state(&mut self) -> &mut EvmState {
+    pub const fn state(&mut self) -> &mut EvmState {
         &mut self.state
     }
 
     /// Sets SpecId.
     #[inline]
-    pub fn set_spec_id(&mut self, spec: SpecId) {
-        self.spec = spec;
+    pub const fn set_spec_id(&mut self, spec: SpecId) {
+        self.cfg.spec = spec;
+    }
+
+    /// Sets EIP-7708 and EIP-8246 configuration flags.
+    #[inline]
+    pub const fn set_eip7708_config(
+        &mut self,
+        disabled: bool,
+        eip8246_delayed_clear_disabled: bool,
+    ) {
+        self.cfg.eip7708_disabled = disabled;
+        self.cfg.eip8246_delayed_clear_disabled = eip8246_delayed_clear_disabled;
     }
 
     /// Mark account as touched as only touched accounts will be added to state.
@@ -342,16 +483,10 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         let account = self.state.get_mut(&address).unwrap();
         Self::touch_account(&mut self.journal, address, account);
 
-        // Capture the previous code/hash so a revert restores it exactly -
-        // it is not necessarily empty (e.g. EIP-7702 explicitly permits
-        // re-delegating an authority that already holds a delegation).
-        let previous_code_hash = account.info.code_hash;
-        let previous_code = account.info.code.clone();
-        self.journal.push(ENTRY::code_changed(
-            address,
-            previous_code_hash,
-            previous_code,
-        ));
+        let had_code_hash = account.info.code_hash;
+        let had_code = account.info.code.take();
+        self.journal
+            .push(ENTRY::code_changed(address, had_code_hash, had_code));
 
         account.info.code_hash = hash;
         account.info.code = Some(code);
@@ -364,8 +499,8 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     /// In case of EIP-7702 code with zero address, the bytecode will be erased.
     #[inline]
     pub fn set_code(&mut self, address: Address, code: Bytecode) {
-        if let Bytecode::Eip7702(eip7702_bytecode) = &code {
-            if eip7702_bytecode.address().is_zero() {
+        if let Some(eip7702_address) = code.eip7702_address() {
+            if eip7702_address.is_zero() {
                 self.set_code_with_hash(address, Bytecode::default(), KECCAK_EMPTY);
                 return;
             }
@@ -377,6 +512,7 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
     /// Add journal entry for caller accounting.
     #[inline]
+    #[deprecated]
     pub fn caller_accounting_journal_entry(
         &mut self,
         address: Address,
@@ -399,7 +535,7 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
         if bump_nonce {
             // nonce changed.
-            self.journal.push(ENTRY::nonce_changed(address));
+            self.journal.push(ENTRY::nonce_bumped(address));
         }
     }
 
@@ -413,26 +549,71 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         address: Address,
         balance: U256,
     ) -> Result<(), DB::Error> {
-        let account = self.load_account(db, address)?.data;
-        let old_balance = account.info.balance;
-        account.info.balance = account.info.balance.saturating_add(balance);
-
-        // march account as touched.
-        if !account.is_touched() {
-            account.mark_touch();
-            self.journal.push(ENTRY::account_touched(address));
-        }
-
-        // add journal entry for balance increment.
-        self.journal
-            .push(ENTRY::balance_changed(address, old_balance));
+        let mut account = self.load_account_mut(db, address)?.data;
+        account.incr_balance(balance);
         Ok(())
     }
 
     /// Increments the nonce of the account.
     #[inline]
+    #[deprecated]
     pub fn nonce_bump_journal_entry(&mut self, address: Address) {
-        self.journal.push(ENTRY::nonce_changed(address));
+        self.journal.push(ENTRY::nonce_bumped(address));
+    }
+
+    /// Transfers balance from two accounts. Returns error if sender balance is not enough.
+    ///
+    /// # Panics
+    ///
+    /// Panics if from or to are not loaded.
+    #[inline]
+    pub fn transfer_loaded(
+        &mut self,
+        from: Address,
+        to: Address,
+        balance: U256,
+    ) -> Option<TransferError> {
+        if from == to {
+            let from_balance = self.state.get(&to).unwrap().info.balance;
+            // Check if from balance is enough to transfer the balance.
+            if balance > from_balance {
+                return Some(TransferError::OutOfFunds);
+            }
+            return None;
+        }
+
+        if balance.is_zero() {
+            Self::touch_account(&mut self.journal, to, self.state.get_mut(&to).unwrap());
+            return None;
+        }
+
+        // sub balance from
+        let from_account = self.state.get_mut(&from).unwrap();
+        Self::touch_account(&mut self.journal, from, from_account);
+        let from_balance = &mut from_account.info.balance;
+        let Some(from_balance_decr) = from_balance.checked_sub(balance) else {
+            return Some(TransferError::OutOfFunds);
+        };
+        *from_balance = from_balance_decr;
+
+        // add balance to
+        let to_account = self.state.get_mut(&to).unwrap();
+        Self::touch_account(&mut self.journal, to, to_account);
+        let to_balance = &mut to_account.info.balance;
+        let Some(to_balance_incr) = to_balance.checked_add(balance) else {
+            // Overflow of U256 balance is not possible to happen on mainnet. We don't bother to return funds from from_acc.
+            return Some(TransferError::OverflowPayment);
+        };
+        *to_balance = to_balance_incr;
+
+        // add journal entry
+        self.journal
+            .push(ENTRY::balance_transfer(from, to, balance));
+
+        // EIP-7708: emit ETH transfer log
+        self.eip7708_transfer_log(from, to, balance);
+
+        None
     }
 
     /// Transfers balance from two accounts. Returns error if sender balance is not enough.
@@ -444,40 +625,9 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         to: Address,
         balance: U256,
     ) -> Result<Option<TransferError>, DB::Error> {
-        if balance.is_zero() {
-            self.load_account(db, to)?;
-            let to_account = self.state.get_mut(&to).unwrap();
-            Self::touch_account(&mut self.journal, to, to_account);
-            return Ok(None);
-        }
-        // load accounts
         self.load_account(db, from)?;
         self.load_account(db, to)?;
-
-        // sub balance from
-        let from_account = self.state.get_mut(&from).unwrap();
-        Self::touch_account(&mut self.journal, from, from_account);
-        let from_balance = &mut from_account.info.balance;
-
-        let Some(from_balance_decr) = from_balance.checked_sub(balance) else {
-            return Ok(Some(TransferError::OutOfFunds));
-        };
-        *from_balance = from_balance_decr;
-
-        // add balance to
-        let to_account = &mut self.state.get_mut(&to).unwrap();
-        Self::touch_account(&mut self.journal, to, to_account);
-        let to_balance = &mut to_account.info.balance;
-        let Some(to_balance_incr) = to_balance.checked_add(balance) else {
-            return Ok(Some(TransferError::OverflowPayment));
-        };
-        *to_balance = to_balance_incr;
-        // Overflow of U256 balance is not possible to happen on mainnet. We don't bother to return funds from from_acc.
-
-        self.journal
-            .push(ENTRY::balance_transfer(from, to, balance));
-
-        Ok(None)
+        Ok(self.transfer_loaded(from, to, balance))
     }
 
     /// Creates account or returns false if collision is detected.
@@ -505,14 +655,6 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     ) -> Result<JournalCheckpoint, TransferError> {
         // Enter subroutine
         let checkpoint = self.checkpoint();
-
-        // Fetch balance of caller.
-        let caller_balance = self.state.get(&caller).unwrap().info.balance;
-        // Check if caller has enough balance to send to the created contract.
-        if caller_balance < balance {
-            self.checkpoint_revert(checkpoint);
-            return Err(TransferError::OutOfFunds);
-        }
 
         // Newly created account is present, as we just loaded it.
         let target_acc = self.state.get_mut(&target_address).unwrap();
@@ -543,6 +685,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         // saved even empty.
         Self::touch_account(last_journal, target_address, target_acc);
 
+        // If balance is zero, we don't need to add any journal entries or emit any logs.
+        if balance.is_zero() {
+            return Ok(checkpoint);
+        }
+
         // Add balance to created account, as we already have target here.
         let Some(new_balance) = target_acc.info.balance.checked_add(balance) else {
             self.checkpoint_revert(checkpoint);
@@ -551,20 +698,25 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         target_acc.info.balance = new_balance;
 
         // safe to decrement for the caller as balance check is already done.
-        self.state.get_mut(&caller).unwrap().info.balance -= balance;
+        let caller_account = self.state.get_mut(&caller).unwrap();
+        caller_account.info.balance -= balance;
 
         // add journal entry of transferred balance
         last_journal.push(ENTRY::balance_transfer(caller, target_address, balance));
+
+        // EIP-7708: emit ETH transfer log
+        self.eip7708_transfer_log(caller, target_address, balance);
 
         Ok(checkpoint)
     }
 
     /// Makes a checkpoint that in case of Revert can bring back state to this point.
     #[inline]
-    pub fn checkpoint(&mut self) -> JournalCheckpoint {
+    pub const fn checkpoint(&mut self) -> JournalCheckpoint {
         let checkpoint = JournalCheckpoint {
             log_i: self.logs.len(),
             journal_i: self.journal.len(),
+            selfdestructed_i: self.selfdestructed_addresses.len(),
         };
         self.depth += 1;
         checkpoint
@@ -572,18 +724,21 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
     /// Commits the checkpoint.
     #[inline]
-    pub fn checkpoint_commit(&mut self) {
-        self.depth -= 1;
+    pub const fn checkpoint_commit(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
     }
 
     /// Reverts all changes to state until given checkpoint.
     #[inline]
     pub fn checkpoint_revert(&mut self, checkpoint: JournalCheckpoint) {
-        let is_spurious_dragon_enabled = self.spec.is_enabled_in(SPURIOUS_DRAGON);
+        let is_spurious_dragon_enabled = self.cfg.spec.is_enabled_in(SPURIOUS_DRAGON);
         let state = &mut self.state;
         let transient_storage = &mut self.transient_storage;
-        self.depth -= 1;
+        self.depth = self.depth.saturating_sub(1);
         self.logs.truncate(checkpoint.log_i);
+        // EIP-7708: Remove selfdestructed addresses added after checkpoint
+        self.selfdestructed_addresses
+            .truncate(checkpoint.selfdestructed_i);
 
         // iterate over last N journals sets and revert our global state
         if checkpoint.journal_i < self.journal.len() {
@@ -624,9 +779,10 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         db: &mut DB,
         address: Address,
         target: Address,
-    ) -> Result<StateLoad<SelfDestructResult>, DB::Error> {
-        let spec = self.spec;
-        let account_load = self.load_account(db, target)?;
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<SelfDestructResult>, JournalLoadError<DB::Error>> {
+        let spec = self.cfg.spec;
+        let account_load = self.load_account_optional(db, target, false, skip_cold_load)?;
         let is_cold = account_load.is_cold;
         let is_empty = account_load.state_clear_aware_is_empty(spec);
 
@@ -658,21 +814,49 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
         // EIP-6780 (Cancun hard-fork): selfdestruct only if contract is created in the same tx
         let journal_entry = if acc.is_created_locally() || !is_cancun_enabled {
-            acc.mark_selfdestructed_locally();
-            acc.info.balance = U256::ZERO;
-            // The transfer above runs only for a distinct beneficiary, so when the
-            // account is its own beneficiary this zeroing destroys the balance.
-            if address == target {
-                burned = balance;
+            // EIP-8246: Track first self-destruction so the account can be cleared (code, storage
+            // and nonce) while preserving its balance at finalization.
+            // Only track when account is actually destroyed and delayed clearing is not disabled.
+            if destroyed_status == SelfdestructionRevertStatus::GloballySelfdestroyed
+                && !self.cfg.eip8246_delayed_clear_disabled
+            {
+                self.selfdestructed_addresses.push(address);
             }
+
+            acc.mark_selfdestructed_locally();
+
+            // `had_balance` records the balance that left the account so it can be restored
+            // on revert.
+            let had_balance = if target != address {
+                // Balance was transferred to target above; zero out the source.
+                acc.info.balance = U256::ZERO;
+                // EIP-7708: transfer log for balance moved to a different address.
+                self.eip7708_transfer_log(address, target, balance);
+                balance
+            } else if spec.is_enabled_in(AMSTERDAM) {
+                // EIP-8246: self-destruct to self no longer burns the balance. The balance is
+                // kept and the account is cleared at finalization
+                // (see `eip8246_clear_selfdestructed_accounts`).
+                U256::ZERO
+            } else {
+                // Pre-EIP-8246: self-destruct to self burns the balance. The transfer above
+                // runs only for a distinct beneficiary, so this zeroing destroys it.
+                acc.info.balance = U256::ZERO;
+                burned = balance;
+                balance
+            };
+
             Some(ENTRY::account_destroyed(
                 address,
                 target,
                 destroyed_status,
-                balance,
+                had_balance,
             ))
         } else if address != target {
             acc.info.balance = U256::ZERO;
+            // EIP-7708: emit appropriate log for selfdestruct
+            // Transfer log for balance transferred to different address
+            self.eip7708_transfer_log(address, target, balance);
             Some(ENTRY::balance_transfer(address, target, balance))
         } else {
             // State is not changed:
@@ -701,12 +885,16 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
 
     /// Loads account into memory. return if it is cold or warm accessed
     #[inline]
-    pub fn load_account<DB: Database>(
-        &mut self,
-        db: &mut DB,
+    pub fn load_account<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
         address: Address,
-    ) -> Result<StateLoad<&mut Account>, DB::Error> {
-        self.load_account_optional(db, address, false, [])
+    ) -> Result<StateLoad<&'a Account>, DB::Error>
+    where
+        'db: 'a,
+    {
+        self.load_account_optional(db, address, false, false)
+            .map_err(JournalLoadError::unwrap_db_error)
     }
 
     /// Loads account into memory. If account is EIP-7702 type it will additionally
@@ -722,9 +910,11 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         db: &mut DB,
         address: Address,
     ) -> Result<StateLoad<AccountLoad>, DB::Error> {
-        let spec = self.spec;
+        let spec = self.cfg.spec;
         let is_eip7702_enabled = spec.is_enabled_in(SpecId::PRAGUE);
-        let account = self.load_account_optional(db, address, is_eip7702_enabled, [])?;
+        let account = self
+            .load_account_optional(db, address, is_eip7702_enabled, false)
+            .map_err(JournalLoadError::unwrap_db_error)?;
         let is_empty = account.state_clear_aware_is_empty(spec);
 
         let mut account_load = StateLoad::new(
@@ -736,9 +926,15 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
         );
 
         // load delegate code if account is EIP-7702
-        if let Some(Bytecode::Eip7702(code)) = &account.info.code {
-            let address = code.address();
-            let delegate_account = self.load_account(db, address)?;
+        if let Some(address) = account
+            .info
+            .code
+            .as_ref()
+            .and_then(Bytecode::eip7702_address)
+        {
+            let delegate_account = self
+                .load_account_optional(db, address, true, false)
+                .map_err(JournalLoadError::unwrap_db_error)?;
             account_load.data.is_delegate_account_cold = Some(delegate_account.is_cold);
         }
 
@@ -752,33 +948,125 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     /// In case of EIP-7702 delegated account will not be loaded,
     /// [`Self::load_account_delegated`] should be used instead.
     #[inline]
-    pub fn load_code<DB: Database>(
-        &mut self,
-        db: &mut DB,
+    pub fn load_code<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
         address: Address,
-    ) -> Result<StateLoad<&mut Account>, DB::Error> {
-        self.load_account_optional(db, address, true, [])
+    ) -> Result<StateLoad<&'a Account>, DB::Error>
+    where
+        'db: 'a,
+    {
+        self.load_account_optional(db, address, true, false)
+            .map_err(JournalLoadError::unwrap_db_error)
+    }
+
+    /// Loads account into memory. If account is already loaded it will be marked as warm.
+    #[inline]
+    pub fn load_account_optional<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
+        address: Address,
+        load_code: bool,
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<&'a Account>, JournalLoadError<DB::Error>>
+    where
+        'db: 'a,
+    {
+        let mut load = self.load_account_mut_optional(db, address, skip_cold_load)?;
+        if load_code {
+            load.data.load_code_preserve_error()?;
+        }
+        Ok(load.map(|i| i.into_account()))
+    }
+
+    /// Loads account into memory. If account is already loaded it will be marked as warm.
+    #[inline]
+    pub fn load_account_mut<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
+        address: Address,
+    ) -> Result<StateLoad<JournaledAccount<'a, DB, ENTRY>>, DB::Error>
+    where
+        'db: 'a,
+    {
+        self.load_account_mut_optional(db, address, false)
+            .map_err(JournalLoadError::unwrap_db_error)
     }
 
     /// Loads account. If account is already loaded it will be marked as warm.
     #[inline]
-    pub fn load_account_optional<DB: Database>(
-        &mut self,
-        db: &mut DB,
+    pub fn load_account_mut_optional_code<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
         address: Address,
         load_code: bool,
-        storage_keys: impl IntoIterator<Item = StorageKey>,
-    ) -> Result<StateLoad<&mut Account>, DB::Error> {
-        let load = match self.state.entry(address) {
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<JournaledAccount<'a, DB, ENTRY>>, JournalLoadError<DB::Error>>
+    where
+        'db: 'a,
+    {
+        let mut load = self.load_account_mut_optional(db, address, skip_cold_load)?;
+        if load_code {
+            load.data.load_code_preserve_error()?;
+        }
+        Ok(load)
+    }
+
+    /// Gets the account mut reference.
+    ///
+    /// # Load Unsafe
+    ///
+    /// Use this function only if you know what you are doing. It will not mark the account as warm or cold.
+    /// It will not bump transition_id or return if it is cold or warm loaded. This function is useful
+    /// when we know account is warm, touched and already loaded.
+    ///
+    /// It is useful when we want to access storage from account that is currently being executed.
+    #[inline]
+    pub fn get_account_mut<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
+        address: Address,
+    ) -> Option<JournaledAccount<'a, DB, ENTRY>>
+    where
+        'db: 'a,
+    {
+        let account = self.state.get_mut(&address)?;
+        Some(JournaledAccount::new(
+            address,
+            account,
+            &mut self.journal,
+            db,
+            self.warm_addresses.access_list(),
+            self.transaction_id,
+        ))
+    }
+
+    /// Loads account. If account is already loaded it will be marked as warm.
+    #[inline(never)]
+    pub fn load_account_mut_optional<'a, 'db, DB: Database>(
+        &'a mut self,
+        db: &'db mut DB,
+        address: Address,
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<JournaledAccount<'a, DB, ENTRY>>, JournalLoadError<DB::Error>>
+    where
+        'db: 'a,
+    {
+        let (account, is_cold) = match self.state.entry(address) {
             Entry::Occupied(entry) => {
                 let account = entry.into_mut();
-                // `is_new_tx_touch` reflects only whether *this specific
-                // account* has been touched by the current transaction yet -
-                // it drives the per-tx lazy invalidation below regardless of
-                // gas-warmth semantics.
-                let is_new_tx_touch = account.mark_warm_with_transaction_id(self.transaction_id);
-                // if it is cold loaded we need to clear local flags that can interact with selfdestruct
-                if is_new_tx_touch {
+
+                // skip load if account is cold.
+                let mut is_cold = account.is_cold_transaction_id(self.transaction_id);
+
+                if unlikely(is_cold) {
+                    is_cold = self
+                        .warm_addresses
+                        .check_is_cold(&address, skip_cold_load)?;
+
+                    // mark it warm.
+                    account.mark_warm_with_transaction_id(self.transaction_id);
+
                     // if it is cold loaded and we have selfdestructed locally it means that
                     // account was selfdestructed in previous transaction and we need to clear its information and storage.
                     if account.is_selfdestructed_locally() {
@@ -819,103 +1107,100 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
                             account.unmark_created();
                         }
                     }
+                    account.set_current_info_as_original();
+
                     // unmark locally created
                     account.unmark_created_locally();
+
+                    // journal loading of cold account.
+                    self.journal.push(ENTRY::account_warmed(address));
                 }
-                // Coinbase and precompile addresses are re-warmed at the
-                // start of every transaction (EIP-3651 / EIP-2929),
-                // independent of whether an earlier transaction sharing this
-                // journal already loaded them into `state`. The
-                // transaction_id check above only knows "has *this*
-                // transaction touched this specific account before" - it has
-                // no notion of the perpetually pre-warmed set, so an address
-                // that's supposed to always start warm would otherwise be
-                // incorrectly charged a cold access on every transaction
-                // after the first one to ever load it in this block.
-                let is_cold = is_new_tx_touch && self.warm_addresses.is_cold(&address);
-                StateLoad {
-                    data: account,
-                    is_cold,
-                }
+                (account, is_cold)
             }
             Entry::Vacant(vac) => {
-                let mut account = if let Some(account) = db.basic(address)? {
-                    account.into()
+                // Precompiles,  among some other account(access list and coinbase included)
+                // are warm loaded so we need to take that into account
+                let is_cold = self
+                    .warm_addresses
+                    .check_is_cold(&address, skip_cold_load)?;
+
+                let account = if let Some(account) = db.basic(address)? {
+                    let mut account: Account = account.into();
+                    account.transaction_id = self.transaction_id;
+                    account
                 } else {
                     Account::new_not_existing(self.transaction_id)
                 };
-                // `From<AccountInfo> for Account` doesn't know about the
-                // journal's current transaction and hardcodes
-                // transaction_id to 0 - stamp the real current id here so
-                // this account's warmth is tracked correctly on its next
-                // touch within THIS transaction (mark_warm_with_transaction_id
-                // compares against this value), regardless of how many
-                // earlier, unrelated transactions have already run in this
-                // journal and advanced transaction_id past 0.
-                account.transaction_id = self.transaction_id;
-
-                // Precompiles among some other account(coinbase included) are warm loaded so we need to take that into account
-                let is_cold = self.warm_addresses.is_cold(&address);
-
-                StateLoad {
-                    data: vac.insert(account),
-                    is_cold,
+                // journal loading of cold account.
+                if is_cold {
+                    self.journal.push(ENTRY::account_warmed(address));
                 }
+
+                (vac.insert(account), is_cold)
             }
         };
 
-        // journal loading of cold account.
-        if load.is_cold {
-            self.journal.push(ENTRY::account_warmed(address));
-        }
-        if load_code {
-            let info = &mut load.data.info;
-            if info.code.is_none() {
-                let code = if info.code_hash == KECCAK_EMPTY {
-                    Bytecode::default()
-                } else {
-                    db.code_by_hash(info.code_hash)?
-                };
-                info.code = Some(code);
-            }
-        }
-
-        for storage_key in storage_keys.into_iter() {
-            sload_with_account(
-                load.data,
-                db,
-                &mut self.journal,
-                self.transaction_id,
+        Ok(StateLoad::new(
+            JournaledAccount::new(
                 address,
-                storage_key,
-            )?;
-        }
-        Ok(load)
+                account,
+                &mut self.journal,
+                db,
+                self.warm_addresses.access_list(),
+                self.transaction_id,
+            ),
+            is_cold,
+        ))
     }
 
     /// Loads storage slot.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the account is not present in the state.
     #[inline]
     pub fn sload<DB: Database>(
         &mut self,
         db: &mut DB,
         address: Address,
         key: StorageKey,
-    ) -> Result<StateLoad<StorageValue>, DB::Error> {
-        // assume acc is warm
-        let account = self.state.get_mut(&address).unwrap();
-        // only if account is created in this tx we can assume that storage is empty.
-        sload_with_account(
-            account,
-            db,
-            &mut self.journal,
-            self.transaction_id,
-            address,
-            key,
-        )
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<StorageValue>, JournalLoadError<DB::Error>> {
+        self.load_account_mut(db, address)?
+            .sload_concrete_error(key, skip_cold_load)
+            .map(|s| s.map(|s| s.present_value))
+    }
+
+    /// Loads storage slot.
+    ///
+    /// If account is not present it will return [`JournalLoadError::ColdLoadSkipped`] error.
+    #[inline]
+    pub fn sload_assume_account_present<DB: Database>(
+        &mut self,
+        db: &mut DB,
+        address: Address,
+        key: StorageKey,
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<StorageValue>, JournalLoadError<DB::Error>> {
+        let Some(mut account) = self.get_account_mut(db, address) else {
+            return Err(JournalLoadError::ColdLoadSkipped);
+        };
+
+        account
+            .sload_concrete_error(key, skip_cold_load)
+            .map(|s| s.map(|s| s.present_value))
+    }
+
+    /// Stores storage slot.
+    ///
+    /// If account is not present it will load from database
+    #[inline]
+    pub fn sstore<DB: Database>(
+        &mut self,
+        db: &mut DB,
+        address: Address,
+        key: StorageKey,
+        new: StorageValue,
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<SStoreResult>, JournalLoadError<DB::Error>> {
+        self.load_account_mut(db, address)?
+            .sstore_concrete_error(key, new, skip_cold_load)
     }
 
     /// Stores storage slot.
@@ -924,44 +1209,19 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     ///
     /// **Note**: Account should already be present in our state.
     #[inline]
-    pub fn sstore<DB: Database>(
+    pub fn sstore_assume_account_present<DB: Database>(
         &mut self,
         db: &mut DB,
         address: Address,
         key: StorageKey,
         new: StorageValue,
-    ) -> Result<StateLoad<SStoreResult>, DB::Error> {
-        // assume that acc exists and load the slot.
-        let present = self.sload(db, address, key)?;
-        let acc = self.state.get_mut(&address).unwrap();
+        skip_cold_load: bool,
+    ) -> Result<StateLoad<SStoreResult>, JournalLoadError<DB::Error>> {
+        let Some(mut account) = self.get_account_mut(db, address) else {
+            return Err(JournalLoadError::ColdLoadSkipped);
+        };
 
-        // if there is no original value in dirty return present value, that is our original.
-        let slot = acc.storage.get_mut(&key).unwrap();
-
-        // new value is same as present, we don't need to do anything
-        if present.data == new {
-            return Ok(StateLoad::new(
-                SStoreResult {
-                    original_value: slot.original_value(),
-                    present_value: present.data,
-                    new_value: new,
-                },
-                present.is_cold,
-            ));
-        }
-
-        self.journal
-            .push(ENTRY::storage_changed(address, key, present.data));
-        // insert value into present state.
-        slot.present_value = new;
-        Ok(StateLoad::new(
-            SStoreResult {
-                original_value: slot.original_value(),
-                present_value: present.data,
-                new_value: new,
-            },
-            present.is_cold,
-        ))
+        account.sstore_concrete_error(key, new, skip_cold_load)
     }
 
     /// Read transient storage tied to the account.
@@ -969,10 +1229,7 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     /// EIP-1153: Transient storage opcodes
     #[inline]
     pub fn tload(&mut self, address: Address, key: StorageKey) -> StorageValue {
-        self.transient_storage
-            .get(&(address, key))
-            .copied()
-            .unwrap_or_default()
+        self.transient_storage.get_value(address, key)
     }
 
     /// Store transient storage tied to the account.
@@ -987,12 +1244,12 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
             // if new values is zero, remove entry from transient storage.
             // if previous values was some insert it inside journal.
             // If it is none nothing should be inserted.
-            self.transient_storage.remove(&(address, key))
+            self.transient_storage.remove_value(address, key)
         } else {
             // insert values
             let previous_value = self
                 .transient_storage
-                .insert((address, key), new)
+                .insert_value(address, key, new)
                 .unwrap_or_default();
 
             // check if previous value is same
@@ -1016,62 +1273,124 @@ impl<ENTRY: JournalEntryTr> JournalInner<ENTRY> {
     pub fn log(&mut self, log: Log) {
         self.logs.push(log);
     }
+
+    /// Creates and pushes an EIP-7708 ETH transfer log.
+    ///
+    /// This emits a LOG3 with the Transfer event signature, matching ERC-20 transfer events.
+    /// Only emitted if EIP-7708 is enabled (Amsterdam and later) and balance is non-zero.
+    ///
+    /// [EIP-7708](https://eips.ethereum.org/EIPS/eip-7708)
+    #[inline]
+    pub fn eip7708_transfer_log(&mut self, from: Address, to: Address, balance: U256) {
+        // Only emit log if EIP-7708 is enabled and balance is non-zero
+        if !self.cfg.spec.is_enabled_in(AMSTERDAM) || self.cfg.eip7708_disabled || balance.is_zero()
+        {
+            return;
+        }
+
+        // Create LOG3 with Transfer(address,address,uint256) event signature
+        // Topic[0]: Transfer event signature
+        // Topic[1]: from address (zero-padded to 32 bytes)
+        // Topic[2]: to address (zero-padded to 32 bytes)
+        // Data: amount in wei (big-endian uint256)
+        let topics = std::vec![
+            ETH_TRANSFER_LOG_TOPIC,
+            B256::left_padding_from(from.as_slice()),
+            B256::left_padding_from(to.as_slice()),
+        ];
+        let data = Bytes::copy_from_slice(&balance.to_be_bytes::<32>());
+
+        self.logs.push(Log {
+            address: ETH_TRANSFER_LOG_ADDRESS,
+            data: LogData::new(topics, data).expect("3 topics is valid"),
+        });
+    }
 }
 
-/// Loads storage slot with account.
-#[inline]
-pub fn sload_with_account<DB: Database, ENTRY: JournalEntryTr>(
-    account: &mut Account,
-    db: &mut DB,
-    journal: &mut Vec<ENTRY>,
-    transaction_id: usize,
-    address: Address,
-    key: StorageKey,
-) -> Result<StateLoad<StorageValue>, DB::Error> {
-    let is_newly_created = account.is_created();
-    let (value, is_cold) = match account.storage.entry(key) {
-        Entry::Occupied(occ) => {
-            let slot = occ.into_mut();
-            // EIP-2200/EIP-3529: "original value" must track the value at the
-            // start of the CURRENT transaction ("what the value would be if
-            // the current transaction is reverted"). If this slot was last
-            // touched by an *earlier*, already-committed transaction sharing
-            // this journal (revm's single-journal, multi-tx execution mode,
-            // e.g. `transact_many()`), its transaction_id will differ from
-            // the current one - that earlier transaction's final
-            // `present_value` is this transaction's correct origin baseline.
-            //
-            // This check is keyed off `transaction_id`, not the `is_cold`
-            // return value below, because `is_cold` can also become true
-            // from an in-transaction revert re-marking the slot cold (same
-            // transaction_id), which must NOT reset `original_value`.
-            let is_new_tx = slot.transaction_id != transaction_id;
-            let is_cold = slot.mark_warm_with_transaction_id(transaction_id);
-            if is_new_tx {
-                slot.original_value = slot.present_value;
-            }
-            (slot.present_value, is_cold)
-        }
-        Entry::Vacant(vac) => {
-            // if storage was cleared, we don't need to ping db.
-            let value = if is_newly_created {
-                StorageValue::ZERO
-            } else {
-                db.storage(address, key)?
-            };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use context_interface::journaled_state::entry::JournalEntry;
+    use database_interface::EmptyDB;
+    use primitives::{address, HashSet, U256};
+    use state::AccountInfo;
 
-            vac.insert(EvmStorageSlot::new(value, transaction_id));
-
-            (value, true)
-        }
-    };
-
-    if is_cold {
-        // add it to journal as cold loaded.
-        journal.push(ENTRY::storage_warmed(address, key));
+    #[cfg(feature = "account-ext")]
+    #[test]
+    fn extension_checkpoint_reverts_nested_changes() {
+        use state::AccountExtension;
+        let address = Address::repeat_byte(1);
+        let original = AccountExtension::copy_from_slice(&[1; 32]);
+        let mut journal = JournalInner::<JournalEntry>::new();
+        journal.state.insert(
+            address,
+            AccountInfo::default()
+                .with_extension(original.clone())
+                .into(),
+        );
+        let mut db = EmptyDB::new();
+        let outer = journal.checkpoint();
+        let outer_value = AccountExtension::copy_from_slice(&[2; 32]);
+        journal
+            .get_account_mut(&mut db, address)
+            .unwrap()
+            .set_extension(outer_value.clone());
+        assert!(journal.state[&address].is_touched());
+        let inner = journal.checkpoint();
+        journal
+            .get_account_mut(&mut db, address)
+            .unwrap()
+            .set_extension(AccountExtension::new());
+        journal.checkpoint_revert(inner);
+        assert_eq!(journal.state[&address].info.extension, outer_value);
+        // A committed child must still revert if its caller later reverts.
+        let _child = journal.checkpoint();
+        journal
+            .get_account_mut(&mut db, address)
+            .unwrap()
+            .set_extension(AccountExtension::copy_from_slice(&[3; 32]));
+        journal.checkpoint_commit();
+        journal.checkpoint_revert(outer);
+        assert_eq!(journal.state[&address].info.extension, original);
+        assert!(!journal.state[&address].is_touched());
+        assert!(journal.journal.is_empty());
     }
 
-    Ok(StateLoad::new(value, is_cold))
+    #[test]
+    fn test_sload_skip_cold_load() {
+        let mut journal = JournalInner::<JournalEntry>::new();
+        let test_address = address!("1000000000000000000000000000000000000000");
+        let test_key = U256::from(1);
+
+        // Insert account into state
+        let account_info = AccountInfo {
+            balance: U256::from(1000),
+            nonce: 1,
+            code_hash: KECCAK_EMPTY,
+            code: Some(Bytecode::default()),
+            ..Default::default()
+        };
+        journal
+            .state
+            .insert(test_address, Account::from(account_info));
+
+        // Add storage slot to access list (make it warm)
+        let mut access_list = HashMap::default();
+        let mut storage_keys = HashSet::default();
+        storage_keys.insert(test_key);
+        access_list.insert(test_address, storage_keys);
+        journal.warm_addresses.set_access_list(access_list);
+
+        // Try to sload with skip_cold_load=true - should succeed because slot is in access list
+        let mut db = EmptyDB::new();
+        let result = journal.sload_assume_account_present(&mut db, test_address, test_key, true);
+
+        // Should succeed and return as warm
+        assert!(result.is_ok());
+        let state_load = result.unwrap();
+        assert!(!state_load.is_cold); // Should be warm
+        assert_eq!(state_load.data, U256::ZERO); // Empty slot
+    }
 }
 
 #[cfg(test)]
@@ -1099,7 +1418,10 @@ mod eip2200_original_value_tests {
 
         // --- Transaction 1 (of this block): slot goes 0 -> A, then commits ---
         journal.load_account(&mut db, addr).unwrap();
-        let t1 = journal.sstore(&mut db, addr, key, value_a).unwrap().data;
+        let t1 = journal
+            .sstore(&mut db, addr, key, value_a, false)
+            .unwrap()
+            .data;
         assert_eq!(
             t1.original_value,
             StorageValue::ZERO,
@@ -1113,7 +1435,7 @@ mod eip2200_original_value_tests {
 
         // --- Transaction 2 (same block, same journal): slot goes A -> 0 ---
         let t2 = journal
-            .sstore(&mut db, addr, key, StorageValue::ZERO)
+            .sstore(&mut db, addr, key, StorageValue::ZERO, false)
             .unwrap()
             .data;
 
@@ -1151,7 +1473,10 @@ mod eip2200_original_value_tests {
         // --- Session 1 (transaction 1): fresh journal, 0 -> A ---
         let mut journal1 = JournalInner::<JournalEntry>::new();
         journal1.load_account(&mut db, addr).unwrap();
-        let t1 = journal1.sstore(&mut db, addr, key, value_a).unwrap().data;
+        let t1 = journal1
+            .sstore(&mut db, addr, key, value_a, false)
+            .unwrap()
+            .data;
         assert_eq!(t1.original_value, StorageValue::ZERO);
         // A real transaction touches every account it modifies (e.g. via
         // deduct_caller / account-load accounting); CacheDB::commit() silently
@@ -1166,7 +1491,7 @@ mod eip2200_original_value_tests {
         let mut journal2 = JournalInner::<JournalEntry>::new();
         journal2.load_account(&mut db, addr).unwrap();
         let t2 = journal2
-            .sstore(&mut db, addr, key, StorageValue::ZERO)
+            .sstore(&mut db, addr, key, StorageValue::ZERO, false)
             .unwrap()
             .data;
 
@@ -1238,7 +1563,7 @@ mod eip6780_recreate_after_selfdestruct_tests {
 
     /// Selfdestructs the contract at `addr` within the current transaction.
     fn destroy_at(journal: &mut TestJournal, db: &mut TestDb, addr: Address, target: Address) {
-        journal.selfdestruct(db, addr, target).unwrap();
+        journal.selfdestruct(db, addr, target, false).unwrap();
         journal.touch(addr);
     }
 
@@ -1397,7 +1722,7 @@ mod eip6780_recreate_after_selfdestruct_tests {
         // --- T2: a later, unrelated tx selfdestructs it, targeting itself ---
         journal.load_account(&mut db, addr).unwrap();
         let journal_len_before = journal.journal.len();
-        journal.selfdestruct(&mut db, addr, addr).unwrap();
+        journal.selfdestruct(&mut db, addr, addr, false).unwrap();
 
         assert_eq!(
             journal.journal.len(),
@@ -1596,14 +1921,14 @@ mod eip6780_recreate_after_selfdestruct_tests {
         // T1: create, write a nonzero value to `key`, destroy (same tx).
         create_at(&mut journal, &mut db, caller, addr, CODE_V1).unwrap();
         journal
-            .sstore(&mut db, addr, key, StorageValue::from(999))
+            .sstore(&mut db, addr, key, StorageValue::from(999), false)
             .unwrap();
         destroy_at(&mut journal, &mut db, addr, caller);
         journal.commit_tx();
 
         // T2: recreate (same address), do NOT write `key` again.
         create_at(&mut journal, &mut db, caller, addr, CODE_V2).unwrap();
-        let sload_result = journal.sload(&mut db, addr, key).unwrap();
+        let sload_result = journal.sload(&mut db, addr, key, false).unwrap();
 
         assert_eq!(
             sload_result.data,
@@ -1697,7 +2022,7 @@ mod pre_cancun_selfdestruct_tests {
         // T1: destroy it (cross-tx relative to its own creation, which
         // predates this block entirely).
         journal.load_account(&mut db, addr).unwrap();
-        journal.selfdestruct(&mut db, addr, target).unwrap();
+        journal.selfdestruct(&mut db, addr, target, false).unwrap();
         journal.touch(addr);
         journal.commit_tx();
 
@@ -1763,7 +2088,7 @@ mod vacant_load_transaction_id_tests {
         // first - advancing transaction_id past 0.
         journal.load_account(&mut db, unrelated).unwrap();
         journal.commit_tx();
-        assert_eq!(journal.transaction_id, 1);
+        assert_eq!(journal.transaction_id.get(), 1);
 
         // T1: first-ever load of `target` in this journal - a different,
         // non-first transaction.
@@ -1832,7 +2157,9 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         assert_eq!(
             journal.selfdestruct_burn,
@@ -1853,7 +2180,7 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
 
         assert_eq!(
@@ -1875,7 +2202,9 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         let checkpoint = journal.checkpoint();
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
 
         journal.checkpoint_revert(checkpoint);
@@ -1900,7 +2229,9 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         // Committed burn: the whole endowment.
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         // A second contract is created and destroyed inside a frame that reverts.
         let outer = journal.checkpoint();
@@ -1911,7 +2242,9 @@ mod eip6780_selfdestruct_burn_tests {
             .unwrap();
         journal.checkpoint_commit();
         journal.checkpoint();
-        journal.selfdestruct(&mut db, second, second).unwrap();
+        journal
+            .selfdestruct(&mut db, second, second, false)
+            .unwrap();
         journal.checkpoint_commit();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT + 7));
 
@@ -1929,7 +2262,9 @@ mod eip6780_selfdestruct_burn_tests {
     fn discarded_transaction_reports_nothing() {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));
 
         journal.discard_tx();
@@ -1950,7 +2285,9 @@ mod eip6780_selfdestruct_burn_tests {
         journal.load_account(&mut db, CONTRACT).unwrap();
         journal.state.get_mut(&CONTRACT).unwrap().info.balance = U256::from(ENDOWMENT);
 
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         assert_eq!(
             journal.selfdestruct_burn,
@@ -1968,7 +2305,7 @@ mod eip6780_selfdestruct_burn_tests {
         journal.state.get_mut(&CONTRACT).unwrap().info.balance = U256::from(ENDOWMENT);
 
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
 
         assert_eq!(journal.selfdestruct_burn, U256::ZERO);
@@ -1988,7 +2325,9 @@ mod eip6780_selfdestruct_burn_tests {
         // A cold reload in the next transaction clears the local "created" flag.
         journal.load_account(&mut db, CONTRACT).unwrap();
 
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         assert_eq!(
             journal.selfdestruct_burn,
@@ -2014,7 +2353,9 @@ mod eip6780_selfdestruct_burn_tests {
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
 
         let checkpoint = journal.checkpoint();
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         // The contract violation: the burn is taken while its journal entry is still
         // revertible.
         assert_eq!(journal.take_selfdestruct_burn(), U256::from(ENDOWMENT));
@@ -2029,7 +2370,7 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::ZERO);
 
@@ -2051,7 +2392,9 @@ mod eip6780_selfdestruct_burn_tests {
     fn self_targeting_selfdestruct_then_credit_counts_both() {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
         journal
             .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
             .unwrap();
@@ -2075,8 +2418,12 @@ mod eip6780_selfdestruct_burn_tests {
             .unwrap();
         journal.checkpoint_commit();
 
-        journal.selfdestruct(&mut db, CONTRACT, second).unwrap();
-        journal.selfdestruct(&mut db, second, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, second, false)
+            .unwrap();
+        journal
+            .selfdestruct(&mut db, second, CONTRACT, false)
+            .unwrap();
         assert_eq!(journal.selfdestruct_burn, U256::ZERO);
 
         journal.commit_tx();
@@ -2091,13 +2438,13 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
         journal
             .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
             .unwrap();
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
         journal
             .transfer(&mut db, CALLER, CONTRACT, U256::from(9))
@@ -2122,7 +2469,7 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
 
         let checkpoint = journal.checkpoint();
@@ -2142,7 +2489,7 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
         journal
             .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
@@ -2161,7 +2508,7 @@ mod eip6780_selfdestruct_burn_tests {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
         journal
-            .selfdestruct(&mut db, CONTRACT, BENEFICIARY)
+            .selfdestruct(&mut db, CONTRACT, BENEFICIARY, false)
             .unwrap();
         journal
             .transfer(&mut db, CALLER, CONTRACT, U256::from(55))
@@ -2190,7 +2537,9 @@ mod eip6780_selfdestruct_burn_tests {
     fn total_survives_finalize_and_is_drained_by_take() {
         let (mut journal, mut db) = setup(SpecId::CANCUN);
         create_endowed_contract(&mut journal, &mut db, SpecId::CANCUN);
-        journal.selfdestruct(&mut db, CONTRACT, CONTRACT).unwrap();
+        journal
+            .selfdestruct(&mut db, CONTRACT, CONTRACT, false)
+            .unwrap();
 
         journal.commit_tx();
         assert_eq!(journal.selfdestruct_burn, U256::from(ENDOWMENT));

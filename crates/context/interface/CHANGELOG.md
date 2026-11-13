@@ -7,6 +7,276 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.2](https://github.com/bluealloy/revm/compare/revm-context-interface-v43.0.1...revm-context-interface-v43.0.2) - 2026-09-24
+
+### Added
+
+- Opt-in `account-ext` support for journaled account extension changes, including `JournalEntryTr::extension_changed` and `JournalEntry::ExtensionChange` ([#3894](https://github.com/bluealloy/revm/pull/3894)).
+
+### Other
+
+- updated the following local packages: revm-state, revm-database-interface
+
+## [43.0.1](https://github.com/bluealloy/revm/compare/revm-context-interface-v43.0.0...revm-context-interface-v43.0.1) - 2026-09-08
+
+### Fixed
+
+- reconcile sibling state gas refills ([#3893](https://github.com/bluealloy/revm/pull/3893))
+
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v42.0.0...revm-context-interface-v43.0.0) - 2026-08-20
+
+### Added
+
+- glamsterdam devnet-8 gas repricing ([#3850](https://github.com/bluealloy/revm/pull/3850))
+
+### Fixed
+
+- check call depth in CREATE pre-access checks (EIP-8037) ([#3829](https://github.com/bluealloy/revm/pull/3829))
+
+### Other
+
+- remove duplicate Amsterdam gas overrides and dead CPSB constants ([#3857](https://github.com/bluealloy/revm/pull/3857))
+
+## [42.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v41.0.0...revm-context-interface-v42.0.0) - 2026-07-22
+
+### Added
+
+- *(amsterdam)* glamsterdam devnet-7 alignment (EIP-2780 runtime gas phase, fixtures v7.0.0) ([#3795](https://github.com/bluealloy/revm/pull/3795))
+- *(amsterdam)* glam devnet-6 gas accounting & EIP alignment ([#3782](https://github.com/bluealloy/revm/pull/3782))
+- make max refund quotient configurable ([#3757](https://github.com/bluealloy/revm/pull/3757))
+
+### Fixed
+
+- *(context)* keep is_empty on EIP-7702 account in load_account_delegated ([#3802](https://github.com/bluealloy/revm/pull/3802))
+- fix gas tracker used gas underflow ([#3813](https://github.com/bluealloy/revm/pull/3813))
+
+### Other
+
+- clarify EIP-7702 regular-gas GasId names ([#3725](https://github.com/bluealloy/revm/pull/3725))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v19.0.3...revm-context-interface-v41.0.0) - 2026-06-11
+
+### Added
+
+- wrap TransientStorage as AddressMap<StorageKeyMap<U256>> ([#3736](https://github.com/bluealloy/revm/pull/3736))
+- add SSTORE gas-state policy hook ([#3734](https://github.com/bluealloy/revm/pull/3734))
+
+## [19.0.3](https://github.com/bluealloy/revm/compare/revm-context-interface-v19.0.2...revm-context-interface-v19.0.3) - 2026-05-26
+
+### Added
+
+- Bake EIP-8037 CPSB into gas params ([#3714](https://github.com/bluealloy/revm/pull/3714))
+
+## [19.0.2](https://github.com/bluealloy/revm/compare/revm-context-interface-v19.0.1...revm-context-interface-v19.0.2) - 2026-05-22
+
+### Other
+
+- updated the following local packages: revm-database-interface
+
+## [19.0.1](https://github.com/bluealloy/revm/compare/revm-context-interface-v19.0.0...revm-context-interface-v19.0.1) - 2026-05-21
+
+### Other
+
+- *(eip8037)* remove dead refill_amount tracking ([#3699](https://github.com/bluealloy/revm/pull/3699))
+
+## [19.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v17.0.1...revm-context-interface-v19.0.0) - 2026-05-19
+
+### Added
+
+- *(eip8037)* Amsterdam bal-devnet-7 ([#3667](https://github.com/bluealloy/revm/pull/3667))
+- *(state)* Optimized index type for transaction ID using non-max ([#3610](https://github.com/bluealloy/revm/pull/3610))
+
+### Fixed
+
+- *(context)* use storage_by_account_id fast path in sload ([#3535](https://github.com/bluealloy/revm/pull/3535))
+
+### Other
+
+- restructure `Journal` traits ([#3663](https://github.com/bluealloy/revm/pull/3663))
+- remove unused spec ids ([#3649](https://github.com/bluealloy/revm/pull/3649))
+- *(gas)* simplify log2floor ([#3629](https://github.com/bluealloy/revm/pull/3629))
+- audit #[allow] attributes ([#3611](https://github.com/bluealloy/revm/pull/3611))
+- backport v107 release notes from branch ([#3617](https://github.com/bluealloy/revm/pull/3617))
+- remove pointer field from GasParams ([#3608](https://github.com/bluealloy/revm/pull/3608))
+- [**breaking**] return Result from instruction functions ([#3558](https://github.com/bluealloy/revm/pull/3558))
+- enable and fix clippy::missing_const_for_fn ([#3592](https://github.com/bluealloy/revm/pull/3592))
+- avoid cloning precompiles on warmup ([#3586](https://github.com/bluealloy/revm/pull/3586))
+- pass reservoir into `first_frame_input` ([#3578](https://github.com/bluealloy/revm/pull/3578))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+
+## [17.0.1](https://github.com/bluealloy/revm/compare/revm-context-interface-v17.0.0...revm-context-interface-v17.0.1) - 2026-04-17
+
+### Other
+
+- pass reservoir into `first_frame_input` ([#3578](https://github.com/bluealloy/revm/pull/3578))
+
+## [17.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v16.0.0...revm-context-interface-v17.0.0) - 2026-04-10
+
+### Added
+
+- add EIP-8037 / TIP-1016 state gas support ([#3406](https://github.com/bluealloy/revm/pull/3406))
+- add CallInput::as_bytes ([#3515](https://github.com/bluealloy/revm/pull/3515))
+- add crate-level re-exports for all revm-* dependencies ([#3507](https://github.com/bluealloy/revm/pull/3507))
+
+### Fixed
+
+- make DummyHost return defaults instead of errors for storage ops ([#3503](https://github.com/bluealloy/revm/pull/3503))
+- expose JournalLoadError from load_account_mut_skip_cold_load ([#3477](https://github.com/bluealloy/revm/pull/3477))
+
+### Other
+
+- move EIP-8037 gas cap validation into validate_initial_tx_gas ([#3552](https://github.com/bluealloy/revm/pull/3552))
+- add comment about frame stack initial capacity ([#3527](https://github.com/bluealloy/revm/pull/3527))
+- use AnyError for PrecompileError::Fatal and EVMError::Custom ([#3502](https://github.com/bluealloy/revm/pull/3502))
+- clarify PrecompileError::Fatal vs Other and EVMError::Custom ([#3496](https://github.com/bluealloy/revm/pull/3496))
+
+## [16.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v15.0.0...revm-context-interface-v16.0.0) - 2026-03-04
+
+### Other
+
+- bump revm-database-interface to v10.0.0
+
+## [15.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v14.0.0...revm-context-interface-v15.0.0) - 2026-03-02
+
+### Added
+
+- *(cfg)* add EIP-7708 configuration options ([#3395](https://github.com/bluealloy/revm/pull/3395))
+- *(gas_params)* add configurable EIP-7702 auth refund ([#3366](https://github.com/bluealloy/revm/pull/3366))
+- *(gas)* add tx_access_list_cost helper to GasParams ([#3349](https://github.com/bluealloy/revm/pull/3349))
+- Implement EIP-7843 SLOTNUM opcode for Amsterdam ([#3340](https://github.com/bluealloy/revm/pull/3340))
+
+### Fixed
+
+- *(context)* correct `ResultGas::final_refunded()` when floor gas is active ([#3450](https://github.com/bluealloy/revm/pull/3450))
+- *(journal)* emit EIP-7708 log for selfdestructed accounts with remaining balance ([#3394](https://github.com/bluealloy/revm/pull/3394))
+- use provided code hash when setting account code ([#3324](https://github.com/bluealloy/revm/pull/3324))
+
+### Other
+
+- *(gas)* simplify log2floor implementation ([#3440](https://github.com/bluealloy/revm/pull/3440))
+- [**breaking**] add logs to Revert and Halt variants of ExecutionResult ([#3424](https://github.com/bluealloy/revm/pull/3424))
+- [**breaking**] add ResultGas struct to ExecutionResult ([#3413](https://github.com/bluealloy/revm/pull/3413))
+- [**breaking**] flatten Bytecode ([#3375](https://github.com/bluealloy/revm/pull/3375))
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+- mark journal entry functions as deprecated ([#3367](https://github.com/bluealloy/revm/pull/3367))
+- use fixed bytes hashmaps from alloy-core ([#3358](https://github.com/bluealloy/revm/pull/3358))
+- *(handler)* extract duplicate ContextError handling ([#3312](https://github.com/bluealloy/revm/pull/3312))
+
+## [14.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v13.1.0...revm-context-interface-v14.0.0) - 2026-01-15
+
+### Added
+
+- new gas params, tx initial gas and codedeposit ([#3260](https://github.com/bluealloy/revm/pull/3260))
+- move GasParams to Cfg ([#3229](https://github.com/bluealloy/revm/pull/3229))
+- Gas params ([#3132](https://github.com/bluealloy/revm/pull/3132))
+- JournaledAccount sload/sstore ([#3201](https://github.com/bluealloy/revm/pull/3201))
+- Restrict Database::Error. JournaledAccountTr ([#3199](https://github.com/bluealloy/revm/pull/3199))
+
+### Fixed
+
+- *(test)* one gasid name is missing ([#3290](https://github.com/bluealloy/revm/pull/3290))
+
+### Other
+
+- *(gas_params)* add dedicated GasIds for sstore_refund ([#3310](https://github.com/bluealloy/revm/pull/3310))
+- remove redundant clones in gas params defaults ([#3300](https://github.com/bluealloy/revm/pull/3300))
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- add Display trait for ExecutionResult and related types ([#3267](https://github.com/bluealloy/revm/pull/3267))
+- add Display for HaltReason and OutOfGasError ([#3265](https://github.com/bluealloy/revm/pull/3265))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [13.1.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v13.0.0...revm-context-interface-v13.1.0) - 2025-11-14
+
+### Added
+
+- Add set_nonce journal entry and fn ([#3163](https://github.com/bluealloy/revm/pull/3163))
+- *(context)* add mark_cold method to JournaledAccount ([#3160](https://github.com/bluealloy/revm/pull/3160))
+
+## [13.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v12.0.1...revm-context-interface-v13.0.0) - 2025-11-10
+
+### Added
+
+- process precompile logs to inspector ([#3148](https://github.com/bluealloy/revm/pull/3148))
+- selfdestruct oog on cold load ([#3140](https://github.com/bluealloy/revm/pull/3140))
+
+### Other
+
+- merge v98 versions bumps ([#3155](https://github.com/bluealloy/revm/pull/3155))
+
+## [12.0.1](https://github.com/bluealloy/revm/compare/revm-context-interface-v12.0.0...revm-context-interface-v12.0.1) - 2025-11-07
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-state, revm-database-interface
+
+## [12.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v11.1.2...revm-context-interface-v12.0.0) - 2025-10-30
+
+### Added
+
+- JournaledAccount, a nice way to update and track changes ([#3086](https://github.com/bluealloy/revm/pull/3086))
+- dont load access list immediately ([#3116](https://github.com/bluealloy/revm/pull/3116))
+
+### Fixed
+
+- hook up Cfg::memory_limit ([#3129](https://github.com/bluealloy/revm/pull/3129))
+
+## [11.1.2](https://github.com/bluealloy/revm/compare/revm-context-interface-v11.1.1...revm-context-interface-v11.1.2) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-state, revm-database-interface
+
+## [11.1.1](https://github.com/bluealloy/revm/compare/revm-context-interface-v11.1.0...revm-context-interface-v11.1.1) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-state, revm-database-interface
+
+## [11.1.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v11.0.0...revm-context-interface-v11.1.0) - 2025-10-09
+
+### Other
+
+- updated the following local packages: revm-database-interface
+
+## [11.0.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v10.2.0...revm-context-interface-v11.0.0) - 2025-10-07
+
+### Added
+
+- Support bubbling up first precompile error messages  ([#2905](https://github.com/bluealloy/revm/pull/2905))
+- add transaction index to batch execution error handling ([#3000](https://github.com/bluealloy/revm/pull/3000))
+- Add Str(Cow<'static, str>) to InvalidTransaction error enum ([#2998](https://github.com/bluealloy/revm/pull/2998))
+- allow EIP-7623 to be disabled ([#2985](https://github.com/bluealloy/revm/pull/2985))
+- Introduced `all_mut` and `all` functions to ContextTr ([#2992](https://github.com/bluealloy/revm/pull/2992))
+- send bytecode with call input ([#2963](https://github.com/bluealloy/revm/pull/2963))
+- *(op-revm)* Add an option to disable "fee-charge" on `op-revm` ([#2980](https://github.com/bluealloy/revm/pull/2980))
+- *(revme)* ef blockchain tests cli ([#2935](https://github.com/bluealloy/revm/pull/2935))
+
+### Fixed
+
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+- FrameStack mark push/end_init as unsafe ([#2929](https://github.com/bluealloy/revm/pull/2929))
+- skip cold load on oog ([#2903](https://github.com/bluealloy/revm/pull/2903))
+
+### Other
+
+- changelog update for v87 ([#3056](https://github.com/bluealloy/revm/pull/3056))
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- helper function gas_balance_spending ([#3030](https://github.com/bluealloy/revm/pull/3030))
+- remove unreachable zero-denominator check in fake_exponential ([#3039](https://github.com/bluealloy/revm/pull/3039))
+- add ensure_enough_balance helper ([#3033](https://github.com/bluealloy/revm/pull/3033))
+- add default impl for tx_local_mut and tx_journal_mut ([#3029](https://github.com/bluealloy/revm/pull/3029))
+- prealloc few frames ([#2965](https://github.com/bluealloy/revm/pull/2965))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+- *(cleanup)* Remove EIP-7918 related functions and EIP file  ([#2925](https://github.com/bluealloy/revm/pull/2925))
+- cargo update ([#2930](https://github.com/bluealloy/revm/pull/2930))
+
+## [10.2.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v10.1.0...revm-context-interface-v10.2.0) - 2025-09-23
+
+### Added
+
+- *(op-revm)* Add an option to disable "fee-charge" on `op-revm` ([#2980](https://github.com/bluealloy/revm/pull/2980))
+
 ## [10.1.0](https://github.com/bluealloy/revm/compare/revm-context-interface-v10.0.1...revm-context-interface-v10.1.0) - 2025-08-23
 
 ### Added

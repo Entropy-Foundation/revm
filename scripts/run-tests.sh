@@ -4,26 +4,50 @@ set -eo pipefail
 # Usage: ./scripts/run-tests.sh --help
 
 # Version for the execution spec tests
-VERSION="v4.4.0"
-DEVELOP_VERSION="fusaka-devnet-3@v1.0.0"
+MAIN_VERSION="v5.4.0"
+DEVNET_VERSION="tests-glamsterdam-devnet%40v8.1.0"
 
-# Directories
+### Directories ###
 FIXTURES_DIR="test-fixtures"
-STABLE_DIR="$FIXTURES_DIR/stable"
-DEVELOP_DIR="$FIXTURES_DIR/develop"
-LEGACY_DIR="$FIXTURES_DIR/legacytests" 
 
-# URL and filenames
+MAIN_DIR="$FIXTURES_DIR/main"
+MAIN_STABLE_DIR="$MAIN_DIR/stable"
+MAIN_DEVELOP_DIR="$MAIN_DIR/develop"
+
+DEVNET_DIR="$FIXTURES_DIR/devnet"
+DEVNET_DEVELOP_DIR="$DEVNET_DIR/develop"
+
+LEGACY_DIR="$FIXTURES_DIR/legacytests"
+
+### URL and filenames ###
 FIXTURES_URL="https://github.com/ethereum/execution-spec-tests/releases/download"
-STABLE_TAR="fixtures_stable.tar.gz"
-DEVELOP_TAR="fixtures_fusaka-devnet-3.tar.gz"
+DEVNET_FIXTURES_URL="https://github.com/ethereum/execution-specs/releases/download"
+
+if [[ -n "${REVM_STATETEST_STABLE:-}" && "${REVM_STATETEST_STABLE:-}" != "0" ]]; then
+    MAIN_DIR="$MAIN_STABLE_DIR"
+    MAIN_TAR="fixtures_stable.tar.gz"
+    MAIN_LABEL="main stable"
+else
+    MAIN_DIR="$MAIN_DEVELOP_DIR"
+    MAIN_TAR="fixtures_develop.tar.gz"
+    MAIN_LABEL="main develop"
+fi
+
+DEVNET_TAR="fixtures_glamsterdam-devnet.tar.gz"
+
 LEGACY_REPO_URL="https://github.com/ethereum/legacytests.git"
 
 # Print usage information and exit
 usage() {
-    echo "Usage: $0 [clean] [runner] [profile] [target]"
+    echo "Usage: $0 [clean] [--keep-going] [runner] [profile] [target]"
     echo ""
-    echo "Arguments (after optional 'clean'):"
+    echo "Flags (can be specified before or after 'clean'):"
+    echo "  --keep-going  Continue running tests even after failures."
+    echo ""
+    echo "Environment:"
+    echo "  REVM_STATETEST_STABLE=1  Download and run EEST stable fixtures instead of develop."
+    echo ""
+    echo "Arguments (after optional 'clean' and '--keep-going'):"
     echo "  runner   (Optional) Rust runner command. Must be either 'cargo' or 'cross'. Defaults to 'cargo'."
     echo "  profile  (Optional) Rust profile to use. Defaults to 'debug' if not provided."
     echo "  target   (Optional) Rust target. Only used if provided."
@@ -35,14 +59,17 @@ usage() {
     echo "  $0 release"
     echo "      Uses runner 'cargo', profile 'release', and no target."
     echo ""
+    echo "  $0 --keep-going release"
+    echo "      Uses runner 'cargo', profile 'release', and keeps going on test failures."
+    echo ""
     echo "  $0 release x86-win"
     echo "      Uses runner 'cargo', profile 'release', with target 'x86-win'."
     echo ""
     echo "  $0 clean"
     echo "      Cleans fixtures then uses runner 'cargo', profile 'debug', and no target."
     echo ""
-    echo "  $0 clean cross release x86-win"
-    echo "      Cleans fixtures then uses runner 'cross', profile 'release', and target 'x86-win'."
+    echo "  $0 clean --keep-going cross release x86-win"
+    echo "      Cleans fixtures then uses runner 'cross', profile 'release', target 'x86-win', and keeps going on failures."
     exit 1
 }
 
@@ -62,11 +89,27 @@ clean() {
 
 # Check if all required fixture directories exist
 check_fixtures() {
-    if [ -d "$STABLE_DIR" ] && [ -d "$DEVELOP_DIR" ] && [ -d "$LEGACY_DIR" ]; then
+    if [ -d "$MAIN_DIR/state_tests" ] && [ -d "$DEVNET_DIR" ] && [ -d "$LEGACY_DIR" ]; then
         return 0
     else
         return 1
     fi
+}
+
+retry() {
+    local attempts=5
+    local delay=2
+    local attempt=1
+
+    until "$@"; do
+        if [ "$attempt" -ge "$attempts" ]; then
+            return 1
+        fi
+        echo "Attempt $attempt failed. Retrying in ${delay}s..."
+        sleep "$delay"
+        attempt=$((attempt + 1))
+        delay=$((delay * 2))
+    done
 }
 
 # Download and extract a single fixture
@@ -76,30 +119,36 @@ download_and_extract() {
     local tar_file="$2"
     local label="$3"
     local version="$4"
+    local base_url="${5:-$FIXTURES_URL}"
 
     echo "Downloading ${label} fixtures..."
-    curl -L "${FIXTURES_URL}/${version}/${tar_file}" -o "${FIXTURES_DIR}/${tar_file}"
+    retry curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "${base_url}/${version}/${tar_file}" -o "${FIXTURES_DIR}/${tar_file}"
     echo "Extracting ${label} fixtures..."
      # strip-components=1 removes the first top level directory from the flepath
      # This is needed because when we extract the tar, it is placed under an
      # unnecessary "fixtures/" directory.
     tar -xzf "${FIXTURES_DIR}/${tar_file}" --strip-components=1 -C "$target_dir"
+
+    # Remove the tar file
+    rm "${FIXTURES_DIR}/${tar_file}"
+
+    # remove all unused folders
+    find "$target_dir" -depth -name blockchain_tests_engine -exec rm -rf {} \;
+    find "$target_dir" -depth -name blockchain_tests_engine_x -exec rm -rf {} \;
+    find "$target_dir" -depth -name blockchain_tests_sync -exec rm -rf {} \;
 }
 
 # Download all fixtures
 download_fixtures() {
     echo "Creating fixtures directory structure..."
-    mkdir -p "$STABLE_DIR" "$DEVELOP_DIR" "$LEGACY_DIR"
+    mkdir -p "$MAIN_DIR" "$DEVNET_DIR" "$LEGACY_DIR"
 
-    download_and_extract "$STABLE_DIR" "$STABLE_TAR" "stable" "$VERSION"
-    download_and_extract "$DEVELOP_DIR" "$DEVELOP_TAR" "develop" "$DEVELOP_VERSION"
+    download_and_extract "$MAIN_DIR" "$MAIN_TAR" "$MAIN_LABEL" "$MAIN_VERSION"
+    download_and_extract "$DEVNET_DIR" "$DEVNET_TAR" "devnet" "$DEVNET_VERSION" "$DEVNET_FIXTURES_URL"
 
-    echo "Cleaning up tar files..."
-    rm "${FIXTURES_DIR}/${STABLE_TAR}" "${FIXTURES_DIR}/${DEVELOP_TAR}"
-    
     # Clone legacytests repository
     echo "Cloning legacytests repository..."
-    git clone --depth 1 "$LEGACY_REPO_URL" "$LEGACY_DIR"
+    retry git clone --depth 1 "$LEGACY_REPO_URL" "$LEGACY_DIR"
     
     echo "Fixtures download and extraction complete."
 }
@@ -112,12 +161,12 @@ download_fixtures() {
 # For the target:
 #   - If provided, add "--target <target>"
 build_cargo_options() {
-    CARGO_OPTS=""
+    CARGO_OPTS="--locked"
 
     if [ "$RUST_PROFILE" = "release" ]; then
-        CARGO_OPTS="--release"
+        CARGO_OPTS="$CARGO_OPTS --release"
     elif [ "$RUST_PROFILE" != "debug" ]; then
-        CARGO_OPTS="--profile $RUST_PROFILE"
+        CARGO_OPTS="$CARGO_OPTS --profile $RUST_PROFILE"
     fi
 
     if [ -n "$RUST_TARGET" ]; then
@@ -127,25 +176,49 @@ build_cargo_options() {
 
 # Run tests for each set of fixtures using the chosen runner.
 run_tests() {
-    echo "Running stable statetests..."
-    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest "$STABLE_DIR/state_tests"
+    echo "Running $MAIN_LABEL statetests..."
+    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest $KEEP_GOING_FLAG "$MAIN_DIR/state_tests"
 
-    echo "Running develop statetests..."
-    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest "$DEVELOP_DIR/state_tests"
-    
-    echo "Running legacy tests..."
-    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest "$LEGACY_DIR/Cancun/GeneralStateTests"
+    echo "Running devnet statetests..."
+    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest $KEEP_GOING_FLAG "$DEVNET_DIR/state_tests"
+
+    echo "Running legacy Cancun tests..."
+    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest $KEEP_GOING_FLAG "$LEGACY_DIR/Cancun/GeneralStateTests"
+
+    echo "Running legacy Constantinople tests..."
+    $RUST_RUNNER run $CARGO_OPTS -p revme -- statetest $KEEP_GOING_FLAG "$LEGACY_DIR/Constantinople/GeneralStateTests"
+
+    echo "Running $MAIN_LABEL blockchain tests..."
+    $RUST_RUNNER run $CARGO_OPTS -p revme -- btest $KEEP_GOING_FLAG "$MAIN_DIR/blockchain_tests"
+
+    echo "SKIP Running devnet blockchain tests..."
+    #$RUST_RUNNER run $CARGO_OPTS -p revme -- btest $KEEP_GOING_FLAG "$DEVNET_DIR/blockchain_tests"
 }
 
 ##############################
 # Main logic
 
-# If the first argument is "clean", perform cleaning and download fixtures.
-if [ "$1" = "clean" ]; then
-    clean
-    download_fixtures
-    shift
-else
+# Initialize flags
+KEEP_GOING_FLAG=""
+DID_CLEAN=false
+
+# Process "clean" and "--keep-going" flags
+while true; do
+    if [ "$1" = "clean" ]; then
+        clean
+        download_fixtures
+        DID_CLEAN=true
+        shift
+    elif [ "$1" = "--keep-going" ]; then
+        KEEP_GOING_FLAG="--keep-going"
+        shift
+    else
+        break
+    fi
+done
+
+# If no clean was specified, check for existing fixtures
+if [ "$DID_CLEAN" = false ]; then
     if check_fixtures; then
         echo "Using existing test fixtures."
     else
@@ -155,7 +228,7 @@ else
 fi
 
 # Argument parsing for runner, profile, target.
-# Expected order (after optional clean): [runner] [profile] [target]
+# Expected order (after optional clean and --keep-going): [runner] [profile] [target]
 # If the first argument is "cargo" or "cross", then it is the runner.
 # Otherwise, runner defaults to "cargo", and the arguments are profile and target.
 if [ "$#" -eq 0 ]; then

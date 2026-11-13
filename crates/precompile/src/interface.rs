@@ -1,8 +1,9 @@
 //! Interface for the precompiles. It contains the precompile result type,
 //! the precompile output type, and the precompile error type.
+use context_interface::{cfg::gas::GasTracker, result::AnyError};
 use core::fmt::{self, Debug};
 use primitives::{Bytes, OnceLock};
-use std::{boxed::Box, string::String, vec::Vec};
+use std::{borrow::Cow, boxed::Box, string::String, vec::Vec};
 
 use crate::bls12_381::{G1Point, G1PointScalar, G2Point, G2PointScalar};
 
@@ -11,12 +12,7 @@ static CRYPTO: OnceLock<Box<dyn Crypto>> = OnceLock::new();
 
 /// Install a custom crypto provider globally.
 pub fn install_crypto<C: Crypto + 'static>(crypto: C) -> bool {
-    if CRYPTO.get().is_some() {
-        return false;
-    }
-
-    CRYPTO.get_or_init(|| Box::new(crypto));
-    true
+    CRYPTO.set(Box::new(crypto)).is_ok()
 }
 
 /// Get the installed crypto provider, or the default if none is installed.
@@ -24,45 +20,239 @@ pub fn crypto() -> &'static dyn Crypto {
     CRYPTO.get_or_init(|| Box::new(DefaultCrypto)).as_ref()
 }
 
-/// A precompile operation result type
+/// A precompile operation result type for individual Ethereum precompile functions.
 ///
-/// Returns either `Ok((gas_used, return_bytes))` or `Err(error)`.
+/// Returns either `Ok(EthPrecompileOutput)` or `Err(PrecompileHalt)`.
+pub type EthPrecompileResult = Result<EthPrecompileOutput, PrecompileHalt>;
+
+/// A precompile operation result type for the precompile provider.
+///
+/// Returns either `Ok(PrecompileOutput)` or `Err(PrecompileError)`.
+/// `PrecompileError` only represents fatal errors that abort EVM execution.
 pub type PrecompileResult = Result<PrecompileOutput, PrecompileError>;
 
-/// Precompile execution output
+/// Simple precompile execution output used by individual Ethereum precompile functions.
+///
+/// Contains only the gas used and output bytes. For the richer output type
+/// with state gas accounting and halt support, see [`PrecompileOutput`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PrecompileOutput {
-    /// Gas used by the precompile
+pub struct EthPrecompileOutput {
+    /// Gas used by the precompile.
     pub gas_used: u64,
     /// Output bytes
     pub bytes: Bytes,
-    /// Whether the precompile reverted
-    pub reverted: bool,
+}
+
+impl EthPrecompileOutput {
+    /// Returns new precompile output with the given gas used and output bytes.
+    pub const fn new(gas_used: u64, bytes: Bytes) -> Self {
+        Self { gas_used, bytes }
+    }
+}
+
+/// Status of a precompile execution.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PrecompileStatus {
+    /// Precompile executed successfully.
+    Success,
+    /// Precompile reverted (non-fatal, returns remaining gas).
+    Revert,
+    /// Precompile halted with a specific reason.
+    Halt(PrecompileHalt),
+}
+
+impl PrecompileStatus {
+    /// Returns `true` if the precompile execution was successful or reverted.
+    #[inline]
+    pub const fn is_success_or_revert(&self) -> bool {
+        matches!(self, PrecompileStatus::Success | PrecompileStatus::Revert)
+    }
+
+    /// Returns `true` if the precompile execution was reverted or halted.
+    #[inline]
+    pub const fn is_revert_or_halt(&self) -> bool {
+        matches!(self, PrecompileStatus::Revert | PrecompileStatus::Halt(_))
+    }
+
+    /// Returns the halt reason if the precompile halted, `None` otherwise.
+    #[inline]
+    pub const fn halt_reason(&self) -> Option<&PrecompileHalt> {
+        match &self {
+            PrecompileStatus::Halt(reason) => Some(reason),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the precompile execution was successful.
+    #[inline]
+    pub const fn is_success(&self) -> bool {
+        matches!(self, PrecompileStatus::Success)
+    }
+
+    /// Returns `true` if the precompile reverted.
+    #[inline]
+    pub const fn is_revert(&self) -> bool {
+        matches!(self, PrecompileStatus::Revert)
+    }
+
+    /// Returns `true` if the precompile halted.
+    #[inline]
+    pub const fn is_halt(&self) -> bool {
+        matches!(self, PrecompileStatus::Halt(_))
+    }
+}
+
+/// Rich precompile execution output with gas accounting and status support.
+///
+/// This is the output type used at the precompile provider level. It can express
+/// successful execution, reverts, and halts (non-fatal errors like out-of-gas).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PrecompileOutput {
+    /// Status of the precompile execution.
+    pub status: PrecompileStatus,
+    /// Regular gas used by the precompile.
+    pub gas_used: u64,
+    /// Gas refunded by the precompile.
+    pub gas_refunded: i64,
+    /// State gas used by the precompile.
+    pub state_gas_used: i64,
+    /// State gas that was drawn from regular gas because the reservoir was
+    /// empty (EIP-8037's `state_gas_from_gas_left`).
+    ///
+    /// Must be the portion of `state_gas_used` that did not fit in the
+    /// reservoir the precompile was given. It is propagated to the frame's gas
+    /// tracker so that a later revert or halt credits that portion back to
+    /// regular gas instead of the reservoir.
+    pub state_gas_spilled: u64,
+    /// Reservoir gas for EIP-8037.
+    pub reservoir: u64,
+    /// Output bytes.
+    pub bytes: Bytes,
 }
 
 impl PrecompileOutput {
-    /// Returns new precompile output with the given gas used and output bytes.
-    pub fn new(gas_used: u64, bytes: Bytes) -> Self {
+    /// Returns a new precompile output from an Ethereum precompile result.
+    pub fn from_eth_result(result: EthPrecompileResult, reservoir: u64) -> Self {
+        match result {
+            Ok(output) => Self::new(output.gas_used, output.bytes, reservoir),
+            Err(halt) => Self::halt(halt, reservoir),
+        }
+    }
+    /// Returns a new successful precompile output.
+    pub const fn new(gas_used: u64, bytes: Bytes, reservoir: u64) -> Self {
         Self {
+            status: PrecompileStatus::Success,
             gas_used,
+            gas_refunded: 0,
+            state_gas_used: 0,
+            state_gas_spilled: 0,
+            reservoir,
             bytes,
-            reverted: false,
         }
     }
 
-    /// Returns new precompile revert with the given gas used and output bytes.
-    pub fn new_reverted(gas_used: u64, bytes: Bytes) -> Self {
+    /// Returns a new halted precompile output with the given halt reason.
+    pub const fn halt(reason: PrecompileHalt, reservoir: u64) -> Self {
         Self {
-            gas_used,
-            bytes,
-            reverted: true,
+            status: PrecompileStatus::Halt(reason),
+            gas_used: 0,
+            gas_refunded: 0,
+            state_gas_used: 0,
+            state_gas_spilled: 0,
+            reservoir,
+            bytes: Bytes::new(),
         }
     }
 
-    /// Flips [`Self::reverted`] to `true`.
-    pub fn reverted(mut self) -> Self {
-        self.reverted = true;
-        self
+    /// Returns a new reverted precompile output.
+    pub const fn revert(gas_used: u64, bytes: Bytes, reservoir: u64) -> Self {
+        Self {
+            status: PrecompileStatus::Revert,
+            gas_used,
+            gas_refunded: 0,
+            state_gas_used: 0,
+            state_gas_spilled: 0,
+            reservoir,
+            bytes,
+        }
+    }
+
+    /// Returns a precompile output that mirrors the gas accounting of `tracker`.
+    ///
+    /// The regular gas used is `tracker.limit() - tracker.remaining()`; the
+    /// refund, state gas (with its spilled portion) and the reservoir are taken
+    /// as-is. Use this when a precompile drives a [`GasTracker`] internally and
+    /// needs to hand the result back to the provider.
+    pub const fn from_gas_tracker(
+        status: PrecompileStatus,
+        bytes: Bytes,
+        tracker: GasTracker,
+    ) -> Self {
+        let mut output = Self {
+            status,
+            gas_used: 0,
+            gas_refunded: 0,
+            state_gas_used: 0,
+            state_gas_spilled: 0,
+            reservoir: 0,
+            bytes,
+        };
+        output.set_gas(tracker);
+        output
+    }
+
+    /// Overwrites the gas accounting fields from `tracker`, leaving status and
+    /// output bytes untouched.
+    ///
+    /// The regular gas used is `tracker.limit() - tracker.remaining()`; the
+    /// refund, state gas (with its spilled portion) and the reservoir are taken
+    /// as-is. All fields are replaced, not accumulated.
+    pub const fn set_gas(&mut self, tracker: GasTracker) {
+        self.gas_used = tracker.limit().saturating_sub(tracker.remaining());
+        self.gas_refunded = tracker.refunded();
+        self.state_gas_used = tracker.state_gas_spent();
+        self.state_gas_spilled = tracker.state_gas_spilled();
+        self.reservoir = tracker.reservoir();
+    }
+
+    /// Returns a [`GasTracker`] for `gas_limit` that reflects this output.
+    ///
+    /// Inverse of [`from_gas_tracker`](Self::from_gas_tracker): `gas_used` is
+    /// deducted from the regular gas (saturating at zero), and the refund, state
+    /// gas, spilled state gas and reservoir are restored.
+    pub const fn to_gas_tracker(&self, gas_limit: u64) -> GasTracker {
+        let mut tracker = GasTracker::new_used_gas(gas_limit, self.gas_used, self.reservoir);
+        tracker.set_refunded(self.gas_refunded);
+        tracker.set_state_gas_spent(self.state_gas_used);
+        tracker.set_state_gas_spilled(self.state_gas_spilled);
+        tracker
+    }
+
+    /// Returns `true` if the precompile execution was successful.
+    pub const fn is_success(&self) -> bool {
+        matches!(self.status, PrecompileStatus::Success)
+    }
+
+    /// Returns `true` if the precompile execution was successful.
+    #[deprecated(note = "use `is_success` instead")]
+    pub const fn is_ok(&self) -> bool {
+        self.is_success()
+    }
+
+    /// Returns `true` if the precompile reverted.
+    pub const fn is_revert(&self) -> bool {
+        matches!(self.status, PrecompileStatus::Revert)
+    }
+
+    /// Returns `true` if the precompile halted.
+    pub const fn is_halt(&self) -> bool {
+        matches!(self.status, PrecompileStatus::Halt(_))
+    }
+
+    /// Returns the halt reason if the precompile halted, `None` otherwise.
+    #[inline]
+    pub const fn halt_reason(&self) -> Option<&PrecompileHalt> {
+        self.status.halt_reason()
     }
 }
 
@@ -84,25 +274,26 @@ pub trait Crypto: Send + Sync + Debug {
         hasher.update(input);
 
         let mut output = [0u8; 32];
-        hasher.finalize_into((&mut output[12..]).into());
+        let hash: &mut [u8; 20] = (&mut output[12..]).try_into().unwrap();
+        hasher.finalize_into(hash.into());
         output
     }
 
     /// BN254 elliptic curve addition.
     #[inline]
-    fn bn254_g1_add(&self, p1: &[u8], p2: &[u8]) -> Result<[u8; 64], PrecompileError> {
+    fn bn254_g1_add(&self, p1: &[u8], p2: &[u8]) -> Result<[u8; 64], PrecompileHalt> {
         crate::bn254::crypto_backend::g1_point_add(p1, p2)
     }
 
     /// BN254 elliptic curve scalar multiplication.
     #[inline]
-    fn bn254_g1_mul(&self, point: &[u8], scalar: &[u8]) -> Result<[u8; 64], PrecompileError> {
+    fn bn254_g1_mul(&self, point: &[u8], scalar: &[u8]) -> Result<[u8; 64], PrecompileHalt> {
         crate::bn254::crypto_backend::g1_point_mul(point, scalar)
     }
 
     /// BN254 pairing check.
     #[inline]
-    fn bn254_pairing_check(&self, pairs: &[(&[u8], &[u8])]) -> Result<bool, PrecompileError> {
+    fn bn254_pairing_check(&self, pairs: &[(&[u8], &[u8])]) -> Result<bool, PrecompileHalt> {
         crate::bn254::crypto_backend::pairing_check(pairs)
     }
 
@@ -113,27 +304,27 @@ pub trait Crypto: Send + Sync + Debug {
         sig: &[u8; 64],
         recid: u8,
         msg: &[u8; 32],
-    ) -> Result<[u8; 32], PrecompileError> {
-        crate::secp256k1::ecrecover_bytes(*sig, recid, *msg)
-            .ok_or_else(|| PrecompileError::other("ecrecover failed"))
+    ) -> Result<[u8; 32], PrecompileHalt> {
+        crate::secp256k1::ecrecover_bytes(sig, recid, msg)
+            .ok_or(PrecompileHalt::Secp256k1RecoverFailed)
     }
 
     /// Modular exponentiation.
     #[inline]
-    fn modexp(&self, base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, PrecompileError> {
+    fn modexp(&self, base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, PrecompileHalt> {
         Ok(crate::modexp::modexp(base, exp, modulus))
     }
 
     /// Blake2 compression function.
     #[inline]
-    fn blake2_compress(&self, rounds: u32, h: &mut [u64; 8], m: [u64; 16], t: [u64; 2], f: bool) {
-        crate::blake2::algo::compress(rounds as usize, h, m, t, f);
+    fn blake2_compress(&self, rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2], f: bool) {
+        crate::blake2::compress(rounds, h, m, t, f);
     }
 
     /// secp256r1 (P-256) signature verification.
     #[inline]
     fn secp256r1_verify_signature(&self, msg: &[u8; 32], sig: &[u8; 64], pk: &[u8; 64]) -> bool {
-        crate::secp256r1::verify_signature(*msg, *sig, *pk).is_some()
+        crate::secp256r1::verify_signature(msg, sig, pk).is_some()
     }
 
     /// KZG point evaluation.
@@ -144,37 +335,37 @@ pub trait Crypto: Send + Sync + Debug {
         y: &[u8; 32],
         commitment: &[u8; 48],
         proof: &[u8; 48],
-    ) -> Result<(), PrecompileError> {
+    ) -> Result<(), PrecompileHalt> {
         if !crate::kzg_point_evaluation::verify_kzg_proof(commitment, z, y, proof) {
-            return Err(PrecompileError::BlobVerifyKzgProofFailed);
+            return Err(PrecompileHalt::BlobVerifyKzgProofFailed);
         }
 
         Ok(())
     }
 
     /// BLS12-381 G1 addition (returns 96-byte unpadded G1 point)
-    fn bls12_381_g1_add(&self, a: G1Point, b: G1Point) -> Result<[u8; 96], PrecompileError> {
+    fn bls12_381_g1_add(&self, a: G1Point, b: G1Point) -> Result<[u8; 96], PrecompileHalt> {
         crate::bls12_381::crypto_backend::p1_add_affine_bytes(a, b)
     }
 
     /// BLS12-381 G1 multi-scalar multiplication (returns 96-byte unpadded G1 point)
     fn bls12_381_g1_msm(
         &self,
-        pairs: &mut dyn Iterator<Item = Result<G1PointScalar, PrecompileError>>,
-    ) -> Result<[u8; 96], PrecompileError> {
+        pairs: &mut dyn Iterator<Item = Result<G1PointScalar, PrecompileHalt>>,
+    ) -> Result<[u8; 96], PrecompileHalt> {
         crate::bls12_381::crypto_backend::p1_msm_bytes(pairs)
     }
 
     /// BLS12-381 G2 addition (returns 192-byte unpadded G2 point)
-    fn bls12_381_g2_add(&self, a: G2Point, b: G2Point) -> Result<[u8; 192], PrecompileError> {
+    fn bls12_381_g2_add(&self, a: G2Point, b: G2Point) -> Result<[u8; 192], PrecompileHalt> {
         crate::bls12_381::crypto_backend::p2_add_affine_bytes(a, b)
     }
 
     /// BLS12-381 G2 multi-scalar multiplication (returns 192-byte unpadded G2 point)
     fn bls12_381_g2_msm(
         &self,
-        pairs: &mut dyn Iterator<Item = Result<G2PointScalar, PrecompileError>>,
-    ) -> Result<[u8; 192], PrecompileError> {
+        pairs: &mut dyn Iterator<Item = Result<G2PointScalar, PrecompileHalt>>,
+    ) -> Result<[u8; 192], PrecompileHalt> {
         crate::bls12_381::crypto_backend::p2_msm_bytes(pairs)
     }
 
@@ -182,27 +373,84 @@ pub trait Crypto: Send + Sync + Debug {
     fn bls12_381_pairing_check(
         &self,
         pairs: &[(G1Point, G2Point)],
-    ) -> Result<bool, PrecompileError> {
+    ) -> Result<bool, PrecompileHalt> {
         crate::bls12_381::crypto_backend::pairing_check_bytes(pairs)
     }
 
     /// BLS12-381 map field element to G1.
-    fn bls12_381_fp_to_g1(&self, fp: &[u8; 48]) -> Result<[u8; 96], PrecompileError> {
+    fn bls12_381_fp_to_g1(&self, fp: &[u8; 48]) -> Result<[u8; 96], PrecompileHalt> {
         crate::bls12_381::crypto_backend::map_fp_to_g1_bytes(fp)
     }
 
     /// BLS12-381 map field element to G2.
-    fn bls12_381_fp2_to_g2(&self, fp2: ([u8; 48], [u8; 48])) -> Result<[u8; 192], PrecompileError> {
+    fn bls12_381_fp2_to_g2(&self, fp2: ([u8; 48], [u8; 48])) -> Result<[u8; 192], PrecompileHalt> {
         crate::bls12_381::crypto_backend::map_fp2_to_g2_bytes(&fp2.0, &fp2.1)
     }
 }
 
-/// Precompile function type. Takes input, gas limit, and crypto implementation and returns precompile result.
-pub type PrecompileFn = fn(&[u8], u64) -> PrecompileResult;
+/// Eth precompile function type. Takes input and gas limit, returns an Eth precompile result.
+///
+/// This is the function signature used by individual Ethereum precompile implementations.
+/// Use [`PrecompileFn`] for the higher-level type that returns [`PrecompileOutput`].
+pub type PrecompileEthFn = fn(&[u8], u64) -> EthPrecompileResult;
 
-/// Precompile error type.
+/// Precompile function type. Takes input, gas limit and reservoir, returns a [`PrecompileResult`].
+///
+/// Returns `Ok(PrecompileOutput)` for successful execution or non-fatal halts,
+/// or `Err(PrecompileError)` for fatal/unrecoverable errors that should abort EVM execution.
+pub type PrecompileFn = fn(&[u8], u64, u64) -> PrecompileResult;
+
+/// Macro that generates a thin wrapper function converting a [`PrecompileEthFn`] into a [`PrecompileFn`].
+///
+/// Usage:
+/// ```ignore
+/// eth_precompile_fn!(my_precompile, my_eth_fn);
+/// ```
+/// Expands to:
+/// ```ignore
+/// fn my_precompile(input: &[u8], gas_limit: u64, reservoir: u64) -> PrecompileOutput {
+///     call_eth_precompile(my_eth_fn, input, gas_limit, reservoir)
+/// }
+/// ```
+#[macro_export]
+macro_rules! eth_precompile_fn {
+    ($name:ident, $eth_fn:expr) => {
+        fn $name(input: &[u8], gas_limit: u64, reservoir: u64) -> $crate::PrecompileResult {
+            Ok($crate::call_eth_precompile(
+                $eth_fn, input, gas_limit, reservoir,
+            ))
+        }
+    };
+}
+
+/// Calls a [`PrecompileEthFn`] and wraps the result into a [`PrecompileOutput`].
+///
+/// Use this in wrapper functions to adapt an eth precompile to the [`PrecompileFn`] signature:
+/// ```ignore
+/// fn my_precompile(input: &[u8], gas_limit: u64, reservoir: u64) -> PrecompileOutput {
+///     call_eth_precompile(my_eth_fn, input, gas_limit, reservoir)
+/// }
+/// ```
+#[inline]
+pub fn call_eth_precompile(
+    f: PrecompileEthFn,
+    input: &[u8],
+    gas_limit: u64,
+    reservoir: u64,
+) -> PrecompileOutput {
+    match f(input, gas_limit) {
+        Ok(output) => PrecompileOutput::new(output.gas_used, output.bytes, reservoir),
+        Err(halt) => PrecompileOutput::halt(halt, reservoir),
+    }
+}
+
+/// Non-fatal halt reasons for precompiles.
+///
+/// These represent conditions that halt precompile execution but do not abort
+/// the entire EVM transaction. They are expressed through [`PrecompileStatus::Halt`]
+/// at the provider level.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum PrecompileError {
+pub enum PrecompileHalt {
     /// out of gas is the main error. Others are here just for completeness
     OutOfGas,
     /// Blake2 errors
@@ -230,27 +478,74 @@ pub enum PrecompileError {
     BlobMismatchedVersion,
     /// The proof verification failed
     BlobVerifyKzgProofFailed,
-    /// Fatal error with a custom error message
-    Fatal(String),
-    /// Catch-all variant for other errors
-    Other(String),
+    /// Non-canonical field element
+    NonCanonicalFp,
+    /// BLS12-381 G1 point not on curve
+    Bls12381G1NotOnCurve,
+    /// BLS12-381 G1 point not in correct subgroup
+    Bls12381G1NotInSubgroup,
+    /// BLS12-381 G2 point not on curve
+    Bls12381G2NotOnCurve,
+    /// BLS12-381 G2 point not in correct subgroup
+    Bls12381G2NotInSubgroup,
+    /// BLS12-381 scalar input length error
+    Bls12381ScalarInputLength,
+    /// BLS12-381 G1 add input length error
+    Bls12381G1AddInputLength,
+    /// BLS12-381 G1 msm input length error
+    Bls12381G1MsmInputLength,
+    /// BLS12-381 G2 add input length error
+    Bls12381G2AddInputLength,
+    /// BLS12-381 G2 msm input length error
+    Bls12381G2MsmInputLength,
+    /// BLS12-381 pairing input length error
+    Bls12381PairingInputLength,
+    /// BLS12-381 map fp to g1 input length error
+    Bls12381MapFpToG1InputLength,
+    /// BLS12-381 map fp2 to g2 input length error
+    Bls12381MapFp2ToG2InputLength,
+    /// BLS12-381 padding error
+    Bls12381FpPaddingInvalid,
+    /// BLS12-381 fp padding length error
+    Bls12381FpPaddingLength,
+    /// BLS12-381 g1 padding length error
+    Bls12381G1PaddingLength,
+    /// BLS12-381 g2 padding length error
+    Bls12381G2PaddingLength,
+    /// KZG invalid G1 point
+    KzgInvalidG1Point,
+    /// KZG G1 point not on curve
+    KzgG1PointNotOnCurve,
+    /// KZG G1 point not in correct subgroup
+    KzgG1PointNotInSubgroup,
+    /// KZG input length error
+    KzgInvalidInputLength,
+    /// secp256k1 ecrecover failed
+    Secp256k1RecoverFailed,
+    /// Catch-all variant for precompile halt reasons without a dedicated variant.
+    Other(Cow<'static, str>),
 }
 
-impl PrecompileError {
-    /// Returns another error with the given message.
+impl PrecompileHalt {
+    /// Returns another halt reason with the given message.
     pub fn other(err: impl Into<String>) -> Self {
-        Self::Other(err.into())
+        Self::Other(Cow::Owned(err.into()))
     }
 
-    /// Returns `true` if the error is out of gas.
-    pub fn is_oog(&self) -> bool {
+    /// Returns another halt reason with the given static string.
+    pub const fn other_static(err: &'static str) -> Self {
+        Self::Other(Cow::Borrowed(err))
+    }
+
+    /// Returns `true` if the halt reason is out of gas.
+    pub const fn is_oog(&self) -> bool {
         matches!(self, Self::OutOfGas)
     }
 }
 
-impl core::error::Error for PrecompileError {}
+impl core::error::Error for PrecompileHalt {}
 
-impl fmt::Display for PrecompileError {
+impl fmt::Display for PrecompileHalt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::OutOfGas => "out of gas",
@@ -266,10 +561,64 @@ impl fmt::Display for PrecompileError {
             Self::BlobInvalidInputLength => "invalid blob input length",
             Self::BlobMismatchedVersion => "mismatched blob version",
             Self::BlobVerifyKzgProofFailed => "verifying blob kzg proof failed",
-            Self::Fatal(s) => s,
+            Self::NonCanonicalFp => "non-canonical field element",
+            Self::Bls12381G1NotOnCurve => "bls12-381 g1 point not on curve",
+            Self::Bls12381G1NotInSubgroup => "bls12-381 g1 point not in correct subgroup",
+            Self::Bls12381G2NotOnCurve => "bls12-381 g2 point not on curve",
+            Self::Bls12381G2NotInSubgroup => "bls12-381 g2 point not in correct subgroup",
+            Self::Bls12381ScalarInputLength => "bls12-381 scalar input length error",
+            Self::Bls12381G1AddInputLength => "bls12-381 g1 add input length error",
+            Self::Bls12381G1MsmInputLength => "bls12-381 g1 msm input length error",
+            Self::Bls12381G2AddInputLength => "bls12-381 g2 add input length error",
+            Self::Bls12381G2MsmInputLength => "bls12-381 g2 msm input length error",
+            Self::Bls12381PairingInputLength => "bls12-381 pairing input length error",
+            Self::Bls12381MapFpToG1InputLength => "bls12-381 map fp to g1 input length error",
+            Self::Bls12381MapFp2ToG2InputLength => "bls12-381 map fp2 to g2 input length error",
+            Self::Bls12381FpPaddingInvalid => "bls12-381 fp 64 top bytes of input are not zero",
+            Self::Bls12381FpPaddingLength => "bls12-381 fp padding length error",
+            Self::Bls12381G1PaddingLength => "bls12-381 g1 padding length error",
+            Self::Bls12381G2PaddingLength => "bls12-381 g2 padding length error",
+            Self::KzgInvalidG1Point => "kzg invalid g1 point",
+            Self::KzgG1PointNotOnCurve => "kzg g1 point not on curve",
+            Self::KzgG1PointNotInSubgroup => "kzg g1 point not in correct subgroup",
+            Self::KzgInvalidInputLength => "kzg invalid input length",
+            Self::Secp256k1RecoverFailed => "secp256k1 signature recovery failed",
             Self::Other(s) => s,
         };
         f.write_str(s)
+    }
+}
+
+/// Fatal precompile error type.
+///
+/// These errors represent unrecoverable conditions that abort the entire EVM
+/// transaction. They propagate as `EVMError::Custom`.
+///
+/// For non-fatal halt reasons (like out-of-gas or invalid input), see
+/// [`PrecompileHalt`] which is expressed through [`PrecompileStatus::Halt`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PrecompileError {
+    /// Unrecoverable error that halts EVM execution.
+    Fatal(String),
+    /// Unrecoverable error that halts EVM execution.
+    FatalAny(AnyError),
+}
+
+impl PrecompileError {
+    /// Returns `true` if the error is `Fatal` or `FatalAny`.
+    pub const fn is_fatal(&self) -> bool {
+        true
+    }
+}
+
+impl core::error::Error for PrecompileError {}
+
+impl fmt::Display for PrecompileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fatal(s) => write!(f, "fatal: {s}"),
+            Self::FatalAny(s) => write!(f, "fatal: {s}"),
+        }
     }
 }
 
@@ -278,3 +627,59 @@ impl fmt::Display for PrecompileError {
 pub struct DefaultCrypto;
 
 impl Crypto for DefaultCrypto {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tracker that spilled state gas must survive the round trip through
+    /// [`PrecompileOutput`] unchanged.
+    #[test]
+    fn gas_tracker_round_trip() {
+        // 100 regular gas, 10 reservoir. Charge 10 regular and 30 state gas,
+        // 20 of which spills out of the reservoir into regular gas.
+        let mut tracker = GasTracker::new(100, 100, 10);
+        assert!(tracker.record_regular_cost(10));
+        assert!(tracker.record_state_cost(30));
+        tracker.record_refund(5);
+        assert_eq!(
+            (tracker.remaining(), tracker.reservoir()),
+            (70, 0),
+            "10 regular + 20 spilled state gas"
+        );
+
+        let output =
+            PrecompileOutput::from_gas_tracker(PrecompileStatus::Success, Bytes::new(), tracker);
+        assert_eq!(output.gas_used, 30);
+        assert_eq!(output.gas_refunded, 5);
+        assert_eq!(output.state_gas_used, 30);
+        assert_eq!(output.state_gas_spilled, 20);
+        assert_eq!(output.reservoir, 0);
+
+        assert_eq!(output.to_gas_tracker(tracker.limit()), tracker);
+
+        // set_gas replaces the gas fields of an existing output, keeping the rest
+        let mut existing = PrecompileOutput::revert(1, Bytes::from_static(b"out"), 999);
+        existing.set_gas(tracker);
+        assert_eq!(existing.status, PrecompileStatus::Revert);
+        assert_eq!(existing.bytes, Bytes::from_static(b"out"));
+        assert_eq!(
+            (
+                existing.gas_used,
+                existing.gas_refunded,
+                existing.state_gas_used,
+                existing.state_gas_spilled,
+                existing.reservoir
+            ),
+            (30, 5, 30, 20, 0)
+        );
+    }
+
+    /// Gas used above the limit saturates instead of wrapping.
+    #[test]
+    fn to_gas_tracker_saturates_on_overspend() {
+        let mut output = PrecompileOutput::new(0, Bytes::new(), 0);
+        output.gas_used = u64::MAX;
+        assert_eq!(output.to_gas_tracker(100).remaining(), 0);
+    }
+}

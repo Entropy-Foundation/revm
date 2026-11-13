@@ -19,12 +19,14 @@ pub const TX_HASH_ADDRESS: Address = u64_to_address(0x5355_5001);
 const SUPRA_RESERVED_ADDRESSES_PREFIX_UPPER_BOUND: usize = 19;
 
 /// Checks whether specified input address is one of the SUPRA reserved ones.
+#[inline]
 pub fn is_supra_reserved(address: &Address) -> bool {
     VM_SIGNER[..SUPRA_RESERVED_ADDRESSES_PREFIX_UPPER_BOUND]
         .eq(&address[..SUPRA_RESERVED_ADDRESSES_PREFIX_UPPER_BOUND])
 }
 
 /// Checks whether specified input address is SUPRA reserved VM_SIGNER
+#[inline]
 pub fn is_vm_signer(address: &Address) -> bool {
     VM_SIGNER.eq(address)
 }

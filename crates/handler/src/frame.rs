@@ -1,36 +1,32 @@
-use crate::evm::FrameTr;
-use crate::item_or_result::FrameInitOrResult;
-use crate::{precompile_provider::PrecompileProvider, ItemOrResult};
-use crate::{CallFrame, CreateFrame, FrameData, FrameResult};
+use crate::{
+    evm::FrameTr, item_or_result::FrameInitOrResult, precompile_provider::PrecompileProvider,
+    CallFrame, CreateFrame, FrameData, FrameResult, ItemOrResult,
+};
 use context::result::FromStringError;
-use context::Transaction;
-use context_interface::context::ContextError;
-use context_interface::local::{FrameToken, OutFrame};
-use context_interface::ContextTr;
 use context_interface::{
-    journaled_state::{JournalCheckpoint, JournalTr},
-    Cfg, Database,
+    context::{take_error, ContextError},
+    journaled_state::{account::JournaledAccountTr, JournalCheckpoint, JournalTr},
+    local::{FrameToken, OutFrame},
+    Cfg, ContextTr, Database, Transaction,
 };
 use core::cmp::min;
 use derive_where::derive_where;
-use interpreter::interpreter_action::FrameInit;
 use interpreter::{
-    gas,
     interpreter::{EthInterpreter, ExtBytecode},
+    interpreter_action::FrameInit,
     interpreter_types::ReturnData,
     CallInput, CallInputs, CallOutcome, CallValue, CreateInputs, CreateOutcome, CreateScheme,
-    FrameInput, Gas, InputsImpl, InstructionResult, Interpreter, InterpreterAction,
+    FrameInput, Gas, GasTracker, InputsImpl, InstructionResult, Interpreter, InterpreterAction,
     InterpreterResult, InterpreterTypes, SharedMemory,
 };
-use precompile::PrecompileId;
 use primitives::{
     constants::CALL_STACK_LIMIT,
     hardfork::SpecId::{self, HOMESTEAD, LONDON, SPURIOUS_DRAGON},
+    supra_constants::{is_supra_reserved, TX_HASH_ADDRESS},
+    Address, Bytes, U256,
 };
-use primitives::{keccak256, supra_constants::is_supra_reserved, Address, Bytes, U256};
 use state::Bytecode;
-use std::borrow::ToOwned;
-use std::boxed::Box;
+use std::{borrow::ToOwned, boxed::Box, vec::Vec};
 
 /// Frame implementation for Ethereum.
 #[derive_where(Clone, Debug; IW,
@@ -70,7 +66,8 @@ impl Default for EthFrame<EthInterpreter> {
 }
 
 impl EthFrame<EthInterpreter> {
-    fn invalid() -> Self {
+    /// Creates an new invalid [`EthFrame`].
+    pub fn invalid() -> Self {
         Self::do_default(Interpreter::invalid())
     }
 
@@ -88,12 +85,12 @@ impl EthFrame<EthInterpreter> {
     }
 
     /// Returns true if the frame has finished execution.
-    pub fn is_finished(&self) -> bool {
+    pub const fn is_finished(&self) -> bool {
         self.is_finished
     }
 
     /// Sets the finished state of the frame.
-    pub fn set_finished(&mut self, finished: bool) {
+    pub const fn set_finished(&mut self, finished: bool) {
         self.is_finished = finished;
     }
 }
@@ -103,7 +100,8 @@ pub type ContextTrDbError<CTX> = <<CTX as ContextTr>::Db as Database>::Error;
 
 impl EthFrame<EthInterpreter> {
     /// Clear and initialize a frame.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
+    #[inline(always)]
     pub fn clear(
         &mut self,
         data: FrameData,
@@ -115,6 +113,7 @@ impl EthFrame<EthInterpreter> {
         is_static: bool,
         spec_id: SpecId,
         gas_limit: u64,
+        reservoir_remaining_gas: u64,
         checkpoint: JournalCheckpoint,
     ) {
         let Self {
@@ -129,7 +128,15 @@ impl EthFrame<EthInterpreter> {
         *input_ref = input;
         *depth_ref = depth;
         *is_finished_ref = false;
-        interpreter.clear(memory, bytecode, inputs, is_static, spec_id, gas_limit);
+        interpreter.clear(
+            memory,
+            bytecode,
+            inputs,
+            is_static,
+            spec_id,
+            gas_limit,
+            reservoir_remaining_gas,
+        );
         *checkpoint_ref = checkpoint;
     }
 
@@ -145,9 +152,13 @@ impl EthFrame<EthInterpreter> {
         precompiles: &mut PRECOMPILES,
         depth: usize,
         memory: SharedMemory,
-        inputs: Box<CallInputs>,
+        mut inputs: Box<CallInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
-        let gas = Gas::new(inputs.gas_limit);
+        let reservoir_remaining_gas = inputs.reservoir;
+        let charged_new_account_state_gas = inputs.charged_new_account_state_gas;
+        let gas =
+            Gas::new_with_regular_gas_and_reservoir(inputs.gas_limit, reservoir_remaining_gas);
+
         let return_result = |instruction_result: InstructionResult| {
             Ok(ItemOrResult::Result(FrameResult::Call(CallOutcome {
                 result: InterpreterResult {
@@ -156,6 +167,9 @@ impl EthFrame<EthInterpreter> {
                     output: Bytes::new(),
                 },
                 memory_offset: inputs.return_memory_offset.clone(),
+                was_precompile_called: false,
+                precompile_call_logs: Vec::new(),
+                charged_new_account_state_gas,
             })))
         };
 
@@ -175,11 +189,11 @@ impl EthFrame<EthInterpreter> {
         // The refusal is revert-class, like `CallTooDeep` above and `OutOfFunds` below: the
         // caller gets back the gas it forwarded, and the outcome is still reported as a halt.
         //
-        // The check runs before any account is loaded or any journal entry is written, so the
-        // refusal itself writes nothing to the journal. `DELEGATECALL` and `CALLCODE` do not
-        // move value to `target_address` from another account (`CallValue::Apparent`, and a
-        // transfer to the caller itself, respectively), and a zero-value `CALL` moves nothing,
-        // so only a non-zero `CallValue::Transfer` is examined.
+        // The check runs before the checkpoint and the value transfer, so the refusal itself
+        // writes nothing to the journal. `DELEGATECALL` and `CALLCODE` do not move value to
+        // `target_address` from another account (`CallValue::Apparent`, and a transfer to the
+        // caller itself, respectively), and a zero-value `CALL` moves nothing, so only a
+        // non-zero `CallValue::Transfer` is examined.
         if let CallValue::Transfer(value) = inputs.value {
             if !value.is_zero() && is_supra_reserved(&inputs.target_address) {
                 let is_value_accepting_precompile = precompiles.contains(&inputs.target_address)
@@ -190,10 +204,11 @@ impl EthFrame<EthInterpreter> {
             }
         }
 
-        // Make account warm and loaded.
-        let _ = ctx
-            .journal_mut()
-            .load_account_delegated(inputs.bytecode_address)?;
+        // A call to the TxHash precompile address receives the transaction hash as its input.
+        if inputs.bytecode_address == TX_HASH_ADDRESS {
+            let tx_hash = ctx.tx().tx_hash();
+            inputs.input = CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
+        }
 
         // Create subroutine checkpoint
         let checkpoint = ctx.journal_mut().checkpoint();
@@ -203,61 +218,47 @@ impl EthFrame<EthInterpreter> {
             // Target will get touched even if balance transferred is zero.
             if let Some(i) =
                 ctx.journal_mut()
-                    .transfer(inputs.caller, inputs.target_address, value)?
+                    .transfer_loaded(inputs.caller, inputs.target_address, value)
             {
                 ctx.journal_mut().checkpoint_revert(checkpoint);
                 return return_result(i.into());
             }
         }
 
-        let mut interpreter_input = InputsImpl {
+        let interpreter_input = InputsImpl {
             target_address: inputs.target_address,
             caller_address: inputs.caller,
             bytecode_address: Some(inputs.bytecode_address),
             input: inputs.input.clone(),
             call_value: inputs.value.get(),
+            depth,
         };
         let is_static = inputs.is_static;
         let gas_limit = inputs.gas_limit;
 
-        // If the call's bytecode address is the TxHash precompile address,
-        // fetch the transaction hash from Tx and pass the hash to the
-        // interpreter by overwriting the interpreter_input's input with the hash.
-        if let Some(tx_hash_addr) = PrecompileId::TxHash.mainnet_address() {
-            if inputs.bytecode_address == tx_hash_addr {
-                let tx_hash = ctx.tx().tx_hash();
-                interpreter_input.input =
-                    CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
-            }
-        }
-
-        if let Some(result) = precompiles
-            .run(
-                ctx,
-                &inputs.bytecode_address,
-                &interpreter_input,
-                is_static,
-                gas_limit,
-            )
-            .map_err(ERROR::from_string)?
-        {
+        if let Some(result) = precompiles.run(ctx, &inputs).map_err(ERROR::from_string)? {
+            let mut logs = Vec::new();
             if result.result.is_ok() {
+                // Preserve the reservoir on the result gas so it can be reimbursed.
+                // Precompiles don't use reservoir gas, but the first frame carries it.
                 ctx.journal_mut().checkpoint_commit();
             } else {
+                // clone logs that precompile created, only possible with custom precompiles.
+                // checkpoint.log_i will be always correct.
+                logs = ctx.journal_mut().logs()[checkpoint.log_i..].to_vec();
                 ctx.journal_mut().checkpoint_revert(checkpoint);
             }
             return Ok(ItemOrResult::Result(FrameResult::Call(CallOutcome {
                 result,
                 memory_offset: inputs.return_memory_offset.clone(),
+                was_precompile_called: true,
+                precompile_call_logs: logs,
+                charged_new_account_state_gas,
             })));
         }
 
-        let account = ctx
-            .journal_mut()
-            .load_account_code(inputs.bytecode_address)?;
-
-        let mut code_hash = account.info.code_hash();
-        let mut bytecode = account.info.code.clone().unwrap_or_default();
+        // Get bytecode and hash - either from known_bytecode or load from account
+        let (bytecode_hash, bytecode) = inputs.known_bytecode.clone();
 
         // Code never executes from a Supra reserved address, in any execution mode: neither as
         // the executing account (`target_address`, which becomes `msg.sender` of every call the
@@ -270,28 +271,30 @@ impl EthFrame<EthInterpreter> {
         // it must not be removed on the grounds that the range is empty. Like the value check,
         // the refusal is revert-class and returns the forwarded gas to the caller.
         //
-        // A reserved frame is refused if its own code is non-empty, before any delegation is
-        // resolved, so a reserved account holding a delegation designation is refused whatever
-        // the designation points to.
-        if !bytecode.is_empty()
-            && (is_supra_reserved(&inputs.target_address)
-                || is_supra_reserved(&inputs.bytecode_address))
-        {
-            ctx.journal_mut().checkpoint_revert(checkpoint);
-            return return_result(InstructionResult::ReservedAddressTarget);
-        }
-
-        if let Bytecode::Eip7702(eip7702_bytecode) = bytecode {
-            let delegated_address = eip7702_bytecode.delegated_address;
-            let account = &ctx.journal_mut().load_account_code(delegated_address)?.info;
-            bytecode = account.code.clone().unwrap_or_default();
-            code_hash = account.code_hash();
-
-            // The frame's own account is outside the reserved range here, so the delegation is
-            // refused when it would load code from a reserved address. A designation that
-            // points to a reserved address holding no code executes nothing, exactly as a
-            // designation to any other empty account does.
-            if !bytecode.is_empty() && is_supra_reserved(&delegated_address) {
+        // `bytecode` is the code that runs, with any delegation already resolved, so the
+        // account's own code is read from the journal: a reserved frame is refused if its own
+        // code is non-empty, so a reserved account holding a delegation designation is refused
+        // whatever the designation points to. A designation that points to a reserved address
+        // holding no code executes nothing, exactly as a designation to any other empty account
+        // does.
+        let frame_is_reserved = is_supra_reserved(&inputs.target_address)
+            || is_supra_reserved(&inputs.bytecode_address);
+        if frame_is_reserved || !bytecode.is_empty() {
+            let own_code = &ctx
+                .journal_mut()
+                .load_account_with_code(inputs.bytecode_address)?
+                .data
+                .info
+                .code;
+            let refused = if frame_is_reserved {
+                own_code.as_ref().is_some_and(|code| !code.is_empty())
+            } else {
+                own_code
+                    .as_ref()
+                    .and_then(Bytecode::eip7702_address)
+                    .is_some_and(|delegated| is_supra_reserved(&delegated))
+            };
+            if refused {
                 ctx.journal_mut().checkpoint_revert(checkpoint);
                 return return_result(InstructionResult::ReservedAddressTarget);
             }
@@ -311,13 +314,15 @@ impl EthFrame<EthInterpreter> {
             FrameInput::Call(inputs),
             depth,
             memory,
-            ExtBytecode::new_with_hash(bytecode, code_hash),
+            ExtBytecode::new_with_hash(bytecode, bytecode_hash),
             interpreter_input,
             is_static,
             ctx.cfg().spec().into(),
             gas_limit,
+            reservoir_remaining_gas,
             checkpoint,
         );
+
         Ok(ItemOrResult::Item(this.consume()))
     }
 
@@ -333,16 +338,25 @@ impl EthFrame<EthInterpreter> {
         memory: SharedMemory,
         inputs: Box<CreateInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
+        let reservoir_remaining_gas = inputs.reservoir();
         let spec = context.cfg().spec().into();
-
+        // EIP-8037 refund for the CREATE opcode's upfront `create_state_gas` is
+        // applied uniformly in `return_result` when the create fails (revert,
+        // halt, or early-fail with `address == None`), so early-fail results
+        // only carry the reservoir they inherited from the parent.
+        let charged_create_state_gas = inputs.charged_create_state_gas();
         let return_error = |e| {
             Ok(ItemOrResult::Result(FrameResult::Create(CreateOutcome {
                 result: InterpreterResult {
                     result: e,
-                    gas: Gas::new(inputs.gas_limit),
+                    gas: Gas::new_with_regular_gas_and_reservoir(
+                        inputs.gas_limit(),
+                        reservoir_remaining_gas,
+                    ),
                     output: Bytes::new(),
                 },
                 address: None,
+                charged_create_state_gas,
             })))
         };
 
@@ -355,48 +369,38 @@ impl EthFrame<EthInterpreter> {
             return return_error(InstructionResult::CallTooDeep);
         }
 
-        // Prague EOF
-        // TODO(EOF)
-        // if spec.is_enabled_in(OSAKA) && inputs.init_code.starts_with(&EOF_MAGIC_BYTES) {
-        //     return return_error(InstructionResult::CreateInitCodeStartingEF00);
-        // }
-
         // Fetch balance of caller.
-        let caller_info = &mut context.journal_mut().load_account(inputs.caller)?.data.info;
+        let journal = context.journal_mut();
+        let mut caller_info = journal.load_account_mut(inputs.caller())?;
 
         // Check if caller has enough balance to send to the created contract.
-        if caller_info.balance < inputs.value {
+        // decrement of balance is done in the create_account_checkpoint.
+        if *caller_info.balance() < inputs.value() {
             return return_error(InstructionResult::OutOfFunds);
         }
-        let old_nonce = caller_info.nonce;
+
         // Increase nonce of caller and check if it overflows
-        let Some(new_nonce) = old_nonce.checked_add(1) else {
+        let old_nonce = caller_info.nonce();
+        if !caller_info.bump_nonce() {
             return return_error(InstructionResult::Return);
         };
-        caller_info.nonce = new_nonce;
-        context
-            .journal_mut()
-            .nonce_bump_journal_entry(inputs.caller);
 
-        // Create address
-        let mut init_code_hash = None;
-        let created_address = match inputs.scheme {
-            CreateScheme::Create => inputs.caller.create(old_nonce),
-            CreateScheme::Create2 { salt } => {
-                let init_code_hash = *init_code_hash.insert(keccak256(&inputs.init_code));
-                inputs.caller.create2(salt.to_be_bytes(), init_code_hash)
-            }
-            CreateScheme::Custom { address } => address,
-        };
+        // Create address — uses OnceCell cache so that if an inspector already called
+        // `created_address`, the expensive keccak256 is not recomputed.
+        let created_address = inputs.created_address(old_nonce);
+        let init_code_hash = matches!(inputs.scheme(), CreateScheme::Create2 { .. })
+            .then(|| inputs.init_code_hash());
+
+        drop(caller_info); // Drop caller info to avoid borrow checker issues.
 
         // warm load account.
-        context.journal_mut().load_account(created_address)?;
+        journal.load_account(created_address)?;
 
         // Create account, transfer funds and make the journal checkpoint.
         let checkpoint = match context.journal_mut().create_account_checkpoint(
-            inputs.caller,
+            inputs.caller(),
             created_address,
-            inputs.value,
+            inputs.value(),
             spec,
         ) {
             Ok(checkpoint) => checkpoint,
@@ -404,18 +408,19 @@ impl EthFrame<EthInterpreter> {
         };
 
         let bytecode = ExtBytecode::new_with_optional_hash(
-            Bytecode::new_legacy(inputs.init_code.clone()),
+            Bytecode::new_legacy(inputs.init_code().clone()),
             init_code_hash,
         );
 
         let interpreter_input = InputsImpl {
             target_address: created_address,
-            caller_address: inputs.caller,
+            caller_address: inputs.caller(),
             bytecode_address: None,
             input: CallInput::Bytes(Bytes::new()),
-            call_value: inputs.value,
+            call_value: inputs.value(),
+            depth,
         };
-        let gas_limit = inputs.gas_limit;
+        let gas_limit = inputs.gas_limit();
 
         this.get(EthFrame::invalid).clear(
             FrameData::Create(CreateFrame { created_address }),
@@ -427,8 +432,10 @@ impl EthFrame<EthInterpreter> {
             false,
             spec,
             gas_limit,
+            reservoir_remaining_gas,
             checkpoint,
         );
+
         Ok(ItemOrResult::Item(this.consume()))
     }
 
@@ -472,8 +479,6 @@ impl EthFrame<EthInterpreter> {
         context: &mut CTX,
         next_action: InterpreterAction,
     ) -> Result<FrameInitOrResult<Self>, ERROR> {
-        let spec = context.cfg().spec().into();
-
         // Run interpreter
 
         let mut interpreter_result = match next_action {
@@ -498,28 +503,33 @@ impl EthFrame<EthInterpreter> {
                 } else {
                     context.journal_mut().checkpoint_revert(self.checkpoint);
                 }
-                ItemOrResult::Result(FrameResult::Call(CallOutcome::new(
-                    interpreter_result,
-                    frame.return_memory_range.clone(),
-                )))
+                // Propagate EIP-8037 new-account state-gas flag from the frame
+                // input so the parent can refund the upfront charge if the call
+                // ends in revert/halt.
+                let charged_new_account_state_gas = match &self.input {
+                    FrameInput::Call(inputs) => inputs.charged_new_account_state_gas,
+                    _ => false,
+                };
+                let mut outcome =
+                    CallOutcome::new(interpreter_result, frame.return_memory_range.clone());
+                outcome.charged_new_account_state_gas = charged_new_account_state_gas;
+                ItemOrResult::Result(FrameResult::Call(outcome))
             }
             FrameData::Create(frame) => {
-                let max_code_size = context.cfg().max_code_size();
-                let is_eip3541_disabled = context.cfg().is_eip3541_disabled();
                 return_create(
-                    context.journal_mut(),
+                    context,
                     self.checkpoint,
                     &mut interpreter_result,
                     frame.created_address,
-                    max_code_size,
-                    is_eip3541_disabled,
-                    spec,
                 );
 
-                ItemOrResult::Result(FrameResult::Create(CreateOutcome::new(
-                    interpreter_result,
-                    Some(frame.created_address),
-                )))
+                let mut create_outcome =
+                    CreateOutcome::new(interpreter_result, Some(frame.created_address));
+                create_outcome.charged_create_state_gas = match &self.input {
+                    FrameInput::Create(inputs) => inputs.charged_create_state_gas(),
+                    _ => false,
+                };
+                ItemOrResult::Result(FrameResult::Create(create_outcome))
             }
         };
 
@@ -533,16 +543,20 @@ impl EthFrame<EthInterpreter> {
         result: FrameResult,
     ) -> Result<(), ERROR> {
         self.interpreter.memory.free_child_context();
-        match core::mem::replace(ctx.error(), Ok(())) {
-            Err(ContextError::Db(e)) => return Err(e.into()),
-            Err(ContextError::Custom(e)) => return Err(ERROR::from_string(e)),
-            Ok(_) => (),
-        }
+        take_error::<ERROR, _>(ctx.error())?;
+
+        // EIP-8037: the CALL/CREATE opcode charged the new-account or
+        // create state gas upfront on this (parent) frame's tracker. When the
+        // child does not create the account leaf it paid for, the charge is
+        // refunded below via `refill_reservoir` (matching 0→x→0 storage
+        // restoration) — the child rollback in `handle_reservoir_remaining_gas`
+        // cannot do it, since the charge lives on the parent, not the child.
+        let refund_state_gas = result.refundable_state_gas(ctx.cfg().gas_params());
 
         // Insert result to the top frame.
         match result {
             FrameResult::Call(outcome) => {
-                let out_gas = outcome.gas();
+                let mut out_gas = outcome.gas();
                 let ins_result = *outcome.instruction_result();
                 let returned_len = outcome.result.output.len();
 
@@ -565,17 +579,21 @@ impl EthFrame<EthInterpreter> {
                 // Safe to push without stack limit check
                 let _ = interpreter.stack.push(item);
 
-                // Return unspend gas.
+                // Copy returned data into the parent's memory on success or revert.
                 if ins_result.is_ok_or_revert() {
-                    interpreter.gas.erase_cost(out_gas.remaining());
                     interpreter
                         .memory
                         .set(mem_start, &interpreter.return_data.buffer()[..target_len]);
                 }
 
-                if ins_result.is_ok() {
-                    interpreter.gas.record_refund(out_gas.refunded());
-                }
+                // Settle the child's gas and merge it into the parent (returns
+                // unused regular gas, adopts the reservoir, and propagates state
+                // gas / refunds on success).
+                handle_reservoir_remaining_gas(
+                    ins_result,
+                    interpreter.gas.tracker_mut(),
+                    out_gas.tracker_mut(),
+                );
             }
             FrameResult::Create(outcome) => {
                 let instruction_result = *outcome.instruction_result();
@@ -597,13 +615,18 @@ impl EthFrame<EthInterpreter> {
                     "Fatal external error in insert_eofcreate_outcome"
                 );
 
-                let this_gas = &mut interpreter.gas;
-                if instruction_result.is_ok_or_revert() {
-                    this_gas.erase_cost(outcome.gas().remaining());
-                }
+                let mut create_gas = *outcome.gas();
+
+                // Settle the child's gas and merge it into the parent (returns
+                // unused regular gas, adopts the reservoir, and propagates state
+                // gas / refunds on success).
+                handle_reservoir_remaining_gas(
+                    instruction_result,
+                    interpreter.gas.tracker_mut(),
+                    create_gas.tracker_mut(),
+                );
 
                 let stack_item = if instruction_result.is_ok() {
-                    this_gas.record_refund(outcome.gas().refunded());
                     outcome.address.unwrap_or_default().into_word().into()
                 } else {
                     U256::ZERO
@@ -614,25 +637,112 @@ impl EthFrame<EthInterpreter> {
             }
         }
 
+        // Refund the upfront state charge after the child's gas is settled
+        // (the settle overwrites the reservoir with the child's).
+        if let Some(charge) = refund_state_gas {
+            self.interpreter.gas.refill_reservoir(charge);
+        }
+
         Ok(())
     }
 }
 
+/// Settles a returning child frame's gas and merges it into the parent
+/// (EIP-8037 reservoir model).
+///
+/// First the child *settles its own gas*: a failing frame (revert or halt) rolls
+/// its state-gas charges back in last-in-first-out order
+/// ([`GasTracker::rollback_state_gas`]) — crediting the spilled portion back to its
+/// `remaining` and restoring the reservoir to the value it inherited — and drops
+/// its execution refund counter; an exceptional halt additionally consumes the
+/// child's regular gas.
+///
+/// Then the parent *merges* the settled child:
+/// - unused regular gas (`remaining`, including any spill returned on revert)
+///   flows back to the parent on success or revert; a halt consumes it.
+/// - the reservoir, a shared state-gas pool the child inherited at call time, is
+///   always adopted from the child (restored to the inherited value on
+///   revert/halt). Any returned reservoir first unwinds the parent's outstanding
+///   spilled state gas in LIFO order.
+/// - net state gas, its spilled portion, and the refund counter persist only on
+///   success; on revert/halt the child's state changes roll back and contribute
+///   nothing.
+#[inline]
+pub const fn handle_reservoir_remaining_gas(
+    instruction_result: InstructionResult,
+    parent_gas: &mut GasTracker,
+    child_gas: &mut GasTracker,
+) {
+    // Settle the child's own gas for its stop reason.
+    if !instruction_result.is_ok() {
+        child_gas.rollback_state_gas();
+        child_gas.set_refunded(0);
+    }
+    if instruction_result.is_halt() {
+        // Exceptional halt consumes the child's regular gas (including the spill
+        // just credited back by `rollback_state_gas`); the reservoir is left
+        // restored to the inherited value for the parent.
+        child_gas.spend_all();
+    }
+
+    // Merge the settled child into the parent.
+    if instruction_result.is_ok_or_revert() {
+        parent_gas.erase_cost(child_gas.remaining());
+    }
+    if instruction_result.is_ok() {
+        // Parent may have already charged state gas (e.g. new_account + create)
+        // before creating the child frame, so add rather than overwrite. The
+        // child's `state_gas_spent` can be negative (EIP-8037 issue #2) when it
+        // did more 0→x→0 restorations than 0→x creations; the negative
+        // contribution is the parent's matching charge flowing back out.
+        parent_gas.set_state_gas_spent(
+            parent_gas
+                .state_gas_spent()
+                .saturating_add(child_gas.state_gas_spent()),
+        );
+        parent_gas.add_state_gas_spilled(child_gas.state_gas_spilled());
+        parent_gas.record_refund(child_gas.refunded());
+    }
+    parent_gas.absorb_returned_reservoir(child_gas.reservoir());
+}
+
 /// Handles the result of a CREATE operation, including validation and state updates.
-pub fn return_create<JOURNAL: JournalTr>(
-    journal: &mut JOURNAL,
+///
+/// The EIP-8037 upfront CREATE state gas is charged on the parent's tracker by
+/// the CREATE/CREATE2 opcode. On child failure (revert/halt/early-fail) it is
+/// refunded to the parent in `return_result`. The child frame is NOT allowed to
+/// borrow the upfront charge to pay for code deposit: it must cover code deposit
+/// state gas from its own reservoir and remaining gas.
+pub fn return_create<CTX: ContextTr>(
+    context: &mut CTX,
     checkpoint: JournalCheckpoint,
     interpreter_result: &mut InterpreterResult,
     address: Address,
-    max_code_size: usize,
-    is_eip3541_disabled: bool,
-    spec_id: SpecId,
 ) {
+    let (_, _, cfg, journal, _, _) = context.all_mut();
+
+    let max_code_size = cfg.max_code_size();
+    let is_eip3541_disabled = cfg.is_eip3541_disabled();
+    let spec_id = cfg.spec().into();
+    let is_amsterdam_eip8037 = cfg.is_amsterdam_eip8037_enabled();
+    let gas_params = cfg.gas_params();
+
     // If return is not ok revert and return.
     if !interpreter_result.result.is_ok() {
         journal.checkpoint_revert(checkpoint);
         return;
     }
+
+    // EIP-170: Contract code size limit to 0x6000 (~25kb)
+    // EIP-7954 increased this limit to 0x10000 (64kb).
+    // This must be checked BEFORE charging state gas for code deposit,
+    // so that oversized code does not incur storage gas costs.
+    if spec_id.is_enabled_in(SPURIOUS_DRAGON) && interpreter_result.output.len() > max_code_size {
+        journal.checkpoint_revert(checkpoint);
+        interpreter_result.result = InstructionResult::CreateContractSizeLimit;
+        return;
+    }
+
     // Host error if present on execution
     // If ok, check contract creation limit and calculate gas deduction on output len.
     //
@@ -646,15 +756,9 @@ pub fn return_create<JOURNAL: JournalTr>(
         return;
     }
 
-    // EIP-170: Contract code size limit to 0x6000 (~25kb)
-    // EIP-7907 increased this limit to 0xc000 (~49kb).
-    if spec_id.is_enabled_in(SPURIOUS_DRAGON) && interpreter_result.output.len() > max_code_size {
-        journal.checkpoint_revert(checkpoint);
-        interpreter_result.result = InstructionResult::CreateContractSizeLimit;
-        return;
-    }
-    let gas_for_code = interpreter_result.output.len() as u64 * gas::CODEDEPOSIT;
-    if !interpreter_result.gas.record_cost(gas_for_code) {
+    // regular gas for code deposit. It is zero in EIP-8037.
+    let gas_for_code = gas_params.code_deposit_cost(interpreter_result.output.len());
+    if !interpreter_result.gas.record_regular_cost(gas_for_code) {
         // Record code deposit gas cost and check if we are out of gas.
         // EIP-2 point 3: If contract creation does not have enough gas to pay for the
         // final gas fee for adding the contract code to the state, the contract
@@ -667,6 +771,33 @@ pub fn return_create<JOURNAL: JournalTr>(
             interpreter_result.output = Bytes::new();
         }
     }
+
+    // EIP-8037: Hash cost for deployed bytecode (keccak256)
+    // HASH_COST(L) = 6 × ceil(L / 32)
+    // Both CREATE and CREATE2 must pay this cost: it covers hashing the deployed code
+    // to compute the code_hash stored in the account. CREATE2's existing keccak256 charge
+    // (in create2_cost) is for hashing the init code during address derivation, which is
+    // a different hash.
+    if is_amsterdam_eip8037 {
+        let hash_cost = gas_params.keccak256_cost(interpreter_result.output.len());
+        if !interpreter_result.gas.record_regular_cost(hash_cost) {
+            journal.checkpoint_revert(checkpoint);
+            interpreter_result.result = InstructionResult::OutOfGas;
+            return;
+        }
+        // State gas for code deposit (EIP-8037).
+        // Charged after size check: only code that passes validation incurs state gas cost.
+        //
+        // Note: This should be last operation before checkpoint commit as spending state before this messes
+        // with refilling of state gas.
+        let state_gas_for_code = gas_params.code_deposit_state_gas(interpreter_result.output.len());
+        if state_gas_for_code > 0 && !interpreter_result.gas.record_state_cost(state_gas_for_code) {
+            journal.checkpoint_revert(checkpoint);
+            interpreter_result.result = InstructionResult::OutOfGas;
+            return;
+        }
+    }
+
     // If we have enough gas we can commit changes.
     journal.checkpoint_commit();
 
@@ -677,4 +808,44 @@ pub fn return_create<JOURNAL: JournalTr>(
     journal.set_code(address, bytecode);
 
     interpreter_result.result = InstructionResult::Return;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sibling_refill_restores_parent_regular_gas() {
+        const STATE_GAS: u64 = 200;
+        const CHILD_GAS: u64 = 500;
+
+        let mut parent = GasTracker::new(1_000, 1_000, 0);
+
+        // P calls A. A creates a slot after the reservoir is exhausted, so the
+        // charge spills into regular gas and is absorbed by P on success.
+        assert!(parent.record_regular_cost(CHILD_GAS));
+        let mut child_a = GasTracker::new(CHILD_GAS, CHILD_GAS, 0);
+        assert!(child_a.record_state_cost(STATE_GAS));
+        handle_reservoir_remaining_gas(InstructionResult::Stop, &mut parent, &mut child_a);
+        assert_eq!(parent.remaining(), 800);
+        assert_eq!(parent.reservoir(), 0);
+        assert_eq!(parent.state_gas_spent(), STATE_GAS as i64);
+        assert_eq!(parent.state_gas_spilled(), STATE_GAS);
+
+        // P then calls B. B clears A's slot, but has no local spill counter, so
+        // its refill initially lands in its reservoir.
+        assert!(parent.record_regular_cost(CHILD_GAS));
+        let mut child_b = GasTracker::new(CHILD_GAS, CHILD_GAS, parent.reservoir());
+        child_b.refill_reservoir(STATE_GAS);
+        assert_eq!(child_b.reservoir(), STATE_GAS);
+        assert_eq!(child_b.state_gas_spilled(), 0);
+
+        // On success, P absorbs B's refill in global LIFO order: the reservoir
+        // is moved back to regular gas to unwind A's spilled charge.
+        handle_reservoir_remaining_gas(InstructionResult::Stop, &mut parent, &mut child_b);
+        assert_eq!(parent.remaining(), 1_000);
+        assert_eq!(parent.reservoir(), 0);
+        assert_eq!(parent.state_gas_spent(), 0);
+        assert_eq!(parent.state_gas_spilled(), 0);
+    }
 }

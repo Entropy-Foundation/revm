@@ -1,58 +1,49 @@
 use crate::{
-    interpreter_types::{InterpreterTypes, RuntimeFlag, StackTr},
-    Host,
+    interpreter_types::{InterpreterTypes as ITy, RuntimeFlag, StackTr},
+    Host, InstructionExecResult as Result,
 };
-use primitives::{hardfork::SpecId::*, U256};
+use primitives::hardfork::SpecId::*;
 
-use crate::InstructionContext;
+use crate::InstructionContext as Ictx;
 
 /// EIP-1344: ChainID opcode
-pub fn chainid<WIRE: InterpreterTypes, H: Host + ?Sized>(context: InstructionContext<'_, H, WIRE>) {
+pub fn chainid<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     check!(context.interpreter, ISTANBUL);
-    //gas!(context.interpreter, gas::BASE);
     push!(context.interpreter, context.host.chain_id());
+    Ok(())
 }
 
 /// Implements the COINBASE instruction.
 ///
 /// Pushes the current block's beneficiary address onto the stack.
-pub fn coinbase<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    //gas!(context.interpreter, gas::BASE);
+pub fn coinbase<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     push!(
         context.interpreter,
         context.host.beneficiary().into_word().into()
     );
+    Ok(())
 }
 
 /// Implements the TIMESTAMP instruction.
 ///
 /// Pushes the current block's timestamp onto the stack.
-pub fn timestamp<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    //gas!(context.interpreter, gas::BASE);
+pub fn timestamp<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     push!(context.interpreter, context.host.timestamp());
+    Ok(())
 }
 
 /// Implements the NUMBER instruction.
 ///
 /// Pushes the current block number onto the stack.
-pub fn block_number<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    //gas!(context.interpreter, gas::BASE);
-    push!(context.interpreter, U256::from(context.host.block_number()));
+pub fn block_number<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
+    push!(context.interpreter, context.host.block_number());
+    Ok(())
 }
 
 /// Implements the DIFFICULTY/PREVRANDAO instruction.
 ///
 /// Pushes the block difficulty (pre-merge) or prevrandao (post-merge) onto the stack.
-pub fn difficulty<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    //gas!(context.interpreter, gas::BASE);
+pub fn difficulty<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     if context
         .interpreter
         .runtime_flag
@@ -64,30 +55,34 @@ pub fn difficulty<WIRE: InterpreterTypes, H: Host + ?Sized>(
     } else {
         push!(context.interpreter, context.host.difficulty());
     }
+    Ok(())
 }
 
 /// Implements the GASLIMIT instruction.
 ///
 /// Pushes the current block's gas limit onto the stack.
-pub fn gaslimit<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
-    //gas!(context.interpreter, gas::BASE);
+pub fn gaslimit<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     push!(context.interpreter, context.host.gas_limit());
+    Ok(())
 }
 
 /// EIP-3198: BASEFEE opcode
-pub fn basefee<WIRE: InterpreterTypes, H: Host + ?Sized>(context: InstructionContext<'_, H, WIRE>) {
+pub fn basefee<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     check!(context.interpreter, LONDON);
-    //gas!(context.interpreter, gas::BASE);
     push!(context.interpreter, context.host.basefee());
+    Ok(())
 }
 
 /// EIP-7516: BLOBBASEFEE opcode
-pub fn blob_basefee<WIRE: InterpreterTypes, H: Host + ?Sized>(
-    context: InstructionContext<'_, H, WIRE>,
-) {
+pub fn blob_basefee<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
     check!(context.interpreter, CANCUN);
-    //gas!(context.interpreter, gas::BASE);
     push!(context.interpreter, context.host.blob_gasprice());
+    Ok(())
+}
+
+/// EIP-7843: SLOTNUM opcode
+pub fn slot_num<IT: ITy, H: Host + ?Sized>(context: Ictx<'_, H, IT>) -> Result {
+    check!(context.interpreter, AMSTERDAM);
+    push!(context.interpreter, context.host.slot_num());
+    Ok(())
 }

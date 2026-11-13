@@ -1,0 +1,9 @@
+[workspace]
+semver_check = true
+# Preserve third-party dependency versions; allow release workspace version bumps.
+dependencies_update = false
+
+[[package]]
+name = "revm-ee-tests"
+semver_check = false
+release = false

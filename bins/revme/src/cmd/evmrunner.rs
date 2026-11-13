@@ -1,15 +1,13 @@
 use clap::Parser;
-use context::TxEnv;
-use database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET};
-use inspector::{inspectors::TracerEip3155, InspectEvm};
 use revm::{
     bytecode::{Bytecode, BytecodeDecodeError},
+    context::TxEnv,
+    database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET},
+    inspector::{inspectors::TracerEip3155, InspectEvm},
     primitives::{hex, TxKind},
     Context, Database, ExecuteEvm, MainBuilder, MainContext,
 };
-use std::path::PathBuf;
-use std::{borrow::Cow, fs};
-use std::{io::Error as IoError, time::Instant};
+use std::{borrow::Cow, fs, io::Error as IoError, path::PathBuf, time::Instant};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Errors {
@@ -49,7 +47,7 @@ pub struct Cmd {
     #[arg(long, default_value = "")]
     input: String,
     /// Gas limit
-    #[arg(long, default_value = "1000000000")]
+    #[arg(long, default_value = "16777216")]
     gas_limit: u64,
 
     /// Whether to print the state
@@ -58,6 +56,9 @@ pub struct Cmd {
     /// Whether to print the trace
     #[arg(long)]
     trace: bool,
+    /// Output results in JSON format
+    #[arg(long)]
+    json: bool,
 }
 
 impl Cmd {
@@ -75,8 +76,9 @@ impl Cmd {
             unreachable!()
         };
 
-        let bytecode = hex::decode(bytecode_str.trim()).map_err(|_| Errors::InvalidBytecode)?;
-        let input = hex::decode(self.input.trim())
+        let bytecode = hex::decode(bytecode_str.trim().trim_start_matches("0x"))
+            .map_err(|_| Errors::InvalidBytecode)?;
+        let input = hex::decode(self.input.trim().trim_start_matches("0x"))
             .map_err(|_| Errors::InvalidInput)?
             .into();
 
@@ -129,12 +131,27 @@ impl Cmd {
         .map_err(|_| Errors::EVMError)?;
         let time = time.elapsed();
 
-        println!("Result: {:#?}", r.result);
-        if self.state {
-            println!("State: {:#?}", r.state);
+        if self.json {
+            let json = if self.state {
+                serde_json::json!({
+                    "result": r.result,
+                    "state": r.state,
+                    "elapsed": time.as_secs_f64(),
+                })
+            } else {
+                serde_json::json!({
+                    "result": r.result,
+                    "elapsed": time.as_secs_f64(),
+                })
+            };
+            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        } else {
+            println!("Result: {:#?}", r.result);
+            if self.state {
+                println!("State: {:#?}", r.state);
+            }
+            println!("Elapsed: {time:?}");
         }
-
-        println!("Elapsed: {time:?}");
         Ok(())
     }
 }
