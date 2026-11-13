@@ -151,7 +151,7 @@ contract AutomationFeeMultiplierTest is Test {
     /// @dev Wraps the function under test.
     function _calc(address diamond, uint128 committedGas) internal view returns (uint128) {
         return IRegistryFacet(diamond)
-            .calculateAutomationFeeMultiplierForCommittedOccupancy(committedGas);
+            .calculateAutomationFeeMultiplierForCommittedOccupancy(committedGas, 0);
     }
 
     // ══════════════════════════════════════════════════════════════════════════

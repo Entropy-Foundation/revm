@@ -2075,19 +2075,19 @@ contract RegistryFacetTest is BaseDiamondTest {
     ///      when gas usage pushes total above the threshold.
     function testEstimateAutomationFeeWithCommittedOccupancy() public view {
         // Scenario 1: Zero task occupancy → fee is zero regardless of committed occupancy
-        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(0, 0), 0);
-        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(0, 10_000_000), 0);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(0, 0, 0), 0);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(0, 10_000_000, 0), 0);
 
         // Scenario 2: Total committed gas below 50% threshold → linear scaling with task occupancy
         // (100_000 + 5_000_000 = 5_100_000 < 10_000_000) → 3 ether
-        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 5_000_000), 3 ether);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 5_000_000, 0), 3 ether);
         // (200_000 + 5_000_000 = 5_200_000 < 10_000_000) → 6 ether (occupancy doubled)
-        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(200_000, 5_000_000), 6 ether);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(200_000, 5_000_000, 0), 6 ether);
 
         // Scenario 3: Total committed gas above 50% threshold → congestion fee is added
         // (100_000 + 10_000_000 = 10_100_000 > 10_000_000)
-        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 10_000_000), 3.0911325 ether);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 10_000_000, 0), 3.0911325 ether);
         // (100_000 + 15_000_000 = 15_100_000 > 10_000_000, more congestion)
-        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 15_000_000), 11.72151126 ether);
+        assertEq(IRegistryFacet(diamondAddr).estimateAutomationFeeWithCommittedOccupancy(100_000, 15_000_000, 0), 11.72151126 ether);
     }
 }
