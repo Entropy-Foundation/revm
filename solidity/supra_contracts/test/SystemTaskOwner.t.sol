@@ -32,11 +32,6 @@ contract SystemTaskOwnerTest is BaseDiamondTest {
         _;
     }
 
-    function singleTask(uint64 _taskIndex) internal pure returns (uint64[] memory taskIndexes) {
-        taskIndexes = new uint64[](1);
-        taskIndexes[0] = _taskIndex;
-    }
-
     /// @dev Has `_caller` register the fixture's system task through the task owner.
     function registerAs(address _caller) internal {
         bytes[] memory auxData;
@@ -72,6 +67,7 @@ contract SystemTaskOwnerTest is BaseDiamondTest {
         assertEq(task.owner, address(taskOwner));
         assertEq(uint8(task.taskType), uint8(LibCommon.TaskType.GST));
 
+        nextBlock();
         vm.prank(OWNER);
         taskOwner.stopSystemTasks(singleTask(0));
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
@@ -128,6 +124,7 @@ contract SystemTaskOwnerTest is BaseDiamondTest {
         assertEq(taskOwner.owner(), NEW_OWNER);
 
         registerAs(NEW_OWNER);
+        nextBlock();
         vm.prank(OWNER);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, OWNER));
         taskOwner.cancelSystemTasks(singleTask(0));

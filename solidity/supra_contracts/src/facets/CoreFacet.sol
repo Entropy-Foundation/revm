@@ -41,16 +41,32 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     }
 
     /// @notice Checks the cycle end and emit an event on it. Does nothing if cycle is not in `STARTED` state.
+    ///         In a block of a STARTED cycle whose end has not been reached, compacts the
+    ///         registry's ordered task list when enough of it is removed tasks
+    ///         (LibCore.compactOrderedTaskIdsIfSparse).
     /// @dev The node's off-chain VM-signer decoder hardcodes this function's selector and calls
     ///      it every block. Do not Remove this selector via diamondCut post-genesis; Replace (to
     ///      ship a fix) is fine.
+    ///      The per-block compaction keeps the cost of the scan at the cycle end bounded by the
+    ///      registry capacity plus one block's registrations (Entropy-Foundation/smr-moonshot#4920).
+    ///      It must run in every block, not only at the cycle end, for that bound to hold; do not
+    ///      move it behind the cycle-end check. The bound also assumes this call succeeds in every
+    ///      block: a block whose call fails leaves its registrations uncompacted, so the next
+    ///      scan can cover up to 4C/3 + 2C entries. Register it in BlockMeta with headroom over
+    ///      the figures in AUTOMATION_REGISTRY_GAS_GUIDE.md ("Trigger calls") for that reason.
     function monitorCycleEnd() external {
         tx.origin.enforceIsVmSigner();
 
-        if (!LibCommon.isCycleStarted() || LibCommon.getCycleEndTime() > block.timestamp) {
+        // Outside STARTED there is nothing to do: registration is refused, so the list does not
+        // grow, and a transition or suspension replaces it when it finalizes
+        // (LibCore.updateRegistryState).
+        if (!LibCommon.isCycleStarted()) { return; }
+
+        if (LibCommon.getCycleEndTime() > block.timestamp) {
+            LibCore.compactOrderedTaskIdsIfSparse();
             return;
         }
-        
+
         LibCore.onCycleEndInternal();
     }
 

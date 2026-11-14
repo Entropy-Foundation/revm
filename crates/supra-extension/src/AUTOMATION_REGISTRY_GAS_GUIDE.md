@@ -212,7 +212,8 @@ are governed independently:
 **Guideline: governance must treat these as one joint change, never independently.**
 Before raising `taskCapacity`/`sysTaskCapacity` beyond the current production
 default (160/40 = 200, `MAX_SUPPORTED_AUTOMATION_TASKS`), re-run this benchmark
-(`Running with a custom task count` above) at the target N, and confirm the
+(`Running with a custom task count` above) at the target N, together with the churn tests
+at that capacity (see "Trigger calls" below), and confirm the
 resulting `monitorCycleEnd` gas figure still fits under `monitorCycleEnd`'s
 currently-registered `BlockMeta` gas limit — re-registering it with a higher
 `selectorGasLimit` first if it doesn't, and confirming that fits under
@@ -227,13 +228,13 @@ The common case: automation stays enabled, no task expires mid-transition.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 1,945,671 |
+| `monitorCycleEnd` (trigger) | 1,372,245 |
 | `processTasks`, non-final batch (average of batches 1–7) | 1,010,029 (40,401 per task) |
 | `processTasks`, initial batch (1/8) | 1,088,023 (43,520 per task) |
 | `processTasks`, **final batch (8/8)** | **2,647,737** |
 | Final-batch finalization premium (final − 25 × non-final average per task) | 1,637,712 |
 | Total `processTasks` (8 batches) | 9,717,939 |
-| **Grand total** (trigger + all batches) | **11,663,610** |
+| **Grand total** (trigger + all batches) | **11,090,184** |
 
 The registry's task-ID lists (`activeTaskIds`, `orderedTaskIds`, `survivedTaskIds`,
 `expectedTasksToBeProcessed`) are `uint64[]` arrays, which pack four task IDs per
@@ -272,13 +273,13 @@ none survive into a next cycle, and the cycle index does not increment.
 
 | Call | Gas |
 | --- | --- |
-| `disableAutomation` (trigger, transaction gas used) | 1,968,544 |
+| `disableAutomation` (trigger, transaction gas used) | 1,395,567 |
 | `processTasks` (`onCycleSuspend`), non-final batch (average) | 4,970,432 (198,817 per task) |
 | `processTasks`, initial batch (1/8) | 5,264,767 (210,590 per task) |
 | `processTasks`, **final batch (8/8)** | **5,260,020** |
 | Final-batch finalization premium | 289,595 |
 | Total `processTasks` (8 batches) | 40,053,046 |
-| **Grand total** (trigger + all batches) | **42,021,590** |
+| **Grand total** (trigger + all batches) | **41,448,613** |
 
 Relative to Scenario 1:
 - **Removal clears the task's storage**: `onCycleSuspend` removes every task, and
@@ -311,13 +312,13 @@ cycles: the 20 tasks are registered with an expiry inside cycle 2, survive cycle
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger, cycle 2) | 1,945,671 |
+| `monitorCycleEnd` (trigger, cycle 2) | 1,372,245 |
 | `processTasks`, non-final batch (average) | 1,441,245 (57,649 per task) |
 | `processTasks`, initial batch (1/8: 20 drops, 5 survivors) | 4,513,843 (180,553 per task) |
 | `processTasks`, **final batch (8/8)** | **1,789,390** |
 | Final-batch finalization premium | 348,165 |
 | Total `processTasks` (8 batches) | 11,878,102 |
-| **Grand total** (trigger + all batches) | **13,823,773** |
+| **Grand total** (trigger + all batches) | **13,250,347** |
 
 The batch containing the 20 expiring tasks costs 4.5x a batch of survivors, since a drop
 removes the task and clears its storage, as in Scenario 2; that batch also emits
@@ -340,13 +341,13 @@ default data-length caps (`DiamondInit`), filled with non-zero bytes. Each task 
 
 | Call | Gas |
 | --- | --- |
-| `disableAutomation` (trigger, transaction gas used) | 1,968,550 |
+| `disableAutomation` (trigger, transaction gas used) | 1,395,573 |
 | `processTasks` (`onCycleSuspend`), non-final batch (average) | 26,258,832 (1,050,353 per task) |
 | `processTasks`, initial batch (1/8) | 26,553,167 (1,062,126 per task) |
 | `processTasks`, **final batch (8/8)** | **26,548,420** |
 | Final-batch finalization premium | 289,595 |
 | Total `processTasks` (8 batches) | 210,360,246 |
-| **Grand total** (trigger + all batches) | **212,328,796** |
+| **Grand total** (trigger + all batches) | **211,755,819** |
 
 Between Scenario 2 and this scenario a removed task's cost rises by 851,536 gas for 168
 more stored words, 5,069 gas per word, about the cost of clearing a stored slot, on top of
@@ -365,14 +366,14 @@ oversized USTs fill the first batches.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 1,961,388 |
+| `monitorCycleEnd` (trigger) | 1,388,017 |
 | `processTasks`, batches 1–3 (25 cap-size drops each) | 26,645,088 – 26,679,288 (1,067,171 per task) |
 | `processTasks`, batch 4 (5 drops, 20 survivors) | 6,365,449 |
 | `processTasks`, batches 5–6 (25 checked UST survivors each) | 1,210,048 – 1,227,148 |
 | `processTasks`, batch 7 (25 checked GST survivors) | 1,057,389 |
 | `processTasks`, **final batch (8/8)** | **2,380,944** |
 | Total `processTasks` (8 batches) | 92,210,442 |
-| **Grand total** (trigger + all batches) | **94,171,830** |
+| **Grand total** (trigger + all batches) | **93,598,459** |
 
 Dropping a cap-size task at a transition costs 1,067,171 gas, 5,045 more than removing it
 in a suspension (Scenario 4): the length check and the deposit refund. Reading a
@@ -394,12 +395,12 @@ record gas figures.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 1,961,506 |
+| `monitorCycleEnd` (trigger) | 1,388,135 |
 | `processTasks`, batches 1–6 (25 auxData drops each) | 14,199,488 – 14,767,188 (590,687 per task at most) |
 | `processTasks`, batch 7 (10 drops, 15 checked GST survivors) | 6,300,972 |
 | `processTasks`, **final batch (8/8)** | **1,757,351** |
 | Total `processTasks` (8 batches) | 95,162,051 |
-| **Grand total** (trigger + all batches) | **97,123,557** |
+| **Grand total** (trigger + all batches) | **96,550,186** |
 
 A dropped task with 64 entries costs 590,687 gas against the 947,000 its stored-words
 count allows, so charging two words per entry covers the slot each entry takes and its
@@ -617,13 +618,35 @@ cap, check `getRecordMaxTaskCount(newCap)` against the registry.
 ### Trigger calls
 
 `monitorCycleEnd` and `disableAutomation` are not `processTasks` records. At the 200-task
-cap `monitorCycleEnd` spends 1,945,671 gas before refunds when it starts a transition, and
-3,776,612 at 400 tasks; `disableAutomation` costs about 1.97M as a transaction.
+cap `monitorCycleEnd` spends 1,372,245 gas before refunds when it starts a transition, and
+2,624,455 at 400 tasks; `disableAutomation` costs about 1.40M as a transaction. These are
+lists holding only live tasks, which `LibCore.buildAliveOrderedTaskIds` returns without
+scanning.
 `MonitorCycleEndGas.t.sol`, measured the same way, gives the same 200-task figure and the
 table in `configs.rs`'s `MAX_SUPPORTED_AUTOMATION_TASKS` documentation (50 to 800 tasks); its
-boundary scan puts the most tasks that fit `BLOCK_METADATA_GAS_LIMIT` at 1,819. Register
-`monitorCycleEnd` with headroom over the figure for the registry's capacity, for instance
-2,500,000 at 200 tasks. For `monitorCycleEnd`, "size" means the
+boundary scan puts the most live tasks that fit `BLOCK_METADATA_GAS_LIMIT` at 2,656. A list
+holding removed tasks is scanned entry by entry and costs more (below); extrapolating the
+200-task churn figure linearly (not measured), a capacity of about 1,070 tasks fits
+`BLOCK_METADATA_GAS_LIMIT` at the bound.
+
+Those figures are for a list holding only live tasks. A task removed during a cycle stays in
+the registry's ordered task list until a compaction drops it, and `monitorCycleEnd` compacts
+the list in every block of a running cycle once a quarter of it is removed tasks. An owner
+cannot cancel or stop a task in the block it was registered in, so one block adds at most the
+capacity C to the list, and every scan walks fewer than 7C/3 entries: the C live tasks, the
+fewer than C/3 removed entries a prologue keeps, and the C one block can add
+(Entropy-Foundation/smr-moonshot#4920). `MonitorCycleEndGas.t.sol`'s churn tests measure that
+bound at C = 200 (200 live tasks and 266 removed entries):
+
+| `monitorCycleEnd` path | Gas |
+| --- | --- |
+| Any block, no compaction due (200 live, 66 removed) | 14,972 |
+| Per-block compaction at the bound | 1,887,492 |
+| Cycle end at the bound | 3,126,085 |
+
+Register `monitorCycleEnd` with headroom over the cycle-end figure at the bound for the
+registry's capacity, for instance 4,000,000 at 200 tasks; the smr-moonshot localnet end-to-end
+tests register 9,000,000. For `monitorCycleEnd`, "size" means the
 `selectorGasLimit` it was registered with in `BlockMeta` (see "How `monitorCycleEnd`
 relates to `BlockMeta::blockPrologue`" above) — this is **not** automatically kept in sync
 with `taskCapacity`/`sysTaskCapacity`, so re-check it specifically whenever either capacity

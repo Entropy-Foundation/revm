@@ -82,11 +82,6 @@ contract AutomationTaskOwnerBaseTest is BaseDiamondTest {
         return createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100));
     }
 
-    function singleTask(uint64 _taskIndex) internal pure returns (uint64[] memory taskIndexes) {
-        taskIndexes = new uint64[](1);
-        taskIndexes[0] = _taskIndex;
-    }
-
     function fundedOwner() internal returns (AdminAutomationTaskOwner owner) {
         owner = deployOwner();
         vm.deal(ADMIN, 200 ether);
@@ -119,6 +114,7 @@ contract AutomationTaskOwnerBaseTest is BaseDiamondTest {
 
         assertEq(IRegistryViewFacet(diamondAddr).getTaskDetails(0).owner, address(owner));
 
+        nextBlock();
         vm.prank(ADMIN);
         owner.cancel(singleTask(0));
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
@@ -153,6 +149,7 @@ contract AutomationTaskOwnerBaseTest is BaseDiamondTest {
         assertEq(uint8(taskType), uint8(LibCommon.TaskType.GST));
         assertEq(IRegistryViewFacet(diamondAddr).getTaskDetails(0).owner, address(owner));
 
+        nextBlock();
         vm.prank(ADMIN);
         owner.stopSystem(singleTask(0));
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
@@ -162,10 +159,11 @@ contract AutomationTaskOwnerBaseTest is BaseDiamondTest {
         AdminAutomationTaskOwner owner = deployOwner();
         vm.prank(admin);
         IConfigFacet(diamondAddr).grantAuthorization(address(owner));
-        vm.startPrank(ADMIN);
+        vm.prank(ADMIN);
         owner.registerSystemTask(payload(), createPredicate(diamondAddr), uint64(block.timestamp + 1250));
+        nextBlock();
+        vm.prank(ADMIN);
         owner.cancelSystem(singleTask(0));
-        vm.stopPrank();
         assertFalse(IRegistryViewFacet(diamondAddr).ifSysTaskExists(0));
     }
 

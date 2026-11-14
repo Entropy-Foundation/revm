@@ -138,6 +138,9 @@ interface IRegistryFacet {
     error TaskIndexNotFound();
     error TaskIndexNotUnique();
     error TaskIndexesCannotBeEmpty();
+    /// @notice A task cannot be cancelled or stopped by its owner in the block it was registered
+    /// in (Entropy-Foundation/smr-moonshot#4920). Retry in a later block.
+    error TaskRemovalInRegistrationBlock(uint64 taskIndex);
     error TransferFailed();
     error TxnHashLengthShouldBe32(uint64);
     error UnauthorizedAccount();

@@ -157,11 +157,6 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
         );
     }
 
-    function singleTask(uint64 _taskIndex) internal pure returns (uint64[] memory taskIndexes) {
-        taskIndexes = new uint64[](1);
-        taskIndexes[0] = _taskIndex;
-    }
-
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::: User tasks owned by a contract :::::::::::::::::::::::::::::::::::::::::::::::::::::
 
     /// @dev A user task registered by a contract is owned by that contract, which pays its fees.
@@ -205,6 +200,7 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
         TaskRegistrant registrant = deployFundedRegistrant(100 ether);
         registerUstFrom(registrant);
 
+        nextBlock();
         registrant.cancel(singleTask(0));
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
@@ -416,6 +412,7 @@ contract ContractOwnedTasksTest is BaseDiamondTest {
         SystemTaskOwner taskOwner = deployWalletOwnedTaskOwner(wallet);
         registerSystemTaskThroughTaskOwner(wallet, taskOwner);
 
+        nextBlock();
         walletCall(wallet, address(taskOwner), abi.encodeCall(SystemTaskOwner.cancelSystemTasks, (singleTask(0))));
 
         assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));

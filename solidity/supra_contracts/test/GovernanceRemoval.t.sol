@@ -20,11 +20,6 @@ contract GovernanceRemovalTest is BaseDiamondTest {
 
     // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::: Helpers :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-    function singleTask(uint64 _taskIndex) internal pure returns (uint64[] memory taskIndexes) {
-        taskIndexes = new uint64[](1);
-        taskIndexes[0] = _taskIndex;
-    }
-
     function removeAsRegistryOwner(uint64[] memory _taskIndexes) internal {
         vm.prank(admin);
         IConfigFacet(diamondAddr).removeTasks(_taskIndexes);
@@ -96,6 +91,9 @@ contract GovernanceRemovalTest is BaseDiamondTest {
     /// @dev A PENDING UST refunds half its deposit, as a stop does.
     function testRemoveTasksMatchesStopForAPendingUst() public {
         registerUst(diamondAddr, TASK_DURATION);
+        // The owner's stop, which the removal is compared with, is accepted from the block after
+        // registration.
+        nextBlock();
         assertRemovalMatchesStop(0, alice, false);
     }
 
