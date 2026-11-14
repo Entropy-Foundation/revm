@@ -16,10 +16,16 @@ use std::collections::HashSet;
 /// the results of the benchmark and need to keep buffer for future entries of the `BlockMeta::blockPrologue`
 /// the limit of 200 tasks is specified.
 ///
-/// `monitorCycleEnd`'s cost is O(n) in the live task count, independent of task ordering
-/// (`LibCore.buildAliveOrderedTaskIds` compacts an append-only, always-ascending task-ID
-/// list — see that function's NatSpec in `solidity/supra_contracts/src/libraries/LibCore.sol`).
-/// See issue #3445 for background.
+/// `monitorCycleEnd`'s cost is O(n) in the length of the registry's ordered task list,
+/// independent of task ordering (`LibCore.buildAliveOrderedTaskIds` compacts an append-only,
+/// always-ascending task-ID list — see that function's NatSpec in
+/// `solidity/supra_contracts/src/libraries/LibCore.sol`). See issue #3445 for background.
+/// Tasks removed during a cycle stay in that list until a compaction drops them; with the
+/// per-block compaction in `monitorCycleEnd` and owners unable to remove a task in its
+/// registration block, the list stays below 7/3 of the capacity (Entropy-Foundation/smr-moonshot#4920).
+/// At this capacity the cycle end over that bound costs 3,126,057 gas (the churn tests in
+/// `solidity/supra_contracts/test/MonitorCycleEndGas.t.sol`), against the live-only figures in the
+/// table below, so `monitorCycleEnd`'s `BlockMeta` gas limit is sized on the former.
 ///
 /// The capacity also sizes the registry's `processTasks` bookkeeping records: each record
 /// reserves the finalization cost of a transition, `LibCommon.RECORD_FINALIZATION_GAS_PER_TASK`
@@ -58,9 +64,11 @@ use std::collections::HashSet;
 // stored as uint64[] packed four per slot (#4285). Each registration and the measured
 // `monitorCycleEnd` run as separate transactions, as on a chain, and `monitorCycleEnd` is
 // metered before refunds, the gas its `BlockMeta` registration has to grant. That same run's
-// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: 1,819 tasks
-// stay under BLOCK_METADATA_GAS_LIMIT, 1,820 exceed it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
+// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: a list of 1,819
+// live tasks stays under BLOCK_METADATA_GAS_LIMIT, 1,820 exceed it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
 // reports the same for a fully reverse-sorted orderedTaskIds.)
+// That ceiling counts list entries. A scan covers fewer than 7C/3 entries at capacity C, removed
+// tasks included (see above), so the capacity ceiling is 1,819 * 3 / 7, about 779 tasks.
 // 200 is kept far below that ceiling deliberately, as buffer for other future
 // `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
 // applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).

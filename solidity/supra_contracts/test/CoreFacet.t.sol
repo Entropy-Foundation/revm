@@ -1999,6 +1999,7 @@ contract CoreFacetTest is BaseDiamondTest {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
         registerUst(diamondAddr, 2450); // task 2
+        nextBlock();
 
         uint64[] memory toCancel = new uint64[](1);
         toCancel[0] = 1;

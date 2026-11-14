@@ -212,7 +212,8 @@ are governed independently:
 **Guideline: governance must treat these as one joint change, never independently.**
 Before raising `taskCapacity`/`sysTaskCapacity` beyond the current production
 default (160/40 = 200, `MAX_SUPPORTED_AUTOMATION_TASKS`), re-run this benchmark
-(`Running with a custom task count` above) at the target N, and confirm the
+(`Running with a custom task count` above) at the target N, together with the churn tests
+at that capacity (see "Trigger calls" below), and confirm the
 resulting `monitorCycleEnd` gas figure still fits under `monitorCycleEnd`'s
 currently-registered `BlockMeta` gas limit — re-registering it with a higher
 `selectorGasLimit` first if it doesn't, and confirming that fits under
@@ -621,9 +622,28 @@ cap `monitorCycleEnd` spends 1,945,671 gas before refunds when it starts a trans
 3,776,612 at 400 tasks; `disableAutomation` costs about 1.97M as a transaction.
 `MonitorCycleEndGas.t.sol`, measured the same way, gives the same 200-task figure and the
 table in `configs.rs`'s `MAX_SUPPORTED_AUTOMATION_TASKS` documentation (50 to 800 tasks); its
-boundary scan puts the most tasks that fit `BLOCK_METADATA_GAS_LIMIT` at 1,819. Register
-`monitorCycleEnd` with headroom over the figure for the registry's capacity, for instance
-2,500,000 at 200 tasks. For `monitorCycleEnd`, "size" means the
+boundary scan puts the longest list of live tasks that fits `BLOCK_METADATA_GAS_LIMIT` at 1,819
+entries. Because a scan can cover up to 7C/3 entries (below), the capacity C that ceiling
+allows is about 779 tasks (1,819 × 3/7).
+
+Those figures are for a list holding only live tasks. A task removed during a cycle stays in
+the registry's ordered task list until a compaction drops it, and `monitorCycleEnd` compacts
+the list in every block of a running cycle once a quarter of it is removed tasks. An owner
+cannot cancel or stop a task in the block it was registered in, so one block adds at most the
+capacity C to the list, and every scan walks fewer than 7C/3 entries: the C live tasks, the
+fewer than C/3 removed entries a prologue keeps, and the C one block can add
+(Entropy-Foundation/smr-moonshot#4920). `MonitorCycleEndGas.t.sol`'s churn tests measure that
+bound at C = 200 (200 live tasks and 266 removed entries):
+
+| `monitorCycleEnd` path | Gas |
+| --- | --- |
+| Any block, no compaction due (200 live, 66 removed) | 14,972 |
+| Per-block compaction at the bound | 1,887,464 |
+| Cycle end at the bound | 3,126,057 |
+
+Register `monitorCycleEnd` with headroom over the cycle-end figure at the bound for the
+registry's capacity, for instance 4,000,000 at 200 tasks; the smr-moonshot localnet end-to-end
+tests register 9,000,000. For `monitorCycleEnd`, "size" means the
 `selectorGasLimit` it was registered with in `BlockMeta` (see "How `monitorCycleEnd`
 relates to `BlockMeta::blockPrologue`" above) — this is **not** automatically kept in sync
 with `taskCapacity`/`sysTaskCapacity`, so re-check it specifically whenever either capacity

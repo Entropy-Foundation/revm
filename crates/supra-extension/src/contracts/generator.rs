@@ -665,7 +665,7 @@ mod tests {
             ),
             (
                 "CoreFacet",
-                b256!("7b53dfeb70c2c91674136740757de2a11f4d57a740f21593579bbbb865e6dddb"),
+                b256!("0529d969e0ac73e1209bac75fa78d888f9c5e23a1c00393915f6be6d83ecb675"),
             ),
             (
                 "Diamond",
@@ -701,7 +701,7 @@ mod tests {
             ),
             (
                 "RegistryFacet",
-                b256!("c2285e264634c58a8f38f0e7cbe37886c9356c9ace3f40e89fd6156562b9b7a8"),
+                b256!("d4cb96e80872c7a0515ae5c1a0f87dc848e956e87e4a11924a4746956ad348a6"),
             ),
             (
                 "RegistryViewFacet",

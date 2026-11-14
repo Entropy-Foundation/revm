@@ -348,6 +348,26 @@ library LibRegistry {
         );
     }
 
+    /// @notice Reverts if task `_taskIndex` was registered in the current block, so that an owner
+    /// can cancel or stop a task only from the block after its registration
+    /// (Entropy-Foundation/smr-moonshot#4920).
+    /// @dev Why: a capacity slot can then be freed within a block only by removing a task
+    ///      registered in an earlier block, so one block registers at most as many tasks as the
+    ///      registry's capacity (C): the free slots at its start plus the earlier tasks removed in
+    ///      it. RegistryState.orderedTaskIds therefore grows by at most C per block, which together
+    ///      with monitorCycleEnd's per-block compaction (LibCore.compactOrderedTaskIdsIfSparse)
+    ///      bounds every scan of it by the capacity alone, whatever the block gas budget is.
+    ///      Do not relax this rule (Entropy-Foundation/smr-moonshot#4920).
+    ///      The block is identified by its timestamp, the registrationTime recorded at
+    ///      registration. Blocks sharing a timestamp are treated as one block, which refuses
+    ///      somewhat more than the rule needs and never less.
+    ///      Applies to the owner paths (cancelTask, stopTask).
+    function requireRegisteredBeforeThisBlock(uint64 _taskIndex) private view {
+        if (LibAppStorage.registryState().tasks[_taskIndex].registrationTime == block.timestamp) {
+            revert IRegistryFacet.TaskRemovalInRegistrationBlock(_taskIndex);
+        }
+    }
+
     function cancelTask(
         uint64 _taskIndex,
         bool _isGst
@@ -357,6 +377,7 @@ library LibRegistry {
         TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskIndex]);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
+        requireRegisteredBeforeThisBlock(_taskIndex);
         if (task.taskState == LibCommon.TaskState.CANCELLED) { revert IRegistryFacet.AlreadyCancelled(); }
         if (task.taskState == LibCommon.TaskState.PENDING) {
             LibCommon.removeTask(_taskIndex, task.owner, _isGst, false);
@@ -409,6 +430,7 @@ library LibRegistry {
         TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
+        requireRegisteredBeforeThisBlock(_taskId);
 
         (taskStopped, refund) = stopTaskUnchecked(_taskId, task, _isGst, _context);
     }

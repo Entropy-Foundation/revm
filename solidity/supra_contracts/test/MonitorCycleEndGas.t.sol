@@ -5,8 +5,8 @@ import {console} from "forge-std/console.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
-import {LibAppStorage, RegistryState} from "../src/libraries/LibAppStorage.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 
 /// @notice Gas-scaling tests for monitorCycleEnd / onCycleEndInternal.
@@ -167,30 +167,14 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      order (it's a filter, not a sort) — this test's result should match
     ///      testMonitorCycleEndGas_BoundaryScan's regardless of input order.
     ///
-    ///      Slot derivation: the base is not hand-computed at all -- `LibAppStorage.registryState()`
-    ///      already correctly resolves `AppStorage.registry[REGISTRY_STATE]`'s storage slot (it's
-    ///      the exact same accessor every facet uses), so reading its `.slot` via assembly gives
-    ///      the real, current `RegistryState` base regardless of `AppStorage`'s own field order or
-    ///      base position (`LibAppStorage.APP_STORAGE_POSITION`) -- neither of those can ever go
-    ///      stale here, because nothing about them is repeated as a literal below.
-    ///
-    ///      The one number that IS a literal is `orderedTaskIds`'s offset *within* `RegistryState`
-    ///      (relative slot 11, `uint64[]` packed four per slot, confirmed via `forge inspect <probe contract
-    ///      declaring AppStorage internal s;> storage-layout --json`, not hand-computed) -- this is
-    ///      the one that moves if `RegistryState`'s own field order changes, and there's no per-field
-    ///      accessor to derive it from, so it must be re-verified against `forge inspect ...
-    ///      storage-layout --json` whenever `RegistryState`'s field order changes.
-    ///      `testMonitorCycleEndGas_BoundaryScan_ReverseSorted` additionally asserts
-    ///      the write actually landed (see its call to `_assertStrictlyDescending`),
+    ///      Slot derivation is shared with the other tests that read the list
+    ///      (BaseDiamondTest.orderedTaskIdsLengthSlot, whose NatSpec explains the one literal
+    ///      it depends on). `testMonitorCycleEndGas_BoundaryScan_ReverseSorted` additionally
+    ///      asserts the write actually landed (see its call to `_assertStrictlyDescending`),
     ///      so a future layout shift fails the test loudly instead of leaving it
     ///      silently vacuous.
     function _setOrderedTaskIdsDescending(address _diamond, uint256 _n) internal {
-        RegistryState storage rs = LibAppStorage.registryState();
-        uint256 registryStateBase;
-        assembly {
-            registryStateBase := rs.slot
-        }
-        uint256 lengthSlot = registryStateBase + 11;
+        uint256 lengthSlot = orderedTaskIdsLengthSlot();
         uint256 dataBase = uint256(keccak256(abi.encode(lengthSlot)));
 
         vm.store(_diamond, bytes32(lengthSlot), bytes32(_n));
@@ -427,5 +411,124 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         console.log("First N that exceeds budget                  :", safeLimitN + 1);
 
         assertGt(safeLimitN, 0, "no safe N found - even N=1 exceeds budget");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Churn: tasks registered and removed within a cycle
+    //
+    // Removed tasks stay in orderedTaskIds until a compaction drops them.
+    // monitorCycleEnd compacts the list in every block of a running cycle once a quarter
+    // of it is removed tasks (LibCore.compactOrderedTaskIdsIfSparse), and an owner cannot
+    // remove a task in the block it was registered in
+    // (LibRegistry.requireRegisteredBeforeThisBlock), so one block adds at most C entries
+    // (Entropy-Foundation/smr-moonshot#4920). Every scan therefore walks fewer than
+    // 4C/3 + C = 7C/3 entries. These tests measure what the BlockMeta entry for
+    // monitorCycleEnd has to cover at that bound.
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// @dev Capacity the churn figures are measured at: MAX_SUPPORTED_AUTOMATION_TASKS
+    ///      (crates/supra-extension/src/contracts/configs.rs), the largest
+    ///      taskCapacity + sysTaskCapacity genesis accepts.
+    uint16 constant CHURN_CAPACITY = 200;
+
+    /// @dev Removed entries the list can keep after a prologue at CHURN_CAPACITY live tasks
+    ///      without being compacted: the largest d with 4 * 200 > 3 * (200 + d), i.e. 66.
+    uint256 constant MAX_KEPT_REMOVED = 66;
+
+    /// @dev Gas limit README.md ("Lower bound") and AUTOMATION_REGISTRY_GAS_GUIDE.md ("Trigger
+    ///      calls") recommend registering monitorCycleEnd with in BlockMeta at CHURN_CAPACITY.
+    ///      The churn figures are asserted against it, not against the larger 9,000,000 the
+    ///      localnet runbook registers (GovActions.t.sol SELECTOR_GAS_LIMIT), so that a cost
+    ///      increase past the documented recommendation fails here and the docs are revisited.
+    uint256 constant RECOMMENDED_SELECTOR_GAS_LIMIT = 4_000_000;
+
+    /// @dev Adds `_n` removed entries to `_d`'s list, the first registration receiving ID
+    ///      `_firstId` (IDs are assigned consecutively on a diamond). Registers at most
+    ///      CHURN_CAPACITY tasks per block and cancels them in the next block, as the registry
+    ///      requires. No monitorCycleEnd runs in between, so nothing is compacted: the state is
+    ///      the list a prologue would find, built directly. `_n` is a test-sized count.
+    function _addRemovedEntries(address _d, uint64 _firstId, uint256 _n) internal {
+        uint256 amount = _n * 62 ether;
+        vm.deal(alice, amount);
+        vm.startPrank(alice);
+        wsupra.deposit{value: amount}();
+        wsupra.approve(_d, type(uint256).max);
+        vm.stopPrank();
+
+        bytes[] memory auxData;
+        bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(wsupra.withdraw, 100));
+        bytes memory predicate = createPredicate(_d);
+        uint64 expiry = uint64(block.timestamp + 86400);
+        uint64 next = _firstId;
+        uint256 left = _n;
+        while (left > 0) {
+            uint256 chunk = left < CHURN_CAPACITY ? left : CHURN_CAPACITY;
+            uint64[] memory ids = new uint64[](chunk);
+            vm.startPrank(alice);
+            for (uint256 i; i < chunk; i++) {
+                IRegistryFacet(_d).register(payload, predicate, expiry, uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData);
+                ids[i] = next++;
+            }
+            vm.stopPrank();
+            nextBlock();
+            vm.prank(alice);
+            IRegistryFacet(_d).cancelTasks(ids);
+            left -= chunk;
+        }
+    }
+
+    /// @dev Execution gas of monitorCycleEnd at the current block time, which the caller keeps
+    ///      within the cycle, so the per-block path runs. Asserts the cycle is still running.
+    function _measureMonitorCycleEndMidCycle(address _d) internal returns (uint256 gasUsed) {
+        gasUsed = meteredVmSignerCall(_d, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
+        (, , , LibCommon.CycleState state) = ICoreFacet(_d).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "cycle still running");
+    }
+
+    /// @dev Diamond at CHURN_CAPACITY with `_removed` removed entries (IDs 0.._removed-1)
+    ///      followed by `_live` live tasks, none compacted yet. The removals come first because
+    ///      a full registry refuses further registrations; the scan's cost does not depend on
+    ///      where in the list the removed entries sit.
+    function _deployChurned(uint256 _live, uint256 _removed) internal returns (address d) {
+        d = _deployWithCapacity(CHURN_CAPACITY);
+        _addRemovedEntries(d, 0, _removed);
+        _registerNTasks(d, _live);
+        assertEq(readOrderedTaskIds(d).length, _live + _removed, "removed entries kept before the prologue");
+    }
+
+    /// @notice Per-block cost when no compaction is due: a full registry whose list holds the
+    ///         most removed entries the threshold lets through. Every block of a cycle pays this.
+    function testMonitorCycleEndGas_Churn_PerBlockWithoutCompaction() public {
+        address d = _deployChurned(CHURN_CAPACITY, MAX_KEPT_REMOVED);
+        uint256 gas = _measureMonitorCycleEndMidCycle(d);
+        console.log("monitorCycleEnd gas | per block, no compaction due, 200 live + 66 removed |", gas);
+        assertEq(readOrderedTaskIds(d).length, CHURN_CAPACITY + MAX_KEPT_REMOVED, "list kept below the threshold");
+        assertLt(gas, 30_000, "per-block call with no compaction due reads two lengths and the cycle times");
+    }
+
+    /// @notice Per-block compaction and cycle-end scan at the bound: a full registry, the
+    ///         removed entries the previous prologue kept, and the capacity's worth of entries
+    ///         one block can remove (7C/3 - 1 = 466 entries at C = 200).
+    function testMonitorCycleEndGas_Churn_AtTheBound() public {
+        uint256 snap = vm.snapshotState();
+        address d = _deployChurned(CHURN_CAPACITY, MAX_KEPT_REMOVED + CHURN_CAPACITY);
+        uint256 compaction = _measureMonitorCycleEndMidCycle(d);
+        assertEq(readOrderedTaskIds(d).length, CHURN_CAPACITY, "compacted to the live list");
+        vm.revertToState(snap);
+
+        d = _deployChurned(CHURN_CAPACITY, MAX_KEPT_REMOVED + CHURN_CAPACITY);
+        uint256 cycleEnd = _measureMonitorCycleEnd(d);
+        assertEqUint64Array(
+            ICoreFacet(d).getCycleStateDetails().expectedTasksToBeProcessed,
+            readOrderedTaskIds(d),
+            "cycle end compacts the list to the expected tasks"
+        );
+        assertEq(readOrderedTaskIds(d).length, CHURN_CAPACITY, "expected tasks are the live tasks");
+        vm.revertToState(snap);
+
+        console.log("monitorCycleEnd gas | per-block compaction, 200 live + 266 removed |", compaction);
+        console.log("monitorCycleEnd gas | cycle end,            200 live + 266 removed |", cycleEnd);
+        assertLt(compaction, RECOMMENDED_SELECTOR_GAS_LIMIT, "per-block compaction at the bound within the recommended limit");
+        assertLt(cycleEnd, RECOMMENDED_SELECTOR_GAS_LIMIT, "cycle end at the bound within the recommended limit");
     }
 }

@@ -313,6 +313,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         uint64 c = registerSmallTask();
         assertEq(views.getTasksCommittedForNextCycle(), 3);
 
+        nextBlock();
         uint64[] memory cancel = new uint64[](1);
         cancel[0] = c;
         vm.prank(owner);

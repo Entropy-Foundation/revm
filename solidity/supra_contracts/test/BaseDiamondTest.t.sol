@@ -7,12 +7,13 @@ import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
+import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {ExecutionGasMeter} from "./ExecutionGasMeter.sol";
-import {RecordSizingParameters} from "../src/libraries/LibAppStorage.sol";
+import {LibAppStorage, RecordSizingParameters, RegistryState} from "../src/libraries/LibAppStorage.sol";
 
 abstract contract BaseDiamondTest is Test {
     WrappedSupra wsupra;                             // WrappedSupra contract
@@ -236,6 +237,83 @@ abstract contract BaseDiamondTest is Test {
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(_diamond).processTasks(_cycleIndex, _taskIndexes);
         logs = vm.getRecordedLogs();
+    }
+
+    /// @dev A one-element task ID list, for the batch APIs (cancelTasks, stopTasks, processTasks,
+    /// removeTasks) called on a single task. Shared by every test contract deriving from this one.
+    function singleTask(uint64 _taskIndex) internal pure returns (uint64[] memory taskIndexes) {
+        taskIndexes = new uint64[](1);
+        taskIndexes[0] = _taskIndex;
+    }
+
+    /// @dev Builds a task ID list from a fixed set of IDs, for readable expectations; the
+    /// one-element case is singleTask.
+    function uint64Array(uint64 a, uint64 b) internal pure returns (uint64[] memory r) {
+        r = new uint64[](2); r[0] = a; r[1] = b;
+    }
+    function uint64Array(uint64 a, uint64 b, uint64 c) internal pure returns (uint64[] memory r) {
+        r = new uint64[](3); r[0] = a; r[1] = b; r[2] = c;
+    }
+    function uint64Array(uint64 a, uint64 b, uint64 c, uint64 d) internal pure returns (uint64[] memory r) {
+        r = new uint64[](4); r[0] = a; r[1] = b; r[2] = c; r[3] = d;
+    }
+    function uint64Array(uint64 a, uint64 b, uint64 c, uint64 d, uint64 e) internal pure returns (uint64[] memory r) {
+        r = new uint64[](5); r[0] = a; r[1] = b; r[2] = c; r[3] = d; r[4] = e;
+    }
+
+    /// @dev Moves to the next block, one second later. An owner cannot cancel or stop a task in
+    /// the block (timestamp) it was registered in (LibRegistry.requireRegisteredBeforeThisBlock,
+    /// Entropy-Foundation/smr-moonshot#4920), so tests call this between a registration and the
+    /// owner's removal of that task, as a chain would include them in different blocks.
+    function nextBlock() internal {
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+    }
+
+    /// @dev Offset of `orderedTaskIds` within `RegistryState`, in storage slots. Every field before
+    /// it is fixed size except the dynamic arrays and the two EnumerableSet.UintSet (two slots each:
+    /// the values array and the positions mapping), so the offset is counted from the declaration
+    /// in LibAppStorage.sol: 0-1 the two uint256 fee totals, 2-4 the six uint128 gas figures, 5 the
+    /// packed task counters, capacities and currentIndex, 6 activeTaskIds, 7-8 taskIdList, 9-10
+    /// sysTaskIds, 11 orderedTaskIds. Re-check it with `forge inspect` on a contract declaring
+    /// AppStorage whenever RegistryState's field order changes. readOrderedTaskIds cross-checks the
+    /// length it reads against the live task count, so a stale offset fails tests loudly.
+    uint256 internal constant ORDERED_TASK_IDS_OFFSET = 11;
+
+    /// @dev Storage slot holding the length of `RegistryState.orderedTaskIds`. The registry state's
+    /// base slot is taken from LibAppStorage.registryState(), the accessor every facet uses, so only
+    /// the field offset is a literal (ORDERED_TASK_IDS_OFFSET). Element i of the uint64[] lives in
+    /// data slot keccak256(lengthSlot) + i / 4, in 64-bit lane i % 4 from the low-order end.
+    function orderedTaskIdsLengthSlot() internal view returns (uint256 lengthSlot) {
+        RegistryState storage rs = LibAppStorage.registryState();
+        uint256 registryStateBase;
+        assembly {
+            registryStateBase := rs.slot
+        }
+        lengthSlot = registryStateBase + ORDERED_TASK_IDS_OFFSET;
+    }
+
+    /// @dev Reads `RegistryState.orderedTaskIds` of `_diamond` from storage. The registry exposes
+    /// no view of it, since it is internal bookkeeping for the cycle-end scan. Fails if the list is
+    /// shorter than the live task count, which every registry state rules out: that can only mean
+    /// the slot offset no longer matches the layout.
+    function readOrderedTaskIds(address _diamond) internal view returns (uint64[] memory ids) {
+        uint256 lengthSlot = orderedTaskIdsLengthSlot();
+        uint256 len = uint256(vm.load(_diamond, bytes32(lengthSlot)));
+        uint256 live = IRegistryViewFacet(_diamond).getTaskIdList().length;
+        require(len >= live, "orderedTaskIds shorter than the live task count: storage offset drift?");
+
+        uint256 dataBase = uint256(keccak256(abi.encode(lengthSlot)));
+        ids = new uint64[](len);
+        uint256 word;
+        for (uint256 i; i < len; i++) {
+            if (i % 4 == 0) {
+                word = uint256(vm.load(_diamond, bytes32(dataBase + i / 4)));
+            }
+            // Truncation is the intent: it selects lane i % 4 of the packed word.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            ids[i] = uint64(word >> (64 * (i % 4)));
+        }
     }
 
     /// @dev Asserts that two uint64 arrays have the same length and elements, in order. forge-std's

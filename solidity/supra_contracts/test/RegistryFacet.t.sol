@@ -1385,6 +1385,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'cancelTasks' cancels a UST.
     function testCancelTasks() public {
         testRegister();
+        nextBlock();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
@@ -1401,9 +1402,76 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(wsupra.balanceOf(alice), 68.95 ether);
     }
 
+    // :::::::::::::::::::::::::::::: Owner removal in the registration block (Entropy-Foundation/smr-moonshot#4920) ::::::::::::::::::::::::::::::
+
+    /// @dev Expects `_call` from `_caller` to revert because task `_taskIndex` was registered in
+    /// the current block, and the task to remain registered.
+    function expectRemovalRefusedInRegistrationBlock(address _caller, bytes memory _call, uint64 _taskIndex) internal {
+        vm.prank(_caller);
+        vm.expectRevert(abi.encodeWithSelector(IRegistryFacet.TaskRemovalInRegistrationBlock.selector, _taskIndex));
+        (bool ok, ) = diamondAddr.call(_call);
+        // expectRevert makes a reverting call report success; the assertion guards the call itself.
+        assertTrue(ok, "expected revert was matched");
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(_taskIndex), "task kept");
+    }
+
+    /// @dev An owner cannot cancel or stop a UST in the block it was registered in, and can from
+    /// the next block on.
+    function testUstRemovalIsRefusedInItsRegistrationBlock() public {
+        registerUst(diamondAddr, 2450);
+        uint64[] memory taskIndexes = new uint64[](1);
+
+        expectRemovalRefusedInRegistrationBlock(alice, abi.encodeCall(IRegistryFacet.cancelTasks, (taskIndexes)), 0);
+        expectRemovalRefusedInRegistrationBlock(alice, abi.encodeCall(IRegistryFacet.stopTasks, (taskIndexes)), 0);
+
+        nextBlock();
+        vm.prank(alice);
+        IRegistryFacet(diamondAddr).cancelTasks(taskIndexes);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0), "cancelled from the next block");
+    }
+
+    /// @dev The same holds for a GST and its owner's cancelSystemTasks and stopSystemTasks.
+    function testGstRemovalIsRefusedInItsRegistrationBlock() public {
+        registerGst(diamondAddr, 2450);
+        uint64[] memory taskIndexes = new uint64[](1);
+
+        expectRemovalRefusedInRegistrationBlock(bob, abi.encodeCall(IRegistryFacet.cancelSystemTasks, (taskIndexes)), 0);
+        expectRemovalRefusedInRegistrationBlock(bob, abi.encodeCall(IRegistryFacet.stopSystemTasks, (taskIndexes)), 0);
+
+        nextBlock();
+        vm.prank(bob);
+        IRegistryFacet(diamondAddr).stopSystemTasks(taskIndexes);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0), "stopped from the next block");
+    }
+
+    /// @dev A batch holding one task registered in the current block is refused as a whole, so
+    /// no task of the batch is removed.
+    function testBatchWithATaskOfTheRegistrationBlockIsRefused() public {
+        registerUst(diamondAddr, 2450); // task 0
+        nextBlock();
+        registerUst(diamondAddr, 2450); // task 1, in the current block
+
+        uint64[] memory taskIndexes = new uint64[](2);
+        taskIndexes[0] = 0;
+        taskIndexes[1] = 1;
+        expectRemovalRefusedInRegistrationBlock(alice, abi.encodeCall(IRegistryFacet.cancelTasks, (taskIndexes)), 1);
+        assertTrue(IRegistryViewFacet(diamondAddr).ifTaskExists(0), "earlier task kept with the batch");
+    }
+
+    /// @dev The registry owner's removal is not restricted: it is not open to arbitrary accounts.
+    function testRegistryOwnerRemovesATaskInItsRegistrationBlock() public {
+        registerUst(diamondAddr, 2450);
+        uint64[] memory taskIndexes = new uint64[](1);
+
+        vm.prank(admin);
+        IConfigFacet(diamondAddr).removeTasks(taskIndexes);
+        assertFalse(IRegistryViewFacet(diamondAddr).ifTaskExists(0));
+    }
+
     /// @dev Test to ensure 'cancelTasks' emits event 'TasksCancelled'.
     function testCancelTasksEmitsEvent() public {
         testRegister();
+        nextBlock();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
@@ -1423,6 +1491,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testCancelTasksEmitsOnlyExistingTasks() public {
         testRegister(); // task 0
         registerUst(diamondAddr, 2450); // task 1
+        nextBlock();
 
         uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 1;
@@ -1529,6 +1598,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'cancelSystemTasks' cancels a GST. 
     function testCancelSystemTasks() public {
         testRegisterSystemTask();
+        nextBlock();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
@@ -1547,6 +1617,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure 'cancelSystemTasks' emits event 'TasksCancelled'. 
     function testCancelSystemTasksEmitsEvent() public {
         testRegisterSystemTask();
+        nextBlock();
 
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
@@ -1726,6 +1797,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testStopTasksEmitsOnlyExistingTasks() public {
         registerUst(diamondAddr, 2450); // task 0
         registerUst(diamondAddr, 2450); // task 1
+        nextBlock();
 
         uint64[] memory taskIndexes = new uint64[](2);
         taskIndexes[0] = 1;
@@ -1746,6 +1818,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     /// @dev Test to ensure stopping a PENDING task refunds half the deposit.
     function testStopPendingTask() public {
         registerUst(diamondAddr, 2450);
+        nextBlock();
 
         uint64[] memory taskUint64 = new uint64[](1);
         taskUint64[0] = 0;
