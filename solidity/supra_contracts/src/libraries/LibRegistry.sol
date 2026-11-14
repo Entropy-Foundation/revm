@@ -362,8 +362,13 @@ library LibRegistry {
     ///      registration. Blocks sharing a timestamp are treated as one block, which refuses
     ///      somewhat more than the rule needs and never less.
     ///      Applies to the owner paths (cancelTask, stopTask).
-    function requireRegisteredBeforeThisBlock(uint64 _taskIndex) private view {
-        if (LibAppStorage.registryState().tasks[_taskIndex].registrationTime == block.timestamp) {
+    ///      Takes the task's storage reference the caller already holds, so the mapping slot is not
+    ///      derived a second time; registrationTime shares its storage slot with the fields the
+    ///      caller's toLW has just read, so the read is warm.
+    /// @param _task The task's storage entry, RegistryState.tasks[_taskIndex].
+    /// @param _taskIndex Index of the task, reported in the revert.
+    function requireRegisteredBeforeThisBlock(TaskMetadata storage _task, uint64 _taskIndex) private view {
+        if (_task.registrationTime == block.timestamp) {
             revert IRegistryFacet.TaskRemovalInRegistrationBlock(_taskIndex);
         }
     }
@@ -374,10 +379,11 @@ library LibRegistry {
     ) internal returns (LibCommon.TaskCancelled memory cancelledTask) {
         RegistryState storage registryState = LibAppStorage.registryState();
 
-        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskIndex]);
+        TaskMetadata storage stored = registryState.tasks[_taskIndex];
+        TaskMetadataLW memory task = LibCommon.toLW(stored);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
-        requireRegisteredBeforeThisBlock(_taskIndex);
+        requireRegisteredBeforeThisBlock(stored, _taskIndex);
         if (task.taskState == LibCommon.TaskState.CANCELLED) { revert IRegistryFacet.AlreadyCancelled(); }
         if (task.taskState == LibCommon.TaskState.PENDING) {
             LibCommon.removeTask(_taskIndex, task.owner, _isGst, false);
@@ -427,10 +433,11 @@ library LibRegistry {
         LibAccounting.RefundContext memory _context
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         RegistryState storage registryState = LibAppStorage.registryState();
-        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
+        TaskMetadata storage stored = registryState.tasks[_taskId];
+        TaskMetadataLW memory task = LibCommon.toLW(stored);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
-        requireRegisteredBeforeThisBlock(_taskId);
+        requireRegisteredBeforeThisBlock(stored, _taskId);
 
         (taskStopped, refund) = stopTaskUnchecked(_taskId, task, _isGst, _context);
     }

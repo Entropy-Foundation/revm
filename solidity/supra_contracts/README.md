@@ -120,7 +120,7 @@ left-padded with zeros.
 - **Lower bound.** The worst-case cost of `monitorCycleEnd` at the registry's current
   `taskCapacity + sysTaskCapacity` (C), plus headroom. Tasks removed during a cycle stay in the
   ordered task list until `monitorCycleEnd` compacts it, so the worst case is a cycle end over
-  fewer than 7C/3 entries (Entropy-Foundation/smr-moonshot#4920): 3,126,057 gas at the 200-task
+  fewer than 7C/3 entries (Entropy-Foundation/smr-moonshot#4920): 3,126,085 gas at the 200-task
   cap, measured before refunds as on a chain (`test/MonitorCycleEndGas.t.sol`, churn tests;
   `crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md`, "Trigger calls"); for
   instance 4,000,000 at 200 tasks. An entry that runs out of gas emits `CallFailed` and

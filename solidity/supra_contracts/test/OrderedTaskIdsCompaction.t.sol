@@ -235,6 +235,37 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(1, 3, 5), "list at the cycle end");
     }
 
+    /// @notice With no task removed, the list is already the live list: the cycle end expects
+    ///         every registered task, in order, and leaves the list as registered
+    ///         (buildAliveOrderedTaskIds returns it without filtering).
+    function testMonitorCycleEnd_CycleEndWithNoRemovalExpectsEveryTask() public {
+        _fundAlice(4);
+        _registerUsts(4);                       // 0..3
+
+        endCycleAsVmSigner(diamondAddr);
+
+        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEq(uint8(details.state), uint8(LibCommon.CycleState.FINISHED), "cycle state");
+        assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 1, 2, 3), "expected tasks");
+        assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 1, 2, 3), "list at the cycle end");
+    }
+
+    /// @notice Removed entries the per-block compaction kept (below a quarter) are filtered out at
+    ///         the cycle end: a list longer than the live count is scanned, not returned as stored.
+    function testMonitorCycleEnd_CycleEndFiltersEntriesKeptBelowTheThreshold() public {
+        _fundAlice(5);
+        _registerUsts(5);                       // 0..4
+        _cancelOne(2);                          // 1 of 5 removed: below a quarter
+        _monitor();
+        assertEq(readOrderedTaskIds(diamondAddr).length, 5, "kept by the per-block compaction");
+
+        endCycleAsVmSigner(diamondAddr);
+
+        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 1, 3, 4), "expected tasks");
+        assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 1, 3, 4), "list at the cycle end");
+    }
+
     // ────────────────────────────────────────────────────────────────────────
     // States other than a running cycle
     // ────────────────────────────────────────────────────────────────────────

@@ -55,13 +55,22 @@ library LibCore {
     ///      so taskIdList's count always equals the number of non-tombstoned entries here,
     ///      letting this write directly into the final-size array instead of filtering into
     ///      a scratch buffer first and copying.
+    ///      When the list is as long as the live count, it is already the live list and is
+    ///      returned as stored, without the per-entry `owner` reads or the write-back. The list
+    ///      is strictly ascending, so it holds no duplicates, and every live ID is in it (appended
+    ///      at registration; only removed tasks are ever filtered out), so a list of exactly the
+    ///      live count contains no tombstone. compactOrderedTaskIdsIfSparse relies on the same fact.
     /// @return alive The ascending list of currently-alive task IDs.
     function buildAliveOrderedTaskIds() private returns (uint64[] memory alive) {
         RegistryState storage registryState = LibAppStorage.registryState();
         uint64[] storage ordered = registryState.orderedTaskIds;
         uint256 len = ordered.length;
+        uint256 live = registryState.taskIdList.length();
 
-        alive = new uint64[](registryState.taskIdList.length());
+        // Nothing to filter: see the NatSpec above.
+        if (len == live) { return ordered; }
+
+        alive = new uint64[](live);
         uint256 n;
         for (uint256 i = 0; i < len; i++) {
             uint64 id = ordered[i];

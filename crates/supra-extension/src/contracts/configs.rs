@@ -23,7 +23,7 @@ use std::collections::HashSet;
 /// Tasks removed during a cycle stay in that list until a compaction drops them; with the
 /// per-block compaction in `monitorCycleEnd` and owners unable to remove a task in its
 /// registration block, the list stays below 7/3 of the capacity (Entropy-Foundation/smr-moonshot#4920).
-/// At this capacity the cycle end over that bound costs 3,126,057 gas (the churn tests in
+/// At this capacity the cycle end over that bound costs 3,126,085 gas (the churn tests in
 /// `solidity/supra_contracts/test/MonitorCycleEndGas.t.sol`), against the live-only figures in the
 /// table below, so `monitorCycleEnd`'s `BlockMeta` gas limit is sized on the former.
 ///
@@ -42,21 +42,21 @@ use std::collections::HashSet;
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤
-//   │ 50        │ 583,844                      │
+//   │ 50        │ 442,329                      │
 //   ├───────────┼──────────────────────────────┤
-//   │ 100       │ 1,029,239                    │
+//   │ 100       │ 745,213                      │
 //   ├───────────┼──────────────────────────────┤
-//   │ 150       │ 1,499,236                    │
+//   │ 150       │ 1,068,356                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 200       │ 1,945,671                    │
+//   │ 200       │ 1,372,245                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 250       │ 2,415,688                    │
+//   │ 250       │ 1,695,407                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 300       │ 2,861,122                    │
+//   │ 300       │ 1,998,330                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 350       │ 3,331,158                    │
+//   │ 350       │ 2,321,512                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 800       │ 7,438,962                    │
+//   │ 800       │ 5,129,344                    │
 //   └───────────┴──────────────────────────────┘
 //
 // (Figures from `forge test --match-contract MonitorCycleEndGasTest -vv` in
@@ -64,11 +64,13 @@ use std::collections::HashSet;
 // stored as uint64[] packed four per slot (#4285). Each registration and the measured
 // `monitorCycleEnd` run as separate transactions, as on a chain, and `monitorCycleEnd` is
 // metered before refunds, the gas its `BlockMeta` registration has to grant. That same run's
-// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: a list of 1,819
-// live tasks stays under BLOCK_METADATA_GAS_LIMIT, 1,820 exceed it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
-// reports the same for a fully reverse-sorted orderedTaskIds.)
-// That ceiling counts list entries. A scan covers fewer than 7C/3 entries at capacity C, removed
-// tasks included (see above), so the capacity ceiling is 1,819 * 3 / 7, about 779 tasks.
+// `testMonitorCycleEndGas_BoundaryScan` binary-searches the exact safe ceiling: 2,656
+// live tasks stay under BLOCK_METADATA_GAS_LIMIT, 2,657 exceed it. `testMonitorCycleEndGas_BoundaryScan_ReverseSorted`
+// reports 2,657 for a fully reverse-sorted orderedTaskIds.)
+// That ceiling is for a list of live tasks only, which buildAliveOrderedTaskIds returns without
+// scanning. A list holding removed tasks is scanned entry by entry, fewer than 7C/3 entries at
+// capacity C (see above); extrapolating the 200-task churn figure linearly (not measured), a
+// capacity of about 1,070 tasks fits BLOCK_METADATA_GAS_LIMIT at that bound.
 // 200 is kept far below that ceiling deliberately, as buffer for other future
 // `BlockMeta::blockPrologue` entries and for the 63/64 forwarding-rule margin
 // applied on top of BLOCK_METADATA_GAS_LIMIT (see `GenesisTransactionGeneratorConfig::is_valid`).
