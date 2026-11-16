@@ -18,7 +18,7 @@ import {LibDiamond} from "../libraries/LibDiamond.sol";
 /// optimizer_runs values at which it fits, and EIP170_DEPLOYED_CODE_LIMIT in build_utils_impl.rs
 /// rejects a build in which it does not), and any change to it, or to a library it inlines (LibCore,
 /// LibAccounting, LibCommon), can grow its deployed bytecode. A new external function therefore
-/// belongs in a facet of its own rather than in this one. When a change here would bring this
+/// belongs in another facet rather than in this one. When a change here would bring this
 /// facet close to the limit, the next step is to move `removeRegisteredTask` and the removal
 /// paths it alone reaches into a separate facet, as CoreViewFacet serves the views; the node
 /// calls it by selector through the diamond, so a move keeps the selector unchanged.

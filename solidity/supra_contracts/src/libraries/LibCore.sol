@@ -853,8 +853,9 @@ library LibCore {
         return _task.taskType != LibCommon.TaskType.UST || _task.gasPriceCap >= _minGasPrice;
     }
 
-    /// @notice Removes a task that a governed configuration no longer admits, before it is charged
-    /// for the new cycle, refunding a UST's whole deposit.
+    /// @notice Removes a task during the cycle transition, before it is charged for the new
+    /// cycle, refunding a UST's whole deposit. dropOrChargeTask uses it for a task that is
+    /// cancelled or expired, and for one that the governed EVM gas configuration no longer admits.
     /// @return depositRefund The deposit paid back: the whole deposit of a UST, or 0 if it could not
     /// be transferred, which an error event of {LibAccounting.safeDepositRefund} then records; 0
     /// for a GST, which pays none.

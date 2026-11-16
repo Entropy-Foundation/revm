@@ -162,6 +162,7 @@ library LibDiamond {
     //    - RegistryViewFacet::getTaskDetails
     //    - RegistryViewFacet::getTaskIdList
     //    - RegistryViewFacet::getActiveTaskIds
+    //    - RegistryViewFacet::hasActiveTaskOfType
     //    - CoreViewFacet::isAutomationReadyEnabled
     // Whoever operates diamondCut post-genesis must never submit a Remove action for
     // these selectors (Replace, to ship a fix, is fine and unaffected by
