@@ -152,7 +152,7 @@ impl EthFrame<EthInterpreter> {
         precompiles: &mut PRECOMPILES,
         depth: usize,
         memory: SharedMemory,
-        mut inputs: Box<CallInputs>,
+        inputs: Box<CallInputs>,
     ) -> Result<ItemOrResult<FrameToken, FrameResult>, ERROR> {
         let reservoir_remaining_gas = inputs.reservoir;
         let charged_new_account_state_gas = inputs.charged_new_account_state_gas;
@@ -204,12 +204,6 @@ impl EthFrame<EthInterpreter> {
             }
         }
 
-        // A call to the TxHash precompile address receives the transaction hash as its input.
-        if inputs.bytecode_address == TX_HASH_ADDRESS {
-            let tx_hash = ctx.tx().tx_hash();
-            inputs.input = CallInput::Bytes(Bytes::copy_from_slice(tx_hash.as_ref()));
-        }
-
         // Create subroutine checkpoint
         let checkpoint = ctx.journal_mut().checkpoint();
         // Touch address. For "EIP-158 State Clear", this will erase empty accounts.
@@ -236,7 +230,19 @@ impl EthFrame<EthInterpreter> {
         let is_static = inputs.is_static;
         let gas_limit = inputs.gas_limit;
 
-        if let Some(result) = precompiles.run(ctx, &inputs).map_err(ERROR::from_string)? {
+        // A call to the TxHash precompile address gives the precompile the transaction hash as its
+        // input. Only the precompile's copy of the inputs carries the hash: the frame's inputs,
+        // which inspectors see, keep the calldata that was sent. Code never runs at the address,
+        // which is in the Supra reserved range, so the interpreter's input is not substituted.
+        let precompile_result = if inputs.bytecode_address == TX_HASH_ADDRESS {
+            let mut tx_hash_inputs = CallInputs::clone(&inputs);
+            tx_hash_inputs.input =
+                CallInput::Bytes(Bytes::copy_from_slice(ctx.tx().tx_hash().as_ref()));
+            precompiles.run(ctx, &tx_hash_inputs)
+        } else {
+            precompiles.run(ctx, &inputs)
+        };
+        if let Some(result) = precompile_result.map_err(ERROR::from_string)? {
             let mut logs = Vec::new();
             if result.result.is_ok() {
                 // Preserve the reservoir on the result gas so it can be reimbursed.

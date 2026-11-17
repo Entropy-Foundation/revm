@@ -462,6 +462,82 @@ mod tests {
         }
     }
 
+    /// A mode that charges no gas deducts no fee from the caller, whatever the gas price, but the
+    /// caller must still hold the value the transaction transfers.
+    #[test]
+    fn modes_that_charge_no_gas_require_the_value_and_deduct_no_fee() {
+        use primitives::U256;
+
+        const BALANCE: u64 = 1_000;
+        let callee = address!("0x1000000000000000000000000000000000000000");
+        let transact = |mode: ExecutionMode, value: u64| {
+            let caller = if mode == ExecutionMode::System {
+                VM_SIGNER
+            } else {
+                Address::ZERO
+            };
+            let ctx = Context::mainnet()
+                .modify_cfg_chained(|c| c.execution_mode = mode.clone())
+                .with_db(CacheDB::<EmptyDB>::default());
+            let mut evm = ctx.build_mainnet();
+            evm.db_mut().insert_account_info(
+                caller,
+                AccountInfo::new(U256::from(BALANCE), 0, B256::ZERO, Bytecode::new()),
+            );
+            let result = evm.transact(
+                TxEnv::builder()
+                    .caller(caller)
+                    .gas_limit(100_000)
+                    .gas_price(20_000_000_000u128)
+                    .kind(TxKind::Call(callee))
+                    .value(U256::from(value))
+                    .build()
+                    .expect("a complete call environment builds"),
+            );
+            (caller, result)
+        };
+
+        for mode in [
+            ExecutionMode::AutomatedGasless,
+            ExecutionMode::System,
+            ExecutionMode::ReadOnly,
+            ExecutionMode::Genesis,
+        ] {
+            let (_, result) = transact(mode.clone(), BALANCE + 1);
+            assert!(
+                matches!(
+                    result,
+                    Err(EVMError::Transaction(
+                        InvalidTransaction::LackOfFundForMaxFee { .. }
+                    ))
+                ),
+                "{mode:?}: {result:?}"
+            );
+        }
+
+        // ReadOnly is left out here: a run that transfers value changes a balance, which that mode
+        // refuses.
+        for mode in [
+            ExecutionMode::AutomatedGasless,
+            ExecutionMode::System,
+            ExecutionMode::Genesis,
+        ] {
+            let (caller, result) = transact(mode.clone(), BALANCE);
+            let outcome = result.unwrap_or_else(|error| panic!("{mode:?}: {error:?}"));
+            assert!(outcome.result.is_success(), "{mode:?}: {outcome:?}");
+            assert_eq!(
+                outcome.state[&caller].info.balance,
+                U256::ZERO,
+                "{mode:?}: the caller pays the value and no fee"
+            );
+            assert_eq!(
+                outcome.state[&callee].info.balance,
+                U256::from(BALANCE),
+                "{mode:?}"
+            );
+        }
+    }
+
     fn deploy_contract(
         bytecode: Bytes,
         spec_id: Option<SpecId>,
