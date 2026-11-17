@@ -1,4 +1,4 @@
-use primitives::{HashMap, StorageKey, StorageValue};
+use primitives::{HashMap, StorageKeyMap, StorageValue};
 use state::{AccountInfo, EvmStorageSlot};
 
 /// Plain account of StateDatabase.
@@ -47,7 +47,7 @@ impl From<EvmStorageSlot> for StorageSlot {
 
 impl StorageSlot {
     /// Creates a new _unchanged_ `StorageSlot` for the given value.
-    pub fn new(original: StorageValue) -> Self {
+    pub const fn new(original: StorageValue) -> Self {
         Self {
             previous_or_original_value: original,
             present_value: original,
@@ -55,7 +55,7 @@ impl StorageSlot {
     }
 
     /// Creates a new _changed_ `StorageSlot`.
-    pub fn new_changed(
+    pub const fn new_changed(
         previous_or_original_value: StorageValue,
         present_value: StorageValue,
     ) -> Self {
@@ -71,12 +71,12 @@ impl StorageSlot {
     }
 
     /// Returns the original value of the storage slot.
-    pub fn original_value(&self) -> StorageValue {
+    pub const fn original_value(&self) -> StorageValue {
         self.previous_or_original_value
     }
 
     /// Returns the current value of the storage slot.
-    pub fn present_value(&self) -> StorageValue {
+    pub const fn present_value(&self) -> StorageValue {
         self.present_value
     }
 }
@@ -84,11 +84,11 @@ impl StorageSlot {
 /// This storage represent values that are before block changed.
 ///
 /// Note: Storage that we get EVM contains original values before block changed.
-pub type StorageWithOriginalValues = HashMap<StorageKey, StorageSlot>;
+pub type StorageWithOriginalValues = StorageKeyMap<StorageSlot>;
 
 /// Simple plain storage that does not have previous value.
 /// This is used for loading from database, cache and for bundle state.
-pub type PlainStorage = HashMap<StorageKey, StorageValue>;
+pub type PlainStorage = StorageKeyMap<StorageValue>;
 
 impl From<AccountInfo> for PlainAccount {
     fn from(info: AccountInfo) -> Self {

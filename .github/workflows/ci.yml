@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        features: ["", "kzg-rs"]
+        features: [""]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -47,7 +47,6 @@ jobs:
           targets: riscv32imac-unknown-none-elf
       - run: |
           cargo check --target riscv32imac-unknown-none-elf --no-default-features --features=${{ matrix.features }}
-          cargo check --target riscv32imac-unknown-none-elf -p op-revm --no-default-features --features=${{ matrix.features }}
           cargo check --target riscv32imac-unknown-none-elf -p revm-database --no-default-features
 
   check:
@@ -57,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        features: ["", "serde", "std", "std,map-foldhash"]
+        features: ["", "serde", "std", "std,map-foldhash", "account-ext", "account-ext,serde"]
     steps:
       - uses: actions/checkout@v5
         with:

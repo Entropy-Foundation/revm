@@ -2,7 +2,7 @@
 //! For more details check modules for each precompile.
 use crate::Precompile;
 
-#[allow(dead_code)]
+#[cfg_attr(feature = "blst", expect(dead_code))]
 pub(crate) mod arkworks;
 
 cfg_if::cfg_if! {
@@ -38,6 +38,7 @@ pub mod g2_msm;
 pub mod map_fp2_to_g2;
 pub mod map_fp_to_g1;
 pub mod pairing;
+mod pairing_common;
 mod utils;
 
 /// Returns the BLS12-381 precompiles with their addresses.

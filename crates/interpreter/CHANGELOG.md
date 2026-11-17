@@ -7,6 +7,273 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.2](https://github.com/bluealloy/revm/compare/revm-interpreter-v43.0.1...revm-interpreter-v43.0.2) - 2026-09-24
+
+### Other
+
+- updated the following local packages: revm-state, revm-context-interface
+
+## [43.0.1](https://github.com/bluealloy/revm/compare/revm-interpreter-v43.0.0...revm-interpreter-v43.0.1) - 2026-09-08
+
+### Other
+
+- updated the following local packages: revm-context-interface
+
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v42.0.0...revm-interpreter-v43.0.0) - 2026-08-20
+
+### Fixed
+
+- *(interpreter)* return MemoryOOG when memory resize fails ([#3864](https://github.com/bluealloy/revm/pull/3864))
+- check call depth in CREATE pre-access checks (EIP-8037) ([#3829](https://github.com/bluealloy/revm/pull/3829))
+
+## [42.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v41.0.0...revm-interpreter-v42.0.0) - 2026-07-22
+
+### Added
+
+- *(amsterdam)* glamsterdam devnet-7 alignment (EIP-2780 runtime gas phase, fixtures v7.0.0) ([#3795](https://github.com/bluealloy/revm/pull/3795))
+- *(amsterdam)* glam devnet-6 gas accounting & EIP alignment ([#3782](https://github.com/bluealloy/revm/pull/3782))
+- make max refund quotient configurable ([#3757](https://github.com/bluealloy/revm/pull/3757))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v37.0.3...revm-interpreter-v41.0.0) - 2026-06-11
+
+### Added
+
+- add SSTORE gas-state policy hook ([#3734](https://github.com/bluealloy/revm/pull/3734))
+
+### Fixed
+
+- *(interpreter)* use IntoAddress in pop_address to avoid const-eval panic ([#3735](https://github.com/bluealloy/revm/pull/3735))
+
+### Other
+
+- run cargo fmt ([#3751](https://github.com/bluealloy/revm/pull/3751))
+- remove GasStateTr ([#3750](https://github.com/bluealloy/revm/pull/3750))
+- make `GasStateTr` expose `StateLoad` ([#3737](https://github.com/bluealloy/revm/pull/3737))
+
+## [37.0.3](https://github.com/bluealloy/revm/compare/revm-interpreter-v37.0.2...revm-interpreter-v37.0.3) - 2026-05-26
+
+### Added
+
+- Bake EIP-8037 CPSB into gas params ([#3714](https://github.com/bluealloy/revm/pull/3714))
+
+## [37.0.2](https://github.com/bluealloy/revm/compare/revm-interpreter-v37.0.1...revm-interpreter-v37.0.2) - 2026-05-22
+
+### Other
+
+- updated the following local packages: revm-context-interface
+
+## [37.0.1](https://github.com/bluealloy/revm/compare/revm-interpreter-v37.0.0...revm-interpreter-v37.0.1) - 2026-05-21
+
+### Other
+
+- *(eip8037)* remove dead refill_amount tracking ([#3699](https://github.com/bluealloy/revm/pull/3699))
+
+## [37.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v35.0.1...revm-interpreter-v37.0.0) - 2026-05-19
+
+### Added
+
+- *(eip8037)* Amsterdam bal-devnet-7 ([#3667](https://github.com/bluealloy/revm/pull/3667))
+
+### Fixed
+
+- *(bytecode)* mark `Bytecode::new_analyzed` as unsafe ([#3557](https://github.com/bluealloy/revm/pull/3557))
+
+### Other
+
+- change &mut self to &self for read-only methods ([#3669](https://github.com/bluealloy/revm/pull/3669))
+- *(interpreter)* cache init_code_hash in CreateInputs for inspector reuse ([#3664](https://github.com/bluealloy/revm/pull/3664))
+- *(interpreter)* unify call handlers ([#3626](https://github.com/bluealloy/revm/pull/3626))
+- rm unused MemoryExtensionResult ([#3646](https://github.com/bluealloy/revm/pull/3646))
+- remove unused spec ids ([#3649](https://github.com/bluealloy/revm/pull/3649))
+- audit #[allow] attributes ([#3611](https://github.com/bluealloy/revm/pull/3611))
+- backport v107 release notes from branch ([#3617](https://github.com/bluealloy/revm/pull/3617))
+- move memory_limit check into cold resize path ([#3599](https://github.com/bluealloy/revm/pull/3599))
+- [**breaking**] return Result from instruction functions ([#3558](https://github.com/bluealloy/revm/pull/3558))
+- enable and fix clippy::missing_const_for_fn ([#3592](https://github.com/bluealloy/revm/pull/3592))
+- *(interpreter)* separate instruction and gas tables ([#3561](https://github.com/bluealloy/revm/pull/3561))
+- thread reservoir through OOG constructors ([#3580](https://github.com/bluealloy/revm/pull/3580))
+- pass reservoir into `first_frame_input` ([#3578](https://github.com/bluealloy/revm/pull/3578))
+- *(interpreter)* dedup account loading across host instructions ([#3562](https://github.com/bluealloy/revm/pull/3562))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+- *(interpreter)* remove unused loop_control module ([#3555](https://github.com/bluealloy/revm/pull/3555))
+
+## [35.0.1](https://github.com/bluealloy/revm/compare/revm-interpreter-v35.0.0...revm-interpreter-v35.0.1) - 2026-04-17
+
+### Other
+
+- pass reservoir into `first_frame_input` ([#3578](https://github.com/bluealloy/revm/pull/3578))
+
+## [35.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v34.0.0...revm-interpreter-v35.0.0) - 2026-04-10
+
+### Added
+
+- add EIP-8037 / TIP-1016 state gas support ([#3406](https://github.com/bluealloy/revm/pull/3406))
+- Add local context accessors to CallInput ([#3537](https://github.com/bluealloy/revm/pull/3537))
+- add CallInput::as_bytes ([#3515](https://github.com/bluealloy/revm/pull/3515))
+- add crate-level re-exports for all revm-* dependencies ([#3507](https://github.com/bluealloy/revm/pull/3507))
+- Part of amsterdam devnet3 EIP updates ([#3438](https://github.com/bluealloy/revm/pull/3438))
+
+### Fixed
+
+- Remove unused gas-related functions ([#3534](https://github.com/bluealloy/revm/pull/3534))
+- *(interpreter)* swap/swapn/exchange report StackOverflow on underflow ([#3483](https://github.com/bluealloy/revm/pull/3483))
+
+### Other
+
+- deprecate set_spec and clean up deprecation attrs ([#3550](https://github.com/bluealloy/revm/pull/3550))
+- remove option for known bytecode ([#3532](https://github.com/bluealloy/revm/pull/3532))
+- simplify stack dup ([#3478](https://github.com/bluealloy/revm/pull/3478))
+
+## [34.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v33.0.0...revm-interpreter-v34.0.0) - 2026-03-04
+
+### Other
+
+- [**breaking**] bump revm-context-interface to v16.0.0 (⚠ dependency bump)
+
+## [33.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v32.0.0...revm-interpreter-v33.0.0) - 2026-03-02
+
+### Added
+
+- Implement EIP-7843 SLOTNUM opcode for Amsterdam ([#3340](https://github.com/bluealloy/revm/pull/3340))
+- Implement EIP-8024 for Amsterdam ([#3223](https://github.com/bluealloy/revm/pull/3223))
+
+### Fixed
+
+- *(bytecode)* improve analyze_legacy padding for SWAPN/DUPN/EXCHANGE ([#3332](https://github.com/bluealloy/revm/pull/3332))
+
+### Other
+
+- [**breaking**] flatten Bytecode ([#3375](https://github.com/bluealloy/revm/pull/3375))
+- *(interpreter)* deduplicate slice range logic ([#3376](https://github.com/bluealloy/revm/pull/3376))
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+- elide some jumps in jump ([#3347](https://github.com/bluealloy/revm/pull/3347))
+- remove outdated stack pop TODO ([#3315](https://github.com/bluealloy/revm/pull/3315))
+
+## [32.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v31.1.0...revm-interpreter-v32.0.0) - 2026-01-15
+
+### Added
+
+- add `new_oog` helpers to InterpreterResult, CallOutcome, CreateOutcome, and FrameResult ([#3309](https://github.com/bluealloy/revm/pull/3309))
+- new gas params, tx initial gas and codedeposit ([#3260](https://github.com/bluealloy/revm/pull/3260))
+- move GasParams to Cfg ([#3229](https://github.com/bluealloy/revm/pull/3229))
+- BAL EIP-7928 ([#3070](https://github.com/bluealloy/revm/pull/3070))
+- Gas params ([#3132](https://github.com/bluealloy/revm/pull/3132))
+- *(create)* Implement Cache for CreateInputs::created_address ([#3218](https://github.com/bluealloy/revm/pull/3218))
+
+### Fixed
+
+- *(create)* Fix CreateInputs::created_address Cache invalidation ([#3222](https://github.com/bluealloy/revm/pull/3222))
+
+### Other
+
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- add optimization for push and pop ([#3263](https://github.com/bluealloy/revm/pull/3263))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- avoid loading bytecode in extcodehash ([#3261](https://github.com/bluealloy/revm/pull/3261))
+- *(clippy)* remove unused imports ([#3227](https://github.com/bluealloy/revm/pull/3227))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [31.1.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v31.0.0...revm-interpreter-v31.1.0) - 2025-11-14
+
+### Fixed
+
+- correctly handle selfdestruct cold load ([#3174](https://github.com/bluealloy/revm/pull/3174))
+
+## [31.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v29.0.1...revm-interpreter-v31.0.0) - 2025-11-10
+
+### Added
+
+- process precompile logs to inspector ([#3148](https://github.com/bluealloy/revm/pull/3148))
+- selfdestruct oog on cold load ([#3140](https://github.com/bluealloy/revm/pull/3140))
+
+### Other
+
+- merge v98 versions bumps ([#3155](https://github.com/bluealloy/revm/pull/3155))
+- add eq/serde for InitialAndFloorGas ([#3147](https://github.com/bluealloy/revm/pull/3147))
+- *(interpreter)* deprecate public otry! macro ([#3146](https://github.com/bluealloy/revm/pull/3146))
+
+## [29.0.1](https://github.com/bluealloy/revm/compare/revm-interpreter-v29.0.0...revm-interpreter-v29.0.1) - 2025-11-07
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode, revm-state, revm-context-interface
+
+## [28.0.1](https://github.com/bluealloy/revm/compare/revm-interpreter-v28.0.0...revm-interpreter-v28.0.1) - 2025-10-30
+
+### Fixed
+
+- hook up Cfg::memory_limit ([#3129](https://github.com/bluealloy/revm/pull/3129))
+
+## [28.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v27.0.2...revm-interpreter-v28.0.0) - 2025-10-17
+
+### Added
+
+- Optional Bytecode in CallInput ([#3110](https://github.com/bluealloy/revm/pull/3110))
+
+### Fixed
+
+- return MemoryLimitOOG when memory_limit is enabled ([#3109](https://github.com/bluealloy/revm/pull/3109))
+
+### Other
+
+- *(instructions)* fix typo in spurious_dragon variable ([#3106](https://github.com/bluealloy/revm/pull/3106))
+
+## [27.0.2](https://github.com/bluealloy/revm/compare/revm-interpreter-v27.0.1...revm-interpreter-v27.0.2) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-bytecode, revm-state, revm-context-interface
+
+## [27.0.1](https://github.com/bluealloy/revm/compare/revm-interpreter-v27.0.0...revm-interpreter-v27.0.1) - 2025-10-15
+
+### Fixed
+
+- support legacy JumpTable serde format ([#3098](https://github.com/bluealloy/revm/pull/3098))
+
+### Other
+
+- make CallInput::bytes accept immutable ContextTr ([#3082](https://github.com/bluealloy/revm/pull/3082))
+
+## [27.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v26.0.0...revm-interpreter-v27.0.0) - 2025-10-09
+
+### Other
+
+- remove deprecated methods ([#3050](https://github.com/bluealloy/revm/pull/3050))
+
+## [26.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v25.0.3...revm-interpreter-v26.0.0) - 2025-10-07
+
+### Added
+
+- Support bubbling up first precompile error messages  ([#2905](https://github.com/bluealloy/revm/pull/2905))
+- send bytecode with call input ([#2963](https://github.com/bluealloy/revm/pull/2963))
+
+### Fixed
+
+- remove redundant U256::from on Host getters in instructions ([#3053](https://github.com/bluealloy/revm/pull/3053))
+- *(interpreter)* remove redundant stack underflow check in LOG instruction ([#3028](https://github.com/bluealloy/revm/pull/3028))
+- unsafe stack capacity invariant and serde deserialization assumptions ([#3025](https://github.com/bluealloy/revm/pull/3025))
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+- skip cold load on oog ([#2903](https://github.com/bluealloy/revm/pull/2903))
+
+### Other
+
+- changelog update for v87 ([#3056](https://github.com/bluealloy/revm/pull/3056))
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- expose stack data ([#3047](https://github.com/bluealloy/revm/pull/3047))
+- use offset_from_unsigned ([#2999](https://github.com/bluealloy/revm/pull/2999))
+- rm eof comments ([#2987](https://github.com/bluealloy/revm/pull/2987))
+- comments on EIP-2929/2930 constants ([#2969](https://github.com/bluealloy/revm/pull/2969))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+- remove duplicate comment for TOTAL_COST_FLOOR_PER_TOKEN constant ([#2950](https://github.com/bluealloy/revm/pull/2950))
+- clean static_selfdestruct_cost ([#2944](https://github.com/bluealloy/revm/pull/2944))
+- rename SELFDESTRUCT to SELFDESTRUCT_REFUND ([#2937](https://github.com/bluealloy/revm/pull/2937))
+
+## [25.0.3](https://github.com/bluealloy/revm/compare/revm-interpreter-v25.0.2...revm-interpreter-v25.0.3) - 2025-09-23
+
+### Other
+
+- updated the following local packages: revm-context-interface
+
 ## [25.0.2](https://github.com/bluealloy/revm/compare/revm-interpreter-v25.0.1...revm-interpreter-v25.0.2) - 2025-08-23
 
 ### Fixed
@@ -48,8 +315,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
 
 ## [24.0.0](https://github.com/bluealloy/revm/compare/revm-interpreter-v23.0.2...revm-interpreter-v24.0.0) - 2025-07-23
 

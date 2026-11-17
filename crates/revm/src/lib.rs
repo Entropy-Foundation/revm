@@ -26,14 +26,24 @@ pub use primitives;
 #[doc(inline)]
 pub use state;
 
+#[cfg(feature = "test-types")]
+#[doc(inline)]
+pub use statetest_types;
+
 // Export items.
 
-pub use context::journal::{Journal, JournalEntry};
-pub use context::Context;
-pub use database_interface::{Database, DatabaseCommit, DatabaseRef};
+pub use context::{
+    journal::{Journal, JournalEntry},
+    Context,
+};
+#[cfg(feature = "asyncdb")]
+pub use database_interface::{AsyncDb, AsyncError, AsyncResult, DatabaseAsync, WrapDatabaseAsync};
+pub use database_interface::{Database, DatabaseCommit, DatabaseRef, NoopHook, OnStateHook};
 pub use handler::{
     ExecuteCommitEvm, ExecuteEvm, MainBuilder, MainContext, MainnetEvm, SystemCallCommitEvm,
     SystemCallEvm,
 };
+#[cfg(feature = "asyncdb")]
+pub use handler::{ExecuteEvmAsync, SystemCallEvmAsync};
 pub use inspector::{InspectCommitEvm, InspectEvm, InspectSystemCallEvm, Inspector};
 pub use precompile::install_crypto;

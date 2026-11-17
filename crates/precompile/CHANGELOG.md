@@ -7,6 +7,215 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.3](https://github.com/bluealloy/revm/compare/revm-precompile-v43.0.2...revm-precompile-v43.0.3) - 2026-09-24
+
+### Other
+
+- updated the following local packages: revm-context-interface
+
+## [43.0.2](https://github.com/bluealloy/revm/compare/revm-precompile-v43.0.1...revm-precompile-v43.0.2) - 2026-09-08
+
+### Other
+
+- updated the following local packages: revm-context-interface
+
+## [43.0.1](https://github.com/bluealloy/revm/compare/revm-precompile-v43.0.0...revm-precompile-v43.0.1) - 2026-08-28
+
+### Other
+
+- fix clippy for Rust 1.98 ([#3884](https://github.com/bluealloy/revm/pull/3884))
+
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v42.0.1...revm-precompile-v43.0.0) - 2026-08-20
+
+### Other
+
+- *(precompile)* port benchmarkoor bls12-381 benches from #3766 ([#3858](https://github.com/bluealloy/revm/pull/3858))
+- *(precompile)* unroll blake2 portable rounds to const-fold the message schedule ([#3840](https://github.com/bluealloy/revm/pull/3840))
+- *(precompile)* benchmark KZG verify arkworks/blst backends directly ([#3849](https://github.com/bluealloy/revm/pull/3849))
+- *(precompile)* measure the blake2 portable compression path ([#3848](https://github.com/bluealloy/revm/pull/3848))
+- *(precompile)* cover BLS MSM sizes where blst switches algorithm ([#3846](https://github.com/bluealloy/revm/pull/3846))
+- *(precompile)* use fused multi-miller loop for BLS12-381 pairing ([#3823](https://github.com/bluealloy/revm/pull/3823))
+- *(precompile)* correct read_fp canonical-check comment ([#3824](https://github.com/bluealloy/revm/pull/3824))
+
+## [42.0.1](https://github.com/bluealloy/revm/compare/revm-precompile-v42.0.0...revm-precompile-v42.0.1) - 2026-07-23
+
+### Added
+
+- *(precompile)* track spilled state gas in `PrecompileOutput` ([#3821](https://github.com/bluealloy/revm/pull/3821))
+- *(precompile)* `PrecompileOutput::{from_gas_tracker, set_gas, to_gas_tracker}` ([#3821](https://github.com/bluealloy/revm/pull/3821))
+
+## [42.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v41.0.0...revm-precompile-v42.0.0) - 2026-07-22
+
+### Other
+
+- *(deps)* bump dependencies ([#3794](https://github.com/bluealloy/revm/pull/3794))
+- *(precompile)* reduce bounds checks in precompile parsing ([#3784](https://github.com/bluealloy/revm/pull/3784))
+- clarify EIP-7702 regular-gas GasId names ([#3725](https://github.com/bluealloy/revm/pull/3725))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v36.0.3...revm-precompile-v41.0.0) - 2026-06-11
+
+### Other
+
+- Add MODEXP precompile benchmarks ([#3744](https://github.com/bluealloy/revm/pull/3744))
+
+## [36.0.3](https://github.com/bluealloy/revm/compare/revm-precompile-v36.0.2...revm-precompile-v36.0.3) - 2026-05-26
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-context-interface
+
+## [36.0.2](https://github.com/bluealloy/revm/compare/revm-precompile-v36.0.1...revm-precompile-v36.0.2) - 2026-05-22
+
+### Other
+
+- updated the following local packages: revm-context-interface
+
+## [36.0.1](https://github.com/bluealloy/revm/compare/revm-precompile-v36.0.0...revm-precompile-v36.0.1) - 2026-05-21
+
+### Other
+
+- *(eip8037)* remove dead refill_amount tracking ([#3699](https://github.com/bluealloy/revm/pull/3699))
+
+## [36.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v34.0.0...revm-precompile-v36.0.0) - 2026-05-19
+
+### Added
+
+- *(eip8037)* Amsterdam bal-devnet-7 ([#3667](https://github.com/bluealloy/revm/pull/3667))
+
+### Fixed
+
+- *(precompile)* tighten cfg on blake2 avx2 module ([#3613](https://github.com/bluealloy/revm/pull/3613))
+- *(precompile)* use SIGMA period 10 in blake2 portable path ([#3616](https://github.com/bluealloy/revm/pull/3616))
+- re-add PrecompileOutput::gas_refunded ([#3574](https://github.com/bluealloy/revm/pull/3574))
+
+### Other
+
+- remove unused spec ids ([#3649](https://github.com/bluealloy/revm/pull/3649))
+- audit #[allow] attributes ([#3611](https://github.com/bluealloy/revm/pull/3611))
+- backport v107 release notes from branch ([#3617](https://github.com/bluealloy/revm/pull/3617))
+- *(precompile)* vendor blake2b_simd for BLAKE2 compression ([#3609](https://github.com/bluealloy/revm/pull/3609))
+- *(precompile)* use static OnceLock array for Precompiles init ([#3602](https://github.com/bluealloy/revm/pull/3602))
+- enable and fix clippy::missing_const_for_fn ([#3592](https://github.com/bluealloy/revm/pull/3592))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+
+## [34.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v33.0.0...revm-precompile-v34.0.0) - 2026-04-17
+
+### Fixed
+
+- re-add PrecompileOutput::gas_refunded ([#3574](https://github.com/bluealloy/revm/pull/3574))
+
+## [33.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v32.1.0...revm-precompile-v33.0.0) - 2026-04-10
+
+### Added
+
+- add EIP-8037 / TIP-1016 state gas support ([#3406](https://github.com/bluealloy/revm/pull/3406))
+- add crate-level re-exports for all revm-* dependencies ([#3507](https://github.com/bluealloy/revm/pull/3507))
+
+### Other
+
+- move EIP-8037 gas cap validation into validate_initial_tx_gas ([#3552](https://github.com/bluealloy/revm/pull/3552))
+- *(precompile)* take large array args by reference ([#3524](https://github.com/bluealloy/revm/pull/3524))
+- add secp256r1 (P256) precompile benchmark ([#3525](https://github.com/bluealloy/revm/pull/3525))
+- use AnyError for PrecompileError::Fatal and EVMError::Custom ([#3502](https://github.com/bluealloy/revm/pull/3502))
+- clarify PrecompileError::Fatal vs Other and EVMError::Custom ([#3496](https://github.com/bluealloy/revm/pull/3496))
+
+## [32.1.0](https://github.com/bluealloy/revm/compare/revm-precompile-v32.0.0...revm-precompile-v32.1.0) - 2026-03-02
+
+### Added
+
+- *(precompile)* add aws-lc-rs as alternative backend for secp256r1 ([#3451](https://github.com/bluealloy/revm/pull/3451))
+
+### Fixed
+
+- *(precompile)* use big-endian resize for modexp output padding ([#3432](https://github.com/bluealloy/revm/pull/3432))
+
+### Other
+
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+- *(precompile)* zero-copy scalar conversion in BLS12-381 MSM ([#3359](https://github.com/bluealloy/revm/pull/3359))
+- use fixed bytes hashmaps from alloy-core ([#3358](https://github.com/bluealloy/revm/pull/3358))
+- *(precompiles)* cache trusted setup G2 for kzg ([#3322](https://github.com/bluealloy/revm/pull/3322))
+- rename misleading calc_linear_cost_u32 function ([#3318](https://github.com/bluealloy/revm/pull/3318))
+
+## [32.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v31.0.0...revm-precompile-v32.0.0) - 2026-01-15
+
+### Added
+
+- rm gmp use-system-libs ([#3253](https://github.com/bluealloy/revm/pull/3253))
+- dynamically link gmp ([#3250](https://github.com/bluealloy/revm/pull/3250))
+
+### Other
+
+- *(precompile)* extract common pairing_check_bytes logic in bls12_381 ([#3301](https://github.com/bluealloy/revm/pull/3301))
+- apply improvements from ai-bot labeled PRs ([#3297](https://github.com/bluealloy/revm/pull/3297))
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- optimize vector initialization using size hints ([#3200](https://github.com/bluealloy/revm/pull/3200))
+- optimize precompile `extend()` ([#3192](https://github.com/bluealloy/revm/pull/3192))
+- optimize vector initialization with size hints in state and precompile modules ([#3191](https://github.com/bluealloy/revm/pull/3191))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [31.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v29.0.1...revm-precompile-v31.0.0) - 2025-11-10
+
+### Added
+
+- *(precompiles)* add performant PrecompileError::OtherCowStr variant ([#3144](https://github.com/bluealloy/revm/pull/3144))
+- add gas refund to PrecompileOutput ([#3152](https://github.com/bluealloy/revm/pull/3152))
+
+### Other
+
+- merge v98 versions bumps ([#3155](https://github.com/bluealloy/revm/pull/3155))
+
+## [29.0.1](https://github.com/bluealloy/revm/compare/revm-precompile-v29.0.0...revm-precompile-v29.0.1) - 2025-11-07
+
+### Other
+
+- updated the following local packages: revm-primitives
+
+## [29.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v28.1.1...revm-precompile-v29.0.0) - 2025-10-30
+
+### Other
+
+- *(precompile)* remove unused mainnet_address() function ([#3091](https://github.com/bluealloy/revm/pull/3091))
+
+## [28.1.1](https://github.com/bluealloy/revm/compare/revm-precompile-v28.1.0...revm-precompile-v28.1.1) - 2025-10-15
+
+### Other
+
+- bump minor versions ([#3078](https://github.com/bluealloy/revm/pull/3078))
+
+
+## [28.1.0](https://github.com/bluealloy/revm/compare/revm-precompile-v28.0.1...revm-precompile-v28.1.0) - 2025-10-09
+
+## [28.0.1](https://github.com/bluealloy/revm/compare/revm-precompile-v28.0.0...revm-precompile-v28.0.1) - 2025-10-09
+
+### Fixed
+
+- *(kzg/blst)* use uncompress for compressed G1/G2 inputs ([#3067](https://github.com/bluealloy/revm/pull/3067))
+
+## [28.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v27.0.0...revm-precompile-v28.0.0) - 2025-10-07
+
+### Added
+
+- [**breaking**] Remove kzg-rs ([#2909](https://github.com/bluealloy/revm/pull/2909))
+
+### Fixed
+
+- racecondition return on install_crypto fn ([#2997](https://github.com/bluealloy/revm/pull/2997))
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+
+### Other
+
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- typo imputs ([#3031](https://github.com/bluealloy/revm/pull/3031))
+- add display for precompileid ([#3018](https://github.com/bluealloy/revm/pull/3018))
+- Remove libsecp256k1 parity lib ([#2954](https://github.com/bluealloy/revm/pull/2954))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+- add amsterdam in spec id ([#2934](https://github.com/bluealloy/revm/pull/2934))
+- cargo update ([#2930](https://github.com/bluealloy/revm/pull/2930))
+- *(precompile)* add new specific `PrecompileError` variants ([#2907](https://github.com/bluealloy/revm/pull/2907))
+- add Precompil::into_precompile ([#2913](https://github.com/bluealloy/revm/pull/2913))
+
 ## [27.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v26.0.1...revm-precompile-v27.0.0) - 2025-08-23
 
 ### Added
@@ -50,8 +259,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
 
 ## [25.0.0](https://github.com/bluealloy/revm/compare/revm-precompile-v24.0.1...revm-precompile-v25.0.0) - 2025-07-23
 

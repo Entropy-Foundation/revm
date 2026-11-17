@@ -18,99 +18,98 @@ pub fn add_benches(group: &mut BenchmarkGroup<'_, criterion::measurement::WallTi
 
     // Benchmark with 2 rounds
     group.bench_function("blake2/2_rounds", |b| {
-        let input = &inputs[0]; // 2 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[0]); // 2 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 4 rounds
     group.bench_function("blake2/4_rounds", |b| {
-        let input = &inputs[1]; // 4 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[1]); // 4 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 64 rounds
     group.bench_function("blake2/64_rounds", |b| {
-        let input = &inputs[2]; // 64 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[2]); // 64 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 10 rounds (Blake2s standard)
     group.bench_function("blake2/10_rounds", |b| {
-        let input = &inputs[3]; // 10 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[3]); // 10 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 12 rounds (Blake2b standard)
     group.bench_function("blake2/12_rounds", |b| {
-        let input = &inputs[4]; // 12 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[4]); // 12 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 512 rounds
     group.bench_function("blake2/512_rounds", |b| {
-        let input = &inputs[5]; // 512 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[5]); // 512 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 1024 rounds
     group.bench_function("blake2/1024_rounds", |b| {
-        let input = &inputs[6]; // 1024 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[6]); // 1024 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 100K rounds
     group.bench_function("blake2/100K_rounds", |b| {
-        let input = &inputs[7]; // 100000 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[7]); // 100000 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
     // Benchmark with 200K rounds
     group.bench_function("blake2/200K_rounds", |b| {
-        let input = &inputs[8]; // 200000 rounds
-        b.iter(|| {
-            black_box(blake2::run(black_box(input), u64::MAX).unwrap());
-        });
+        let input = black_box(&inputs[8]); // 200000 rounds
+        b.iter(|| blake2::run(input, u64::MAX).unwrap());
     });
 
-    // Benchmark just the compression function with different round counts
-    group.bench_function("blake2/compress_12_rounds", |b| {
-        let h = [
-            0x6a09e667f3bcc908u64,
-            0xbb67ae8584caa73bu64,
-            0x3c6ef372fe94f82bu64,
-            0xa54ff53a5f1d36f1u64,
-            0x510e527fade682d1u64,
-            0x9b05688c2b3e6c1fu64,
-            0x1f83d9abfb41bd6bu64,
-            0x5be0cd19137e2179u64,
-        ];
-        let m = [0u64; 16];
-        let t = [0u64, 0u64];
-        b.iter(|| {
-            let mut h_copy = h;
-            blake2::algo::compress(
-                black_box(12),
-                &mut h_copy,
-                black_box(m),
-                black_box(t),
-                black_box(false),
-            );
+    add_portable_benches(group);
+}
+
+/// Benches for the portable compression function, called directly.
+///
+/// The `blake2/*_rounds` benches above go through `blake2::run` -> `blake2::compress`, which
+/// detects AVX2 at runtime. On the x86_64 CI runner they therefore only ever measure the AVX2
+/// implementation, leaving the portable one -- what `no_std`, zkVM and non-x86 targets run --
+/// unmeasured. These call it directly so it is timed on every host.
+fn add_portable_benches(group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>) {
+    // EIP-152 test vector 4: BLAKE2b-512 of "abc", the standard 12-round case.
+    let h_in: [u64; 8] = [
+        0x6a09_e667_f2bd_c948,
+        0xbb67_ae85_84ca_a73b,
+        0x3c6e_f372_fe94_f82b,
+        0xa54f_f53a_5f1d_36f1,
+        0x510e_527f_ade6_82d1,
+        0x9b05_688c_2b3e_6c1f,
+        0x1f83_d9ab_fb41_bd6b,
+        0x5be0_cd19_137e_2179,
+    ];
+    let mut m = [0u64; 16];
+    m[0] = 0x0000_0000_0063_6261; // "abc"
+    let t = [3u64, 0u64];
+
+    // SIGMA has period 10, so the round count decides how the schedule tiles: 2 is a partial
+    // tile, 10 exactly one, 12 one plus a remainder (standard BLAKE2b), 64 several.
+    for rounds in [2u32, 10, 12, 64] {
+        group.bench_function(format!("blake2 portable/{rounds}_rounds"), |b| {
+            b.iter(|| {
+                let mut h = h_in;
+                blake2::compress_portable(
+                    black_box(rounds),
+                    &mut h,
+                    black_box(&m),
+                    black_box(&t),
+                    black_box(true),
+                );
+                h
+            });
         });
-    });
+    }
 }

@@ -1,17 +1,17 @@
+use crate::states::block_hash_cache::BlockHashCache;
+
 use super::{cache::CacheState, state::DBBox, BundleState, State, TransitionState};
-use database_interface::{DBErrorMarker, Database, DatabaseRef, EmptyDB, WrapDatabaseRef};
-use primitives::B256;
-use std::collections::BTreeMap;
+use database_interface::{
+    bal::BalState, DBErrorMarker, Database, DatabaseRef, EmptyDB, WrapDatabaseRef,
+};
+use state::bal::Bal;
+use std::sync::Arc;
 
 /// Allows building of State and initializing it with different options.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StateBuilder<DB> {
     /// Database that we use to fetch data from
     database: DB,
-    /// Enabled state clear flag that is introduced in Spurious Dragon hardfork
-    ///
-    /// Default is true as spurious dragon happened long time ago.
-    with_state_clear: bool,
     /// If there is prestate that we want to use,
     /// this would mean that we have additional state layer between evm and disk/database.
     with_bundle_prestate: Option<BundleState>,
@@ -21,14 +21,10 @@ pub struct StateBuilder<DB> {
     ///
     /// Default is false.
     with_bundle_update: bool,
-    /// Do we want to merge transitions in background?
-    ///
-    /// This will allow evm to continue executing.
-    ///
-    /// Default is false.
-    with_background_transition_merge: bool,
     /// If we want to set different block hashes,
-    with_block_hashes: BTreeMap<u64, B256>,
+    with_block_hashes: BlockHashCache,
+    /// BAL state.
+    bal_state: BalState,
 }
 
 impl StateBuilder<EmptyDB> {
@@ -52,12 +48,11 @@ impl<DB: Database> StateBuilder<DB> {
     pub fn new_with_database(database: DB) -> Self {
         Self {
             database,
-            with_state_clear: true,
             with_cache_prestate: None,
             with_bundle_prestate: None,
             with_bundle_update: false,
-            with_background_transition_merge: false,
-            with_block_hashes: BTreeMap::new(),
+            with_block_hashes: BlockHashCache::new(),
+            bal_state: BalState::default(),
         }
     }
 
@@ -66,13 +61,12 @@ impl<DB: Database> StateBuilder<DB> {
         // Cast to the different database.
         // Note that we return different type depending on the database NewDBError.
         StateBuilder {
-            with_state_clear: self.with_state_clear,
             database,
             with_cache_prestate: self.with_cache_prestate,
             with_bundle_prestate: self.with_bundle_prestate,
             with_bundle_update: self.with_bundle_update,
-            with_background_transition_merge: self.with_background_transition_merge,
             with_block_hashes: self.with_block_hashes,
+            bal_state: self.bal_state,
         }
     }
 
@@ -85,20 +79,11 @@ impl<DB: Database> StateBuilder<DB> {
     }
 
     /// With boxed version of database.
-    pub fn with_database_boxed<Error: DBErrorMarker + core::error::Error>(
+    pub fn with_database_boxed<Error: DBErrorMarker>(
         self,
         database: DBBox<'_, Error>,
     ) -> StateBuilder<DBBox<'_, Error>> {
         self.with_database(database)
-    }
-
-    /// By default state clear flag is enabled but for initial sync on mainnet
-    /// we want to disable it so proper consensus changes are in place.
-    pub fn without_state_clear(self) -> Self {
-        Self {
-            with_state_clear: false,
-            ..self
-        }
     }
 
     /// Allows setting prestate that is going to be used for execution.
@@ -127,11 +112,17 @@ impl<DB: Database> StateBuilder<DB> {
         }
     }
 
+    /// Conditionally makes transitions and updates bundle state.
+    pub fn with_bundle_update_if(self, enable: bool) -> Self {
+        Self {
+            with_bundle_update: enable,
+            ..self
+        }
+    }
+
     /// It will use different cache for the state.
     ///
     /// **Note**: If set, it will ignore bundle prestate.
-    ///
-    /// And will ignore `without_state_clear` flag as cache contains its own state_clear flag.
     ///
     /// This is useful for testing.
     pub fn with_cached_prestate(self, cache: CacheState) -> Self {
@@ -141,21 +132,32 @@ impl<DB: Database> StateBuilder<DB> {
         }
     }
 
-    /// Starts the thread that will take transitions and do merge to the bundle state
-    /// in the background.
-    pub fn with_background_transition_merge(self) -> Self {
-        Self {
-            with_background_transition_merge: true,
-            ..self
-        }
-    }
-
     /// Sets the block hashes for the state.
-    pub fn with_block_hashes(self, block_hashes: BTreeMap<u64, B256>) -> Self {
+    pub fn with_block_hashes(self, block_hashes: BlockHashCache) -> Self {
         Self {
             with_block_hashes: block_hashes,
             ..self
         }
+    }
+
+    /// With BAL.
+    pub fn with_bal(mut self, bal: Arc<Bal>) -> Self {
+        self.bal_state.bal = Some(bal);
+        self
+    }
+
+    /// With BAL builder.
+    pub fn with_bal_builder(mut self) -> Self {
+        self.bal_state.bal_builder = Some(Bal::new());
+        self
+    }
+
+    /// Conditionally set BAL builder based on the flag.
+    pub fn with_bal_builder_if(mut self, enable: bool) -> Self {
+        if enable {
+            self.bal_state.bal_builder = Some(Bal::new());
+        }
+        self
     }
 
     /// Builds the State with the configured settings.
@@ -167,14 +169,14 @@ impl<DB: Database> StateBuilder<DB> {
             self.with_bundle_prestate.is_some()
         };
         State {
-            cache: self
-                .with_cache_prestate
-                .unwrap_or_else(|| CacheState::new(self.with_state_clear)),
+            cache: self.with_cache_prestate.unwrap_or_default(),
             database: self.database,
             transition_state: self.with_bundle_update.then(TransitionState::default),
             bundle_state: self.with_bundle_prestate.unwrap_or_default(),
             use_preloaded_bundle,
             block_hashes: self.with_block_hashes,
+            bal_state: self.bal_state,
+            state_hook: None,
         }
     }
 }

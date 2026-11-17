@@ -215,16 +215,20 @@ fn history_writes_fill_the_ring_and_get_serves_the_window() {
     let first = handler
         .run_system_call(&mut evm)
         .expect("the first write executes");
-    assert_eq!(
-        first,
-        ExecutionResult::Success {
-            reason: SuccessReason::Stop,
-            gas_used: 22143,
-            gas_refunded: 0,
-            logs: vec![],
-            output: Output::Call(Bytes::default()),
-        }
+    assert!(
+        matches!(
+            &first,
+            ExecutionResult::Success {
+                reason: SuccessReason::Stop,
+                logs,
+                output: Output::Call(output),
+                ..
+            } if logs.is_empty() && output.is_empty()
+        ),
+        "{first:?}"
     );
+    assert_eq!(first.tx_gas_used(), 22143);
+    assert_eq!(first.gas().inner_refunded(), 0);
     let state = evm.finalize();
     assert_eq!(
         state.keys().copied().collect::<Vec<_>>(),

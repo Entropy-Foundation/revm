@@ -137,11 +137,11 @@ impl Default for GenesisTransactionGenerator {
 }
 
 impl GenesisTransactionGenerator {
-    fn new(address: Address) -> Self {
+    const fn new(address: Address) -> Self {
         Self::new_with_nonce(address, 0)
     }
 
-    fn new_with_nonce(address: Address, nonce: u64) -> Self {
+    const fn new_with_nonce(address: Address, nonce: u64) -> Self {
         Self { nonce, address }
     }
 

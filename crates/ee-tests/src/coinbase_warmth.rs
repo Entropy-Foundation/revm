@@ -82,8 +82,8 @@ fn coinbase_stays_warm_across_consecutive_txs() {
     evm.ctx.journal_mut().commit_tx();
 
     assert_eq!(
-        result1.gas_used(),
-        result2.gas_used(),
+        result1.tx_gas_used(),
+        result2.tx_gas_used(),
         "gas used must be identical for two identical contract calls in the same block - \
          COINBASE must be warm at the start of every transaction, per EIP-3651"
     );
@@ -117,12 +117,12 @@ fn ordinary_address_is_cold_every_tx() {
     evm.ctx.journal_mut().commit_tx();
 
     assert_eq!(
-        result1.gas_used(),
-        result2.gas_used(),
+        result1.tx_gas_used(),
+        result2.tx_gas_used(),
         "an ordinary address should cost the same (cold) in both transactions"
     );
     assert_eq!(
-        result1.gas_used(),
+        result1.tx_gas_used(),
         23603,
         "sanity: this must be the COLD BALANCE cost, not the warm one - otherwise this test \
          would pass even if the fix incorrectly made every address stay warm across transactions"

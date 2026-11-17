@@ -4,7 +4,8 @@ use database_interface::{
     BENCH_TARGET, BENCH_TARGET_BALANCE,
 };
 use primitives::{
-    hash_map::Entry, Address, HashMap, Log, StorageKey, StorageValue, B256, KECCAK_EMPTY, U256,
+    hash_map::Entry, Address, AddressMap, B256Map, HashMap, Log, StorageKey, StorageKeyMap,
+    StorageValue, U256Map, B256, KECCAK_EMPTY, U256,
 };
 use state::{Account, AccountInfo, Bytecode};
 use std::vec::Vec;
@@ -22,13 +23,13 @@ pub type InMemoryDB = CacheDB<EmptyDB>;
 pub struct Cache {
     /// Account info where None means it is not existing. Not existing state is needed for Pre TANGERINE forks.
     /// `code` is always `None`, and bytecode can be found in `contracts`.
-    pub accounts: HashMap<Address, DbAccount>,
+    pub accounts: AddressMap<DbAccount>,
     /// Tracks all contracts by their code hash.
-    pub contracts: HashMap<B256, Bytecode>,
+    pub contracts: B256Map<Bytecode>,
     /// All logs that were committed via [DatabaseCommit::commit].
     pub logs: Vec<Log>,
     /// All cached block hashes from the [DatabaseRef].
-    pub block_hashes: HashMap<U256, B256>,
+    pub block_hashes: U256Map<B256>,
 }
 
 impl Default for Cache {
@@ -84,6 +85,7 @@ impl<ExtDb> CacheDB<CacheDB<ExtDb>> {
                     block_hashes,
                 },
             db: mut inner,
+            ..
         } = self;
 
         inner.cache.accounts.extend(accounts);
@@ -140,6 +142,40 @@ impl<ExtDB> CacheDB<ExtDB> {
         }
     }
 
+    fn commit_account(&mut self, address: Address, mut account: Account) {
+        if !account.is_touched() {
+            return;
+        }
+        if account.is_selfdestructed() {
+            let db_account = self.cache.accounts.entry(address).or_default();
+            db_account.storage.clear();
+            db_account.account_state = AccountState::NotExisting;
+            db_account.info = AccountInfo::default();
+            return;
+        }
+        let is_newly_created = account.is_created();
+        self.insert_contract(&mut account.info);
+
+        let db_account = self.cache.accounts.entry(address).or_default();
+        db_account.info = account.info;
+
+        db_account.account_state = if is_newly_created {
+            db_account.storage.clear();
+            AccountState::StorageCleared
+        } else if db_account.account_state.is_storage_cleared() {
+            // Preserve old account state if it already exists
+            AccountState::StorageCleared
+        } else {
+            AccountState::Touched
+        };
+        db_account.storage.extend(
+            account
+                .storage
+                .into_iter()
+                .map(|(key, value)| (key, value.present_value())),
+        );
+    }
+
     /// Wraps the cache in a [CacheDB], creating a nested cache.
     pub fn nest(self) -> CacheDB<Self> {
         CacheDB::new(self)
@@ -181,49 +217,112 @@ impl<ExtDB: DatabaseRef> CacheDB<ExtDB> {
     pub fn replace_account_storage(
         &mut self,
         address: Address,
-        storage: HashMap<StorageKey, StorageValue>,
+        storage: StorageKeyMap<StorageValue>,
     ) -> Result<(), ExtDB::Error> {
         let account = self.load_account(address)?;
         account.account_state = AccountState::StorageCleared;
         account.storage = storage.into_iter().collect();
         Ok(())
     }
+
+    /// Pretty print the cache DB for debugging purposes.
+    #[cfg(feature = "std")]
+    pub fn pretty_print(&self) -> String {
+        let mut output = String::new();
+        output.push_str("CacheDB:\n");
+        output.push_str(&format!(
+            "  accounts: {} total\n",
+            self.cache.accounts.len()
+        ));
+
+        // Sort accounts by address for deterministic output
+        let mut accounts: Vec<_> = self.cache.accounts.iter().collect();
+        accounts.sort_by_key(|(addr, _)| *addr);
+
+        for (address, db_account) in accounts {
+            output.push_str(&format!("  [{address}]:\n"));
+            output.push_str(&format!("    state: {:?}\n", db_account.account_state));
+
+            if let Some(info) = db_account.info() {
+                output.push_str(&format!("    balance: {}\n", info.balance));
+                output.push_str(&format!("    nonce: {}\n", info.nonce));
+                output.push_str(&format!("    code_hash: {}\n", info.code_hash));
+
+                if let Some(code) = info.code {
+                    if !code.is_empty() {
+                        output.push_str(&format!("    code: {} bytes\n", code.len()));
+                    }
+                }
+            } else {
+                output.push_str("    account: None (not existing)\n");
+            }
+
+            if !db_account.storage.is_empty() {
+                output.push_str(&format!(
+                    "    storage: {} slots\n",
+                    db_account.storage.len()
+                ));
+                let mut storage: Vec<_> = db_account.storage.iter().collect();
+                storage.sort_by_key(|(k, _)| *k);
+                for (key, value) in storage {
+                    output.push_str(&format!("      [{key:#x}]: {value:#x}\n"));
+                }
+            }
+        }
+
+        if !self.cache.contracts.is_empty() {
+            output.push_str(&format!(
+                "  contracts: {} total\n",
+                self.cache.contracts.len()
+            ));
+            let mut contracts: Vec<_> = self.cache.contracts.iter().collect();
+            contracts.sort_by_key(|(h, _)| *h);
+            for (hash, bytecode) in contracts {
+                output.push_str(&format!("    [{hash}]: {} bytes\n", bytecode.len()));
+            }
+        }
+
+        // Print logs in detail: index, address and number of topics.
+        if !self.cache.logs.is_empty() {
+            output.push_str(&format!("  logs: {} total\n", self.cache.logs.len()));
+            for (i, log) in self.cache.logs.iter().enumerate() {
+                // Print address and topics count. We avoid printing raw data to keep output compact.
+                output.push_str(&format!(
+                    "    [{i}]: address: {:?}, topics: {}\n",
+                    log.address,
+                    log.data.topics().len()
+                ));
+            }
+        }
+
+        // Print block_hashes entries (sorted by block number) with their hash.
+        if !self.cache.block_hashes.is_empty() {
+            output.push_str(&format!(
+                "  block_hashes: {} total\n",
+                self.cache.block_hashes.len()
+            ));
+            let mut block_hashes: Vec<_> = self.cache.block_hashes.iter().collect();
+            block_hashes.sort_by_key(|(num, _)| *num);
+            for (num, hash) in block_hashes {
+                output.push_str(&format!("    [{num}]: {hash}\n"));
+            }
+        }
+
+        output.push_str("}\n");
+        output
+    }
 }
 
 impl<ExtDB> DatabaseCommit for CacheDB<ExtDB> {
-    fn commit(&mut self, changes: HashMap<Address, Account>) {
-        for (address, mut account) in changes {
-            if !account.is_touched() {
-                continue;
-            }
-            if account.is_selfdestructed() {
-                let db_account = self.cache.accounts.entry(address).or_default();
-                db_account.storage.clear();
-                db_account.account_state = AccountState::NotExisting;
-                db_account.info = AccountInfo::default();
-                continue;
-            }
-            let is_newly_created = account.is_created();
-            self.insert_contract(&mut account.info);
+    fn commit(&mut self, changes: AddressMap<Account>) {
+        for (address, account) in changes {
+            self.commit_account(address, account);
+        }
+    }
 
-            let db_account = self.cache.accounts.entry(address).or_default();
-            db_account.info = account.info;
-
-            db_account.account_state = if is_newly_created {
-                db_account.storage.clear();
-                AccountState::StorageCleared
-            } else if db_account.account_state.is_storage_cleared() {
-                // Preserve old account state if it already exists
-                AccountState::StorageCleared
-            } else {
-                AccountState::Touched
-            };
-            db_account.storage.extend(
-                account
-                    .storage
-                    .into_iter()
-                    .map(|(key, value)| (key, value.present_value())),
-            );
+    fn commit_iter(&mut self, changes: &mut dyn Iterator<Item = (Address, Account)>) {
+        for (address, account) in changes {
+            self.commit_account(address, account);
         }
     }
 }
@@ -232,19 +331,7 @@ impl<ExtDB: DatabaseRef> Database for CacheDB<ExtDB> {
     type Error = ExtDB::Error;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        let basic = match self.cache.accounts.entry(address) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => entry.insert(
-                self.db
-                    .basic_ref(address)?
-                    .map(|info| DbAccount {
-                        info,
-                        ..Default::default()
-                    })
-                    .unwrap_or_else(DbAccount::new_not_existing),
-            ),
-        };
-        Ok(basic.info())
+        Ok(self.load_account(address)?.info())
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
@@ -370,7 +457,7 @@ pub struct DbAccount {
     /// If account is selfdestructed or newly created, storage will be cleared.
     pub account_state: AccountState,
     /// Storage slots
-    pub storage: HashMap<StorageKey, StorageValue>,
+    pub storage: StorageKeyMap<StorageValue>,
 }
 
 impl DbAccount {
@@ -399,7 +486,7 @@ impl DbAccount {
 
     /// Updates the account state.
     #[inline(always)]
-    pub fn update_account_state(&mut self, account_state: AccountState) {
+    pub const fn update_account_state(&mut self, account_state: AccountState) {
         self.account_state = account_state;
     }
 }
@@ -439,7 +526,7 @@ pub enum AccountState {
 
 impl AccountState {
     /// Returns `true` if EVM cleared storage of this account
-    pub fn is_storage_cleared(&self) -> bool {
+    pub const fn is_storage_cleared(&self) -> bool {
         matches!(self, AccountState::StorageCleared)
     }
 }
@@ -468,6 +555,7 @@ impl Database for BenchmarkDB {
                 balance: BENCH_TARGET_BALANCE,
                 code: Some(self.0.clone()),
                 code_hash: self.1,
+                ..Default::default()
             }));
         }
         if address == BENCH_CALLER {
@@ -476,14 +564,19 @@ impl Database for BenchmarkDB {
                 balance: BENCH_CALLER_BALANCE,
                 code: None,
                 code_hash: KECCAK_EMPTY,
+                ..Default::default()
             }));
         }
         Ok(None)
     }
 
     /// Get account code by its hash
-    fn code_by_hash(&mut self, _code_hash: B256) -> Result<Bytecode, Self::Error> {
-        Ok(Bytecode::default())
+    fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        if code_hash == self.1 {
+            Ok(self.0.clone())
+        } else {
+            Ok(Bytecode::default())
+        }
     }
 
     /// Get storage value of address at index.
@@ -504,9 +597,9 @@ impl Database for BenchmarkDB {
 #[cfg(test)]
 mod tests {
     use super::{CacheDB, EmptyDB};
-    use database_interface::Database;
+    use database_interface::{Database, DatabaseCommit};
     use primitives::{Address, HashMap, StorageKey, StorageValue};
-    use state::AccountInfo;
+    use state::{Account, AccountInfo, EvmStorageSlot, TransactionId};
 
     #[test]
     fn test_insert_account_storage() {
@@ -558,6 +651,80 @@ mod tests {
         assert_eq!(new_state.basic(account).unwrap().unwrap().nonce, nonce);
         assert_eq!(new_state.storage(account, key0), Ok(StorageValue::ZERO));
         assert_eq!(new_state.storage(account, key1), Ok(value1));
+    }
+
+    #[test]
+    fn commit_iter_applies_repeated_account_updates_in_order() {
+        let address = Address::with_last_byte(42);
+        let key = StorageKey::from(123);
+        let value = StorageValue::from(456);
+        let mut db = CacheDB::new(EmptyDB::default());
+
+        let first = Account::from(AccountInfo {
+            nonce: 1,
+            ..Default::default()
+        })
+        .with_touched_mark()
+        .with_storage(
+            [(
+                key,
+                EvmStorageSlot::new_changed(StorageValue::ZERO, value, TransactionId::ZERO),
+            )]
+            .into_iter(),
+        );
+        let second = Account::from(AccountInfo {
+            nonce: 2,
+            ..Default::default()
+        })
+        .with_touched_mark();
+
+        db.commit_iter(&mut [(address, first), (address, second)].into_iter());
+
+        assert_eq!(db.basic(address).unwrap().unwrap().nonce, 2);
+        assert_eq!(db.storage(address, key), Ok(value));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_pretty_print_cachedb() {
+        use primitives::{Bytes, Log, LogData, B256, U256};
+
+        let account = Address::with_last_byte(55);
+        let mut cachedb = CacheDB::new(EmptyDB::default());
+        cachedb.insert_account_info(
+            account,
+            AccountInfo {
+                nonce: 7,
+                ..Default::default()
+            },
+        );
+        let key = StorageKey::from(1);
+        let value = StorageValue::from(2);
+        cachedb.insert_account_storage(account, key, value).unwrap();
+
+        // Add a log entry
+        let log = Log {
+            address: account,
+            data: LogData::new(Vec::new(), Bytes::from(vec![0x01u8]))
+                .expect("LogData should have <=4 topics"),
+        };
+        cachedb.cache.logs.push(log);
+
+        // Add a block hash entry
+        cachedb
+            .cache
+            .block_hashes
+            .insert(U256::from(123u64), B256::from([1u8; 32]));
+
+        let s = cachedb.pretty_print();
+        assert!(s.contains("CacheDB:"));
+        assert!(s.contains("accounts: 1 total"));
+        // storage line is expected to be present for the account
+        assert!(s.contains("storage: 1 slots"));
+
+        // logs and block_hashes should be reported with counts
+        assert!(s.contains("logs: 1 total"));
+        assert!(s.contains("block_hashes: 1 total"));
     }
 
     #[cfg(feature = "serde")]

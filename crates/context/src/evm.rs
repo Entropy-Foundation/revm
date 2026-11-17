@@ -1,6 +1,8 @@
 //! This module contains [`Evm`] struct.
-use core::fmt::Debug;
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt::Debug,
+    ops::{Deref, DerefMut},
+};
 
 use context_interface::FrameStack;
 
@@ -20,9 +22,12 @@ pub struct Evm<CTX, INSP, I, P, F> {
     pub precompiles: P,
     /// Frame that is going to be executed.
     pub frame_stack: FrameStack<F>,
+    /// Reusable async execution stack.
+    #[cfg(feature = "asyncdb")]
+    pub async_stack: database_interface::async_db::FiberStack,
 }
 
-impl<CTX, I, P, F> Evm<CTX, (), I, P, F> {
+impl<CTX, I, P, F: Default> Evm<CTX, (), I, P, F> {
     /// Create a new EVM instance with a given context, instruction set, and precompile provider.
     ///
     /// Inspector will be set to `()`.
@@ -32,12 +37,14 @@ impl<CTX, I, P, F> Evm<CTX, (), I, P, F> {
             inspector: (),
             instruction,
             precompiles,
-            frame_stack: FrameStack::new(),
+            frame_stack: FrameStack::new_prealloc(8),
+            #[cfg(feature = "asyncdb")]
+            async_stack: database_interface::async_db::FiberStack::default(),
         }
     }
 }
 
-impl<CTX, I, INSP, P, F> Evm<CTX, INSP, I, P, F> {
+impl<CTX, I, INSP, P, F: Default> Evm<CTX, INSP, I, P, F> {
     /// Create a new EVM instance with a given context, inspector, instruction set, and precompile provider.
     pub fn new_with_inspector(ctx: CTX, inspector: INSP, instruction: I, precompiles: P) -> Self {
         Evm {
@@ -45,7 +52,9 @@ impl<CTX, I, INSP, P, F> Evm<CTX, INSP, I, P, F> {
             inspector,
             instruction,
             precompiles,
-            frame_stack: FrameStack::new(),
+            frame_stack: FrameStack::new_prealloc(8),
+            #[cfg(feature = "asyncdb")]
+            async_stack: database_interface::async_db::FiberStack::default(),
         }
     }
 }
@@ -60,6 +69,8 @@ impl<CTX, INSP, I, P, F> Evm<CTX, INSP, I, P, F> {
             instruction: self.instruction,
             precompiles: self.precompiles,
             frame_stack: self.frame_stack,
+            #[cfg(feature = "asyncdb")]
+            async_stack: self.async_stack,
         }
     }
 
@@ -71,6 +82,8 @@ impl<CTX, INSP, I, P, F> Evm<CTX, INSP, I, P, F> {
             instruction: self.instruction,
             precompiles,
             frame_stack: self.frame_stack,
+            #[cfg(feature = "asyncdb")]
+            async_stack: self.async_stack,
         }
     }
 

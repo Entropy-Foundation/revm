@@ -276,7 +276,7 @@ pub enum AutomationRecordAction {
 
 impl AutomationRecordAction {
     /// Crate process action with provided cycle index and list of task indexes to be processed.
-    pub fn process(cycle_index: u64, task_indexes: Vec<u64>) -> Self {
+    pub const fn process(cycle_index: u64, task_indexes: Vec<u64>) -> Self {
         Self::Process(processTasksCall {
             _cycleIndex: cycle_index,
             _taskIndexes: task_indexes,
@@ -311,7 +311,7 @@ impl AutomationRecordAction {
     }
 
     /// Number of tasks to be handled by action.
-    pub fn task_count(&self) -> usize {
+    pub const fn task_count(&self) -> usize {
         match self {
             AutomationRecordAction::Process(task) => task._taskIndexes.len(),
             AutomationRecordAction::Remove { .. } => 1,
@@ -372,7 +372,7 @@ pub struct AutomationRecordBuilder {
 #[allow(missing_docs)]
 impl AutomationRecordBuilder {
     /// New builder with the target address as input.
-    pub fn new(to: Address) -> Self {
+    pub const fn new(to: Address) -> Self {
         Self {
             to,
             chain_id: None,
@@ -382,17 +382,17 @@ impl AutomationRecordBuilder {
             action: None,
         }
     }
-    pub fn with_block_height(mut self, block_height: u64) -> Self {
+    pub const fn with_block_height(mut self, block_height: u64) -> Self {
         self.block_height = Some(block_height);
         self
     }
 
-    pub fn with_nonce(mut self, nonce: u64) -> Self {
+    pub const fn with_nonce(mut self, nonce: u64) -> Self {
         self.nonce = Some(nonce);
         self
     }
 
-    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+    pub const fn with_gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
     }
@@ -418,13 +418,13 @@ impl AutomationRecordBuilder {
         self
     }
 
-    pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
+    pub const fn with_chain_id(mut self, chain_id: ChainId) -> Self {
         self.chain_id = Some(chain_id);
         self
     }
 
     /// Returns the action set on this builder so far, if any.
-    pub fn action(&self) -> &Option<AutomationRecordAction> {
+    pub const fn action(&self) -> &Option<AutomationRecordAction> {
         &self.action
     }
 

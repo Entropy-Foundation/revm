@@ -14,10 +14,14 @@ pub mod local;
 pub mod result;
 pub mod transaction;
 
+pub use database_interface;
+pub use primitives;
+pub use state;
+
 pub use block::Block;
 pub use cfg::{Cfg, CreateScheme, ExecutionMode, TransactTo};
 pub use context::{ContextError, ContextSetters, ContextTr};
-pub use database_interface::{DBErrorMarker, Database};
+pub use database_interface::{erased_error::ErasedError, DBErrorMarker, Database};
 pub use either;
 pub use host::{DummyHost, Host};
 pub use journaled_state::JournalTr;

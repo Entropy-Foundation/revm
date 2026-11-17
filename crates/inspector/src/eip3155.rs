@@ -1,5 +1,4 @@
-use crate::inspectors::GasInspector;
-use crate::Inspector;
+use crate::{inspectors::GasInspector, Inspector};
 use context::{Cfg, ContextTr, JournalTr, Transaction};
 use interpreter::{
     interpreter_types::{Jumps, LoopControl, MemoryTr, StackTr},
@@ -21,9 +20,10 @@ pub struct TracerEip3155 {
     pc: u64,
     opcode: u8,
     gas: u64,
+    reservoir: u64,
+    state_gas: u64,
     refunded: i64,
     mem_size: usize,
-    skip: bool,
     include_memory: bool,
     memory: Option<String>,
 }
@@ -37,9 +37,10 @@ impl std::fmt::Debug for TracerEip3155 {
             .field("pc", &self.pc)
             .field("opcode", &self.opcode)
             .field("gas", &self.gas)
+            .field("reservoir", &self.reservoir)
+            .field("state_gas", &self.state_gas)
             .field("refunded", &self.refunded)
             .field("mem_size", &self.mem_size)
-            .field("skip", &self.skip)
             .field("include_memory", &self.include_memory)
             .field("memory", &self.memory)
             .finish()
@@ -54,18 +55,27 @@ struct Output<'a> {
     // Required fields:
     /// Program counter
     pc: u64,
+    /// Depth of the call stack
+    depth: u64,
+    /// Name of the operation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    op_name: Option<&'static str>,
     /// OpCode
     op: u8,
     /// Gas left before executing this operation
     #[serde(serialize_with = "serde_hex_u64")]
     gas: u64,
+    /// State gas reservoir (EIP-8037)
+    #[serde(serialize_with = "serde_hex_u64")]
+    reservoir: u64,
+    /// State gas spent (EIP-8037)
+    #[serde(serialize_with = "serde_hex_u64")]
+    state_gas: u64,
     /// Gas cost of this operation
     #[serde(serialize_with = "serde_hex_u64")]
     gas_cost: u64,
     /// Array of all values on the stack
     stack: &'a [U256],
-    /// Depth of the call stack
-    depth: u64,
     /// Data returned by the function call
     return_data: &'static str,
     /// Amount of **global** gas refunded
@@ -76,9 +86,6 @@ struct Output<'a> {
     mem_size: u64,
 
     // Optional fields:
-    /// Name of the operation
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    op_name: Option<&'static str>,
     /// Description of an error (should contain revert reason if supported)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -141,9 +148,10 @@ impl TracerEip3155 {
             pc: 0,
             opcode: 0,
             gas: 0,
+            reservoir: 0,
+            state_gas: 0,
             refunded: 0,
             mem_size: 0,
-            skip: false,
         }
     }
 
@@ -153,13 +161,13 @@ impl TracerEip3155 {
     }
 
     /// Don't include a summary at the end of the trace
-    pub fn without_summary(mut self) -> Self {
+    pub const fn without_summary(mut self) -> Self {
         self.print_summary = false;
         self
     }
 
     /// Include a memory field for each step. This significantly increases processing time and output size.
-    pub fn with_memory(mut self) -> Self {
+    pub const fn with_memory(mut self) -> Self {
         self.include_memory = true;
         self
     }
@@ -174,9 +182,10 @@ impl TracerEip3155 {
             pc,
             opcode,
             gas,
+            reservoir,
+            state_gas,
             refunded,
             mem_size,
-            skip,
             ..
         } = self;
         *gas_inspector = GasInspector::new();
@@ -184,9 +193,10 @@ impl TracerEip3155 {
         *pc = 0;
         *opcode = 0;
         *gas = 0;
+        *reservoir = 0;
+        *state_gas = 0;
         *refunded = 0;
         *mem_size = 0;
-        *skip = false;
     }
 
     fn print_summary(&mut self, result: &InterpreterResult, context: &mut impl ContextTr) {
@@ -245,20 +255,22 @@ where
         self.opcode = interp.bytecode.opcode();
         self.mem_size = interp.memory.size();
         self.gas = interp.gas.remaining();
+        self.reservoir = interp.gas.reservoir();
+        // Clamp to 0: EIP-8037 allows state_gas_spent to briefly go negative
+        // within a child frame (0→x→0 restoration); the tracer exposes it as a
+        // u64 counter.
+        self.state_gas = interp.gas.state_gas_spent().max(0) as u64;
         self.refunded = interp.gas.refunded();
     }
 
     fn step_end(&mut self, interp: &mut Interpreter<INTR>, context: &mut CTX) {
-        self.gas_inspector.step_end(&mut interp.gas);
-        if self.skip {
-            self.skip = false;
-            return;
-        }
-
+        self.gas_inspector.step_end(&interp.gas);
         let value = Output {
             pc: self.pc,
             op: self.opcode,
             gas: self.gas,
+            reservoir: self.reservoir,
+            state_gas: self.state_gas,
             gas_cost: self.gas_inspector.last_gas_cost(),
             stack: &self.stack,
             depth: context.journal_mut().depth() as u64,

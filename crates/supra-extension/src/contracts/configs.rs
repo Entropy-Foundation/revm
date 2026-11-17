@@ -227,7 +227,7 @@ pub enum AutomationRegistryConfig {
 
 impl AutomationRegistryConfig {
     /// Returns [AutomationRegistryConfigV1] if the variant is [Self::V1]
-    pub fn v1(&self) -> Option<&AutomationRegistryConfigV1> {
+    pub const fn v1(&self) -> Option<&AutomationRegistryConfigV1> {
         let Self::V1(config) = self;
         Some(config)
     }
