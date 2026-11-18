@@ -132,6 +132,15 @@ library LibRegistry {
         if (!s.registrationEnabled) { revert IRegistryFacet.RegistrationDisabled(); }
 
         if (!LibCommon.isCycleStarted()) { revert IRegistryFacet.CycleTransitionInProgress(); }
+        // A cycle whose end time has been reached accepts no registration, although its state is
+        // still STARTED until monitorCycleEnd identifies the end. In normal operation no block
+        // registers in that state: monitorCycleEnd runs first in every block and moves the cycle
+        // out of STARTED in the block that reaches the end time. The check keeps
+        // RegistryState.orderedTaskIds from growing in the blocks after a monitorCycleEnd call
+        // that failed at the end time, where no per-block compaction runs either, so that one
+        // successful call recovers (Entropy-Foundation/smr-moonshot#4920). _regTime is
+        // block.timestamp (see the callers).
+        if (_regTime >= LibCommon.getCycleEndTime()) { revert IRegistryFacet.CycleEndReached(); }
 
         // Validate inputs (including the _maxGasAmount == 0 check) before validatePredicate,
         // since validatePredicate's staticcall is gas-limited to _maxGasAmount: with

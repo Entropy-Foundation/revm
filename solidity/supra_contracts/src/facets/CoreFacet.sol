@@ -61,9 +61,12 @@ contract CoreFacet is ICoreFacet, IFacetSelectors {
     ///      registry capacity plus one block's registrations (Entropy-Foundation/smr-moonshot#4920).
     ///      It must run in every block, not only at the cycle end, for that bound to hold; do not
     ///      move it behind the cycle-end check. The bound also assumes this call succeeds in every
-    ///      block: a block whose call fails leaves its registrations uncompacted, so the next
-    ///      scan can cover up to 4C/3 + 2C entries. Register it in BlockMeta with headroom over
-    ///      the figures in AUTOMATION_REGISTRY_GAS_GUIDE.md ("Trigger calls") for that reason.
+    ///      block. A block before the cycle's end time whose call fails leaves its registrations
+    ///      uncompacted, so the next scan can cover up to 4C/3 + 2C entries. From the end time on,
+    ///      registration is refused (LibRegistry, CycleEndReached), so a call that fails at the
+    ///      cycle end leaves the list as it is, and the first call that succeeds processes the end.
+    ///      Register it in BlockMeta with headroom over the figures in
+    ///      AUTOMATION_REGISTRY_GAS_GUIDE.md ("Trigger calls") for that reason.
     function monitorCycleEnd() external {
         tx.origin.enforceIsVmSigner();
 

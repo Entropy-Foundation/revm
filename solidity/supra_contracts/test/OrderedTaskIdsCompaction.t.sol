@@ -78,14 +78,28 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         }
     }
 
-    /// @dev Moves to the next block and cancels alice's PENDING tasks `_taskIds` there, which
-    ///      removes them from the registry. The block changes first because an owner cannot remove
-    ///      a task in the block it was registered in (LibRegistry.requireRegisteredBeforeThisBlock).
-    ///      The cancellation (1 s later) stays far within the 1,200 s test cycle.
-    function _cancel(uint64[] memory _taskIds) internal {
+    /// @dev Moves to the next block and runs its prologue (monitorCycleEnd), as the chain does
+    ///      before any transaction of a block. Every test here advances blocks through this
+    ///      helper, so the list is always seen in the states the chain produces. A block is 1 s,
+    ///      far within the 1,200 s test cycle.
+    function _nextBlockWithPrologue() internal {
         nextBlock();
+        _monitor();
+    }
+
+    /// @dev Cancels alice's PENDING tasks `_taskIds` in the current block, which removes them from
+    ///      the registry. The tasks must have been registered in an earlier block
+    ///      (LibRegistry.requireRegisteredBeforeThisBlock).
+    function _cancelNow(uint64[] memory _taskIds) internal {
         vm.prank(alice);
         IRegistryFacet(diamondAddr).cancelTasks(_taskIds);
+    }
+
+    /// @dev Moves to the next block, runs its prologue, then cancels `_taskIds` there. The block
+    ///      changes first because an owner cannot remove a task in the block it was registered in.
+    function _cancel(uint64[] memory _taskIds) internal {
+        _nextBlockWithPrologue();
+        _cancelNow(_taskIds);
     }
 
     /// @dev Cancels the single task `_id`.
@@ -94,7 +108,8 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
     }
 
     /// @dev Calls monitorCycleEnd as the VM signer, as BlockMeta's prologue does, at the current
-    ///      block time (so within the cycle unless the test warped past its end).
+    ///      block time (so within the cycle unless the test warped past its end). Tests call it
+    ///      through _nextBlockWithPrologue; a direct call is a second prologue in the same block.
     function _monitor() internal {
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
@@ -137,7 +152,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         _fundAlice(3);
         _registerUsts(3);
 
-        _monitor();
+        _nextBlockWithPrologue();
 
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 1, 2), "list after monitorCycleEnd");
     }
@@ -148,7 +163,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         _registerUsts(5);
         _cancelOne(0);
 
-        _monitor();
+        _nextBlockWithPrologue();
 
         // The removed task 0 stays in the list: 4 live out of 5 entries is above three quarters.
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 1, 2, 3, 4), "list after monitorCycleEnd");
@@ -161,7 +176,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         _registerUsts(4);
         _cancelOne(1);
 
-        _monitor();
+        _nextBlockWithPrologue();
 
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 2, 3), "list after monitorCycleEnd");
     }
@@ -171,12 +186,11 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         _fundAlice(5);
         _registerUsts(5);
         _cancelOne(0);
-        _monitor();
+        _nextBlockWithPrologue();
         assertEq(readOrderedTaskIds(diamondAddr).length, 5, "kept below the threshold");
 
-        nextBlock();
         _cancelOne(3);
-        _monitor();
+        _nextBlockWithPrologue();
 
         // 3 live out of 5 entries: two fifths removed.
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(1, 2, 4), "list after the second removal");
@@ -195,14 +209,13 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         toCancel[0] = 1; toCancel[1] = 3; toCancel[2] = 6;
         _cancel(toCancel);
 
-        _monitor();
+        _nextBlockWithPrologue();
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 2, 4, 5, 7), "first compaction");
 
-        nextBlock();
-        _registerUsts(2);                       // 8, 9
+        _registerUsts(2);                       // 8, 9, after this block's compaction
         toCancel[0] = 0; toCancel[1] = 2; toCancel[2] = 4;
         _cancel(toCancel);
-        _monitor();
+        _nextBlockWithPrologue();
 
         // 4 live (5, 7, 8, 9) out of 7 entries.
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(5, 7, 8, 9), "second compaction");
@@ -214,7 +227,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         _fundAlice(2);
         _cancel(_registerUsts(2));
 
-        _monitor();
+        _nextBlockWithPrologue();
 
         assertEq(readOrderedTaskIds(diamondAddr).length, 0, "list after monitorCycleEnd");
     }
@@ -226,7 +239,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         uint64[] memory toCancel = new uint64[](3);
         toCancel[0] = 0; toCancel[1] = 2; toCancel[2] = 4;
         _cancel(toCancel);
-        _monitor();
+        _nextBlockWithPrologue();
 
         endCycleAsVmSigner(diamondAddr);
 
@@ -257,7 +270,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         _fundAlice(5);
         _registerUsts(5);                       // 0..4
         _cancelOne(2);                          // 1 of 5 removed: below a quarter
-        _monitor();
+        _nextBlockWithPrologue();
         assertEq(readOrderedTaskIds(diamondAddr).length, 5, "kept by the per-block compaction");
 
         endCycleAsVmSigner(diamondAddr);
@@ -333,49 +346,54 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
     // ────────────────────────────────────────────────────────────────────────
 
     /// @notice Registering and cancelling tasks in every block of a cycle keeps the list within
-    ///         the live count plus one block's registrations, and the cycle-end scan walks only
-    ///         that much.
+    ///         what the prologue left plus one block's registrations, and the cycle-end scan
+    ///         expects only the live tasks. Each block runs as on the chain: the prologue first,
+    ///         then the removal of the tasks registered in the previous block, then new
+    ///         registrations, which is the sequence the one-block growth bound is about.
     function testMonitorCycleEnd_ChurnInEveryBlockKeepsListBounded() public {
         uint256 baseTasks = 5;
         uint256 perBlock = 10;
         uint256 blocks = 30;
         _fundAlice(baseTasks + perBlock * blocks);
         _registerUsts(baseTasks);
+        uint64[] memory previous = new uint64[](0);
 
         for (uint256 b; b < blocks; b++) {
-            nextBlock();
-            // The prologue runs first in a block, then the block's own transactions.
-            _monitor();
+            _nextBlockWithPrologue();
             _assertListMatchesRegistry("after the prologue");
-            _cancel(_registerUsts(perBlock));
-            // Before the next prologue the list holds at most the previous bound plus this
-            // block's registrations.
-            assertLe(readOrderedTaskIds(diamondAddr).length, (4 * baseTasks) / 3 + 1 + perBlock, "within one block's growth");
+            uint256 afterPrologue = readOrderedTaskIds(diamondAddr).length;
+
+            if (previous.length > 0) { _cancelNow(previous); }
+            previous = _registerUsts(perBlock);
+
+            // Removals add no entry; only this block's registrations do.
+            assertEq(readOrderedTaskIds(diamondAddr).length, afterPrologue + perBlock, "one block's growth");
         }
 
+        _cancel(previous);
         endCycleAsVmSigner(diamondAddr);
         LibCommon.CycleDetails memory details = ICoreViewFacet(diamondAddr).getCycleStateDetails();
         assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 1, 2, 3, 4), "expected tasks at the cycle end");
     }
 
     /// forge-config: default.fuzz.runs = 64
-    /// @notice For random register/cancel sequences over several blocks, every monitorCycleEnd
-    ///         leaves the list ascending, holding exactly the live tasks, and with fewer than a
-    ///         quarter removed entries unless it equals the live list.
+    /// @notice For random register/cancel sequences over several blocks, every prologue leaves
+    ///         the list ascending, holding exactly the live tasks, and with fewer than a quarter
+    ///         removed entries unless it equals the live list. Each block runs the prologue, then
+    ///         cancels a random subset of the tasks registered in earlier blocks, then registers.
     function testFuzz_MonitorCycleEnd_ListInvariantHolds(uint256 _seed) public {
         uint256 blocks = 8;
         uint256 maxRegistrationsPerBlock = 6;
         _fundAlice(blocks * maxRegistrationsPerBlock);
 
         for (uint256 b; b < blocks; b++) {
-            nextBlock();
-            _monitor();
+            _nextBlockWithPrologue();
             _assertListMatchesRegistry(string.concat("block ", vm.toString(b)));
 
             uint256 r = uint256(keccak256(abi.encode(_seed, b)));
-            _registerUsts(r % (maxRegistrationsPerBlock + 1));
 
-            // Cancel each live task with probability 1/3, chosen from further bits of `r`.
+            // Every live task was registered in an earlier block, since this block has not
+            // registered yet. Cancel each with probability 1/3, chosen from further bits of `r`.
             uint256[] memory live = IRegistryViewFacet(diamondAddr).getTaskIdList();
             uint64[] memory buffer = new uint64[](live.length);
             uint256 n;
@@ -389,12 +407,13 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
             if (n > 0) {
                 uint64[] memory toCancel = new uint64[](n);
                 for (uint256 i; i < n; i++) { toCancel[i] = buffer[i]; }
-                _cancel(toCancel);
+                _cancelNow(toCancel);
             }
+
+            _registerUsts(r % (maxRegistrationsPerBlock + 1));
         }
 
-        nextBlock();
-        _monitor();
+        _nextBlockWithPrologue();
         _assertListMatchesRegistry("final block");
     }
 
@@ -402,20 +421,22 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
     // Growth of one block
     // ────────────────────────────────────────────────────────────────────────
 
-    /// @notice One block adds at most the capacity to the list: with every slot freed by removing
-    ///         tasks of earlier blocks, the block registers up to the capacity, and a further
-    ///         registration finds no slot because the tasks it just registered cannot be removed.
+    /// @notice One block adds at most the capacity to the list. The block runs its prologue,
+    ///         removes every task of earlier blocks, freeing every slot, and registers up to the
+    ///         capacity. A further registration finds no slot, because the tasks it has just
+    ///         registered cannot be removed in that block. The next prologue then compacts the
+    ///         list back to the live tasks.
     function testOneBlockAddsAtMostTheCapacity() public {
         uint256 capacity = defaultParams.taskCapacity;
         _fundAlice(2 * capacity);
 
         uint64[] memory earlier = _registerUsts(capacity);
-        _cancel(earlier);                       // next block: every slot free again
-        _monitor();
-        assertEq(readOrderedTaskIds(diamondAddr).length, 0, "compacted at the start of the block");
+        _nextBlockWithPrologue();
+        assertEq(readOrderedTaskIds(diamondAddr).length, capacity, "full registry at the start of the block");
 
+        _cancelNow(earlier);                    // every slot free again
         uint64[] memory current = _registerUsts(capacity);
-        assertEq(readOrderedTaskIds(diamondAddr).length, capacity, "the block filled the capacity");
+        assertEq(readOrderedTaskIds(diamondAddr).length, 2 * capacity, "the block added the capacity");
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IRegistryFacet.TaskRemovalInRegistrationBlock.selector, current[0]));
@@ -430,7 +451,69 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
             uint64(block.timestamp + TASK_DURATION),
             uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData
         );
-        assertEq(readOrderedTaskIds(diamondAddr).length, capacity, "no entry beyond the capacity");
+        assertEq(readOrderedTaskIds(diamondAddr).length, 2 * capacity, "no entry beyond the capacity");
+
+        _nextBlockWithPrologue();
+        assertEqUint64Array(readOrderedTaskIds(diamondAddr), current, "compacted to this block's tasks");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Registration once the cycle's end time is reached
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// @dev Registers one task as alice with the default parameters, expecting the revert
+    ///      `_revertData`.
+    function _expectRegisterRevert(bytes memory _revertData) internal {
+        bytes[] memory auxData;
+        vm.prank(alice);
+        vm.expectRevert(_revertData);
+        IRegistryFacet(diamondAddr).register(
+            createPayload(0, address(wsupra), abi.encodeCall(wsupra.withdraw, 100)),
+            createPredicate(diamondAddr),
+            uint64(block.timestamp + TASK_DURATION),
+            uint128(100_000), uint128(4 gwei), uint128(60.1 ether), 2, auxData
+        );
+    }
+
+    /// @notice Registration is accepted up to the second before the cycle's end time and refused
+    ///         from the end time on, while the cycle is still STARTED because no monitorCycleEnd
+    ///         has processed the end yet.
+    function testRegister_RefusedFromTheCycleEndTime() public {
+        _fundAlice(2);
+        (, uint64 start, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
+
+        vm.warp(start + duration - 1);
+        _registerUst(TASK_DURATION);
+
+        vm.warp(start + duration);
+        (, , , LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
+        assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "end not processed yet");
+        _expectRegisterRevert(abi.encodeWithSelector(IRegistryFacet.CycleEndReached.selector));
+    }
+
+    /// @notice When the prologue's call fails at the cycle end (modelled by blocks with no
+    ///         monitorCycleEnd), the list does not grow in the following blocks: registration is
+    ///         refused, and removals add no entry. The first call that succeeds processes the end
+    ///         and expects only the live tasks.
+    function testMonitorCycleEnd_ListDoesNotGrowAfterTheEndTimeUntilTheEndIsProcessed() public {
+        _fundAlice(6);
+        _registerUsts(4);                       // 0..3
+        _nextBlockWithPrologue();
+        (, uint64 start, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
+
+        vm.warp(start + duration);
+        uint256 lengthAtTheEnd = readOrderedTaskIds(diamondAddr).length;
+        for (uint256 b; b < 5; b++) {
+            nextBlock();                        // no prologue: its call failed
+            _expectRegisterRevert(abi.encodeWithSelector(IRegistryFacet.CycleEndReached.selector));
+            if (b == 0) { _cancelNow(singleTask(1)); }
+            assertEq(readOrderedTaskIds(diamondAddr).length, lengthAtTheEnd, "list after the end time");
+        }
+
+        _monitor();                             // the first call that succeeds
+        LibCommon.CycleDetails memory details = ICoreViewFacet(diamondAddr).getCycleStateDetails();
+        assertEq(uint8(details.state), uint8(LibCommon.CycleState.FINISHED), "end processed");
+        assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 2, 3), "expected tasks");
     }
 
     /// @notice A task-owner contract cannot register and cancel a task in one transaction.

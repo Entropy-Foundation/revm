@@ -23,7 +23,7 @@ use std::collections::HashSet;
 /// Tasks removed during a cycle stay in that list until a compaction drops them; with the
 /// per-block compaction in `monitorCycleEnd` and owners unable to remove a task in its
 /// registration block, the list stays below 7/3 of the capacity (Entropy-Foundation/smr-moonshot#4920).
-/// At this capacity the cycle end over that bound costs 3,126,085 gas (the churn tests in
+/// At this capacity the cycle end over that bound costs 3,126,023 gas (the churn tests in
 /// `solidity/supra_contracts/test/MonitorCycleEndGas.t.sol`), against the live-only figures in the
 /// table below, so `monitorCycleEnd`'s `BlockMeta` gas limit is sized on the former.
 ///
@@ -42,21 +42,21 @@ use std::collections::HashSet;
 //   ┌───────────┬──────────────────────────────┐
 //   │ Tasks (N) │           Gas used           │
 //   ├───────────┼──────────────────────────────┤
-//   │ 50        │ 442,329                      │
+//   │ 50        │ 442,350                      │
 //   ├───────────┼──────────────────────────────┤
-//   │ 100       │ 745,213                      │
+//   │ 100       │ 745,455                      │
 //   ├───────────┼──────────────────────────────┤
-//   │ 150       │ 1,068,356                    │
+//   │ 150       │ 1,068,801                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 200       │ 1,372,245                    │
+//   │ 200       │ 1,372,911                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 250       │ 1,695,407                    │
+//   │ 250       │ 1,696,277                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 300       │ 1,998,330                    │
+//   │ 300       │ 1,999,420                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 350       │ 2,321,512                    │
+//   │ 350       │ 2,322,806                    │
 //   ├───────────┼──────────────────────────────┤
-//   │ 800       │ 5,129,344                    │
+//   │ 800       │ 5,132,555                    │
 //   └───────────┴──────────────────────────────┘
 //
 // (Figures from `forge test --match-contract MonitorCycleEndGasTest -vv` in

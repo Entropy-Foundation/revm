@@ -924,9 +924,10 @@ library LibCore {
     ///         at least a quarter of its entries are tombstones, and clears it when no task is
     ///         live. Otherwise leaves it untouched.
     /// @dev Called by CoreFacet.monitorCycleEnd in every block of a STARTED cycle whose end has
-    ///      not been reached (Entropy-Foundation/smr-moonshot#4920). The empty-registry branches
-    ///      of onCycleEndInternal and tryMoveToSuspendedState delete the list directly, since with
-    ///      no live task there is no threshold to decide.
+    ///      not been reached (Entropy-Foundation/smr-moonshot#4920), and by the empty-registry
+    ///      branches of onCycleEndInternal and tryMoveToSuspendedState, where no transition runs
+    ///      to replace the list and this clears it, so that one place decides how a list with no
+    ///      live task is cleared.
     ///
     ///      Bound it maintains. Let C be the registry capacity (taskCapacity + sysTaskCapacity)
     ///      and L the live task count (taskIdList.length(), at most C). After this function
@@ -947,6 +948,19 @@ library LibCore {
     ///      removal from a full registry does not make the next block scan the whole list, and
     ///      the steady per-block cost when no compaction is due is two length reads.
     ///
+    ///      Why here, and not in the owner removal paths: compacting in cancelTask/stopTask
+    ///      would also bound the list, after every transaction, but the removal that crosses
+    ///      the threshold would pay for the whole scan (about 1.1M gas at C = 200), and that
+    ///      owner is generally not the one whose removals made the list sparse. It would also
+    ///      make a removal's cost depend on other users' activity, so a gas estimate taken
+    ///      earlier could be too low and the owner's transaction fail. Keeping the list compact
+    ///      is the registry's own housekeeping, so the system call that already runs in every
+    ///      block does it. A separate block-prologue entry for it was not added: it would need
+    ///      its own BlockMeta registration and gas limit, while monitorCycleEnd's limit already
+    ///      has to be sized against the list's length. The cost of this choice is that the bound
+    ///      relies on monitorCycleEnd succeeding in every block (see its NatSpec), which the
+    ///      registry's cycle transitions rely on already.
+    ///
     ///      The order of the surviving IDs is kept (buildAliveOrderedTaskIds filters in place),
     ///      so the list stays ascending by construction and no sort is needed.
     ///      With no live task every entry is a tombstone and the list is deleted rather than
@@ -964,7 +978,10 @@ library LibCore {
 
         // Nothing to drop, or fewer than a quarter of the entries are tombstones. Written in
         // integer arithmetic as 4 * live > 3 * len (live > 0.75 * len); neither product can
-        // overflow, since both lengths are bounded by storage.
+        // overflow, since both lengths are bounded by storage. For live > 0 the second test
+        // already covers len == live; the first is kept for the empty list (len == live == 0),
+        // which the second lets through and which would otherwise pay for a `delete` of a list
+        // that is already empty, in every block of an empty registry.
         if (len == live || 4 * live > 3 * len) { return; }
 
         if (live == 0) {
@@ -988,13 +1005,22 @@ library LibCore {
                 // No transition runs, so nothing else resets orderedTaskIds for the new cycle:
                 // with no live task every entry left in it is a tombstone, and it is cleared
                 // here so that every cycle starts with orderedTaskIds equal to the live list.
-                delete LibAppStorage.registryState().orderedTaskIds;
+                compactOrderedTaskIdsIfSparse();
                 updateConfigFromBuffer();
                 moveToStartedState();
             } else {
                 // buildAliveOrderedTaskIds' cost is proportional to orderedTaskIds.length,
                 // which compactOrderedTaskIdsIfSparse keeps bounded block by block — see the
                 // NatSpec of both.
+                // Its write-back of the compacted list is kept here, although nothing reads
+                // orderedTaskIds again before updateRegistryState replaces it at finalization.
+                // Skipping it moves the cost rather than saving it: the assignment at
+                // finalization would then overwrite the uncompacted list and clear its tail,
+                // in the final processTasks batch, whose gas is reserved per task by
+                // LibCommon.RECORD_FINALIZATION_GAS_PER_TASK. Measured at C = 200 with the list
+                // at the churn bound (200 live, 266 removed): the cycle end drops by 377,580 gas
+                // and the final batch rises by 341,284, close to that reserve's margin. The same
+                // holds for tryMoveToSuspendedState.
                 uint64[] memory expectedTasksToBeProcessed = buildAliveOrderedTaskIds();
 
                 // Updates transition state
@@ -1055,7 +1081,7 @@ library LibCore {
             // Registry is empty move to ready state directly. As in onCycleEndInternal's empty
             // branch, any entry left in orderedTaskIds is a tombstone and is cleared here, since
             // no transition runs to reset the list.
-            delete LibAppStorage.registryState().orderedTaskIds;
+            compactOrderedTaskIdsIfSparse();
             updateCycleStateTo(LibCommon.CycleState.READY);
         } else if (!s.ifTransitionStateExists) {
             // Indicates that cycle was in STARTED state when suspension has been identified.

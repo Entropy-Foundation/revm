@@ -22,19 +22,19 @@ library LibCommon {
     ///      which a record's gas limit has to cover. The test asserts every measured batch against
     ///      these values, at 400 tasks and at the production 200, so a contract change that raises
     ///      a cost above them fails the suite.
-    ///      - Removing a task costs 210,913 gas with the fixture's 24 stored words (scenario 2) and
-    ///        1,062,449 with the 192 words of the default data-length caps (scenario 4): 5,069 gas
+    ///      - Removing a task costs 210,909 gas with the fixture's 24 stored words (scenario 2) and
+    ///        1,062,445 with the 192 words of the default data-length caps (scenario 4): 5,069 gas
     ///        per word, close to the cost of clearing a stored slot, on top of about 89,000.
     ///        Dropping a cap-size task above lowered caps also checks its stored lengths and
-    ///        refunds its deposit, 1,067,716 (scenario 5), about 94,000 on top of its words.
+    ///        refunds its deposit, 1,067,491 (scenario 5), about 94,000 on top of its words.
     ///        Rounded up: RECORD_GAS_PER_STORED_WORD = 5,500 and RECORD_GAS_PER_TASK = 100,000,
     ///        1,156,000 for a task at the default caps' 192 words. A task with 64 one-byte
     ///        auxData entries, which `recordStoredWords` charges two words each, is dropped for
-    ///        591,232 against the 947,000 its 154 words allow (scenario 6). A task that survives
+    ///        591,007 against the 947,000 its 154 words allow (scenario 6). A task that survives
     ///        costs about 45,000 (scenario 1). These costs do not depend on the registry's size.
-    ///      - The batch finalizing a FINISHED -> STARTED transition costs 3,513,073 gas more than
-    ///        its tasks at the average non-final rate, 8,782 per registered task (scenario 1 at 400
-    ///        tasks; 8,108 at 200). The premium per task grows with the registry, so
+    ///      - The batch finalizing a FINISHED -> STARTED transition costs 3,511,269 gas more than
+    ///        its tasks at the average non-final rate, 8,778 per registered task (scenario 1 at 400
+    ///        tasks; 8,094 at 200). The premium per task grows with the registry, so
     ///        RECORD_FINALIZATION_GAS_PER_TASK = 10,000 is measured to cover registries of up to
     ///        RECORD_GAS_BENCHMARK_CAPACITY tasks, which `RecordSizingParameters.maxCapacity`
     ///        enforces.
