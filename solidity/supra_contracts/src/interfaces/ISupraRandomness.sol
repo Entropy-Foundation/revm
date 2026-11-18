@@ -233,11 +233,11 @@ interface ISupraRandomness {
     /// For commit-then-settle designs: commit in one transaction, then settle in a later one
     /// against the seed of a block the committer could not predict.
     ///
-    /// Serves any height in `[block.number - 256, block.number - 1]`. The window matches
-    /// `BLOCKHASH`'s. **The block being executed is excluded**: its seed is what {next}'s rules
-    /// protect, and it is the same value for every transaction in the block, so serving it here -
-    /// where no context rule applies - would be an unprotected route to randomness for the current
-    /// block. Use {next} for that.
+    /// Serves any height in `[block.number - 8191, block.number - 1]`, the window of the EIP-2935
+    /// block hash history. **The block being executed is excluded**: its seed is what {next}'s
+    /// rules protect, and it is the same value for every transaction in the block, so serving it
+    /// here - where no context rule applies - would be an unprotected route to randomness for the
+    /// current block. Use {next} for that.
     ///
     /// No context, sender or gas rule applies, and none is needed. Every height this serves
     /// belongs to a block that is already committed and executed, so the value is public and a

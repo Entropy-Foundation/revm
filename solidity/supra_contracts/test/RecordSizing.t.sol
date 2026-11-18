@@ -5,6 +5,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {RecordSizingParameters} from "../src/libraries/LibAppStorage.sol";
@@ -27,7 +28,7 @@ contract RecordSizingHarness {
 }
 
 /// @title Sizing of `processTasks` bookkeeping records (Entropy-Foundation/smr-moonshot#4755).
-/// @notice Covers `CoreFacet.getRecordMaxTaskCount` and the `LibCommon` formula behind it,
+/// @notice Covers `CoreViewFacet.getRecordMaxTaskCount` and the `LibCommon` formula behind it,
 /// `ConfigFacet.updateRecordSizingParameters` with its range checks and capacity ceiling, the
 /// record-sizing checks of `updateConfigBuffer` and `updateDataLengthCaps` against the values in
 /// force after the next cycle boundary, and the parameters and data-length caps buffered to that
@@ -81,7 +82,7 @@ contract RecordSizingTest is BaseDiamondTest {
     }
 
     function _count() internal view returns (uint64) {
-        return ICoreFacet(diamondAddr).getRecordMaxTaskCount(PRODUCTION_CAP);
+        return ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(PRODUCTION_CAP);
     }
 
     /// @dev Buffers a config equal to the fixture's defaults except for the two capacities.
@@ -139,7 +140,7 @@ contract RecordSizingTest is BaseDiamondTest {
     }
 
     function _assertCycleState(LibCommon.CycleState _state) internal view {
-        (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (,,, LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(_state));
     }
 
@@ -153,18 +154,18 @@ contract RecordSizingTest is BaseDiamondTest {
     /// @dev At 6,000,000: (4,800,000 - 2,000,000) / 1,156,000 = 2; at 4,000,000:
     ///      (3,200,000 - 2,000,000) / 1,156,000 = 1.
     function testRecordMaxTaskCountAtLowCap() public view {
-        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(6_000_000), 2);
-        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(4_000_000), 1);
+        assertEq(ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(6_000_000), 2);
+        assertEq(ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(4_000_000), 1);
     }
 
     /// @dev The reserve alone fills the budget at 2,500,000 (80% of it is 2,000,000). The first
     ///      cap carrying a task is 3,945,000, whose budget of 3,156,000 holds the reserve and one
     ///      1,156,000-gas task.
     function testRecordMaxTaskCountIsZeroWhenNoTaskFits() public view {
-        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(0), 0);
-        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(2_500_000), 0);
-        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(3_944_999), 0);
-        assertEq(ICoreFacet(diamondAddr).getRecordMaxTaskCount(3_945_000), 1);
+        assertEq(ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(0), 0);
+        assertEq(ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(2_500_000), 0);
+        assertEq(ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(3_944_999), 0);
+        assertEq(ICoreViewFacet(diamondAddr).getRecordMaxTaskCount(3_945_000), 1);
     }
 
     /// @dev The view does not depend on the cap the precompile serves, only on its argument.

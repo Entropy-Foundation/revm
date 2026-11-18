@@ -50,6 +50,7 @@ contract DeployDiamond is Script {
         console.log("RegistryFacet deployed at:", address(deployment.facets.registryFacet));
         console.log("RegistryViewFacet deployed at:", address(deployment.facets.registryViewFacet));
         console.log("CoreFacet deployed at:", address(deployment.facets.coreFacet));
+        console.log("CoreViewFacet deployed at:", address(deployment.facets.coreViewFacet));
         console.log("DiamondInit deployed at:", address(deployment.facets.diamondInit));
 
         vm.stopBroadcast();

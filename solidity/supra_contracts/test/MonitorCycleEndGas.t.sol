@@ -5,6 +5,7 @@ import {console} from "forge-std/console.sol";
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
@@ -148,7 +149,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      target and its return data copying, as blockPrologue's call to it does.
     function _measureMonitorCycleEnd(address _diamond) internal returns (uint256 gasUsed) {
         // Warp to exactly the cycle boundary so the end condition triggers.
-        (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(_diamond).getCycleInfo();
+        (, uint64 startTime, uint64 durationSecs,) = ICoreViewFacet(_diamond).getCycleInfo();
         vm.warp(startTime + durationSecs);
 
         // monitorCycleEnd checks tx.origin, which meteredVmSignerCall sets to the VM signer.
@@ -394,7 +395,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
             // Confirms the vm.store calls above actually landed on orderedTaskIds -
             // see _assertStrictlyDescending's NatSpec for why this is load-bearing,
             // not decorative.
-            _assertStrictlyDescending(ICoreFacet(d).getCycleStateDetails().expectedTasksToBeProcessed);
+            _assertStrictlyDescending(ICoreViewFacet(d).getCycleStateDetails().expectedTasksToBeProcessed);
 
             vm.revertToState(cleanSnap);
 
@@ -481,7 +482,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
     ///      within the cycle, so the per-block path runs. Asserts the cycle is still running.
     function _measureMonitorCycleEndMidCycle(address _d) internal returns (uint256 gasUsed) {
         gasUsed = meteredVmSignerCall(_d, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
-        (, , , LibCommon.CycleState state) = ICoreFacet(_d).getCycleInfo();
+        (, , , LibCommon.CycleState state) = ICoreViewFacet(_d).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "cycle still running");
     }
 
@@ -519,7 +520,7 @@ contract MonitorCycleEndGasTest is BaseDiamondTest {
         d = _deployChurned(CHURN_CAPACITY, MAX_KEPT_REMOVED + CHURN_CAPACITY);
         uint256 cycleEnd = _measureMonitorCycleEnd(d);
         assertEqUint64Array(
-            ICoreFacet(d).getCycleStateDetails().expectedTasksToBeProcessed,
+            ICoreViewFacet(d).getCycleStateDetails().expectedTasksToBeProcessed,
             readOrderedTaskIds(d),
             "cycle end compacts the list to the expected tasks"
         );

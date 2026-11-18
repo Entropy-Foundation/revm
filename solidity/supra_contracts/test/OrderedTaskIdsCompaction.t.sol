@@ -3,6 +3,7 @@ pragma solidity 0.8.34;
 
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -229,7 +230,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
 
         endCycleAsVmSigner(diamondAddr);
 
-        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        LibCommon.CycleDetails memory details = ICoreViewFacet(diamondAddr).getCycleStateDetails();
         assertEq(uint8(details.state), uint8(LibCommon.CycleState.FINISHED), "cycle state");
         assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(1, 3, 5), "expected tasks");
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(1, 3, 5), "list at the cycle end");
@@ -244,7 +245,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
 
         endCycleAsVmSigner(diamondAddr);
 
-        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        LibCommon.CycleDetails memory details = ICoreViewFacet(diamondAddr).getCycleStateDetails();
         assertEq(uint8(details.state), uint8(LibCommon.CycleState.FINISHED), "cycle state");
         assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 1, 2, 3), "expected tasks");
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 1, 2, 3), "list at the cycle end");
@@ -261,7 +262,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
 
         endCycleAsVmSigner(diamondAddr);
 
-        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        LibCommon.CycleDetails memory details = ICoreViewFacet(diamondAddr).getCycleStateDetails();
         assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 1, 3, 4), "expected tasks");
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), uint64Array(0, 1, 3, 4), "list at the cycle end");
     }
@@ -279,7 +280,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
 
         uint64 endedIndex = endCycleAsVmSigner(diamondAddr);
 
-        (uint64 index, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, , , LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(index, endedIndex + 1, "new cycle index");
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "new cycle state");
         assertEq(readOrderedTaskIds(diamondAddr).length, 0, "list of the new cycle");
@@ -293,7 +294,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         vm.prank(admin);
         ICoreFacet(diamondAddr).disableAutomation();
 
-        (, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (, , , LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.READY), "state after disabling");
         assertEq(readOrderedTaskIds(diamondAddr).length, 0, "list after disabling");
     }
@@ -303,7 +304,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
     function testMonitorCycleEnd_LeavesListDuringTransition() public {
         _fundAlice(2);
         // Task 0 expires shortly after the cycle end, task 1 a day later.
-        (, uint64 start, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        (, uint64 start, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         _registerUst(duration + 100);
         _registerUst(TASK_DURATION);
 
@@ -322,7 +323,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         ICoreFacet(diamondAddr).processTasks(endedIndex + 1, singleTask(1));
         vm.stopPrank();
 
-        (, , , LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (, , , LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "state after the transition");
         assertEqUint64Array(readOrderedTaskIds(diamondAddr), singleTask(1), "list of the new cycle");
     }
@@ -353,7 +354,7 @@ contract OrderedTaskIdsCompactionTest is BaseDiamondTest {
         }
 
         endCycleAsVmSigner(diamondAddr);
-        LibCommon.CycleDetails memory details = ICoreFacet(diamondAddr).getCycleStateDetails();
+        LibCommon.CycleDetails memory details = ICoreViewFacet(diamondAddr).getCycleStateDetails();
         assertEqUint64Array(details.expectedTasksToBeProcessed, uint64Array(0, 1, 2, 3, 4), "expected tasks at the cycle end");
     }
 

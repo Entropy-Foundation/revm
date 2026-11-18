@@ -33,6 +33,7 @@ contract Diamond {
 
         _d.configFacet.validateContractAddress();
         _d.coreFacet.validateContractAddress();
+        _d.coreViewFacet.validateContractAddress();
         _d.diamondCutFacet.validateContractAddress();
         _d.registryFacet.validateContractAddress();
         _d.registryViewFacet.validateContractAddress();
@@ -40,13 +41,14 @@ contract Diamond {
         _d.loupeFacet.validateContractAddress();
         _d.diamondInit.validateContractAddress();
 
-        address[6] memory facets = [
+        address[7] memory facets = [
             _d.loupeFacet,
             _d.ownershipFacet,
             _d.configFacet,
             _d.registryFacet,
             _d.registryViewFacet,
-            _d.coreFacet
+            _d.coreFacet,
+            _d.coreViewFacet
         ];
 
         // ------------------------------------------------------------------

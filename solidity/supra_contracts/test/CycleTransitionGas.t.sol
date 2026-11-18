@@ -6,6 +6,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
 import {LibUtils} from "../src/libraries/LibUtils.sol";
@@ -20,7 +21,7 @@ import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 ///         at). Each measured call runs as its own transaction after the registrations
 ///         (see the isolation note below) and is metered before refunds (ExecutionGasMeter).
 ///         Two further tests size the batches the way the node does, with
-///         CoreFacet.getRecordMaxTaskCount, and check every record fits its gas limit
+///         CoreViewFacet.getRecordMaxTaskCount, and check every record fits its gas limit
 ///         (testCycleTransitionGas_DerivedRecordSize_*). Every test checks its batches
 ///         against the record gas figures (_assertWithinRecordGasFigures).
 ///
@@ -85,7 +86,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     uint256 constant TOTAL_GST = 40;
 
     /// @dev Batch size of the three scenario tests. The node sizes its records with
-    ///      CoreFacet.getRecordMaxTaskCount (Entropy-Foundation/smr-moonshot#4755), which
+    ///      CoreViewFacet.getRecordMaxTaskCount (Entropy-Foundation/smr-moonshot#4755), which
     ///      testCycleTransitionGas_DerivedRecordSize_FinalBatchFitsCap exercises; the scenarios
     ///      keep a fixed size so their figures, and the record gas figures derived from them,
     ///      compare across runs. Not overridable - only the task counts are, per the class's
@@ -121,7 +122,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     /// @dev Generic single-tx sanity ceiling, matching the pattern already used in
     ///      CoreFacet.t.sol's testStopTasksBulkRemovalFromActiveTaskIdsStaysWithinGasBudget.
     ///      It is not a record's gas limit: the node gives a record the per-transaction
-    ///      cap and sizes it with CoreFacet.getRecordMaxTaskCount, which the
+    ///      cap and sizes it with CoreViewFacet.getRecordMaxTaskCount, which the
     ///      testCycleTransitionGas_DerivedRecordSize_* tests check against the cap.
     uint256 constant SANITY_GAS_CEILING = 30_000_000;
 
@@ -282,7 +283,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     ///      refunds, as the BlockMeta prologue's call to it spends it
     ///      (BaseDiamondTest.meteredVmSignerCall).
     function _measureMonitorCycleEnd(address _diamond) internal returns (uint256 gasUsed) {
-        (, uint64 startTime, uint64 durationSecs,) = ICoreFacet(_diamond).getCycleInfo();
+        (, uint64 startTime, uint64 durationSecs,) = ICoreViewFacet(_diamond).getCycleInfo();
         vm.warp(startTime + durationSecs);
         gasUsed = meteredVmSignerCall(_diamond, abi.encodeCall(ICoreFacet.monitorCycleEnd, ()));
     }
@@ -428,7 +429,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     }
 
     /// @dev Number of tasks `_diamond` can hold under its active config, the capacity
-    ///      CoreFacet.getRecordMaxTaskCount reserves finalization gas for.
+    ///      CoreViewFacet.getRecordMaxTaskCount reserves finalization gas for.
     function _capacity(address _diamond) internal view returns (uint256) {
         Config memory cfg = IConfigFacet(_diamond).getConfig();
         return uint256(cfg.taskCapacity) + uint256(cfg.sysTaskCapacity);
@@ -436,14 +437,14 @@ contract CycleTransitionGasTest is BaseDiamondTest {
 
     /// @dev Gas one task can add to a record under the benchmark-derived gas figures and
     ///      `_diamond`'s stored-words bound, computed with the same LibCommon helper
-    ///      CoreFacet.getRecordMaxTaskCount uses.
+    ///      CoreViewFacet.getRecordMaxTaskCount uses.
     function _recordTaskGas(address _diamond) internal view returns (uint256) {
         return LibCommon.recordTaskGas(IConfigFacet(_diamond).getTaskStoredWordsBound());
     }
 
     /// @dev Checks the measured batches against the benchmark-derived record gas figures
     ///      (LibCommon.RECORD_GAS_*, Entropy-Foundation/smr-moonshot#4755).
-    ///      CoreFacet.getRecordMaxTaskCount gives every record k tasks at _recordTaskGas each
+    ///      CoreViewFacet.getRecordMaxTaskCount gives every record k tasks at _recordTaskGas each
     ///      plus the finalization reserve, capacity * RECORD_FINALIZATION_GAS_PER_TASK, since the
     ///      node does not know which record finalizes. Asserted here:
     ///      - every batch costs at most k * _recordTaskGas + reserve, the bound the view sizes
@@ -553,11 +554,11 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         _registerUstTasks(diamond, ustCount, uint64(block.timestamp + 86400));
         _registerGstTasks(diamond, gstCount);
 
-        (uint64 cycleIndexBefore, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndexBefore, , , ) = ICoreViewFacet(diamond).getCycleInfo();
 
         uint256 monitorGas = _measureMonitorCycleEnd(diamond);
 
-        (, , , LibCommon.CycleState stateAfterMonitor) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState stateAfterMonitor) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfterMonitor), uint8(LibCommon.CycleState.FINISHED), "cycle must be FINISHED after monitorCycleEnd");
 
         (uint256[] memory batchGas, uint256[] memory batchTasks) = _runAllBatches(
@@ -567,7 +568,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             "processTasks gas | scenario 1, batch="
         );
 
-        (uint64 cycleIndexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndexAfter, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED), "cycle must be STARTED after full transition");
         assertEq(cycleIndexAfter, cycleIndexBefore + 1, "cycle index must increment exactly once");
         assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, totalTasks, "all tasks must survive the transition");
@@ -607,7 +608,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         _registerUstTasks(diamond, ustCount, uint64(block.timestamp + 86400));
         _registerGstTasks(diamond, gstCount);
 
-        (uint64 cycleIndex, uint64 startTime, uint64 durationSecs, ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndex, uint64 startTime, uint64 durationSecs, ) = ICoreViewFacet(diamond).getCycleInfo();
         // "Middle of the cycle": halfway to cycleEndTime, well before it - disableAutomation's
         // STARTED-branch (LibCore.tryMoveToSuspendedState) reverts if currentTime >= cycleEndTime.
         vm.warp(startTime + durationSecs / 2);
@@ -617,7 +618,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         ICoreFacet(diamond).disableAutomation();
         uint256 suspendTriggerGas = before - gasleft();
 
-        (, , , LibCommon.CycleState stateAfterDisable) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState stateAfterDisable) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfterDisable), uint8(LibCommon.CycleState.SUSPENDED), "cycle must be SUSPENDED after mid-cycle disableAutomation");
 
         // onCycleSuspend checks s.index == _cycleIndex (unlike onCycleTransition's
@@ -629,7 +630,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             "processTasks (onCycleSuspend) gas | scenario 2, batch="
         );
 
-        (uint64 cycleIndexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndexAfter, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.READY), "cycle must be READY once suspension finalizes with automation disabled");
         assertEq(cycleIndexAfter, cycleIndex, "cycle index must NOT change on suspension - only STARTED transitions increment it");
         assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, 0, "no tasks survive a suspension - all refunded and removed");
@@ -671,7 +672,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         _registerUstTasksWith(diamond, ustCount, uint64(block.timestamp + 86400), payload, predicate);
         _registerGstTasksWith(diamond, gstCount, payload, predicate);
 
-        (uint64 cycleIndex, uint64 startTime, uint64 durationSecs, ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndex, uint64 startTime, uint64 durationSecs, ) = ICoreViewFacet(diamond).getCycleInfo();
         vm.warp(startTime + durationSecs / 2);
 
         vm.prank(admin);
@@ -686,7 +687,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             "processTasks (onCycleSuspend) gas | scenario 4, batch="
         );
 
-        (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.READY), "cycle must be READY once suspension finalizes with automation disabled");
         assertEq(IRegistryViewFacet(diamond).totalTasks(), 0, "registry must be empty after full suspension");
 
@@ -754,7 +755,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         vm.prank(admin);
         IConfigFacet(diamond).updateDataLengthCaps(1024, 512, 0, 0);
 
-        (uint64 cycleIndexBefore, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndexBefore, , , ) = ICoreViewFacet(diamond).getCycleInfo();
         uint256 monitorGas = _measureMonitorCycleEnd(diamond);
 
         // The lower caps are in force, and records are sized for the previous ones.
@@ -772,7 +773,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             "processTasks gas | scenario 5, batch="
         );
 
-        (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED), "cycle must be STARTED after full transition");
         assertEq(
             IRegistryViewFacet(diamond).getActiveTaskIds().length,
@@ -841,7 +842,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             uint16(payload.length), uint16(predicate.length), entries - 1, entries
         );
 
-        (uint64 cycleIndexBefore, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndexBefore, , , ) = ICoreViewFacet(diamond).getCycleInfo();
         uint256 monitorGas = _measureMonitorCycleEnd(diamond);
         uint256 taskGas = _recordTaskGas(diamond);
         uint256 reserve = _finalizationReserve(diamond);
@@ -884,7 +885,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
 
         address diamond = _deployRegistry(ustCount, gstCount);
 
-        (, uint64 startTime1, uint64 durationSecs1, ) = ICoreFacet(diamond).getCycleInfo();
+        (, uint64 startTime1, uint64 durationSecs1, ) = ICoreViewFacet(diamond).getCycleInfo();
         uint64 cycle1EndTime = startTime1 + durationSecs1;
         // Falls inside cycle 2 (cycle2EndTime = cycle1EndTime + durationSecs1, and this
         // is well short of that), so registration passes but the task is expired by
@@ -896,17 +897,17 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         _registerGstTasks(diamond, gstCount);
 
         // ---- Cycle 1 transition: nothing has expired yet, everything survives. ----
-        (uint64 cycleIndex1, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndex1, , , ) = ICoreViewFacet(diamond).getCycleInfo();
         _measureMonitorCycleEnd(diamond);
         _runAllBatches(diamond, cycleIndex1 + 1, totalTasks, "processTasks gas | scenario 3, cycle 1 setup, batch=");
         assertEq(IRegistryViewFacet(diamond).getActiveTaskIds().length, totalTasks, "cycle 1: nothing expired yet, all tasks survive");
 
         // ---- Cycle 2 transition: the expiringCount short-expiry UST tasks are now
         // past their expiry and get dropped instead of renewed. ----
-        (uint64 cycleIndex2, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndex2, , , ) = ICoreViewFacet(diamond).getCycleInfo();
         uint256 monitorGas2 = _measureMonitorCycleEnd(diamond);
 
-        (, , , LibCommon.CycleState stateAfterMonitor2) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState stateAfterMonitor2) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfterMonitor2), uint8(LibCommon.CycleState.FINISHED), "cycle 2 must be FINISHED after monitorCycleEnd");
 
         (uint256[] memory batchGas, uint256[] memory batchTasks) = _runAllBatches(
@@ -916,7 +917,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             "processTasks gas | scenario 3, cycle 2, batch="
         );
 
-        (uint64 cycleIndex3, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 cycleIndex3, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.STARTED), "cycle must be STARTED after cycle 2's transition");
         assertEq(cycleIndex3, cycleIndex2 + 1, "cycle index must increment exactly once");
         assertEq(
@@ -941,7 +942,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // Derived record size: the node's sizing, CoreFacet.getRecordMaxTaskCount
+    // Derived record size: the node's sizing, CoreViewFacet.getRecordMaxTaskCount
     // (Entropy-Foundation/smr-moonshot#4755), at a full registry.
     // ────────────────────────────────────────────────────────────────────────
 
@@ -991,7 +992,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
 
             uint64 startTime;
             uint64 durationSecs;
-            (cycleIndex, startTime, durationSecs, ) = ICoreFacet(diamond).getCycleInfo();
+            (cycleIndex, startTime, durationSecs, ) = ICoreViewFacet(diamond).getCycleInfo();
             vm.warp(startTime + durationSecs / 2);
             vm.prank(admin);
             ICoreFacet(diamond).disableAutomation();
@@ -999,13 +1000,13 @@ contract CycleTransitionGasTest is BaseDiamondTest {
             _registerUstTasks(diamond, ustCount, uint64(block.timestamp + 86400));
             _registerGstTasks(diamond, gstCount);
 
-            (cycleIndex, , , ) = ICoreFacet(diamond).getCycleInfo();
+            (cycleIndex, , , ) = ICoreViewFacet(diamond).getCycleInfo();
             _measureMonitorCycleEnd(diamond);
             // processTasks of a FINISHED -> STARTED transition names the next cycle.
             cycleIndex += 1;
         }
 
-        uint256 recordSize = ICoreFacet(diamond).getRecordMaxTaskCount(_cap);
+        uint256 recordSize = ICoreViewFacet(diamond).getRecordMaxTaskCount(_cap);
         if (recordSize == 0) {
             // Every cap in DERIVED_SIZE_CAPS carries a task at the default registry size. A
             // custom size (CYCLE_GAS_BENCH_*) can raise the finalization reserve past a low
@@ -1027,7 +1028,7 @@ contract CycleTransitionGasTest is BaseDiamondTest {
         (uint256[] memory batchGas, uint256[] memory batchTasks) =
             _runBatches(diamond, cycleIndex, totalTasks, batchSize, true, label);
 
-        (, , , LibCommon.CycleState stateAfter) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(
             uint8(stateAfter),
             uint8(_suspendCapSizeTasks ? LibCommon.CycleState.READY : LibCommon.CycleState.STARTED),
