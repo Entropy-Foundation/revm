@@ -23,7 +23,7 @@ use std::collections::HashSet;
 ///
 /// The capacity also sizes the registry's `processTasks` bookkeeping records: each record
 /// reserves the finalization cost of a transition, `LibCommon.RECORD_FINALIZATION_GAS_PER_TASK`
-/// per task the registry can hold, and `CoreFacet.getRecordMaxTaskCount` applies the active
+/// per task the registry can hold, and `CoreViewFacet.getRecordMaxTaskCount` applies the active
 /// capacity itself (Entropy-Foundation/smr-moonshot#4755). The record gas figures are derived at
 /// 400 tasks, and `ConfigFacet.updateConfigBuffer` refuses a capacity above the registry's
 /// `RecordSizingParameters.maxCapacity` (400 by default, or this genesis capacity if larger). To

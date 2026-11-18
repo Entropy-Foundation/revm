@@ -9,6 +9,7 @@ struct FacetsDeployment {
     address registryFacet;
     address registryViewFacet;
     address coreFacet;
+    address coreViewFacet;
     address diamondInit;
 }
 

@@ -4,6 +4,7 @@ pragma solidity 0.8.34;
 import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
@@ -363,7 +364,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
     function testSuspensionClearsTheTaskCounts() public {
         setUpRegistry();
         uint64[] memory ids = registerAndActivate(3);
-        (uint64 index, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 index, , , ) = ICoreViewFacet(diamond).getCycleInfo();
 
         vm.prank(admin);
         ICoreFacet(diamond).disableAutomation();
@@ -385,7 +386,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         uint256 perTask = cycleFee(FULL_RATE, FLOOR_GAS);
         assertEq(IRegistryViewFacet(diamond).getCycleLockedFees(), perTask * CAPACITY);
 
-        (, uint64 start, uint64 duration, ) = ICoreFacet(diamond).getCycleInfo();
+        (, uint64 start, uint64 duration, ) = ICoreViewFacet(diamond).getCycleInfo();
         vm.warp(start + duration / 4);
         uint256 residualRefund = (perTask * 3 / 4) / 2;
 
@@ -431,7 +432,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
     function testSuspensionRefundsTheWholeChargedFee() public {
         setUpRegistry();
         uint64[] memory ids = registerAndActivate(CAPACITY);
-        (uint64 index, , , ) = ICoreFacet(diamond).getCycleInfo();
+        (uint64 index, , , ) = ICoreViewFacet(diamond).getCycleInfo();
         uint256 ownerBefore = wsupra.balanceOf(owner);
 
         vm.prank(admin);
@@ -553,7 +554,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
         IRegistryFacet(diamond).stopTasks(ids);
         endCycleAsVmSigner(diamond);
 
-        (, , , LibCommon.CycleState state) = ICoreFacet(diamond).getCycleInfo();
+        (, , , LibCommon.CycleState state) = ICoreViewFacet(diamond).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED), "an empty registry starts the next cycle directly");
         assertEq(IRegistryViewFacet(diamond).getTasksCommittedForCurrentCycle(), 0);
         assertEq(IRegistryViewFacet(diamond).getGasCommittedForCurrentCycle(), 0);
@@ -567,7 +568,7 @@ contract SlotOccupancyPricingTest is BaseDiamondTest {
     /// start that follows clears it.
     function testAnEmptyRegistryStartClearsTheNextCycleCommitments() public {
         setUpRegistry();
-        (, uint64 start, , ) = ICoreFacet(diamond).getCycleInfo();
+        (, uint64 start, , ) = ICoreViewFacet(diamond).getCycleInfo();
         uint64 firstBatchTime = start + CYCLE;
 
         // Task 0 expires 50 s after (first batch time + duration), task 1 is long-lived.

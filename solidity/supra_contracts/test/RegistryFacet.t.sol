@@ -6,6 +6,7 @@ import {BaseDiamondTest, FailingERC20} from "./BaseDiamondTest.t.sol";
 import {EvmGasConfigMock} from "./EvmGasConfigMock.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -228,7 +229,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)); 
         
         // Create predicate that does not return 32 bytes
-        bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreFacet.getCycleInfo, ())); 
+        bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreViewFacet.getCycleInfo, ())); 
 
         vm.expectRevert(IRegistryFacet.InvalidReturnLengthOfPredicate.selector);
 
@@ -251,7 +252,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         bytes memory payload = createPayload(0, address(wsupra), abi.encodeCall(WrappedSupra.withdraw, 100)); 
         
         // Create predicate that doesn't return boolean
-        bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreFacet.getCycleDuration, ()));
+        bytes memory predicate = abi.encode(diamondAddr, abi.encodeCall(ICoreViewFacet.getCycleDuration, ()));
 
         vm.expectRevert(IRegistryFacet.InvalidReturnTypeOfPredicate.selector);
 
@@ -671,7 +672,7 @@ contract RegistryFacetTest is BaseDiamondTest {
     function testRegisterRevertsIfCycleTransitionInProgress() public {
         registerUst(diamondAddr, 2450);
 
-        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        ( , uint64 startTime, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -1603,7 +1604,7 @@ contract RegistryFacetTest is BaseDiamondTest {
         uint64[] memory taskIndexes = new uint64[](1);
         taskIndexes[0] = 0;
 
-        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        ( , uint64 startTime, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
 
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
@@ -1855,12 +1856,12 @@ contract RegistryFacetTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).totalTasks(), 0);
 
         // Advance through the next (now-empty) cycle boundary.
-        (, uint64 start2, uint64 duration2,) = ICoreFacet(diamondAddr).getCycleInfo();
+        (, uint64 start2, uint64 duration2,) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(start2 + duration2);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
 
-        (,,, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (,,, LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(uint8(state), uint8(LibCommon.CycleState.STARTED));
 
         // Residual persists unchanged -- the empty fast path never touches cycleLockedFees.
@@ -2053,13 +2054,13 @@ contract RegistryFacetTest is BaseDiamondTest {
         vm.stopPrank();
 
         // Process cycle transition 
-        ( , uint64 startTime, uint64 duration, ) = ICoreFacet(diamondAddr).getCycleInfo();
+        ( , uint64 startTime, uint64 duration, ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         vm.warp(startTime + duration);
 
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(diamondAddr).monitorCycleEnd();
         
-        (uint64 index, , , ) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, , , ) = ICoreViewFacet(diamondAddr).getCycleInfo();
         uint64[] memory taskIds = new uint64[](2);
         taskIds[0] = 0;
         taskIds[1] = 1;

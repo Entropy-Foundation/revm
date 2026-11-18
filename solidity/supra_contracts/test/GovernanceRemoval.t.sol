@@ -6,6 +6,7 @@ import {BaseDiamondTest} from "./BaseDiamondTest.t.sol";
 import {ConstructorTaskRegistrant} from "./TaskRegistrant.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -220,7 +221,7 @@ contract GovernanceRemovalTest is BaseDiamondTest {
     function testAnErrorRemovalOfAGovernanceRemovedTaskIsANoOp() public {
         registerUst(diamondAddr, TASK_DURATION);
         processCycleTransition(diamondAddr, singleTask(0));
-        (uint64 cycleIndex,,,) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 cycleIndex,,,) = ICoreViewFacet(diamondAddr).getCycleInfo();
         removeAsRegistryOwner(singleTask(0));
         uint256 registryBefore = wsupra.balanceOf(diamondAddr);
         vm.expectEmit(diamondAddr);

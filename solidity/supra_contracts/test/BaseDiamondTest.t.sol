@@ -6,6 +6,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {WrappedSupra} from "../src/WrappedSupra.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {Deployment, InitParams, LibDiamondUtils} from "../src/libraries/LibDiamondUtils.sol";
 import {LibCommon} from "../src/libraries/LibCommon.sol";
@@ -169,13 +170,13 @@ abstract contract BaseDiamondTest is Test {
 
     /// @dev Helper to warp past the current cycle, end it, and process the given tasks.
     function processCycleTransition(address _diamond, uint64[] memory _taskIndexes) internal {
-        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore, ) = ICoreFacet(_diamond).getCycleInfo();
+        (uint64 indexBefore, uint64 startTimeBefore, uint64 durationBefore, ) = ICoreViewFacet(_diamond).getCycleInfo();
         vm.warp(startTimeBefore + durationBefore);
 
         vm.startPrank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(_diamond).monitorCycleEnd();
 
-        (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreFacet(_diamond).getCycleInfo();
+        (uint64 indexAfter, , , LibCommon.CycleState stateAfter) = ICoreViewFacet(_diamond).getCycleInfo();
         assertEq(indexAfter, indexBefore);
         assertEq(uint8(stateAfter), uint8(LibCommon.CycleState.FINISHED));
 
@@ -220,7 +221,7 @@ abstract contract BaseDiamondTest is Test {
     function endCycleAsVmSigner(address _diamond) internal returns (uint64 index) {
         uint64 startTime;
         uint64 duration;
-        (index, startTime, duration, ) = ICoreFacet(_diamond).getCycleInfo();
+        (index, startTime, duration, ) = ICoreViewFacet(_diamond).getCycleInfo();
         vm.warp(startTime + duration);
         vm.prank(LibUtils.VM_SIGNER, LibUtils.VM_SIGNER);
         ICoreFacet(_diamond).monitorCycleEnd();
