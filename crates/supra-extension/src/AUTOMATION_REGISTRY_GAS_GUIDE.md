@@ -212,7 +212,12 @@ are governed independently:
 **Guideline: governance must treat these as one joint change, never independently.**
 Before raising `taskCapacity`/`sysTaskCapacity` beyond the current production
 default (160/40 = 200, `MAX_SUPPORTED_AUTOMATION_TASKS`), re-run this benchmark
-(`Running with a custom task count` above) at the target N, and confirm the
+(`Running with a custom task count` above) at the target N, together with the churn tests
+at that capacity (see "Trigger calls" below). The custom task count does not reach the churn
+tests: their capacity and limits are constants in `MonitorCycleEndGas.t.sol`
+(`CHURN_CAPACITY`, `MAX_KEPT_REMOVED`, the largest `d` with `4C > 3(C + d)`, and
+`RECOMMENDED_SELECTOR_GAS_LIMIT`), which have to be edited to the target capacity before the
+run. Then confirm the
 resulting `monitorCycleEnd` gas figure still fits under `monitorCycleEnd`'s
 currently-registered `BlockMeta` gas limit — re-registering it with a higher
 `selectorGasLimit` first if it doesn't, and confirming that fits under
@@ -227,13 +232,13 @@ The common case: automation stays enabled, no task expires mid-transition.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 1,945,671 |
-| `processTasks`, non-final batch (average of batches 1–7) | 1,010,029 (40,401 per task) |
-| `processTasks`, initial batch (1/8) | 1,088,023 (43,520 per task) |
-| `processTasks`, **final batch (8/8)** | **2,647,737** |
-| Final-batch finalization premium (final − 25 × non-final average per task) | 1,637,712 |
-| Total `processTasks` (8 batches) | 9,717,939 |
-| **Grand total** (trigger + all batches) | **11,663,610** |
+| `monitorCycleEnd` (trigger) | 1,372,911 |
+| `processTasks`, non-final batch (average of batches 1–7) | 1,048,925 (41,957 per task) |
+| `processTasks`, initial batch (1/8) | 1,129,586 (45,183 per task) |
+| `processTasks`, **final batch (8/8)** | **2,667,849** |
+| Final-batch finalization premium (final − 25 × non-final average per task) | 1,618,924 |
+| Total `processTasks` (8 batches) | 10,010,397 |
+| **Grand total** (trigger + all batches) | **11,383,308** |
 
 The registry's task-ID lists (`activeTaskIds`, `orderedTaskIds`, `survivedTaskIds`,
 `expectedTasksToBeProcessed`) are `uint64[]` arrays, which pack four task IDs per
@@ -256,9 +261,9 @@ transition (`LibCore.sol`):
    same transition with the list hashed into a topic, it adds 48,873 gas for 200
    survivors; the log-data charge alone is ~51.7k, less the topic and hash it replaces.
 
-The premium per registered task is 8,188 at 200 tasks and grows with the registry: at 400
-tasks (`testCycleTransitionGas_FullFlow_BenchmarkCapacity`) the final batch costs 4,515,857
-and the premium is 3,528,632, 8,821 per task. The record finalization figure is derived from
+The premium per registered task is 8,094 at 200 tasks and grows with the registry: at 400
+tasks (`testCycleTransitionGas_FullFlow_BenchmarkCapacity`) the final batch costs 4,536,044
+and the premium is 3,511,269, 8,778 per task. The record finalization figure is derived from
 the 400-task figure.
 
 This is the largest finalization premium among the scenarios. Scenario 5 has the largest
@@ -272,13 +277,13 @@ none survive into a next cycle, and the cycle index does not increment.
 
 | Call | Gas |
 | --- | --- |
-| `disableAutomation` (trigger, transaction gas used) | 1,968,544 |
-| `processTasks` (`onCycleSuspend`), non-final batch (average) | 4,970,432 (198,817 per task) |
-| `processTasks`, initial batch (1/8) | 5,264,767 (210,590 per task) |
-| `processTasks`, **final batch (8/8)** | **5,260,020** |
-| Final-batch finalization premium | 289,595 |
-| Total `processTasks` (8 batches) | 40,053,046 |
-| **Grand total** (trigger + all batches) | **42,021,590** |
+| `disableAutomation` (trigger, transaction gas used) | 1,396,211 |
+| `processTasks` (`onCycleSuspend`), non-final batch (average) | 4,979,009 (199,160 per task) |
+| `processTasks`, initial batch (1/8) | 5,272,736 (210,909 per task) |
+| `processTasks`, **final batch (8/8)** | **5,275,929** |
+| Final-batch finalization premium | 296,929 |
+| Total `processTasks` (8 batches) | 40,128,993 |
+| **Grand total** (trigger + all batches) | **41,525,204** |
 
 Relative to Scenario 1:
 - **Removal clears the task's storage**: `onCycleSuspend` removes every task, and
@@ -290,7 +295,7 @@ Relative to Scenario 1:
 - **No survivor bookkeeping**: `onCycleSuspend` never pushes to `survivedTaskIds`.
 - **Finalization is a clear, not a write**: on the `SUSPENDED` branch,
   `updateRegistryState` resets `activeTaskIds`/`orderedTaskIds` to empty arrays and
-  clears `sysTaskIds`, so the final batch's premium is about 0.3M, against 1.64M in
+  clears `sysTaskIds`, so the final batch's premium is about 0.3M, against 1.62M in
   Scenario 1.
 - **Every batch logs its removals**: each `onCycleSuspend` batch emits `RemovedTasks`
   with the batch's task indexes ABI-encoded in the log data; measured against the same
@@ -311,20 +316,20 @@ cycles: the 20 tasks are registered with an expiry inside cycle 2, survive cycle
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger, cycle 2) | 1,945,671 |
-| `processTasks`, non-final batch (average) | 1,441,245 (57,649 per task) |
-| `processTasks`, initial batch (1/8: 20 drops, 5 survivors) | 4,513,843 (180,553 per task) |
-| `processTasks`, **final batch (8/8)** | **1,789,390** |
-| Final-batch finalization premium | 348,165 |
-| Total `processTasks` (8 batches) | 11,878,102 |
-| **Grand total** (trigger + all batches) | **13,823,773** |
+| `monitorCycleEnd` (trigger, cycle 2) | 1,372,911 |
+| `processTasks`, non-final batch (average) | 1,476,217 (59,048 per task) |
+| `processTasks`, initial batch (1/8: 20 drops, 5 survivors) | 4,529,354 (181,174 per task) |
+| `processTasks`, **final batch (8/8)** | **1,809,493** |
+| Final-batch finalization premium | 333,293 |
+| Total `processTasks` (8 batches) | 12,143,014 |
+| **Grand total** (trigger + all batches) | **13,515,925** |
 
-The batch containing the 20 expiring tasks costs 4.5x a batch of survivors, since a drop
+The batch containing the 20 expiring tasks costs 4.6x a batch of survivors, since a drop
 removes the task and clears its storage, as in Scenario 2; that batch also emits
 `RemovedTasks` for the 20 dropped indexes, which adds 4,103 gas. With 180 survivors,
 cycle 2's finalizing batch carries the `ActiveTasks` log data for the 180 survivors
-(43,872 gas, measured against the list hashed into a topic), yet its premium is 348,165,
-against 1,637,712 for cycle 1's finalizing batch with 200 survivors (the Scenario 1
+(43,872 gas, measured against the list hashed into a topic), yet its premium is 333,293,
+against 1,618,924 for cycle 1's finalizing batch with 200 survivors (the Scenario 1
 figure). Cycle 1 writes the survivor lists into fresh slots, while cycle 2 rewrites slots
 that already hold values. The finalization cost is therefore not proportional to survivor
 count, and the record gas figures are derived from the first transition, Scenario 1.
@@ -340,13 +345,13 @@ default data-length caps (`DiamondInit`), filled with non-zero bytes. Each task 
 
 | Call | Gas |
 | --- | --- |
-| `disableAutomation` (trigger, transaction gas used) | 1,968,550 |
-| `processTasks` (`onCycleSuspend`), non-final batch (average) | 26,258,832 (1,050,353 per task) |
-| `processTasks`, initial batch (1/8) | 26,553,167 (1,062,126 per task) |
-| `processTasks`, **final batch (8/8)** | **26,548,420** |
-| Final-batch finalization premium | 289,595 |
-| Total `processTasks` (8 batches) | 210,360,246 |
-| **Grand total** (trigger + all batches) | **212,328,796** |
+| `disableAutomation` (trigger, transaction gas used) | 1,396,217 |
+| `processTasks` (`onCycleSuspend`), non-final batch (average) | 26,267,409 (1,050,696 per task) |
+| `processTasks`, initial batch (1/8) | 26,561,136 (1,062,445 per task) |
+| `processTasks`, **final batch (8/8)** | **26,564,329** |
+| Final-batch finalization premium | 296,929 |
+| Total `processTasks` (8 batches) | 210,436,193 |
+| **Grand total** (trigger + all batches) | **211,832,410** |
 
 Between Scenario 2 and this scenario a removed task's cost rises by 851,536 gas for 168
 more stored words, 5,069 gas per word, about the cost of clearing a stored slot, on top of
@@ -365,16 +370,16 @@ oversized USTs fill the first batches.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 1,961,388 |
-| `processTasks`, batches 1–3 (25 cap-size drops each) | 26,645,088 – 26,679,288 (1,067,171 per task) |
-| `processTasks`, batch 4 (5 drops, 20 survivors) | 6,365,449 |
-| `processTasks`, batches 5–6 (25 checked UST survivors each) | 1,210,048 – 1,227,148 |
-| `processTasks`, batch 7 (25 checked GST survivors) | 1,057,389 |
-| `processTasks`, **final batch (8/8)** | **2,380,944** |
-| Total `processTasks` (8 batches) | 92,210,442 |
-| **Grand total** (trigger + all batches) | **94,171,830** |
+| `monitorCycleEnd` (trigger) | 1,388,683 |
+| `processTasks`, batches 1–3 (25 cap-size drops each) | 26,653,086 – 26,687,286 (1,067,491 per task) |
+| `processTasks`, batch 4 (5 drops, 20 survivors) | 6,399,491 |
+| `processTasks`, batches 5–6 (25 checked UST survivors each) | 1,251,611 – 1,268,711 |
+| `processTasks`, batch 7 (25 checked GST survivors) | 1,080,357 |
+| `processTasks`, **final batch (8/8)** | **2,401,025** |
+| Total `processTasks` (8 batches) | 92,394,653 |
+| **Grand total** (trigger + all batches) | **93,783,336** |
 
-Dropping a cap-size task at a transition costs 1,067,171 gas, 5,045 more than removing it
+Dropping a cap-size task at a transition costs 1,067,491 gas, 5,046 more than removing it
 in a suspension (Scenario 4): the length check and the deposit refund. Reading a
 survivor's stored lengths adds about 8k gas per task against Scenario 1's batches. Both
 costs arise only in the transition that applies lower caps. This is the largest cost a task
@@ -394,14 +399,14 @@ record gas figures.
 
 | Call | Gas |
 | --- | --- |
-| `monitorCycleEnd` (trigger) | 1,961,506 |
-| `processTasks`, batches 1–6 (25 auxData drops each) | 14,199,488 – 14,767,188 (590,687 per task at most) |
-| `processTasks`, batch 7 (10 drops, 15 checked GST survivors) | 6,300,972 |
-| `processTasks`, **final batch (8/8)** | **1,757,351** |
-| Total `processTasks` (8 batches) | 95,162,051 |
-| **Grand total** (trigger + all batches) | **97,123,557** |
+| `monitorCycleEnd` (trigger) | 1,388,801 |
+| `processTasks`, batches 1–6 (25 auxData drops each) | 14,207,486 – 14,775,186 (591,007 per task at most) |
+| `processTasks`, batch 7 (10 drops, 15 checked GST survivors) | 6,312,937 |
+| `processTasks`, **final batch (8/8)** | **1,777,402** |
+| Total `processTasks` (8 batches) | 95,242,055 |
+| **Grand total** (trigger + all batches) | **96,630,856** |
 
-A dropped task with 64 entries costs 590,687 gas against the 947,000 its stored-words
+A dropped task with 64 entries costs 591,007 gas against the 947,000 its stored-words
 count allows, so charging two words per entry covers the slot each entry takes and its
 length read, about 5,700 gas per entry.
 
@@ -429,7 +434,9 @@ count      = budget > reserve ? (budget − reserve) / taskGas : 0
 - Every record reserves the finalization cost, since the node does not know in advance
   which record finalizes the transition. The reserve also covers the fixed cost of a
   `processTasks` call, which the per-task figures do not carry: a record of one cap-size
-  task measures 1,145,042 gas, against 1,062,126 per task in a batch of 25.
+  task needs 1,103,773 – 1,159,313 gas, intrinsic gas and calldata included
+  (`testCycleTransitionGas_DerivedRecordSize_CapSizeRemovalsFitCap` at a 4,000,000 cap),
+  against 1,062,445 per task in a batch of 25 (Scenario 4).
 - The rest of the cap, 20 % at the default percentage of 80, covers the transaction's
   intrinsic gas and calldata. The Move registry applies a fixed 80 % (`TASK_SUPPORT_FACTOR`).
 - The view applies the active capacity and parameters. Buffered config, caps and
@@ -449,8 +456,8 @@ such an upgrade replaces all three facets in one cut.
 | Figure | Value | Derived from |
 | --- | --- | --- |
 | `RECORD_GAS_PER_TASK` | 100,000 | about 89,000, the fixed part of a removed task at 5,069 per word (Scenarios 2 and 4), and about 94,000 for a task dropped above lowered caps (Scenario 5) |
-| `RECORD_GAS_PER_STORED_WORD` | 5,500 | 5,069 per word (Scenarios 2 and 4). With `RECORD_GAS_PER_TASK`, 1,156,000 at the default caps' 192 words, against 1,067,171 for the costliest measured task, a cap-size drop when lower caps apply (Scenario 5). A task with 64 auxData entries is dropped for 590,687 against the 947,000 its 154 words allow (Scenario 6) |
-| `RECORD_FINALIZATION_GAS_PER_TASK` | 10,000 | 8,821 per task at 400 tasks, 8,188 at 200 (Scenario 1) |
+| `RECORD_GAS_PER_STORED_WORD` | 5,500 | 5,069 per word (Scenarios 2 and 4). With `RECORD_GAS_PER_TASK`, 1,156,000 at the default caps' 192 words, against 1,067,491 for the costliest measured task, a cap-size drop when lower caps apply (Scenario 5). A task with 64 auxData entries is dropped for 591,007 against the 947,000 its 154 words allow (Scenario 6) |
+| `RECORD_FINALIZATION_GAS_PER_TASK` | 10,000 | 8,778 per task at 400 tasks, 8,094 at 200 (Scenario 1) |
 
 The owner's levers are two `RecordSizingParameters`, buffered with
 `ConfigFacet.updateRecordSizingParameters` like a config change and applied at the next
@@ -499,10 +506,10 @@ With 200 tasks and the default data-length caps, `taskGas` is 100,000 + 5,500 ×
 
 | Cap | Records carry | Records for 200 tasks | Largest measured record, all survive | Largest measured record, cap-size removals |
 | --- | --- | --- | --- | --- |
-| 16,777,216 | 9 tasks | 23 | 2,246,451 | 10,145,283 |
-| 8,000,000 | 3 tasks | 67 | 2,078,435 | 3,987,059 |
-| 6,000,000 | 2 tasks | 100 | 2,056,117 | 2,960,669 |
-| 4,000,000 | 1 task | 200 | 2,033,803 | 1,934,286 |
+| 16,777,216 | 9 tasks | 23 | 2,264,614 | 10,160,854 |
+| 8,000,000 | 3 tasks | 67 | 2,095,885 | 4,002,503 |
+| 6,000,000 | 2 tasks | 100 | 2,073,450 | 2,976,092 |
+| 4,000,000 | 1 task | 200 | 2,051,019 | 1,949,688 |
 
 "Largest measured record" is the gas limit the record needs, intrinsic gas and calldata
 included, from `testCycleTransitionGas_DerivedRecordSize_FinalBatchFitsCap` and
@@ -510,8 +517,8 @@ included, from `testCycleTransitionGas_DerivedRecordSize_FinalBatchFitsCap` and
 at each cap with the final record carrying a full batch and assert every record fits.
 
 At 400 tasks the reserve is 4,000,000: records carry 8 tasks at the production cap
-(largest measured records 4,091,462 all surviving, 9,921,665 with cap-size removals) and 2
-at 8,000,000 (3,922,967 and 3,763,293).
+(largest measured records 4,109,554 all surviving, 9,937,215 with cap-size removals) and 2
+at 8,000,000 (3,940,339 and 3,778,716).
 
 Below 3,945,000 no task fits at 200 tasks, and below 6,445,000 none at 400: the view
 returns 0, and the node pauses automation instead of building records that cannot complete.
@@ -618,13 +625,39 @@ cap, check `getRecordMaxTaskCount(newCap)` against the registry.
 ### Trigger calls
 
 `monitorCycleEnd` and `disableAutomation` are not `processTasks` records. At the 200-task
-cap `monitorCycleEnd` spends 1,945,671 gas before refunds when it starts a transition, and
-3,776,612 at 400 tasks; `disableAutomation` costs about 1.97M as a transaction.
+cap `monitorCycleEnd` spends 1,372,911 gas before refunds when it starts a transition, and
+2,625,969 at 400 tasks; `disableAutomation` costs about 1.40M as a transaction. These are
+lists holding only live tasks, which `LibCore.buildAliveOrderedTaskIds` returns without
+scanning.
 `MonitorCycleEndGas.t.sol`, measured the same way, gives the same 200-task figure and the
 table in `configs.rs`'s `MAX_SUPPORTED_AUTOMATION_TASKS` documentation (50 to 800 tasks); its
-boundary scan puts the most tasks that fit `BLOCK_METADATA_GAS_LIMIT` at 1,819. Register
-`monitorCycleEnd` with headroom over the figure for the registry's capacity, for instance
-2,500,000 at 200 tasks. For `monitorCycleEnd`, "size" means the
+boundary scan puts the most live tasks that fit `BLOCK_METADATA_GAS_LIMIT` at 2,656. A list
+holding removed tasks is scanned entry by entry and costs more (below); extrapolating the
+200-task churn figure linearly (not measured), a capacity of about 1,070 tasks fits
+`BLOCK_METADATA_GAS_LIMIT` at the bound.
+
+Those figures are for a list holding only live tasks. A task removed during a cycle stays in
+the registry's ordered task list until a compaction drops it, and `monitorCycleEnd` compacts
+the list in every block of a running cycle once a quarter of it is removed tasks. An owner
+cannot cancel or stop a task in the block it was registered in, so one block adds at most the
+capacity C to the list, and every scan walks fewer than 7C/3 entries: the C live tasks, the
+fewer than C/3 removed entries a prologue keeps, and the C one block can add
+(Entropy-Foundation/smr-moonshot#4920). The bound assumes `monitorCycleEnd` succeeds in every
+block. A failed call before the cycle's end time lets the next scan cover up to 4C/3 + 2C
+entries. From the end time on, registration is refused (`CycleEndReached`) until a call
+processes the end, so a call that fails at the cycle end leaves the list as it is.
+`MonitorCycleEndGas.t.sol`'s churn tests measure the bound at C = 200 (200 live tasks and 266
+removed entries):
+
+| `monitorCycleEnd` path | Gas |
+| --- | --- |
+| Any block, no compaction due (200 live, 66 removed) | 14,913 |
+| Per-block compaction at the bound | 1,887,402 |
+| Cycle end at the bound | 3,126,023 |
+
+Register `monitorCycleEnd` with headroom over the cycle-end figure at the bound for the
+registry's capacity, for instance 4,000,000 at 200 tasks; the smr-moonshot localnet end-to-end
+tests register 9,000,000. For `monitorCycleEnd`, "size" means the
 `selectorGasLimit` it was registered with in `BlockMeta` (see "How `monitorCycleEnd`
 relates to `BlockMeta::blockPrologue`" above) — this is **not** automatically kept in sync
 with `taskCapacity`/`sysTaskCapacity`, so re-check it specifically whenever either capacity
@@ -671,24 +704,24 @@ How the figures are produced:
 
 | Payload / predicate (bytes) | First task, tx total | Next task, tx total | Event LOG gas |
 | --- | --- | --- | --- |
-| 640 / 128 (suite fixture) | 938,424 | 848,824 | 13,020 |
-| 1,024 / 512 (1/4 of caps) | 1,515,650 | 1,428,550 | 19,164 |
-| 2,048 / 1,024 (1/2 of caps) | 2,627,636 | 2,540,536 | 31,452 |
-| **4,096 / 2,048 (at caps)** | **4,851,884** | **4,764,784** | 56,028 |
+| 640 / 128 (suite fixture) | 924,668 | 852,168 | 13,020 |
+| 1,024 / 512 (1/4 of caps) | 1,501,898 | 1,431,898 | 19,164 |
+| 2,048 / 1,024 (1/2 of caps) | 2,613,893 | 2,543,893 | 31,452 |
+| **4,096 / 2,048 (at caps)** | **4,838,160** | **4,768,160** | 56,028 |
 
 ### GST (`registerSystemTask`)
 
 | Payload / predicate (bytes) | First task, tx total | Next task, tx total | Event LOG gas |
 | --- | --- | --- | --- |
-| 640 / 128 (suite fixture) | 910,569 | 858,269 | 12,764 |
-| **4,096 / 2,048 (at caps)** | **4,824,022** | **4,774,222** | 55,772 |
+| 640 / 128 (suite fixture) | 894,500 | 859,300 | 12,764 |
+| **4,096 / 2,048 (at caps)** | **4,807,953** | **4,775,253** | 55,772 |
 
 ### Reading the figures
 
 - **Storage dominates.** Each additional 32 bytes of payload or predicate adds about
   22k gas, the cost of writing a fresh non-zero storage slot. The UST rows grow by
   ~3.9M gas from the fixture to the caps.
-- **The first task costs more.** It is ~90k gas above the next task for a UST and ~52k
+- **The first task costs more.** It is ~70k gas above the next task for a UST and ~33k–35k
   for a GST, from initialising the registry's and the owner's records.
 - **Registration appends to `orderedTaskIds`, a packed `uint64[]`.** An append writes a
   fresh storage slot when the task ID starts a new slot (one in four) and rewrites a
@@ -710,12 +743,11 @@ How the figures are produced:
   | 2,048 / 1,024 | 2,597,236 | 2,627,545 | +30,309 |
   | 4,096 / 2,048 | 4,795,747 | 4,851,793 | +56,046 |
 
-  These two columns were measured before the task-ID lists became `uint64[]`; the
-  tables above are 91 gas higher in every row: 41 from the packed lists and 50 from the
-  word-alignment checks on `payloadTx` and `predicate`.
+  These two columns were measured on that earlier code and are not current totals; the
+  difference between them is what the comparison shows.
 
 - **Every size fits the per-transaction cap.** The largest registration, a UST at the
-  caps, is ~4.85M gas, about 3.5x below `TX_GAS_LIMIT_CAP` (16,777,216). The benchmark
+  caps, is ~4.84M gas, about 3.5x below `TX_GAS_LIMIT_CAP` (16,777,216). The benchmark
   asserts that every measured registration stays under it.
 - **Size a registrant's gas limit from the table, not from a fixed figure.** A client
   that estimated gas for a small task and reuses that limit for a larger one runs out

@@ -172,8 +172,9 @@ struct RegistryState {
     // Append-only mirror of taskIdList's insertion order (task IDs are assigned
     // strictly monotonically, so appending keeps this ascending by construction).
     // taskIdList's own iteration order is a separate, unrelated concern — see
-    // LibCore.buildAliveOrderedTaskIds, which compacts this array at cycle end.
-    // uint64 task IDs, four per slot.
+    // LibCore.buildAliveOrderedTaskIds, which compacts this array, and
+    // LibCore.compactOrderedTaskIdsIfSparse, which keeps it below 7/3 of the registry capacity
+    // (Entropy-Foundation/smr-moonshot#4920). uint64 task IDs, four per slot.
     uint64[] orderedTaskIds;
     mapping(uint64 => TaskMetadata) tasks;
     mapping(address => EnumerableSet.UintSet) addressToTasks;

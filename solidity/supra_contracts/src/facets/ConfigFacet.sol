@@ -133,6 +133,8 @@ contract ConfigFacet is IConfigFacet, IFacetSelectors {
     /// @notice Function to update the registry configuration buffer.
     /// @dev `_taskCapacity` and `_sysTaskCapacity` bound how many tasks `CoreFacet.monitorCycleEnd()`
     ///      iterates over each cycle, so raising them raises that function's per-call gas cost.
+    ///      With C their sum, its scan walks fewer than 7C/3 entries, live and removed tasks
+    ///      together (LibCore.compactOrderedTaskIdsIfSparse, Entropy-Foundation/smr-moonshot#4920).
     ///      `monitorCycleEnd()` is invoked once per block as a single registered entry in the
     ///      separate `BlockMeta` contract's `blockPrologue()` dispatch loop, under the fixed
     ///      per-entry gas limit it was registered with there (see `BlockMeta.getExecutionGasLimit`)
