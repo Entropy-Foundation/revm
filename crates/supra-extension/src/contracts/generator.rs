@@ -692,15 +692,15 @@ mod tests {
             ),
             (
                 "Diamond",
-                b256!("4da82da2fc47dc7764b05aebc40eadb94c0cf8dd298a3c52f08ff2d8935812d4"),
+                b256!("b4f6aab1441fe9b4dd0117617031701799b03c32a4050d534713dbd066a93642"),
             ),
             (
                 "DiamondCutFacet",
-                b256!("c79834176e70f6992b079aaeee23c6db4f01d3b85bb3b2c8d3a1378d6961e832"),
+                b256!("ad7094993d4f433cba81d6b1ce466d89f5879a9f63803380963dc25ab706f811"),
             ),
             (
                 "DiamondInit",
-                b256!("0eb47d6072e0139eee722d23efa74899004465d46e22a234d7898717306dd6d9"),
+                b256!("a6e557b3db8228b4063b9e433ce1833da9c24712b5a99ce9c5795df9ea2353f1"),
             ),
             (
                 "DiamondLoupeFacet",
@@ -720,7 +720,7 @@ mod tests {
             ),
             (
                 "OwnershipFacet",
-                b256!("f471fc64d15c9dc0e0fec9c72185447404f2616ffeb32e86974f2aafdd4886ca"),
+                b256!("fe0974ba8f89f0914bf06a96b8d75ba3aa0fcb50817af1d06befc35c0e5b2eee"),
             ),
             (
                 "RegistryFacet",
