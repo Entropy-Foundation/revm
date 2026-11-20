@@ -147,3 +147,6 @@ mod history_storage;
 
 #[cfg(test)]
 mod selfdestruct_burn;
+
+#[cfg(test)]
+mod automated_delegated_owner;
