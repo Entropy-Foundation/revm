@@ -6,6 +6,8 @@ pragma solidity 0.8.34;
 * EIP-2535 Diamonds: https://eips.ethereum.org/EIPS/eip-2535
 /******************************************************************************/
 import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
+import { IERC173 } from "../interfaces/IERC173.sol";
+import { IOwnable2Step } from "../interfaces/IOwnable2Step.sol";
 import { LibUtils } from "./LibUtils.sol";
 
 // Remember to add the loupe functions from DiamondLoupeFacet to the diamond.
@@ -22,12 +24,14 @@ library LibDiamond {
     error AddressMustBeZero();
     error AddressNotAContract();
     error CannotRemoveImmutableFunction();
+    error CannotRemoveProtectedFunction(bytes4 _selector);
     error CannotReplaceFunctionWithSameFunction();
     error FunctionAlreadyExists();
     error FunctionDoesNotExist();
     error IncorrectFacetCutAction();
     error InitializationFunctionReverted(address _initializationContractAddress, bytes _calldata);
     error MustBeContractOwner();
+    error MustBePendingOwner();
     error NoSelectorsInFacetToCut();
 
     struct FacetAddressAndPosition {
@@ -62,6 +66,13 @@ library LibDiamond {
         // that signal read directly off its own state instead of being reconstructed from an
         // invariant ("these interfaces are always registered together") a reader has to verify.
         bool initialized;
+        // Account nominated by OwnershipFacet.transferOwnership that has not called
+        // acceptOwnership yet; zero means no nomination is pending. Ownership of the Diamond moves
+        // in two steps (Entropy-Foundation/smr-moonshot#4975): only this account can complete a
+        // transfer, and setContractOwner clears it whenever the owner changes.
+        // Appended after every existing field: DiamondStorage lives at a fixed slot, so fields
+        // must never be reordered or inserted before existing ones.
+        address pendingOwner;
     }
 
     function diamondStorage() internal pure returns (DiamondStorage storage ds) {
@@ -74,20 +85,52 @@ library LibDiamond {
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
+    /// @notice Makes `_newOwner` the owner of the Diamond and clears any pending nomination.
+    /// @dev Used by the Diamond constructor for the initial owner and by
+    ///      OwnershipFacet.acceptOwnership to complete a two-step transfer. It is the only writer of
+    ///      `contractOwner`, so the owner is never the zero address. Clearing `pendingOwner` here
+    ///      means a completed transfer can never leave a nomination behind for later acceptance.
     function setContractOwner(address _newOwner) internal {
         assertNonZeroAddress(_newOwner);
         DiamondStorage storage ds = diamondStorage();
         address previousOwner = ds.contractOwner;
+        delete ds.pendingOwner;
         ds.contractOwner = _newOwner;
         emit OwnershipTransferred(previousOwner, _newOwner);
+    }
+
+    /// @notice Records `_nominee` as the account that may accept ownership of the Diamond.
+    /// @dev First step of the two-step transfer; ownership itself is unchanged. The zero address
+    ///      is accepted and cancels a pending nomination: enforceIsPendingOwner refuses every
+    ///      caller while `pendingOwner` is zero. A new nomination replaces the previous one.
+    ///      Callers must enforce owner-only access themselves.
+    function setPendingOwner(address _nominee) internal {
+        DiamondStorage storage ds = diamondStorage();
+        ds.pendingOwner = _nominee;
+        // Emitted as the interface's own event, so the log always matches the declaration the
+        // facet ABI and off-chain tooling decode against.
+        emit IOwnable2Step.OwnershipTransferStarted(ds.contractOwner, _nominee);
     }
 
     function contractOwner() internal view returns (address contractOwner_) {
         contractOwner_ = diamondStorage().contractOwner;
     }
 
+    function pendingOwner() internal view returns (address pendingOwner_) {
+        pendingOwner_ = diamondStorage().pendingOwner;
+    }
+
     function enforceIsContractOwner() internal view {
         if (msg.sender != diamondStorage().contractOwner) { revert MustBeContractOwner(); }
+    }
+
+    /// @notice Reverts unless a nomination is pending and the caller is the nominated account.
+    /// @dev Zero in `pendingOwner` means "no nomination", so it is refused explicitly rather than
+    ///      compared against `msg.sender`: acceptance must never depend on which addresses can or
+    ///      cannot be a caller.
+    function enforceIsPendingOwner() internal view {
+        address nominee = diamondStorage().pendingOwner;
+        if (nominee == address(0) || msg.sender != nominee) { revert MustBePendingOwner(); }
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut, address _init, bytes _calldata);
@@ -167,6 +210,9 @@ library LibDiamond {
     // Whoever operates diamondCut post-genesis must never submit a Remove action for
     // these selectors (Replace, to ship a fix, is fine and unaffected by
     // this note) — see CoreFacet.sol and CoreViewFacet.sol for the selector lists.
+    //
+    // The Diamond's administration selectors (see isProtectedSelector) are a separate, enforced
+    // rule: a Remove action naming any of them reverts with CannotRemoveProtectedFunction.
     function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         assertNonEmptySelectors(_functionSelectors);
         DiamondStorage storage ds = diamondStorage();
@@ -174,9 +220,30 @@ library LibDiamond {
         if (_facetAddress != address(0)) { revert AddressMustBeZero(); }
         for (uint256 selectorIndex; selectorIndex < _functionSelectors.length; selectorIndex++) {
             bytes4 selector = _functionSelectors[selectorIndex];
+            // Checked here, in the Remove path only, and not in removeFunction: replaceFunctions
+            // also goes through removeFunction, and replacing an administration selector with a
+            // fixed implementation must stay possible.
+            if (isProtectedSelector(selector)) { revert CannotRemoveProtectedFunction(selector); }
             address oldFacetAddress = ds.selectorToFacetAndPosition[selector].facetAddress;
             removeFunction(ds, oldFacetAddress, selector);
         }
+    }
+
+    /// @notice Whether `_selector` is one of the Diamond's administration selectors: diamondCut and
+    ///         the ERC-173 and IOwnable2Step functions. removeFunctions refuses a Remove action
+    ///         naming any of them.
+    /// @dev Only the Remove action is refused. A Replace action for these selectors is accepted:
+    ///      LibDiamond checks only that the new facet is a contract, so verifying that it
+    ///      implements them correctly is the owner's responsibility when reviewing the cut.
+    ///      See Entropy-Foundation/smr-moonshot#4975.
+    ///      Selectors are taken from the interfaces rather than written as literals so a
+    ///      signature change cannot leave this list pointing at a stale value.
+    function isProtectedSelector(bytes4 _selector) internal pure returns (bool) {
+        return _selector == IDiamondCut.diamondCut.selector
+            || _selector == IERC173.owner.selector
+            || _selector == IERC173.transferOwnership.selector
+            || _selector == IOwnable2Step.pendingOwner.selector
+            || _selector == IOwnable2Step.acceptOwnership.selector;
     }
 
     function addFacet(DiamondStorage storage ds, address _facetAddress) internal {
