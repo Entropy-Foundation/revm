@@ -12,8 +12,10 @@ The contracts the Supra EVM deploys at genesis (`crates/supra-extension/src/cont
   `CoreFacet` and `CoreViewFacet`. Ownership of the Diamond moves in two steps, as on `BlockMeta`
   and `MultisigBeacon`: `transferOwnership` nominates an account (zero cancels the nomination) and
   the transfer completes when that account calls `acceptOwnership`. A `diamondCut` Remove action
-  refuses the administration selectors (`diamondCut`, `owner`, `transferOwnership`, `pendingOwner`,
-  `acceptOwnership`); they can still be replaced.
+  naming an administration selector (`diamondCut`, `owner`, `transferOwnership`, `pendingOwner`,
+  `acceptOwnership`) reverts. A Replace action for them is accepted, and the Diamond checks only
+  that the new facet is a contract: verifying that it implements them correctly is the owner's
+  responsibility.
 
 The tooling is [Foundry](https://book.getfoundry.sh/).
 

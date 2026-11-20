@@ -4,8 +4,9 @@
 //! These tests run every genesis transaction `supra_extension` generates, in
 //! `ExecutionMode::Genesis`, and then administer the Diamond the way the chain does: the foundation
 //! multisig wallet, which genesis makes the Diamond's owner, submits and executes the owner-only
-//! calls, and every other account sends ordinary `User` transactions. They exercise the shipped
-//! genesis bytecode, which the forge suite in `solidity/supra_contracts` does not.
+//! calls, and every other account sends ordinary `User` transactions. In release-profile builds
+//! this is the shipped genesis bytecode: `supra_contracts` is compiled with the `production`
+//! Foundry profile only when Cargo's profile is release, and with the `default` profile otherwise.
 //!
 //! The rules they state:
 //! - ownership moves in two steps: `transferOwnership` nominates, the nominee's `acceptOwnership`

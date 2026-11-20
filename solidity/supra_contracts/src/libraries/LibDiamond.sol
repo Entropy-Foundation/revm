@@ -229,11 +229,13 @@ library LibDiamond {
         }
     }
 
-    /// @notice Whether `_selector` is one of the Diamond's administration selectors, which a
-    ///         diamondCut Remove action must never unroute.
-    /// @dev The Diamond must always be able to apply further cuts (diamondCut) and to hand over,
-    ///      and complete a handover of, ownership (the ERC-173 and IOwnable2Step functions).
-    ///      These selectors can still be replaced. See Entropy-Foundation/smr-moonshot#4975.
+    /// @notice Whether `_selector` is one of the Diamond's administration selectors: diamondCut and
+    ///         the ERC-173 and IOwnable2Step functions. removeFunctions refuses a Remove action
+    ///         naming any of them.
+    /// @dev Only the Remove action is refused. A Replace action for these selectors is accepted:
+    ///      LibDiamond checks only that the new facet is a contract, so verifying that it
+    ///      implements them correctly is the owner's responsibility when reviewing the cut.
+    ///      See Entropy-Foundation/smr-moonshot#4975.
     ///      Selectors are taken from the interfaces rather than written as literals so a
     ///      signature change cannot leave this list pointing at a stale value.
     function isProtectedSelector(bytes4 _selector) internal pure returns (bool) {

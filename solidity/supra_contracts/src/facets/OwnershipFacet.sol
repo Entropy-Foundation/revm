@@ -15,8 +15,9 @@ import { IFacetSelectors } from "../interfaces/IFacetSelectors.sol";
  *    replace the nomination, or cancel it with 'transferOwnership(address(0))'.
  *  - A nomination does not expire; it is cleared when it is accepted, replaced or cancelled.
  *  - Renouncing is not supported: the owner is never the zero address.
- *  - The selectors of this facet and 'diamondCut' cannot be removed by a diamondCut Remove action
- *    (LibDiamond.removeFunctions); they can still be replaced to ship a fix.
+ *  - A diamondCut Remove action naming a selector of this facet or 'diamondCut' reverts
+ *    (LibDiamond.removeFunctions). A Replace action for them is accepted; verifying that the new facet
+ *    implements them correctly is the owner's responsibility.
  */
 contract OwnershipFacet is IERC173, IOwnable2Step, IFacetSelectors {
 
