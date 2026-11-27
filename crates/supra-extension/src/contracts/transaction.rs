@@ -83,8 +83,10 @@ impl Debug for GenesisTransaction {
 /// `deployment_rank` states that order and is the only thing that decides it. Declaration
 /// order and any discriminant a variant might carry do not enter into it.
 ///
-/// Serde encodes this enum by declaration position, so a variant belongs at the end of the list
-/// whatever position it is given in the deployment order.
+/// Serde encodes this enum by declaration position. Until a genesis built with this enum is
+/// released, a variant is declared next to the contracts it belongs with; once one is released,
+/// a new variant goes at the end of the list whatever position it is given in the deployment
+/// order, so that released genesis files still decode.
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(missing_docs)]
 pub enum GenesisTransactionTags {
@@ -112,6 +114,7 @@ pub enum GenesisTransactionTags {
     ConfigFacet,
     RegistryFacet,
     CoreFacet,
+    CoreViewFacet,
     DiamondInit,
     Diamond,
     RegistryViewFacet,
@@ -153,8 +156,9 @@ impl GenesisTransactionTags {
             Self::RegistryFacet => 16,
             Self::RegistryViewFacet => 17,
             Self::CoreFacet => 18,
-            Self::DiamondInit => 19,
-            Self::Diamond => 20,
+            Self::CoreViewFacet => 19,
+            Self::DiamondInit => 20,
+            Self::Diamond => 21,
         }
     }
 }
@@ -213,6 +217,7 @@ mod tests {
             GenesisTransactionTags::RegistryFacet,
             GenesisTransactionTags::RegistryViewFacet,
             GenesisTransactionTags::CoreFacet,
+            GenesisTransactionTags::CoreViewFacet,
             GenesisTransactionTags::DiamondInit,
             GenesisTransactionTags::Diamond,
         ];

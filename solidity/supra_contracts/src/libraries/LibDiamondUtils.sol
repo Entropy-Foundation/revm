@@ -9,6 +9,7 @@ import {ConfigFacet} from "../facets/ConfigFacet.sol";
 import {RegistryFacet} from "../facets/RegistryFacet.sol";
 import {RegistryViewFacet} from "../facets/RegistryViewFacet.sol";
 import {CoreFacet} from "../facets/CoreFacet.sol";
+import {CoreViewFacet} from "../facets/CoreViewFacet.sol";
 import {DiamondInit} from "../upgradeInitializers/DiamondInit.sol";
 import {FacetsDeployment, InitParams} from "../libraries/DiamondTypes.sol";
 
@@ -72,6 +73,7 @@ library LibDiamondUtils {
         d.registryFacet  = address(new RegistryFacet());
         d.registryViewFacet = address(new RegistryViewFacet());
         d.coreFacet      = address(new CoreFacet());
+        d.coreViewFacet  = address(new CoreViewFacet());
 
         // 3) Deploy DiamondInit
         d.diamondInit = address(new DiamondInit());

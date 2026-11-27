@@ -8,8 +8,14 @@ The contracts the Supra EVM deploys at genesis (`crates/supra-extension/src/cont
 - `BlockMeta`, behind an `ERC1967Proxy`. Runs its registered `(target, selector, gasLimit)` entries
   once per block from the `BlockMetadata` system transaction (`blockPrologue`).
 - The automation registry, an EIP-2535 `Diamond` (`AutomationRegistry`) with `DiamondCutFacet`,
-  `DiamondLoupeFacet`, `OwnershipFacet`, `ConfigFacet`, `RegistryFacet`, `RegistryViewFacet` and
-  `CoreFacet`.
+  `DiamondLoupeFacet`, `OwnershipFacet`, `ConfigFacet`, `RegistryFacet`, `RegistryViewFacet`,
+  `CoreFacet` and `CoreViewFacet`. Ownership of the Diamond moves in two steps, as on `BlockMeta`
+  and `MultisigBeacon`: `transferOwnership` nominates an account (zero cancels the nomination) and
+  the transfer completes when that account calls `acceptOwnership`. A `diamondCut` Remove action
+  naming an administration selector (`diamondCut`, `owner`, `transferOwnership`, `pendingOwner`,
+  `acceptOwnership`) reverts. A Replace action for them is accepted, and the Diamond checks only
+  that the new facet is a contract: verifying that it implements them correctly is the owner's
+  responsibility.
 
 The tooling is [Foundry](https://book.getfoundry.sh/).
 
@@ -61,7 +67,7 @@ driver prints the chain id and checks that every listed keystore belongs to a wa
 |---|---|---|
 | `InitializeCycleMonitoring` | `BlockMeta.register(AutomationRegistry, monitorCycleEnd.selector, SelectorGasLimit)` | `BlockMetadata` is not owned by the wallet; `AutomationRegistry` has no code; `SelectorGasLimit` is zero; `monitorCycleEnd` is already registered; the allocated total would exceed 63/64 of the block prologue gas cap |
 | `EnableDisableAutomation` | `CoreFacet.enableAutomation()` or `disableAutomation()`, per `EnableAutomation` | `AutomationRegistry` is not owned by the wallet; automation is already in the requested state |
-| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks | `AutomationRegistry` is not owned by the wallet; `AccountToAuthorize` is the zero address or already authorized |
+| `AuthorizeAccount` | `ConfigFacet.grantAuthorization(AccountToAuthorize)`, which allows an account to register system tasks | `AutomationRegistry` is not owned by the wallet; `AccountToAuthorize` is the zero address or already authorized, or has code that is not an EIP-7702 delegation and does not declare `IAutomationTaskOwner` (the foundation wallet is such an account) |
 
 These are the conditions under which the submitted call would revert when the owners execute it.
 A refused submission costs nothing and prints the values it compared; an action that fails only at
@@ -118,10 +124,12 @@ left-padded with zeros.
   `BlockMeta.register` refuses a registration over it, and `InitializeCycleMonitoring` refuses to
   submit one. With the default cap of 16,777,216 and no other entries, the bound is 16,515,072.
 - **Lower bound.** The worst-case cost of `monitorCycleEnd` at the registry's current
-  `taskCapacity + sysTaskCapacity`, plus headroom: 1,945,671 gas at the 200-task cap and
-  3,776,612 at 400, measured before refunds as on a chain (`test/MonitorCycleEndGas.t.sol`,
+  `taskCapacity + sysTaskCapacity` (C), plus headroom. Tasks removed during a cycle stay in the
+  ordered task list until `monitorCycleEnd` compacts it, so the worst case is a cycle end over
+  fewer than 7C/3 entries (Entropy-Foundation/smr-moonshot#4920): 3,126,023 gas at the 200-task
+  cap, measured before refunds as on a chain (`test/MonitorCycleEndGas.t.sol`, churn tests;
   `crates/supra-extension/src/AUTOMATION_REGISTRY_GAS_GUIDE.md`, "Trigger calls"); for
-  instance 2,500,000 at 200 tasks. An entry that runs out of gas emits `CallFailed` and
+  instance 4,000,000 at 200 tasks. An entry that runs out of gas emits `CallFailed` and
   nothing else: the cycle stops advancing without any error.
 - The smr-moonshot localnet end-to-end tests register 9,000,000.
 
@@ -171,3 +179,40 @@ cast call ${BlockMetadata} "getExecutionGasLimit(address,bytes4)(uint64)" \
 cast call ${AutomationRegistry} "isAutomationEnabled()(bool)" --rpc-url ${EVM_RPC_URL}
 cast call ${AutomationRegistry} "getCycleInfo()(uint64,uint64,uint64,uint8)" --rpc-url ${EVM_RPC_URL}
 ```
+
+## Automation tasks of the foundation
+
+The foundation wallet does not own automation tasks (smr-moonshot #4922). It declares no ERC-165
+interface, so the registry's `register` and `registerSystemTask` refuse it with
+`UnsupportedTaskOwner`, and the `AuthorizeAccount` action refuses to authorize it.
+
+Tasks the foundation wants registered are owned by a separate task owner contract that the wallet
+administers:
+
+1. Write the contract on `src/AutomationTaskOwnerBase.sol`, with external functions that act on
+   the registry restricted to its owner. `src/SystemTaskOwner.sol` is a reference for system
+   tasks: an `Ownable2Step` owner that cannot be renounced, registration, cancellation and stopping
+   of system tasks, and a refusal of native SUPRA, since system tasks are charged no fees. It is
+   not deployed at genesis; adapt it to the task's requirements.
+2. Deploy it from the wallet with `MultiSignatureWallet.deployContract`, so that the wallet is the
+   deployer and therefore the owner.
+3. For system tasks, authorize the contract (not the wallet) with the `AuthorizeAccount` action.
+4. Register, cancel and stop its tasks through wallet transactions to the contract.
+
+Steps 2 and 4 have no governance action yet: the actions are written once the foundation has a
+concrete task, against that task's requirements.
+
+Rules for the task owner contract and its tasks:
+
+- The contract is used for nothing else. It is never made the owner, pending owner, admin or role
+  holder of any contract, and it is never authorized for anything except system task submission.
+  It holds only the WSUPRA and native SUPRA its own tasks need.
+- Confirming a registration confirms every execution of that payload until the task ends. The
+  owners review the payload, the target, the predicate and its target, the expiry time and, for a
+  user task, the value and gas each execution spends, as a standing instruction and not as a
+  single call.
+- A task that is no longer wanted is cancelled or stopped through the contract. Changing the
+  wallet's owners or threshold does not end a task.
+
+`test/ContractOwnedTasks.t.sol` covers the refusal of the wallet and the procedure above with a
+`SystemTaskOwner`; `test/SystemTaskOwner.t.sol` covers the reference contract itself.

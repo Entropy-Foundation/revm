@@ -12,6 +12,7 @@ import { LibDiamond } from "../libraries/LibDiamond.sol";
 import { IDiamondLoupe } from "../interfaces/IDiamondLoupe.sol";
 import { IDiamondCut } from "../interfaces/IDiamondCut.sol";
 import { IERC173 } from "../interfaces/IERC173.sol";
+import { IOwnable2Step } from "../interfaces/IOwnable2Step.sol";
 import { IERC165 } from "../interfaces/IERC165.sol";
 import { IRegistryStatus } from "../interfaces/IRegistryStatus.sol";
 
@@ -39,7 +40,7 @@ import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable
 ///
 /// This initializer performs the following actions:
 /// - Registers supported interfaces for ERC-165, IDiamondCut, IDiamondLoupe, ERC-173,
-///   IRegistryStatus.
+///   IOwnable2Step, IRegistryStatus.
 /// - Sets the active registry configuration, protocol feature flags and trusted addresses.
 /// - Establishes initial automation cycle state, index, and timestamp.
 ///
@@ -70,6 +71,7 @@ contract DiamondInit is Initializable {
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = true;
         ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] = true;
         ds.supportedInterfaces[type(IERC173).interfaceId] = true;
+        ds.supportedInterfaces[type(IOwnable2Step).interfaceId] = true;
         ds.supportedInterfaces[type(IRegistryStatus).interfaceId] = true;
 
 

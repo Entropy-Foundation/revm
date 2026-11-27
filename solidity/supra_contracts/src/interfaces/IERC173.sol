@@ -13,8 +13,13 @@ interface IERC173 {
     function owner() external view returns (address owner_);
 
     /// @notice Set the address of the new owner of the contract
-    /// @dev Reverts with LibDiamond.AddressCannotBeZero if `_newOwner` is the zero address.
-    ///      Renouncing ownership is intentionally not supported.
-    /// @param _newOwner The address of the new owner of the contract
+    /// @dev On the automation registry Diamond this is the first step of a two-step handover
+    ///      (see IOwnable2Step): it records `_newOwner` as the pending owner, and ownership moves
+    ///      only when that account calls 'acceptOwnership'. The current owner keeps full control
+    ///      until then. Passing the zero address cancels a pending nomination.
+    ///      Renouncing ownership is intentionally not supported: the owner is never the zero address.
+    ///      The function keeps its ERC-173 name and selector so that `type(IERC173).interfaceId`
+    ///      stays the standard identifier.
+    /// @param _newOwner The account to nominate as the next owner, or zero to cancel a nomination
     function transferOwnership(address _newOwner) external;
 }
