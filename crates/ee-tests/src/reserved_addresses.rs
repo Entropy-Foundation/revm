@@ -347,7 +347,7 @@ fn run(
         .collect();
     let mut evm = Context::mainnet()
         .modify_cfg_chained(|cfg| {
-            cfg.spec = SpecId::PRAGUE;
+            cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE);
             cfg.execution_mode = mode;
         })
         .with_db(db)
