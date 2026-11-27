@@ -36,7 +36,12 @@ pub enum ExecutionMode {
 }
 
 impl ExecutionMode {
-    /// Returns true if gas should be charged for execution.
+    /// Returns true if the transaction pays for its gas.
+    ///
+    /// A transaction in a mode that returns false pays no fee: no fee is deducted from the
+    /// caller's balance and none is reimbursed, the block beneficiary is not rewarded, and the
+    /// EIP-7623 calldata floor does not apply. Its gas is otherwise accounted for as in any other
+    /// mode, the EIP-3529 refund cap included, and reported in its result.
     pub const fn charges_gas(&self) -> bool {
         match self {
             ExecutionMode::User | ExecutionMode::Automated => true,

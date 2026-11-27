@@ -203,19 +203,7 @@ pub trait Handler {
             None => self.runtime_oog_result(evm, &init_and_floor_gas, &mut gas)?,
         };
 
-        // A mode that charges no gas settles no gas, so post-execution is skipped: no refund
-        // cap, EIP-7623 gas floor, reimbursement or beneficiary reward. Its result reports the
-        // gas spent less the refund the execution accumulated, uncapped, and no floor.
-        let result_gas = if evm.ctx().cfg().execution_mode().charges_gas() {
-            self.post_execution(evm, &mut exec_result, init_and_floor_gas, refund)?
-        } else {
-            post_execution::build_result_gas(
-                exec_result.instruction_result().is_halt(),
-                exec_result.gas(),
-                init_and_floor_gas,
-            )
-            .with_floor_gas(0)
-        };
+        let result_gas = self.post_execution(evm, &mut exec_result, init_and_floor_gas, refund)?;
 
         // Prepare the output
         self.execution_result(evm, exec_result, result_gas)
@@ -510,7 +498,9 @@ pub trait Handler {
             tx,
             ctx.cfg().spec().into(),
             ctx.cfg().gas_params(),
-            ctx.cfg().is_eip7623_disabled(),
+            // A mode that charges no gas has no EIP-7623 floor: the floor is a minimum charge,
+            // and such a transaction is charged nothing.
+            ctx.cfg().is_eip7623_disabled() || !ctx.cfg().execution_mode().charges_gas(),
             ctx.cfg().is_amsterdam_eip8037_enabled(),
             ctx.cfg().tx_gas_limit_cap(),
             eip2780,

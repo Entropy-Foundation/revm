@@ -462,6 +462,161 @@ mod tests {
         }
     }
 
+    /// The EIP-7623 floor does not limit a transaction in a mode that charges no gas: a gas limit
+    /// that covers the standard cost but not the floor is accepted, where a user transaction with
+    /// the same limit is refused.
+    #[test]
+    fn gas_floor_does_not_limit_modes_that_charge_no_gas() {
+        // 4,000 non-zero calldata bytes cost 21,000 + 16 * 4,000 = 85,000, below the floor of
+        // 21,000 + 10 * 4 * 4,000 = 181,000. The gas limit covers the first and not the second.
+        const CALLDATA_LEN: u64 = 4_000;
+        const STANDARD_COST: u64 = 21_000 + 16 * CALLDATA_LEN;
+        const GAS_LIMIT: u64 = 100_000;
+        let transact = |mode: ExecutionMode| {
+            let caller = if mode == ExecutionMode::System {
+                VM_SIGNER
+            } else {
+                Address::ZERO
+            };
+            let mut evm = Context::mainnet()
+                .modify_cfg_chained(|c| c.execution_mode = mode)
+                .with_db(CacheDB::<EmptyDB>::default())
+                .build_mainnet();
+            evm.transact_commit(
+                TxEnv::builder()
+                    .caller(caller)
+                    .gas_limit(GAS_LIMIT)
+                    .kind(TxKind::Call(address!(
+                        "0x1000000000000000000000000000000000000000"
+                    )))
+                    .data(Bytes::from(vec![0xff; CALLDATA_LEN as usize]))
+                    .build()
+                    .expect("a complete call environment builds"),
+            )
+        };
+
+        let user = transact(ExecutionMode::User);
+        assert!(
+            matches!(
+                user,
+                Err(EVMError::Transaction(
+                    InvalidTransaction::GasFloorMoreThanGasLimit { .. }
+                ))
+            ),
+            "{user:?}"
+        );
+
+        for mode in [
+            ExecutionMode::AutomatedGasless,
+            ExecutionMode::System,
+            ExecutionMode::ReadOnly,
+            ExecutionMode::Genesis,
+        ] {
+            let result = transact(mode).unwrap_or_else(|error| panic!("{mode:?}: {error:?}"));
+            assert!(result.is_success(), "{mode:?}: {result:?}");
+            assert_eq!(result.tx_gas_used(), STANDARD_COST, "{mode:?}");
+            assert_eq!(result.gas().floor_gas(), 0, "{mode:?}");
+        }
+    }
+
+    /// A mode that charges no gas accounts for its gas as a user transaction does, the EIP-3529
+    /// refund cap included, and moves no fee: the caller is not reimbursed and the beneficiary is
+    /// not rewarded, whatever the gas price.
+    #[test]
+    fn modes_that_charge_no_gas_cap_the_refund_and_move_no_fee() {
+        use primitives::U256;
+
+        // Clearing a set slot costs 5,000 gas (a cold SSTORE reset) and refunds 4,800, so the
+        // refund of clearing ten slots is above the cap of a fifth of the gas spent.
+        const SLOTS: u8 = 10;
+        const UNCAPPED_REFUND: u64 = 4_800 * SLOTS as u64;
+        const BALANCE: u64 = 1_000;
+        let callee = address!("0x1000000000000000000000000000000000000000");
+        let beneficiary = address!("0x2000000000000000000000000000000000000000");
+        let mut code = Vec::new();
+        for slot in 0..SLOTS {
+            code.extend([opcode::PUSH1, 0, opcode::PUSH1, slot, opcode::SSTORE]);
+        }
+        code.push(opcode::STOP);
+        let code = Bytecode::new_raw(code.into());
+
+        let transact = |mode: ExecutionMode, gas_price: u128| {
+            let caller = if mode == ExecutionMode::System {
+                VM_SIGNER
+            } else {
+                Address::ZERO
+            };
+            let mut evm = Context::mainnet()
+                .modify_cfg_chained(|c| c.execution_mode = mode)
+                .modify_block_chained(|b| b.beneficiary = beneficiary)
+                .with_db(CacheDB::<EmptyDB>::default())
+                .build_mainnet();
+            evm.db_mut().insert_account_info(
+                caller,
+                AccountInfo::default().with_balance(U256::from(BALANCE)),
+            );
+            evm.db_mut()
+                .insert_account_info(callee, AccountInfo::default().with_code(code.clone()));
+            for slot in 0..SLOTS {
+                evm.db_mut()
+                    .insert_account_storage(callee, U256::from(slot), U256::from(1))
+                    .expect("the in-memory database accepts storage");
+            }
+            let outcome = evm
+                .transact(
+                    TxEnv::builder()
+                        .caller(caller)
+                        .gas_limit(1_000_000)
+                        .gas_price(gas_price)
+                        .kind(TxKind::Call(callee))
+                        .build()
+                        .expect("a complete call environment builds"),
+                )
+                .unwrap_or_else(|error| panic!("{mode:?}: {error:?}"));
+            assert!(outcome.result.is_success(), "{mode:?}: {outcome:?}");
+            (caller, outcome)
+        };
+
+        let (_, user) = transact(ExecutionMode::User, 0);
+        let user_gas = user.result.gas();
+        assert_eq!(
+            user_gas.inner_refunded(),
+            user_gas.total_gas_spent() / 5,
+            "the refund is capped"
+        );
+        assert!(user_gas.inner_refunded() < UNCAPPED_REFUND);
+
+        // ReadOnly is left out: a run that writes storage is refused in that mode.
+        for mode in [
+            ExecutionMode::AutomatedGasless,
+            ExecutionMode::System,
+            ExecutionMode::Genesis,
+        ] {
+            let (caller, outcome) = transact(mode, 20_000_000_000);
+            let gas = outcome.result.gas();
+            assert_eq!(
+                gas.total_gas_spent(),
+                user_gas.total_gas_spent(),
+                "{mode:?}"
+            );
+            assert_eq!(gas.inner_refunded(), user_gas.inner_refunded(), "{mode:?}");
+            assert_eq!(gas.tx_gas_used(), user_gas.tx_gas_used(), "{mode:?}");
+            assert_eq!(gas.floor_gas(), 0, "{mode:?}");
+            assert_eq!(
+                outcome.state[&caller].info.balance,
+                U256::from(BALANCE),
+                "{mode:?}: the caller is neither charged nor reimbursed"
+            );
+            assert!(
+                outcome
+                    .state
+                    .get(&beneficiary)
+                    .is_none_or(|account| account.info.balance.is_zero()),
+                "{mode:?}: the beneficiary is not rewarded"
+            );
+        }
+    }
+
     /// A mode that charges no gas deducts no fee from the caller, whatever the gas price, but the
     /// caller must still hold the value the transaction transfers.
     #[test]

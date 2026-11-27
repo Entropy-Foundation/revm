@@ -1,6 +1,6 @@
 use crate::{Inspector, InspectorEvmTr, JournalExt};
 use context::journaled_state::JournalCheckpoint;
-use context::{result::ExecutionResult, Cfg, ContextTr, JournalEntry, JournalTr};
+use context::{result::ExecutionResult, ContextTr, JournalEntry, JournalTr};
 use handler::{
     evm::FrameTr, execution::runtime_oog_unwind, post_execution::build_result_gas, EvmTr,
     FrameResult, Handler, ItemOrResult,
@@ -79,19 +79,7 @@ where
             Some(exec_result) => exec_result,
             None => self.runtime_oog_result(evm, &init_and_floor_gas, &mut gas)?,
         };
-        // A mode that charges no gas settles no gas, so post-execution is skipped: no refund
-        // cap, EIP-7623 gas floor, reimbursement or beneficiary reward. Its result reports the
-        // gas spent less the refund the execution accumulated, uncapped, and no floor.
-        let result_gas = if evm.ctx().cfg().execution_mode().charges_gas() {
-            self.post_execution(evm, &mut frame_result, init_and_floor_gas, refund)?
-        } else {
-            build_result_gas(
-                frame_result.instruction_result().is_halt(),
-                frame_result.gas(),
-                init_and_floor_gas,
-            )
-            .with_floor_gas(0)
-        };
+        let result_gas = self.post_execution(evm, &mut frame_result, init_and_floor_gas, refund)?;
         self.execution_result(evm, frame_result, result_gas)
     }
 
