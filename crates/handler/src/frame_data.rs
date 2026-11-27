@@ -1,4 +1,4 @@
-use context_interface::result::Output;
+use context_interface::{cfg::GasParams, result::Output};
 use core::ops::Range;
 use interpreter::{CallOutcome, CreateOutcome, Gas, InstructionResult, InterpreterResult};
 use primitives::Address;
@@ -42,6 +42,22 @@ pub enum FrameResult {
 }
 
 impl FrameResult {
+    /// Creates a new call frame result for an out-of-gas error.
+    #[inline]
+    pub fn new_call_oog(
+        gas_limit: u64,
+        memory_offset: core::ops::Range<usize>,
+        reservoir: u64,
+    ) -> Self {
+        Self::Call(CallOutcome::new_oog(gas_limit, memory_offset, reservoir))
+    }
+
+    /// Creates a new create frame result for an out-of-gas error.
+    #[inline]
+    pub fn new_create_oog(gas_limit: u64, reservoir: u64) -> Self {
+        Self::Create(CreateOutcome::new_oog(gas_limit, reservoir))
+    }
+
     /// Casts frame result to interpreter result.
     #[inline]
     pub fn into_interpreter_result(self) -> InterpreterResult {
@@ -64,7 +80,7 @@ impl FrameResult {
 
     /// Returns reference to gas.
     #[inline]
-    pub fn gas(&self) -> &Gas {
+    pub const fn gas(&self) -> &Gas {
         match self {
             FrameResult::Call(outcome) => &outcome.result.gas,
             FrameResult::Create(outcome) => &outcome.result.gas,
@@ -73,7 +89,7 @@ impl FrameResult {
 
     /// Returns mutable reference to interpreter result.
     #[inline]
-    pub fn gas_mut(&mut self) -> &mut Gas {
+    pub const fn gas_mut(&mut self) -> &mut Gas {
         match self {
             FrameResult::Call(outcome) => &mut outcome.result.gas,
             FrameResult::Create(outcome) => &mut outcome.result.gas,
@@ -82,7 +98,7 @@ impl FrameResult {
 
     /// Returns reference to interpreter result.
     #[inline]
-    pub fn interpreter_result(&self) -> &InterpreterResult {
+    pub const fn interpreter_result(&self) -> &InterpreterResult {
         match self {
             FrameResult::Call(outcome) => &outcome.result,
             FrameResult::Create(outcome) => &outcome.result,
@@ -91,7 +107,7 @@ impl FrameResult {
 
     /// Returns mutable reference to interpreter result.
     #[inline]
-    pub fn interpreter_result_mut(&mut self) -> &InterpreterResult {
+    pub const fn interpreter_result_mut(&mut self) -> &mut InterpreterResult {
         match self {
             FrameResult::Call(outcome) => &mut outcome.result,
             FrameResult::Create(outcome) => &mut outcome.result,
@@ -100,36 +116,61 @@ impl FrameResult {
 
     /// Return Instruction result.
     #[inline]
-    pub fn instruction_result(&self) -> InstructionResult {
+    pub const fn instruction_result(&self) -> InstructionResult {
         self.interpreter_result().result
+    }
+
+    /// Returns the upfront state charge (EIP-8037) to refund when the frame
+    /// did not create the account leaf it paid for, or `None` when nothing is
+    /// to be refunded.
+    ///
+    /// The charge was recorded on the caller's gas before the frame ran — by
+    /// the CALL/CREATE opcode for inner frames, or by the EIP-2780 runtime
+    /// gas phase on the transaction-level gas for the first frame — and its
+    /// decision is carried on the outcome's `charged_*` flags. A call refunds
+    /// it when it did not succeed; a create also refunds it when no contract
+    /// address was deployed (early-fail paths such as sender nonce overflow
+    /// report success with `address == None`, so the address is checked
+    /// rather than the result alone).
+    #[inline]
+    pub fn refundable_state_gas(&self, gas_params: &GasParams) -> Option<u64> {
+        match self {
+            FrameResult::Call(outcome) => (!outcome.instruction_result().is_ok()
+                && outcome.charged_new_account_state_gas)
+                .then(|| gas_params.new_account_state_gas()),
+            FrameResult::Create(outcome) => ((outcome.address.is_none()
+                || !outcome.instruction_result().is_ok())
+                && outcome.charged_create_state_gas)
+                .then(|| gas_params.create_state_gas()),
+        }
     }
 }
 
 impl FrameData {
     /// Creates a new create frame data.
-    pub fn new_create(created_address: Address) -> Self {
+    pub const fn new_create(created_address: Address) -> Self {
         Self::Create(CreateFrame { created_address })
     }
 
     /// Creates a new call frame data.
-    pub fn new_call(return_memory_range: Range<usize>) -> Self {
+    pub const fn new_call(return_memory_range: Range<usize>) -> Self {
         Self::Call(CallFrame {
             return_memory_range,
         })
     }
 
     /// Returns true if frame is call frame.
-    pub fn is_call(&self) -> bool {
+    pub const fn is_call(&self) -> bool {
         matches!(self, Self::Call { .. })
     }
 
     /// Returns true if frame is create frame.
-    pub fn is_create(&self) -> bool {
+    pub const fn is_create(&self) -> bool {
         matches!(self, Self::Create { .. })
     }
 
     /// Returns created address if frame is create otherwise returns None.
-    pub fn created_address(&self) -> Option<Address> {
+    pub const fn created_address(&self) -> Option<Address> {
         match self {
             Self::Create(create_frame) => Some(create_frame.created_address),
             _ => None,

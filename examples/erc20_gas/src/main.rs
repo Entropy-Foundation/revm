@@ -9,16 +9,10 @@ use alloy_sol_types::SolValue;
 use anyhow::Result;
 use exec::transact_erc20evm_commit;
 use revm::{
-    context::TxEnv,
-    context_interface::{
-        result::{InvalidHeader, InvalidTransaction},
-        ContextTr, JournalTr,
-    },
+    context::{CfgEnv, TxEnv},
     database::{AlloyDB, BlockId, CacheDB},
     database_interface::WrapDatabaseAsync,
-    primitives::{
-        address, hardfork::SpecId, keccak256, Address, StorageValue, TxKind, KECCAK_EMPTY, U256,
-    },
+    primitives::{address, hardfork::SpecId, keccak256, Address, StorageValue, TxKind, U256},
     state::AccountInfo,
     Context, Database, MainBuilder, MainContext,
 };
@@ -61,10 +55,8 @@ async fn main() -> Result<()> {
     cache_db.insert_account_info(
         account,
         AccountInfo {
-            nonce: 0,
             balance: hundred_tokens * U256::from(2),
-            code_hash: KECCAK_EMPTY,
-            code: None,
+            ..Default::default()
         },
     );
 
@@ -81,49 +73,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Helpers
-pub fn token_operation<CTX, ERROR>(
-    context: &mut CTX,
-    sender: Address,
-    recipient: Address,
-    amount: U256,
-) -> Result<(), ERROR>
-where
-    CTX: ContextTr,
-    ERROR: From<InvalidTransaction> + From<InvalidHeader> + From<<CTX::Db as Database>::Error>,
-{
-    let sender_balance_slot = erc_address_storage(sender);
-    let sender_balance = context
-        .journal_mut()
-        .sload(TOKEN, sender_balance_slot)?
-        .data;
-
-    if sender_balance < amount {
-        return Err(ERROR::from(
-            InvalidTransaction::MaxFeePerBlobGasNotSupported,
-        ));
-    }
-    // Subtract the amount from the sender's balance
-    let sender_new_balance = sender_balance.saturating_sub(amount);
-    context
-        .journal_mut()
-        .sstore(TOKEN, sender_balance_slot, sender_new_balance)?;
-
-    // Add the amount to the recipient's balance
-    let recipient_balance_slot = erc_address_storage(recipient);
-    let recipient_balance = context
-        .journal_mut()
-        .sload(TOKEN, recipient_balance_slot)?
-        .data;
-
-    let recipient_new_balance = recipient_balance.saturating_add(amount);
-    context
-        .journal_mut()
-        .sstore(TOKEN, recipient_balance_slot, recipient_new_balance)?;
-
-    Ok(())
-}
-
 fn balance_of(address: Address, alloy_db: &mut AlloyCacheDB) -> Result<StorageValue> {
     let slot = erc_address_storage(address);
     alloy_db.storage(TOKEN, slot).map_err(From::from)
@@ -132,9 +81,7 @@ fn balance_of(address: Address, alloy_db: &mut AlloyCacheDB) -> Result<StorageVa
 fn transfer(from: Address, to: Address, amount: U256, cache_db: &mut AlloyCacheDB) -> Result<()> {
     let mut ctx = Context::mainnet()
         .with_db(cache_db)
-        .modify_cfg_chained(|cfg| {
-            cfg.spec = SpecId::CANCUN;
-        })
+        .with_cfg(CfgEnv::new_with_spec(SpecId::CANCUN))
         .with_tx(
             TxEnv::builder()
                 .caller(from)

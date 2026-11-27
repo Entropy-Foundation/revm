@@ -80,7 +80,7 @@ fn execute_commit(
     mode: ExecutionMode,
     tx: TxEnv,
 ) -> Result<ExecutionResult, TestError> {
-    evm.ctx.cfg.execution_mode = mode.clone();
+    evm.ctx.cfg.execution_mode = mode;
     if mode.is_system() {
         evm.ctx.set_tx(tx);
         let mut handler = MainnetHandler::<TestEvm, TestError, EthFrame<EthInterpreter>>::default();
@@ -215,16 +215,20 @@ fn history_writes_fill_the_ring_and_get_serves_the_window() {
     let first = handler
         .run_system_call(&mut evm)
         .expect("the first write executes");
-    assert_eq!(
-        first,
-        ExecutionResult::Success {
-            reason: SuccessReason::Stop,
-            gas_used: 22143,
-            gas_refunded: 0,
-            logs: vec![],
-            output: Output::Call(Bytes::default()),
-        }
+    assert!(
+        matches!(
+            &first,
+            ExecutionResult::Success {
+                reason: SuccessReason::Stop,
+                logs,
+                output: Output::Call(output),
+                ..
+            } if logs.is_empty() && output.is_empty()
+        ),
+        "{first:?}"
     );
+    assert_eq!(first.tx_gas_used(), 22143);
+    assert_eq!(first.gas().inner_refunded(), 0);
     let state = evm.finalize();
     assert_eq!(
         state.keys().copied().collect::<Vec<_>>(),
@@ -356,7 +360,7 @@ fn the_system_address_is_a_sender_of_system_transactions_only() {
             let mut evm = new_evm();
             let result = execute_commit(
                 &mut evm,
-                mode.clone(),
+                mode,
                 TxEnv {
                     caller: sender,
                     kind: TxKind::Call(HISTORY_STORAGE_ADDRESS),

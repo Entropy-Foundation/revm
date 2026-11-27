@@ -168,7 +168,7 @@ pub struct BlockMetadataBuilder {
 
 #[allow(missing_docs)]
 impl BlockMetadataBuilder {
-    pub fn new(to: Address) -> Self {
+    pub const fn new(to: Address) -> Self {
         Self {
             to,
             height: None,
@@ -180,30 +180,30 @@ impl BlockMetadataBuilder {
     }
 
     /// Address this transaction was built to target, i.e. the `BlockMeta` contract address.
-    pub fn to(&self) -> Address {
+    pub const fn to(&self) -> Address {
         self.to
     }
 
-    pub fn height(mut self, height: u64) -> Self {
+    pub const fn height(mut self, height: u64) -> Self {
         self.height = Some(height);
         self
     }
 
-    pub fn block_hash(mut self, block_hash: B256) -> Self {
+    pub const fn block_hash(mut self, block_hash: B256) -> Self {
         self.block_hash = Some(block_hash);
         self
     }
-    pub fn chain_id(mut self, chain_id: u64) -> Self {
+    pub const fn chain_id(mut self, chain_id: u64) -> Self {
         self.chain_id = Some(chain_id);
         self
     }
 
-    pub fn timestamp(mut self, timestamp: U256) -> Self {
+    pub const fn timestamp(mut self, timestamp: U256) -> Self {
         self.timestamp = Some(timestamp);
         self
     }
 
-    pub fn gas_limit(mut self, gas_limit: u64) -> Self {
+    pub const fn gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
     }

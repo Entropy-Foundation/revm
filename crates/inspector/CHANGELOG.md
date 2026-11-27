@@ -7,6 +7,226 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.3](https://github.com/bluealloy/revm/compare/revm-inspector-v43.0.2...revm-inspector-v43.0.3) - 2026-09-24
+
+### Other
+
+- updated the following local packages: revm-state, revm-database-interface, revm-context, revm-database, revm-interpreter, revm-handler
+
+## [43.0.2](https://github.com/bluealloy/revm/compare/revm-inspector-v43.0.0...revm-inspector-v43.0.2) - 2026-09-08
+
+### Fixed
+
+- *(eip8037)* place the system call state-gas margin in the reservoir ([#3892](https://github.com/bluealloy/revm/pull/3892))
+
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v42.0.1...revm-inspector-v43.0.0) - 2026-08-20
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-state, revm-database-interface, revm-context, revm-database, revm-interpreter, revm-handler
+
+## [42.0.1](https://github.com/bluealloy/revm/compare/revm-inspector-v42.0.0...revm-inspector-v42.0.1) - 2026-07-23
+
+### Other
+
+- updated the following local packages: revm-handler
+
+## [42.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v41.0.0...revm-inspector-v42.0.0) - 2026-07-22
+
+### Added
+
+- *(amsterdam)* glamsterdam devnet-7 alignment (EIP-2780 runtime gas phase, fixtures v7.0.0) ([#3795](https://github.com/bluealloy/revm/pull/3795))
+
+### Fixed
+
+- *(inspector)* ignore stale selfdestruct journal entries ([#3805](https://github.com/bluealloy/revm/pull/3805))
+- *(inspect)* finalize journal on error to prevent EIP-2929 warm set leak ([#3780](https://github.com/bluealloy/revm/pull/3780))
+
+### Other
+
+- *(handler)* validate state before tracking gas ([#3815](https://github.com/bluealloy/revm/pull/3815))
+- clarify EIP-7702 regular-gas GasId names ([#3725](https://github.com/bluealloy/revm/pull/3725))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v21.0.3...revm-inspector-v41.0.0) - 2026-06-11
+
+### Other
+
+- updated the following local packages: revm-state, revm-database-interface, revm-context, revm-database, revm-interpreter, revm-handler
+
+## [21.0.3](https://github.com/bluealloy/revm/compare/revm-inspector-v21.0.2...revm-inspector-v21.0.3) - 2026-05-26
+
+### Added
+
+- Bake EIP-8037 CPSB into gas params ([#3714](https://github.com/bluealloy/revm/pull/3714))
+
+## [21.0.2](https://github.com/bluealloy/revm/compare/revm-inspector-v21.0.1...revm-inspector-v21.0.2) - 2026-05-22
+
+### Other
+
+- updated the following local packages: revm-database-interface, revm-context, revm-database, revm-interpreter, revm-handler
+
+## [21.0.1](https://github.com/bluealloy/revm/compare/revm-inspector-v21.0.0...revm-inspector-v21.0.1) - 2026-05-21
+
+### Other
+
+- updated the following local packages: revm-interpreter, revm-handler, revm-context
+
+## [21.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v19.0.0...revm-inspector-v21.0.0) - 2026-05-19
+
+### Added
+
+- *(eip8037)* Amsterdam bal-devnet-7 ([#3667](https://github.com/bluealloy/revm/pull/3667))
+
+### Fixed
+
+- *(inspector)* use build_result_gas in inspect_run_system_call ([#3637](https://github.com/bluealloy/revm/pull/3637))
+
+### Other
+
+- restructure `Journal` traits ([#3663](https://github.com/bluealloy/revm/pull/3663))
+- audit #[allow] attributes ([#3611](https://github.com/bluealloy/revm/pull/3611))
+- backport v107 release notes from branch ([#3617](https://github.com/bluealloy/revm/pull/3617))
+- [**breaking**] return Result from instruction functions ([#3558](https://github.com/bluealloy/revm/pull/3558))
+- enable and fix clippy::missing_const_for_fn ([#3592](https://github.com/bluealloy/revm/pull/3592))
+- *(interpreter)* separate instruction and gas tables ([#3561](https://github.com/bluealloy/revm/pull/3561))
+- pass reservoir into `first_frame_input` ([#3578](https://github.com/bluealloy/revm/pull/3578))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+
+## [19.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v18.0.0...revm-inspector-v19.0.0) - 2026-04-17
+
+### Other
+
+- pass reservoir into `first_frame_input` ([#3578](https://github.com/bluealloy/revm/pull/3578))
+
+## [18.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v17.0.0...revm-inspector-v18.0.0) - 2026-04-10
+
+### Added
+
+- add EIP-8037 / TIP-1016 state gas support ([#3406](https://github.com/bluealloy/revm/pull/3406))
+- *(inspector)* add `frame_start` and `frame_end` to `Inspector` trait ([#3518](https://github.com/bluealloy/revm/pull/3518))
+- add crate-level re-exports for all revm-* dependencies ([#3507](https://github.com/bluealloy/revm/pull/3507))
+
+### Fixed
+
+- ensure both inspectors receive paired call/create events in tuple impl ([#3473](https://github.com/bluealloy/revm/pull/3473))
+
+### Other
+
+- move EIP-8037 gas cap validation into validate_initial_tx_gas ([#3552](https://github.com/bluealloy/revm/pull/3552))
+- *(inspector)* remove redundant log clone in precompile path ([#3520](https://github.com/bluealloy/revm/pull/3520))
+
+## [17.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v16.0.0...revm-inspector-v17.0.0) - 2026-03-04
+
+### Other
+
+- bump revm-database-interface to v10.0.0
+
+## [16.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v15.0.0...revm-inspector-v16.0.0) - 2026-03-02
+
+### Other
+
+- [**breaking**] add ResultGas struct to ExecutionResult ([#3413](https://github.com/bluealloy/revm/pull/3413))
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+- update default hardfork to Osaka (Ethereum) and Jovian (Optimism) ([#3326](https://github.com/bluealloy/revm/pull/3326))
+
+## [15.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v14.1.0...revm-inspector-v15.0.0) - 2026-01-15
+
+### Added
+
+- *(inspector)* make TestInspector public for testing EVM variants ([#3282](https://github.com/bluealloy/revm/pull/3282))
+- move GasParams to Cfg ([#3229](https://github.com/bluealloy/revm/pull/3229))
+- BAL EIP-7928 ([#3070](https://github.com/bluealloy/revm/pull/3070))
+- Gas params ([#3132](https://github.com/bluealloy/revm/pull/3132))
+
+### Other
+
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- replace HashMap with fixed-size array for opcode counts in CountInspector ([#3203](https://github.com/bluealloy/revm/pull/3203))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [14.1.0](https://github.com/bluealloy/revm/compare/revm-inspector-v14.0.0...revm-inspector-v14.1.0) - 2025-11-14
+
+### Other
+
+- call Inspector::log_full ([#3164](https://github.com/bluealloy/revm/pull/3164))
+
+## [14.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v12.0.2...revm-inspector-v14.0.0) - 2025-11-10
+
+### Added
+
+- process precompile logs to inspector ([#3148](https://github.com/bluealloy/revm/pull/3148))
+
+## [12.0.2](https://github.com/bluealloy/revm/compare/revm-inspector-v12.0.1...revm-inspector-v12.0.2) - 2025-11-10
+
+### Other
+
+- updated the following local packages: revm-database, revm-context, revm-handler
+
+## [12.0.1](https://github.com/bluealloy/revm/compare/revm-inspector-v12.0.0...revm-inspector-v12.0.1) - 2025-11-07
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-context, revm-state, revm-database-interface, revm-database, revm-interpreter, revm-handler
+
+## [12.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v11.2.0...revm-inspector-v12.0.0) - 2025-10-30
+
+### Other
+
+- remove redundant alloy-eip7702 from handler dev-dependencies ([#3105](https://github.com/bluealloy/revm/pull/3105))
+- *(inspector)* remove redundant EthInterpreter import in either.rs ([#3093](https://github.com/bluealloy/revm/pull/3093))
+
+## [11.2.0](https://github.com/bluealloy/revm/compare/revm-inspector-v11.1.2...revm-inspector-v11.2.0) - 2025-10-17
+
+### Other
+
+- updated the following local packages: revm-interpreter, revm-handler
+
+## [11.1.2](https://github.com/bluealloy/revm/compare/revm-inspector-v11.1.1...revm-inspector-v11.1.2) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-state, revm-database-interface, revm-context, revm-database, revm-interpreter, revm-handler
+
+## [11.1.1](https://github.com/bluealloy/revm/compare/revm-inspector-v11.1.0...revm-inspector-v11.1.1) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-context, revm-interpreter, revm-handler, revm-state, revm-database-interface, revm-database
+
+## [11.1.0](https://github.com/bluealloy/revm/compare/revm-inspector-v11.0.0...revm-inspector-v11.1.0) - 2025-10-09
+
+### Other
+
+- use Self::default in fn new for CountInspector ([#3065](https://github.com/bluealloy/revm/pull/3065))
+
+## [11.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v10.0.1...revm-inspector-v11.0.0) - 2025-10-07
+
+### Added
+
+- detach EthFrame from InspectorEvmTr ([#3038](https://github.com/bluealloy/revm/pull/3038))
+- *(revme)* ef blockchain tests cli ([#2935](https://github.com/bluealloy/revm/pull/2935))
+
+### Fixed
+
+- *(inspector)* remove redundant pc()/opcode() calls in step_end ([#3023](https://github.com/bluealloy/revm/pull/3023))
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+
+### Other
+
+- changelog update for v87 ([#3056](https://github.com/bluealloy/revm/pull/3056))
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- EvmTr and InspectorEvmTr receive all/all_mut fn ([#3037](https://github.com/bluealloy/revm/pull/3037))
+- *(inspector)* remove unnecessary mutable borrow in GasInspector::step_end ([#3035](https://github.com/bluealloy/revm/pull/3035))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+- *(inspector)* remove dead skip flag ([#2951](https://github.com/bluealloy/revm/pull/2951))
+
+## [10.0.1](https://github.com/bluealloy/revm/compare/revm-inspector-v10.0.0...revm-inspector-v10.0.1) - 2025-09-23
+
+### Other
+
+- updated the following local packages: revm-context, revm-interpreter, revm-handler
+
 ## [10.0.0](https://github.com/bluealloy/revm/compare/revm-inspector-v9.1.0...revm-inspector-v10.0.0) - 2025-08-23
 
 ### Other

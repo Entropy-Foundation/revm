@@ -8,32 +8,33 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 library LibCommon {
     using EnumerableSet for EnumerableSet.UintSet;
 
-    /// @notice Benchmark-derived gas figures from which `CoreFacet.getRecordMaxTaskCount` sizes a
+    /// @notice Benchmark-derived gas figures from which `CoreViewFacet.getRecordMaxTaskCount` sizes a
     /// `processTasks` record (Entropy-Foundation/smr-moonshot#4755), with the owner-set
     /// `RecordSizingParameters`. They measure the transition code itself, so they are constants
     /// that change only with that code: a contract change that moves a cost re-runs
     /// `test/CycleTransitionGas.t.sol` and re-derives them in the same upgrade.
-    /// @dev Inlined into every facet that sizes records (CoreFacet's view, ConfigFacet's
-    ///      pre-checks), so an upgrade that changes them replaces both facets in one cut.
+    /// @dev Inlined into every facet that sizes records (CoreViewFacet's view, ConfigFacet's
+    ///      pre-checks). The transition code they measure is inlined into CoreFacet through
+    ///      LibCore, so an upgrade that changes them replaces all three facets in one cut.
     ///      Derived from `test/CycleTransitionGas.t.sol` at a registry of
     ///      `RECORD_GAS_BENCHMARK_CAPACITY` (400) tasks. Each measured call runs as its own
     ///      transaction after the registrations, and its execution gas is taken before refunds,
     ///      which a record's gas limit has to cover. The test asserts every measured batch against
     ///      these values, at 400 tasks and at the production 200, so a contract change that raises
     ///      a cost above them fails the suite.
-    ///      - Removing a task costs 210,590 gas with the fixture's 24 stored words (scenario 2) and
-    ///        1,062,126 with the 192 words of the default data-length caps (scenario 4): 5,069 gas
+    ///      - Removing a task costs 210,909 gas with the fixture's 24 stored words (scenario 2) and
+    ///        1,062,445 with the 192 words of the default data-length caps (scenario 4): 5,069 gas
     ///        per word, close to the cost of clearing a stored slot, on top of about 89,000.
     ///        Dropping a cap-size task above lowered caps also checks its stored lengths and
-    ///        refunds its deposit, 1,067,171 (scenario 5), about 94,000 on top of its words.
+    ///        refunds its deposit, 1,067,491 (scenario 5), about 94,000 on top of its words.
     ///        Rounded up: RECORD_GAS_PER_STORED_WORD = 5,500 and RECORD_GAS_PER_TASK = 100,000,
     ///        1,156,000 for a task at the default caps' 192 words. A task with 64 one-byte
     ///        auxData entries, which `recordStoredWords` charges two words each, is dropped for
-    ///        590,687 against the 947,000 its 154 words allow (scenario 6). A task that survives
-    ///        costs about 44,000 (scenario 1). These costs do not depend on the registry's size.
-    ///      - The batch finalizing a FINISHED -> STARTED transition costs 3,528,632 gas more than
-    ///        its tasks at the average non-final rate, 8,821 per registered task (scenario 1 at 400
-    ///        tasks; 8,188 at 200). The premium per task grows with the registry, so
+    ///        591,007 against the 947,000 its 154 words allow (scenario 6). A task that survives
+    ///        costs about 45,000 (scenario 1). These costs do not depend on the registry's size.
+    ///      - The batch finalizing a FINISHED -> STARTED transition costs 3,511,269 gas more than
+    ///        its tasks at the average non-final rate, 8,778 per registered task (scenario 1 at 400
+    ///        tasks; 8,094 at 200). The premium per task grows with the registry, so
     ///        RECORD_FINALIZATION_GAS_PER_TASK = 10,000 is measured to cover registries of up to
     ///        RECORD_GAS_BENCHMARK_CAPACITY tasks, which `RecordSizingParameters.maxCapacity`
     ///        enforces.
@@ -386,7 +387,7 @@ library LibCommon {
     ///      and a buffer only changes what is in force when it applies, so the combination in force
     ///      after the boundary has been checked whatever order the setters were called in. The
     ///      per-transaction cap itself is governed in the gas schedule and can fall later;
-    ///      `CoreFacet.getRecordMaxTaskCount` then returns 0 and the node pauses automation. Not
+    ///      `CoreViewFacet.getRecordMaxTaskCount` then returns 0 and the node pauses automation. Not
     ///      called from `DiamondInit`: the registry is initialised before the gas config
     ///      precompile serves a value, both at genesis and in the test fixtures.
     function requireRecordSizingFits(

@@ -8,6 +8,7 @@ import {ConfigFacet} from "../src/facets/ConfigFacet.sol";
 import {RegistryFacet} from "../src/facets/RegistryFacet.sol";
 import {RegistryViewFacet} from "../src/facets/RegistryViewFacet.sol";
 import {CoreFacet} from "../src/facets/CoreFacet.sol";
+import {CoreViewFacet} from "../src/facets/CoreViewFacet.sol";
 import {IFacetSelectors} from "../src/interfaces/IFacetSelectors.sol";
 import {IDiamondCut} from "../src/interfaces/IDiamondCut.sol";
 
@@ -32,6 +33,7 @@ contract CheckFacetSelectors is Script {
         _print("RegistryFacet", address(new RegistryFacet()));
         _print("RegistryViewFacet", address(new RegistryViewFacet()));
         _print("CoreFacet", address(new CoreFacet()));
+        _print("CoreViewFacet", address(new CoreViewFacet()));
     }
 
     function _print(string memory _name, address _facet) internal view {

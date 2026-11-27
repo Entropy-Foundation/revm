@@ -21,13 +21,16 @@ use revm::{
     },
     database::{CacheDB, EmptyDB},
     handler::{EthPrecompiles, PrecompileProvider},
-    interpreter::{InputsImpl, InterpreterResult},
-    precompile::{Precompile, PrecompileId, PrecompileOutput, PrecompileResult, Precompiles},
+    interpreter::{CallInputs, InterpreterResult},
+    precompile::{
+        EthPrecompileOutput, Precompile, PrecompileId, PrecompileOutput, PrecompileResult,
+        Precompiles,
+    },
     primitives::{
         address, b256,
         hardfork::SpecId,
         supra_constants::{u64_to_address, TX_HASH_ADDRESS, VM_SIGNER},
-        Address, Bytes, TxKind, B256, U256,
+        Address, AddressSet, Bytes, TxKind, B256, U256,
     },
     state::{AccountInfo, Bytecode},
     ExecuteEvm, MainBuilder, MainContext,
@@ -99,8 +102,11 @@ const ALL_MODES: [ExecutionMode; 6] = [
 fn precompiles() -> &'static Precompiles {
     static PRECOMPILES: OnceLock<Precompiles> = OnceLock::new();
     PRECOMPILES.get_or_init(|| {
-        fn accept(_input: &[u8], _gas_limit: u64) -> PrecompileResult {
-            Ok(PrecompileOutput::new(0, Bytes::new()))
+        fn accept(_input: &[u8], _gas_limit: u64, reservoir: u64) -> PrecompileResult {
+            Ok(PrecompileOutput::from_eth_result(
+                Ok(EthPrecompileOutput::new(0, Bytes::new())),
+                reservoir,
+            ))
         }
         let mut precompiles = Precompiles::prague().clone();
         precompiles.extend([
@@ -135,20 +141,17 @@ impl<CTX: ContextTr> PrecompileProvider<CTX> for TestPrecompiles {
     fn run(
         &mut self,
         context: &mut CTX,
-        address: &Address,
-        inputs: &InputsImpl,
-        is_static: bool,
-        gas_limit: u64,
+        inputs: &CallInputs,
     ) -> Result<Option<Self::Output>, String> {
-        self.0.run(context, address, inputs, is_static, gas_limit)
+        self.0.run(context, inputs)
     }
 
-    fn warm_addresses(&self) -> Box<impl Iterator<Item = Address>> {
-        self.0.warm_addresses()
+    fn warm_addresses(&self) -> &AddressSet {
+        <EthPrecompiles as PrecompileProvider<CTX>>::warm_addresses(&self.0)
     }
 
     fn contains(&self, address: &Address) -> bool {
-        self.0.contains(address)
+        <EthPrecompiles as PrecompileProvider<CTX>>::contains(&self.0, address)
     }
 
     fn accepts_value(&self, address: &Address) -> bool {
@@ -287,7 +290,7 @@ impl Run {
     /// The gas the transaction used.
     fn gas_used(&self, context: &str) -> u64 {
         match &self.result {
-            Ok(result) => result.gas_used(),
+            Ok(result) => result.tx_gas_used(),
             Err(error) => panic!("{context}: the transaction did not execute: {error:?}"),
         }
     }
@@ -560,7 +563,7 @@ fn bytecode_at_a_reserved_address_never_executes() {
         for mode in ALL_MODES {
             let context = format!("{mode:?} transaction to {target}");
             run(
-                mode.clone(),
+                mode,
                 db_with(return_caller(), &code_accounts()),
                 target,
                 U256::ZERO,
@@ -572,7 +575,7 @@ fn bytecode_at_a_reserved_address_never_executes() {
             for op in CALL_OPS {
                 let context = format!("{mode:?} {} to {target}", opcode::OpCode::name_by_op(op));
                 let run = run(
-                    mode.clone(),
+                    mode,
                     db_with(call_and_report(op, target, U256::ZERO), &code_accounts()),
                     ENTRY,
                     U256::ZERO,
@@ -681,7 +684,7 @@ fn selfdestruct_to_a_reserved_beneficiary_is_refused_in_every_mode() {
             let context = format!("{mode:?} SELFDESTRUCT to {beneficiary}");
             let code = selfdestruct_to(beneficiary);
             let run_top = run(
-                mode.clone(),
+                mode,
                 db_with(code.clone(), &[]),
                 ENTRY,
                 U256::ZERO,
@@ -703,7 +706,7 @@ fn selfdestruct_to_a_reserved_beneficiary_is_refused_in_every_mode() {
             let context =
                 format!("{mode:?} CALL to a contract that self-destructs to {beneficiary}");
             let run_inner = run(
-                mode.clone(),
+                mode,
                 db_with(
                     call_and_report(opcode::CALL, CALLEE, U256::ZERO),
                     &[(CALLEE, code)],

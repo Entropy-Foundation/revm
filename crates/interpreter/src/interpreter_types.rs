@@ -1,6 +1,8 @@
-use crate::{CallInput, InstructionResult, InterpreterAction};
-use core::cell::Ref;
-use core::ops::{Deref, Range};
+use crate::{instructions::utility::IntoAddress, CallInput, InstructionResult, InterpreterAction};
+use core::{
+    cell::Ref,
+    ops::{Deref, Range},
+};
 use primitives::{hardfork::SpecId, Address, Bytes, B256, U256};
 
 /// Helper function to read immediates data from the bytecode
@@ -50,6 +52,8 @@ pub trait InputsTr {
     fn input(&self) -> &CallInput;
     /// Returns call value of the call.
     fn call_value(&self) -> U256;
+    /// Returns the call depth of the frame this interpreter executes (0 for the first frame).
+    fn depth(&self) -> usize;
 }
 
 /// Trait needed for legacy bytecode.
@@ -144,14 +148,22 @@ pub trait MemoryTr {
     ///
     /// # Note
     ///
-    /// It checks memory limits.
+    /// It checks if the memory allocation fits under gas cap.
     fn resize(&mut self, new_size: usize) -> bool;
+
+    /// Returns `true` if the `new_words` for the current context memory will
+    /// make the shared buffer length exceed the `memory_limit`.
+    #[cfg(feature = "memory_limit")]
+    fn limit_reached(&self, new_words: usize) -> bool;
 }
 
 /// Functions needed for Interpreter Stack operations.
 pub trait StackTr {
     /// Returns stack length.
     fn len(&self) -> usize;
+
+    /// Returns stack content.
+    fn data(&self) -> &[U256];
 
     /// Returns `true` if stack is empty.
     fn is_empty(&self) -> bool {
@@ -176,6 +188,7 @@ pub trait StackTr {
     ///
     /// # Note
     /// Error is internally set in interpreter.
+    #[must_use]
     fn push_slice(&mut self, slice: &[u8]) -> bool;
 
     /// Pushes B256 value to the stack.
@@ -211,12 +224,13 @@ pub trait StackTr {
     /// Internally call [`StackTr::pop`] and converts [`U256`] into [`Address`].
     #[must_use]
     fn pop_address(&mut self) -> Option<Address> {
-        self.pop().map(|value| Address::from(value.to_be_bytes()))
+        self.pop().map(|value| value.into_address())
     }
 
     /// Exchanges two values on the stack.
     ///
     /// Indexes are based from the top of the stack.
+    /// `n` is the first index, and the second index is calculated as `n + m`.
     ///
     /// Returns `true` if swap was successful, `false` if stack underflow.
     #[must_use]

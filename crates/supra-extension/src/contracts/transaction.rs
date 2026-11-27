@@ -33,7 +33,12 @@ pub struct GenesisTransaction {
 
 impl GenesisTransaction {
     /// Creates a new genesis transaction with the given parameters to deploy a contract via standard create API.
-    pub fn create(sender: Address, data: Vec<u8>, nonce: u64, deploy_address: Address) -> Self {
+    pub const fn create(
+        sender: Address,
+        data: Vec<u8>,
+        nonce: u64,
+        deploy_address: Address,
+    ) -> Self {
         Self::new(sender, nonce, data, TxKind::Create, Some(deploy_address))
     }
 
@@ -52,7 +57,7 @@ impl GenesisTransaction {
     }
 
     /// Creates a new genesis call transaction with the given parameters.
-    pub fn call(sender: Address, target: Address, data: Vec<u8>, nonce: u64) -> Self {
+    pub const fn call(sender: Address, target: Address, data: Vec<u8>, nonce: u64) -> Self {
         Self::new(sender, nonce, data, TxKind::Call(target), None)
     }
 }
@@ -78,8 +83,10 @@ impl Debug for GenesisTransaction {
 /// `deployment_rank` states that order and is the only thing that decides it. Declaration
 /// order and any discriminant a variant might carry do not enter into it.
 ///
-/// Serde encodes this enum by declaration position, so a variant belongs at the end of the list
-/// whatever position it is given in the deployment order.
+/// Serde encodes this enum by declaration position. Until a genesis built with this enum is
+/// released, a variant is declared next to the contracts it belongs with; once one is released,
+/// a new variant goes at the end of the list whatever position it is given in the deployment
+/// order, so that released genesis files still decode.
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(missing_docs)]
 pub enum GenesisTransactionTags {
@@ -107,6 +114,7 @@ pub enum GenesisTransactionTags {
     ConfigFacet,
     RegistryFacet,
     CoreFacet,
+    CoreViewFacet,
     DiamondInit,
     Diamond,
     RegistryViewFacet,
@@ -125,7 +133,7 @@ impl GenesisTransactionTags {
     ///
     /// Changing a value here changes the addresses the genesis contracts are deployed at. The order
     /// is pinned by `deployment_order_is_pinned`.
-    fn deployment_rank(&self) -> u8 {
+    const fn deployment_rank(&self) -> u8 {
         match self {
             Self::Create2Factory => 0,
             Self::Multicall3 => 1,
@@ -148,8 +156,9 @@ impl GenesisTransactionTags {
             Self::RegistryFacet => 16,
             Self::RegistryViewFacet => 17,
             Self::CoreFacet => 18,
-            Self::DiamondInit => 19,
-            Self::Diamond => 20,
+            Self::CoreViewFacet => 19,
+            Self::DiamondInit => 20,
+            Self::Diamond => 21,
         }
     }
 }
@@ -208,6 +217,7 @@ mod tests {
             GenesisTransactionTags::RegistryFacet,
             GenesisTransactionTags::RegistryViewFacet,
             GenesisTransactionTags::CoreFacet,
+            GenesisTransactionTags::CoreViewFacet,
             GenesisTransactionTags::DiamondInit,
             GenesisTransactionTags::Diamond,
         ];

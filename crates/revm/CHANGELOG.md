@@ -7,6 +7,191 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [43.0.3](https://github.com/bluealloy/revm/compare/revm-v43.0.2...revm-v43.0.3) - 2026-09-24
+
+### Added
+
+- Expose the opt-in `account-ext` feature for chain-specific account payloads, journal rollback, and BAL history ([#3894](https://github.com/bluealloy/revm/pull/3894)).
+
+### Other
+
+- updated the following local packages: revm-state, revm-statetest-types, revm-database-interface, revm-context-interface, revm-context, revm-database, revm-interpreter, revm-precompile, revm-handler, revm-inspector
+
+## [43.0.2](https://github.com/bluealloy/revm/compare/revm-v43.0.0...revm-v43.0.2) - 2026-09-08
+
+### Other
+
+- updated the following local packages: revm-context-interface, revm-handler, revm-inspector, revm-context, revm-interpreter, revm-precompile, revm-statetest-types
+
+## [43.0.0](https://github.com/bluealloy/revm/compare/revm-v42.0.1...revm-v43.0.0) - 2026-08-20
+
+### Added
+
+- add async database fiber support ([#3709](https://github.com/bluealloy/revm/pull/3709))
+
+## [42.0.1](https://github.com/bluealloy/revm/compare/revm-v42.0.0...revm-v42.0.1) - 2026-07-23
+
+### Other
+
+- updated the following local packages: revm-precompile, revm-handler, revm-inspector
+
+## [42.0.0](https://github.com/bluealloy/revm/compare/revm-v41.0.0...revm-v42.0.0) - 2026-07-22
+
+### Other
+
+- *(deps)* bump dependencies ([#3794](https://github.com/bluealloy/revm/pull/3794))
+
+## [41.0.0](https://github.com/bluealloy/revm/compare/revm-v40.0.3...revm-v41.0.0) - 2026-06-11
+
+### Other
+
+- updated the following local packages: revm-bytecode, revm-state, revm-database-interface, revm-context-interface, revm-context, revm-database, revm-interpreter, revm-precompile, revm-handler, revm-inspector, revm-statetest-types
+
+## [40.0.3](https://github.com/bluealloy/revm/compare/revm-v40.0.2...revm-v40.0.3) - 2026-05-26
+
+### Other
+
+- updated the following local packages: revm-database, revm-context, revm-handler, revm-inspector, revm-statetest-types
+
+## [40.0.2](https://github.com/bluealloy/revm/compare/revm-v40.0.1...revm-v40.0.2) - 2026-05-22
+
+### Other
+
+- updated the following local packages: revm-database-interface, revm-context-interface, revm-context, revm-database, revm-interpreter, revm-precompile, revm-handler, revm-inspector, revm-statetest-types
+
+## [40.0.1](https://github.com/bluealloy/revm/compare/revm-v40.0.0...revm-v40.0.1) - 2026-05-21
+
+### Other
+
+- updated the following local packages: revm-context-interface, revm-interpreter, revm-precompile, revm-handler, revm-context, revm-inspector, revm-statetest-types
+
+## [40.0.0](https://github.com/bluealloy/revm/compare/revm-v38.0.0...revm-v40.0.0) - 2026-05-19
+
+### Other
+
+- backport v107 release notes from branch ([#3617](https://github.com/bluealloy/revm/pull/3617))
+- rm op-revm (migrated to ethereum-optimism/optimism) ([#3568](https://github.com/bluealloy/revm/pull/3568))
+
+## [38.0.0](https://github.com/bluealloy/revm/compare/revm-v37.0.0...revm-v38.0.0) - 2026-04-17
+
+### Other
+
+- updated the following local packages: revm-state, revm-context-interface, revm-interpreter, revm-precompile, revm-handler, revm-inspector, revm-database-interface, revm-context, revm-database, revm-statetest-types
+
+## [37.0.0](https://github.com/bluealloy/revm/compare/revm-v36.0.0...revm-v37.0.0) - 2026-04-10
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode, revm-database-interface, revm-context-interface, revm-context, revm-database, revm-interpreter, revm-precompile, revm-handler, revm-inspector, revm-statetest-types, revm-state
+
+## [36.0.0](https://github.com/bluealloy/revm/compare/revm-v35.0.0...revm-v36.0.0) - 2026-03-04
+
+### Other
+
+- bump revm-database-interface to v10.0.0
+
+## [35.0.0](https://github.com/bluealloy/revm/compare/revm-v34.0.0...revm-v35.0.0) - 2026-03-02
+
+### Added
+
+- *(precompile)* add aws-lc-rs as alternative backend for secp256r1 ([#3451](https://github.com/bluealloy/revm/pull/3451))
+
+### Other
+
+- remove GPL mention and update gmp feature comments ([#3383](https://github.com/bluealloy/revm/pull/3383))
+
+## [34.0.0](https://github.com/bluealloy/revm/compare/revm-v33.1.0...revm-v34.0.0) - 2026-01-15
+
+### Added
+
+- Propagate `map-foldhash` Feature Through Dependency Chain ([#3252](https://github.com/bluealloy/revm/pull/3252))
+- dynamically link gmp ([#3250](https://github.com/bluealloy/revm/pull/3250))
+
+### Other
+
+- fix typos, grammar errors, and improve documentation consistency ([#3294](https://github.com/bluealloy/revm/pull/3294))
+- happy new year, 2026 licence ([#3272](https://github.com/bluealloy/revm/pull/3272))
+- re-export statetest-types from revm crate behind test-types feature ([#3247](https://github.com/bluealloy/revm/pull/3247))
+- *(fmt)* merge all imports ([#3184](https://github.com/bluealloy/revm/pull/3184))
+
+## [33.1.0](https://github.com/bluealloy/revm/compare/revm-v33.0.0...revm-v33.1.0) - 2025-11-14
+
+### Fixed
+
+- expose optional_priority_fee_check feature from context crate ([#3159](https://github.com/bluealloy/revm/pull/3159))
+
+## [33.0.0](https://github.com/bluealloy/revm/compare/revm-v31.0.2...revm-v33.0.0) - 2025-11-10
+
+### Other
+
+- updated the following local packages: revm-context-interface, revm-context, revm-interpreter, revm-precompile, revm-handler, revm-inspector
+
+## [31.0.2](https://github.com/bluealloy/revm/compare/revm-v31.0.1...revm-v31.0.2) - 2025-11-10
+
+### Other
+
+- updated the following local packages: revm-database, revm-context, revm-handler, revm-inspector
+
+## [31.0.1](https://github.com/bluealloy/revm/compare/revm-v31.0.0...revm-v31.0.1) - 2025-11-07
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-context, revm-bytecode, revm-state, revm-database-interface, revm-context-interface, revm-database, revm-interpreter, revm-precompile, revm-handler, revm-inspector
+
+## [31.0.0](https://github.com/bluealloy/revm/compare/revm-v30.2.0...revm-v31.0.0) - 2025-10-30
+
+### Other
+
+- consolidate revme imports ([#3088](https://github.com/bluealloy/revm/pull/3088))
+
+## [30.2.0](https://github.com/bluealloy/revm/compare/revm-v30.1.2...revm-v30.2.0) - 2025-10-17
+
+### Other
+
+- updated the following local packages: revm-interpreter, revm-handler, revm-inspector
+
+## [30.1.2](https://github.com/bluealloy/revm/compare/revm-v30.1.1...revm-v30.1.2) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-bytecode, revm-state, revm-database-interface, revm-context-interface, revm-context, revm-database, revm-interpreter, revm-handler, revm-inspector
+
+## [30.1.1](https://github.com/bluealloy/revm/compare/revm-v30.1.0...revm-v30.1.1) - 2025-10-15
+
+### Other
+
+- updated the following local packages: revm-primitives, revm-bytecode, revm-context, revm-interpreter, revm-precompile, revm-handler, revm-state, revm-database-interface, revm-context-interface, revm-database, revm-inspector
+
+## [30.1.0](https://github.com/bluealloy/revm/compare/revm-v30.0.0...revm-v30.1.0) - 2025-10-09
+
+### Other
+
+- updated the following local packages: revm-database-interface, revm-database, revm-interpreter, revm-precompile, revm-handler, revm-inspector, revm-context-interface, revm-context
+
+## [30.0.0](https://github.com/bluealloy/revm/compare/revm-v29.0.1...revm-v30.0.0) - 2025-10-07
+
+### Added
+
+- allow EIP-7623 to be disabled ([#2985](https://github.com/bluealloy/revm/pull/2985))
+- [**breaking**] Remove kzg-rs ([#2909](https://github.com/bluealloy/revm/pull/2909))
+
+### Fixed
+
+- Apply spelling corrections from PRs #2926, #2915, #2908 ([#2978](https://github.com/bluealloy/revm/pull/2978))
+
+### Other
+
+- changelog update for v87 ([#3056](https://github.com/bluealloy/revm/pull/3056))
+- add boundless ([#3043](https://github.com/bluealloy/revm/pull/3043))
+- forward optional_fee_charge feature ([#3005](https://github.com/bluealloy/revm/pull/3005))
+- add SECURITY.md ([#2956](https://github.com/bluealloy/revm/pull/2956))
+
+## [29.0.1](https://github.com/bluealloy/revm/compare/revm-v29.0.0...revm-v29.0.1) - 2025-09-23
+
+### Other
+
+- updated the following local packages: revm-context-interface, revm-context, revm-interpreter, revm-handler, revm-inspector
+
 ## [29.0.0](https://github.com/bluealloy/revm/compare/revm-v28.0.1...revm-v29.0.0) - 2025-08-23
 
 ### Other

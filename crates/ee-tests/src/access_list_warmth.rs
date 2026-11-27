@@ -86,7 +86,7 @@ fn access_list_warmth_does_not_leak_into_later_tx() {
     // per the `ordinary_address_is_cold_every_tx` sibling test) - proving
     // T1's access list left no residual warmth behind.
     assert_eq!(
-        result2.gas_used(),
+        result2.tx_gas_used(),
         23603,
         "T2 (no access list of its own) must pay the full cold access cost for \
          `listed_addr`, not inherit warmth from T1's access list"
@@ -96,7 +96,7 @@ fn access_list_warmth_does_not_leak_into_later_tx() {
     // -2500 (BALANCE opcode now warm instead of cold) + 2400 (EIP-2930's
     // upfront per-address access-list declaration cost) = -100.
     assert_eq!(
-        result1.gas_used(),
+        result1.tx_gas_used(),
         23503,
         "T1's own access list should make its BALANCE access warm, net of the \
          upfront access-list declaration cost"

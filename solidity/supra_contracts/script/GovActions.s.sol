@@ -2,10 +2,12 @@
 pragma solidity 0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
+import {LibTaskOwner} from "../src/libraries/LibTaskOwner.sol";
 import {IMultiSignatureWallet} from "../src/interfaces/IMultiSignatureWallet.sol";
 import {IBlockMeta} from "../src/interfaces/IBlockMeta.sol";
 import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 
@@ -167,6 +169,13 @@ contract AuthorizeAccount is GovSubmitAction {
             !IRegistryFacet(automationRegistry).isAuthorizedSubmitter(account),
             "AccountToAuthorize is already authorized"
         );
+        // grantAuthorization refuses an account the registry does not accept as a task owner
+        // (LibTaskOwner, the same code the facet runs). The foundation wallet is such an account
+        // (smr-moonshot #4922); its tasks belong to a task owner contract it administers.
+        require(
+            LibTaskOwner.isAccepted(account),
+            "AccountToAuthorize has code but does not declare IAutomationTaskOwner, so the registry refuses it as a task owner"
+        );
 
         vm.startBroadcast();
 
@@ -193,7 +202,7 @@ contract EnableDisableAutomation is GovSubmitAction {
         // enableAutomation and disableAutomation are owner-only, and each reverts when the
         // feature is already in the requested state.
         requireOwnedByWallet(automationRegistry, "AutomationRegistry");
-        bool enabled = ICoreFacet(automationRegistry).isAutomationEnabled();
+        bool enabled = ICoreViewFacet(automationRegistry).isAutomationEnabled();
         console.log("Automation enabled: ", enabled);
         require(enabled != enable, "Automation is already in the requested state");
 

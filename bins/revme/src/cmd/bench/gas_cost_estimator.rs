@@ -1,8 +1,8 @@
-use context::TxEnv;
 use criterion::Criterion;
-use database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET};
 use revm::{
     bytecode::Bytecode,
+    context::TxEnv,
+    database::{BenchmarkDB, BENCH_CALLER, BENCH_TARGET},
     primitives::{hex, Bytes, TxKind},
     Context, ExecuteEvm, MainBuilder, MainContext,
 };
@@ -23,7 +23,10 @@ pub fn run(criterion: &mut Criterion) {
 
         let mut evm = Context::mainnet()
             .with_db(BenchmarkDB::new_bytecode(bytecode.clone()))
-            .modify_cfg_chained(|c| c.disable_nonce_check = true)
+            .modify_cfg_chained(|c| {
+                c.disable_nonce_check = true;
+                c.tx_gas_limit_cap = Some(u64::MAX);
+            })
             .build_mainnet();
 
         let tx = TxEnv::builder()

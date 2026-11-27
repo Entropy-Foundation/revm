@@ -100,6 +100,10 @@ interface IRegistryFacet {
     /// @notice The caller has code, is not an EIP-7702 delegated account and does not declare
     /// `IAutomationTaskOwner` through ERC-165, so it cannot own a task.
     error UnsupportedTaskOwner(address owner);
+    /// @notice Registration is refused because the current cycle's end time has been reached and
+    /// the cycle end has not been processed yet (Entropy-Foundation/smr-moonshot#4920). Retry
+    /// after the cycle transition, once a new cycle has started.
+    error CycleEndReached();
     error CycleTransitionInProgress();
     error ErrorCycleFeeRefund();
     error ErrorDepositRefund();
@@ -138,6 +142,11 @@ interface IRegistryFacet {
     error TaskIndexNotFound();
     error TaskIndexNotUnique();
     error TaskIndexesCannotBeEmpty();
+    /// @notice A task cannot be cancelled or stopped by its owner in the block it was registered
+    /// in (Entropy-Foundation/smr-moonshot#4920). Blocks are told apart by their timestamp, which
+    /// is in whole seconds, so a later block with the same timestamp is refused too. Retry in a
+    /// block with a later timestamp.
+    error TaskRemovalInRegistrationBlock(uint64 taskIndex);
     error TransferFailed();
     error TxnHashLengthShouldBe32(uint64);
     error UnauthorizedAccount();

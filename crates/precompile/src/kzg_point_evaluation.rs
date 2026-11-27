@@ -1,7 +1,8 @@
 //! KZG point evaluation precompile added in [`EIP-4844`](https://eips.ethereum.org/EIPS/eip-4844)
 //! For more details check [`run`] function.
 use crate::{
-    crypto, Address, Precompile, PrecompileError, PrecompileId, PrecompileOutput, PrecompileResult,
+    crypto, eth_precompile_fn, Address, EthPrecompileOutput, EthPrecompileResult, Precompile,
+    PrecompileHalt, PrecompileId,
 };
 pub mod arkworks;
 
@@ -10,9 +11,11 @@ pub mod blst;
 
 use primitives::hex_literal::hex;
 
+eth_precompile_fn!(kzg_precompile, run);
+
 /// KZG point evaluation precompile, containing address and function to run.
 pub const POINT_EVALUATION: Precompile =
-    Precompile::new(PrecompileId::KzgPointEvaluation, ADDRESS, run);
+    Precompile::new(PrecompileId::KzgPointEvaluation, ADDRESS, kzg_precompile);
 
 /// Address of the KZG point evaluation precompile.
 pub const ADDRESS: Address = crate::u64_to_address(0x0A);
@@ -37,21 +40,21 @@ pub const RETURN_VALUE: &[u8; 64] = &hex!(
 /// | versioned_hash |  z  |  y  | commitment | proof |
 /// |     32         | 32  | 32  |     48     |   48  |
 /// with z and y being padded 32 byte big endian values
-pub fn run(input: &[u8], gas_limit: u64) -> PrecompileResult {
+pub fn run(input: &[u8], gas_limit: u64) -> EthPrecompileResult {
     if gas_limit < GAS_COST {
-        return Err(PrecompileError::OutOfGas);
+        return Err(PrecompileHalt::OutOfGas);
     }
 
     // Verify input length.
     if input.len() != 192 {
-        return Err(PrecompileError::BlobInvalidInputLength);
+        return Err(PrecompileHalt::BlobInvalidInputLength);
     }
 
     // Verify commitment matches versioned_hash
     let versioned_hash = &input[..32];
     let commitment = &input[96..144];
     if kzg_to_versioned_hash(commitment) != versioned_hash {
-        return Err(PrecompileError::BlobMismatchedVersion);
+        return Err(PrecompileHalt::BlobMismatchedVersion);
     }
 
     // Verify KZG proof with z and y in big endian format
@@ -62,7 +65,7 @@ pub fn run(input: &[u8], gas_limit: u64) -> PrecompileResult {
     crypto().verify_kzg_proof(z, y, commitment, proof)?;
 
     // Return FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values
-    Ok(PrecompileOutput::new(GAS_COST, RETURN_VALUE.into()))
+    Ok(EthPrecompileOutput::new(GAS_COST, RETURN_VALUE.into()))
 }
 
 /// `VERSIONED_HASH_VERSION_KZG ++ sha256(commitment)[1..]`
@@ -90,14 +93,6 @@ pub fn verify_kzg_proof(
 
             let kzg_settings = c_kzg::ethereum_kzg_settings(8);
             kzg_settings.verify_kzg_proof(as_bytes48(commitment), as_bytes32(z), as_bytes32(y), as_bytes48(proof)).unwrap_or(false)
-        } else if #[cfg(feature = "kzg-rs")] {
-            use kzg_rs::{Bytes48, Bytes32, KzgProof};
-            let env = kzg_rs::EnvKzgSettings::default();
-            let as_bytes48 = |bytes: &[u8; 48]| -> &Bytes48 { unsafe { &*bytes.as_ptr().cast() } };
-            let as_bytes32 = |bytes: &[u8; 32]| -> &Bytes32 { unsafe { &*bytes.as_ptr().cast() } };
-
-            let kzg_settings = env.get();
-            KzgProof::verify_kzg_proof(as_bytes48(commitment), as_bytes32(z), as_bytes32(y), as_bytes48(proof), kzg_settings).unwrap_or(false)
         } else if #[cfg(feature = "blst")] {
             blst::verify_kzg_proof(commitment, z, y, proof)
         } else {
@@ -150,5 +145,35 @@ mod tests {
 
         let t = verify_kzg_proof(&commitment, &z, &y, &proof);
         assert!(t);
+    }
+
+    /// The proof of a constant polynomial p(x) = 5 is the point at infinity,
+    /// with commitment `[5]G1`. Exercises the infinity-pair handling in the
+    /// pairing check with a non-zero y.
+    #[test]
+    fn test_constant_polynomial_valid_proof() {
+        // [5]G1 compressed
+        let commitment = hex!("b0e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc");
+        let z = hex!("0000000000000000000000000000000000000000000000000000000000000003");
+        let y = hex!("0000000000000000000000000000000000000000000000000000000000000005");
+        let proof = hex!("c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+
+        let t = verify_kzg_proof(&commitment, &z, &y, &proof);
+        assert!(t);
+    }
+
+    /// An infinity proof point paired with a non-infinity `commitment - [y]G1`
+    /// is invalid and must be rejected. Exercises the mixed case where only
+    /// one pair of the pairing check contains a point at infinity.
+    #[test]
+    fn test_infinity_proof_invalid() {
+        // [5]G1 compressed
+        let commitment = hex!("b0e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc");
+        let z = hex!("0000000000000000000000000000000000000000000000000000000000000001");
+        let y = hex!("0000000000000000000000000000000000000000000000000000000000000000");
+        let proof = hex!("c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+
+        let t = verify_kzg_proof(&commitment, &z, &y, &proof);
+        assert!(!t);
     }
 }

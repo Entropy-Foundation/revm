@@ -1,4 +1,4 @@
-use revm::primitives::hardfork::SpecId;
+use primitives::hardfork::SpecId;
 use serde::Deserialize;
 
 /// Ethereum specification names
@@ -15,8 +15,10 @@ pub enum SpecName {
     /// Transition from Homestead to EIP-150 at block 5
     HomesteadToEIP150At5,
     /// EIP-150 hardfork (Tangerine Whistle, October 2016)
+    #[serde(alias = "TangerineWhistle")]
     EIP150,
     /// EIP-158/EIP-161 hardfork (Spurious Dragon, November 2016)
+    #[serde(alias = "SpuriousDragon")]
     EIP158, // EIP-161: State trie clearing
     /// Transition from EIP-158 to Byzantium at block 5
     EIP158ToByzantiumAt5,
@@ -48,8 +50,10 @@ pub enum SpecName {
     Cancun,
     /// Prague hardfork (future)
     Prague,
-    /// Osaka hardfork (skipped)
-    Osaka, // SKIPPED
+    /// Osaka hardfork
+    Osaka,
+    /// Amsterdam hardfork
+    Amsterdam,
     /// Unknown or unsupported specification
     #[serde(other)]
     Unknown,
@@ -75,6 +79,7 @@ impl SpecName {
             Self::Cancun => SpecId::CANCUN,
             Self::Prague => SpecId::PRAGUE,
             Self::Osaka => SpecId::OSAKA,
+            Self::Amsterdam => SpecId::AMSTERDAM,
             Self::ByzantiumToConstantinopleAt5 | Self::Constantinople => {
                 panic!("Overridden with PETERSBURG")
             }

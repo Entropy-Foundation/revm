@@ -7,8 +7,7 @@ import {LibEvmGasConfig} from "./LibEvmGasConfig.sol";
 import {LibUtils} from "./LibUtils.sol";
 import {AppStorage, Config, LibAppStorage, RegistryState, TaskMetadata, TaskMetadataLW} from "./LibAppStorage.sol";
 import {IRegistryFacet} from "../interfaces/IRegistryFacet.sol";
-import {AUTOMATION_TASK_OWNER_INTERFACE_ID} from "../interfaces/IAutomationTaskOwner.sol";
-import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {LibTaskOwner} from "./LibTaskOwner.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 library LibRegistry {
@@ -68,23 +67,6 @@ library LibRegistry {
         require(ok, IRegistryFacet.FailedToCallTxHashPrecompile());
         require(out.length == 32, IRegistryFacet.TxnHashLengthShouldBe32(uint64(out.length)));
         return abi.decode(out, (bytes32));
-    }
-
-    /// @notice Accepts `_owner` as the owner of a new task if it has no code, if its code is an
-    /// EIP-7702 delegation designation, or if it declares `IAutomationTaskOwner` through ERC-165
-    /// (#4469). A contract registering from its constructor has no code yet and is accepted.
-    function validateTaskOwner(address _owner) private view {
-        // EXTCODESIZE first: the code is copied only when its size is that of a designation.
-        uint256 size = _owner.code.length;
-        if (size == 0 || (size == 23 && isDelegationDesignation(_owner.code))) { return; }
-        if (!ERC165Checker.supportsInterface(_owner, AUTOMATION_TASK_OWNER_INTERFACE_ID)) {
-            revert IRegistryFacet.UnsupportedTaskOwner(_owner);
-        }
-    }
-
-    /// @notice Whether `_code` is an EIP-7702 delegation designation, `0xef0100 || address`.
-    function isDelegationDesignation(bytes memory _code) private pure returns (bool) {
-        return _code.length == 23 && _code[0] == 0xef && _code[1] == 0x01 && _code[2] == 0x00;
     }
 
     function validateOwnerType(
@@ -150,6 +132,15 @@ library LibRegistry {
         if (!s.registrationEnabled) { revert IRegistryFacet.RegistrationDisabled(); }
 
         if (!LibCommon.isCycleStarted()) { revert IRegistryFacet.CycleTransitionInProgress(); }
+        // A cycle whose end time has been reached accepts no registration, although its state is
+        // still STARTED until monitorCycleEnd identifies the end. In normal operation no block
+        // registers in that state: monitorCycleEnd runs first in every block and moves the cycle
+        // out of STARTED in the block that reaches the end time. The check keeps
+        // RegistryState.orderedTaskIds from growing in the blocks after a monitorCycleEnd call
+        // that failed at the end time, where no per-block compaction runs either, so that one
+        // successful call recovers (Entropy-Foundation/smr-moonshot#4920). _regTime is
+        // block.timestamp (see the callers).
+        if (_regTime >= LibCommon.getCycleEndTime()) { revert IRegistryFacet.CycleEndReached(); }
 
         // Validate inputs (including the _maxGasAmount == 0 check) before validatePredicate,
         // since validatePredicate's staticcall is gas-limited to _maxGasAmount: with
@@ -327,7 +318,8 @@ library LibRegistry {
         LibCommon.TaskType _taskType,
         bytes[] memory _auxData
     ) internal returns (uint64 taskIndex) {
-        validateTaskOwner(msg.sender);
+        // The task owner rule (#4469); see LibTaskOwner.isAccepted.
+        LibTaskOwner.requireAccepted(msg.sender);
         RegistryState storage registryState = LibAppStorage.registryState();
 
         uint64 regTime = uint64(block.timestamp);
@@ -365,15 +357,42 @@ library LibRegistry {
         );
     }
 
+    /// @notice Reverts if task `_taskIndex` was registered in the current block, so that an owner
+    /// can cancel or stop a task only from the block after its registration
+    /// (Entropy-Foundation/smr-moonshot#4920).
+    /// @dev Why: a capacity slot can then be freed within a block only by removing a task
+    ///      registered in an earlier block, so one block registers at most as many tasks as the
+    ///      registry's capacity (C): the free slots at its start plus the earlier tasks removed in
+    ///      it. RegistryState.orderedTaskIds therefore grows by at most C per block, which together
+    ///      with monitorCycleEnd's per-block compaction (LibCore.compactOrderedTaskIdsIfSparse)
+    ///      bounds every scan of it by the capacity alone, whatever the block gas budget is.
+    ///      Do not relax this rule (Entropy-Foundation/smr-moonshot#4920).
+    ///      The block is identified by its timestamp, the registrationTime recorded at
+    ///      registration. Blocks sharing a timestamp are treated as one block, which refuses
+    ///      somewhat more than the rule needs and never less.
+    ///      Applies to the owner paths (cancelTask, stopTask).
+    ///      Takes the task's storage reference the caller already holds, so the mapping slot is not
+    ///      derived a second time; registrationTime shares its storage slot with the fields the
+    ///      caller's toLW has just read, so the read is warm.
+    /// @param _task The task's storage entry, RegistryState.tasks[_taskIndex].
+    /// @param _taskIndex Index of the task, reported in the revert.
+    function requireRegisteredBeforeThisBlock(TaskMetadata storage _task, uint64 _taskIndex) private view {
+        if (_task.registrationTime == block.timestamp) {
+            revert IRegistryFacet.TaskRemovalInRegistrationBlock(_taskIndex);
+        }
+    }
+
     function cancelTask(
         uint64 _taskIndex,
         bool _isGst
     ) internal returns (LibCommon.TaskCancelled memory cancelledTask) {
         RegistryState storage registryState = LibAppStorage.registryState();
 
-        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskIndex]);
+        TaskMetadata storage stored = registryState.tasks[_taskIndex];
+        TaskMetadataLW memory task = LibCommon.toLW(stored);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
+        requireRegisteredBeforeThisBlock(stored, _taskIndex);
         if (task.taskState == LibCommon.TaskState.CANCELLED) { revert IRegistryFacet.AlreadyCancelled(); }
         if (task.taskState == LibCommon.TaskState.PENDING) {
             LibCommon.removeTask(_taskIndex, task.owner, _isGst, false);
@@ -423,9 +442,11 @@ library LibRegistry {
         LibAccounting.RefundContext memory _context
     ) internal returns (LibCommon.TaskStopped memory taskStopped, uint128 refund) {
         RegistryState storage registryState = LibAppStorage.registryState();
-        TaskMetadataLW memory task = LibCommon.toLW(registryState.tasks[_taskId]);
+        TaskMetadata storage stored = registryState.tasks[_taskId];
+        TaskMetadataLW memory task = LibCommon.toLW(stored);
 
         validateOwnerType(task.owner, task.taskType, _isGst);
+        requireRegisteredBeforeThisBlock(stored, _taskId);
 
         (taskStopped, refund) = stopTaskUnchecked(_taskId, task, _isGst, _context);
     }

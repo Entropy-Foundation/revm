@@ -1,9 +1,9 @@
 use super::{
-    plain_account::PlainStorage, AccountStatus, BundleAccount, PlainAccount,
-    StorageWithOriginalValues, TransitionAccount,
+    plain_account::PlainStorage, AccountStatus, BundleAccount, PlainAccount, TransitionAccount,
 };
 use primitives::{HashMap, StorageKey, StorageValue, U256};
-use state::AccountInfo;
+use state::{Account, AccountInfo, EvmStorage};
+use std::borrow::Cow;
 
 /// Cache account contains plain state that gets updated
 /// at every transaction when evm output is applied to CacheState.
@@ -40,7 +40,7 @@ impl From<&BundleAccount> for CacheAccount {
 
 impl CacheAccount {
     /// Creates new account that is loaded from database.
-    pub fn new_loaded(info: AccountInfo, storage: PlainStorage) -> Self {
+    pub const fn new_loaded(info: AccountInfo, storage: PlainStorage) -> Self {
         Self {
             account: Some(PlainAccount { info, storage }),
             status: AccountStatus::Loaded,
@@ -56,7 +56,7 @@ impl CacheAccount {
     }
 
     /// Loaded not existing account.
-    pub fn new_loaded_not_existing() -> Self {
+    pub const fn new_loaded_not_existing() -> Self {
         Self {
             account: None,
             status: AccountStatus::LoadedNotExisting,
@@ -64,7 +64,7 @@ impl CacheAccount {
     }
 
     /// Creates new account that is newly created.
-    pub fn new_newly_created(info: AccountInfo, storage: PlainStorage) -> Self {
+    pub const fn new_newly_created(info: AccountInfo, storage: PlainStorage) -> Self {
         Self {
             account: Some(PlainAccount { info, storage }),
             status: AccountStatus::InMemoryChange,
@@ -72,7 +72,7 @@ impl CacheAccount {
     }
 
     /// Creates account that is destroyed.
-    pub fn new_destroyed() -> Self {
+    pub const fn new_destroyed() -> Self {
         Self {
             account: None,
             status: AccountStatus::Destroyed,
@@ -80,7 +80,7 @@ impl CacheAccount {
     }
 
     /// Creates changed account.
-    pub fn new_changed(info: AccountInfo, storage: PlainStorage) -> Self {
+    pub const fn new_changed(info: AccountInfo, storage: PlainStorage) -> Self {
         Self {
             account: Some(PlainAccount { info, storage }),
             status: AccountStatus::Changed,
@@ -88,7 +88,7 @@ impl CacheAccount {
     }
 
     /// Returns true if account is some.
-    pub fn is_some(&self) -> bool {
+    pub const fn is_some(&self) -> bool {
         matches!(
             self.status,
             AccountStatus::Changed
@@ -116,39 +116,12 @@ impl CacheAccount {
         (self.account.map(|a| a.into_components()), self.status)
     }
 
-    /// Account got touched and before EIP161 state clear this account is considered created.
-    pub fn touch_create_pre_eip161(
-        &mut self,
-        storage: StorageWithOriginalValues,
-    ) -> Option<TransitionAccount> {
-        let previous_status = self.status;
-
-        let had_no_info = self
-            .account
-            .as_ref()
-            .map(|a| a.info.is_empty())
-            .unwrap_or_default();
-        self.status = self.status.on_touched_created_pre_eip161(had_no_info)?;
-
-        let plain_storage = storage.iter().map(|(k, v)| (*k, v.present_value)).collect();
-        let previous_info = self.account.take().map(|a| a.info);
-
-        self.account = Some(PlainAccount::new_empty_with_storage(plain_storage));
-
-        Some(TransitionAccount {
-            info: Some(AccountInfo::default()),
-            status: self.status,
-            previous_info,
-            previous_status,
-            storage,
-            storage_was_destroyed: false,
-        })
-    }
-
     /// Touch empty account, related to EIP-161 state clear.
     ///
     /// This account returns the Transition that is used to create the BundleState.
-    pub fn touch_empty_eip161(&mut self) -> Option<TransitionAccount> {
+    pub fn touch_empty_eip161<'a>(
+        &mut self,
+    ) -> Option<TransitionAccount<Option<Cow<'a, EvmStorage>>>> {
         let previous_status = self.status;
 
         // Set account to None.
@@ -170,7 +143,7 @@ impl CacheAccount {
                 status: self.status,
                 previous_info,
                 previous_status,
-                storage: HashMap::default(),
+                storage: None,
                 storage_was_destroyed: true,
             })
         }
@@ -179,7 +152,7 @@ impl CacheAccount {
     /// Consumes self and make account as destroyed.
     ///
     /// Sets account as None and set status to Destroyer or DestroyedAgain.
-    pub fn selfdestruct(&mut self) -> Option<TransitionAccount> {
+    pub fn selfdestruct<'a>(&mut self) -> Option<TransitionAccount<Option<Cow<'a, EvmStorage>>>> {
         // Account should be None after selfdestruct so we can take it.
         let previous_info = self.account.take().map(|a| a.info);
         let previous_status = self.status;
@@ -194,37 +167,41 @@ impl CacheAccount {
                 status: self.status,
                 previous_info,
                 previous_status,
-                storage: HashMap::default(),
+                storage: None,
                 storage_was_destroyed: true,
             })
         }
     }
 
     /// Newly created account.
-    pub fn newly_created(
+    pub fn newly_created<'a>(
         &mut self,
-        new_info: AccountInfo,
-        new_storage: StorageWithOriginalValues,
-    ) -> TransitionAccount {
+        account: Cow<'a, Account>,
+    ) -> TransitionAccount<Option<Cow<'a, EvmStorage>>> {
         let previous_status = self.status;
         let previous_info = self.account.take().map(|a| a.info);
 
-        let new_bundle_storage = new_storage
+        let new_bundle_storage = account
+            .storage
             .iter()
-            .map(|(k, s)| (*k, s.present_value))
+            .filter_map(|(k, s)| s.is_changed().then_some((*k, s.present_value)))
             .collect();
 
         self.status = self.status.on_created();
+        let (info, storage) = match account {
+            Cow::Borrowed(account) => (account.info.clone(), Cow::Borrowed(&account.storage)),
+            Cow::Owned(account) => (account.info, Cow::Owned(account.storage)),
+        };
         let transition_account = TransitionAccount {
-            info: Some(new_info.clone()),
+            info: Some(info.clone()),
             status: self.status,
             previous_status,
             previous_info,
-            storage: new_storage,
+            storage: Some(storage),
             storage_was_destroyed: false,
         };
         self.account = Some(PlainAccount {
-            info: new_info,
+            info,
             storage: new_bundle_storage,
         });
         transition_account
@@ -287,11 +264,10 @@ impl CacheAccount {
     /// Updates the account with new information and storage changes.
     ///
     /// Merges the provided storage values with the existing storage and updates the account status.
-    pub fn change(
+    pub fn change<'a>(
         &mut self,
-        new: AccountInfo,
-        storage: StorageWithOriginalValues,
-    ) -> TransitionAccount {
+        account: Cow<'a, Account>,
+    ) -> TransitionAccount<Option<Cow<'a, EvmStorage>>> {
         let previous_status = self.status;
         let (previous_info, mut this_storage) = if let Some(account) = self.account.take() {
             (Some(account.info), account.storage)
@@ -299,9 +275,18 @@ impl CacheAccount {
             (None, Default::default())
         };
 
-        this_storage.extend(storage.iter().map(|(k, s)| (*k, s.present_value)));
+        let (info, storage) = match account {
+            Cow::Borrowed(account) => (account.info.clone(), Cow::Borrowed(&account.storage)),
+            Cow::Owned(account) => (account.info, Cow::Owned(account.storage)),
+        };
+
+        this_storage.extend(
+            storage
+                .iter()
+                .filter_map(|(k, s)| s.is_changed().then_some((*k, s.present_value))),
+        );
         let changed_account = PlainAccount {
-            info: new,
+            info,
             storage: this_storage,
         };
 
@@ -317,7 +302,7 @@ impl CacheAccount {
             status: self.status,
             previous_info,
             previous_status,
-            storage,
+            storage: Some(storage),
             storage_was_destroyed: false,
         }
     }

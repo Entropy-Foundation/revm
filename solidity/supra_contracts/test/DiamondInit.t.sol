@@ -12,11 +12,14 @@ import {IConfigFacet} from "../src/interfaces/IConfigFacet.sol";
 import {IRegistryFacet} from "../src/interfaces/IRegistryFacet.sol";
 import {IRegistryViewFacet} from "../src/interfaces/IRegistryViewFacet.sol";
 import {ICoreFacet} from "../src/interfaces/ICoreFacet.sol";
+import {ICoreViewFacet} from "../src/interfaces/ICoreViewFacet.sol";
 import {IDiamondCut} from "../src/interfaces/IDiamondCut.sol";
 import {IDiamondLoupe} from "../src/interfaces/IDiamondLoupe.sol";
 import {IFacetSelectors} from "../src/interfaces/IFacetSelectors.sol";
 import {IRegistryStatus} from "../src/interfaces/IRegistryStatus.sol";
 import {IERC173} from "../src/interfaces/IERC173.sol";
+import {IOwnable2Step} from "../src/interfaces/IOwnable2Step.sol";
+import {DiamondCutFacet} from "../src/facets/DiamondCutFacet.sol";
 import {IERC165} from "../src/interfaces/IERC165.sol";
 import {DiamondInit} from "../src/upgradeInitializers/DiamondInit.sol";
 import {Diamond} from "../src//Diamond.sol";
@@ -28,7 +31,7 @@ contract DiamondInitTest is BaseDiamondTest {
     function testInitialize() public view {
         assertEq(OwnershipFacet(diamondAddr).owner(), admin);
 
-        (uint64 index, uint64 startTime, uint64 durationSecs, LibCommon.CycleState state) = ICoreFacet(diamondAddr).getCycleInfo();
+        (uint64 index, uint64 startTime, uint64 durationSecs, LibCommon.CycleState state) = ICoreViewFacet(diamondAddr).getCycleInfo();
         assertEq(index, 1);
         assertEq(startTime, block.timestamp);
         assertEq(durationSecs, 1200);
@@ -37,7 +40,7 @@ contract DiamondInitTest is BaseDiamondTest {
         assertEq(IRegistryViewFacet(diamondAddr).getNextCycleRegistryMaxGasCap(), 20_000_000);
         assertEq(IRegistryViewFacet(diamondAddr).getNextCycleSysRegistryMaxGasCap(), 20_000_000);
         assertTrue(IConfigFacet(diamondAddr).isRegistrationEnabled());
-        assertTrue(ICoreFacet(diamondAddr).isAutomationEnabled());
+        assertTrue(ICoreViewFacet(diamondAddr).isAutomationEnabled());
         assertEq(IConfigFacet(diamondAddr).erc20Supra(), address(wsupra));
 
         Config memory config = IConfigFacet(diamondAddr).getConfig();
@@ -76,7 +79,14 @@ contract DiamondInitTest is BaseDiamondTest {
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IDiamondCut).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IDiamondLoupe).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IERC173).interfaceId));
+        assertTrue(IERC165(diamondAddr).supportsInterface(type(IOwnable2Step).interfaceId));
         assertTrue(IERC165(diamondAddr).supportsInterface(type(IRegistryStatus).interfaceId));
+    }
+
+    /// @dev IERC173's interfaceId stays the standard ERC-173 value: the two-step functions live in
+    ///      IOwnable2Step rather than being added to IERC173.
+    function testErc173InterfaceIdIsStandard() public pure {
+        assertEq(type(IERC173).interfaceId, bytes4(0x7f5828d0));
     }
     
     /// @dev Test to ensure 'init' selector is not registered.
@@ -141,7 +151,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure 'facetAddresses' returns the address of all the facets.
     function testLoupeFacetAddresses() public view {
         address[] memory facets = IDiamondLoupe(diamondAddr).facetAddresses();
-        assertEq(facets.length, 7); // diamondCut, loupe, ownership, config, registry, registryView, core
+        assertEq(facets.length, 8); // diamondCut, loupe, ownership, config, registry, registryView, core, coreView
 
         bool diamondCutExists;
         bool loupeExists;
@@ -149,6 +159,7 @@ contract DiamondInitTest is BaseDiamondTest {
         bool registryExists;
         bool registryViewExists;
         bool coreExists;
+        bool coreViewExists;
 
         for (uint i; i < facets.length; i++) {
             if (facets[i] == deployment.facets.diamondCutFacet) diamondCutExists = true;
@@ -157,6 +168,7 @@ contract DiamondInitTest is BaseDiamondTest {
             if (facets[i] == deployment.facets.registryFacet) registryExists = true;
             if (facets[i] == deployment.facets.registryViewFacet) registryViewExists = true;
             if (facets[i] == deployment.facets.coreFacet) coreExists = true;
+            if (facets[i] == deployment.facets.coreViewFacet) coreViewExists = true;
         }
 
         assertTrue(diamondCutExists);
@@ -165,6 +177,7 @@ contract DiamondInitTest is BaseDiamondTest {
         assertTrue(registryExists);
         assertTrue(registryViewExists);
         assertTrue(coreExists);
+        assertTrue(coreViewExists);
     }
 
     /// @dev Test to ensure 'facetAddress' points to correct facet for a selector.
@@ -183,6 +196,9 @@ contract DiamondInitTest is BaseDiamondTest {
             IDiamondLoupe(diamondAddr).facetAddress(OwnershipFacet.transferOwnership.selector),
             deployment.facets.ownershipFacet
         );
+
+        // OwnershipFacet serves owner, transferOwnership, pendingOwner and acceptOwnership.
+        _assertFacetServesAllItsSelectors(deployment.facets.ownershipFacet, 4);
     }
 
     /// @dev Test to ensure every RegistryFacet and RegistryViewFacet selector routes to the
@@ -192,23 +208,8 @@ contract DiamondInitTest is BaseDiamondTest {
     /// (Entropy-Foundation/smr-moonshot#4101): moving a selector across facets without
     /// updating this test fails it.
     function testRegistryFacetSplitSelectorRouting() public view {
-        bytes4[] memory viewSelectors = IFacetSelectors(deployment.facets.registryViewFacet).getSelectors();
-        assertEq(viewSelectors.length, 29);
-        for (uint256 i; i < viewSelectors.length; i++) {
-            assertEq(
-                IDiamondLoupe(diamondAddr).facetAddress(viewSelectors[i]),
-                deployment.facets.registryViewFacet
-            );
-        }
-
-        bytes4[] memory writeSelectors = IFacetSelectors(deployment.facets.registryFacet).getSelectors();
-        assertEq(writeSelectors.length, 11);
-        for (uint256 i; i < writeSelectors.length; i++) {
-            assertEq(
-                IDiamondLoupe(diamondAddr).facetAddress(writeSelectors[i]),
-                deployment.facets.registryFacet
-            );
-        }
+        _assertFacetServesAllItsSelectors(deployment.facets.registryViewFacet, 29);
+        _assertFacetServesAllItsSelectors(deployment.facets.registryFacet, 11);
 
         assertEq(
             IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.isAuthorizedSubmitter.selector),
@@ -250,29 +251,363 @@ contract DiamondInitTest is BaseDiamondTest {
         );
     }
 
-    /// @dev Test to ensure 'transferOwnership' transfers the ownership.
-    function testTransferOwnership() public {
-        vm.prank(admin);
-        OwnershipFacet(diamondAddr).transferOwnership(alice);
+    /// @dev Test to ensure every CoreFacet and CoreViewFacet selector routes to the facet that
+    /// actually implements it: CoreViewFacet's 7 cycle-state views resolve to coreViewFacet, and
+    /// CoreFacet's 5 state-changing functions resolve to coreFacet
+    /// (Entropy-Foundation/smr-moonshot#4989). Moving a selector across facets without updating
+    /// this test fails it.
+    function testCoreFacetSplitSelectorRouting() public view {
+        _assertFacetServesAllItsSelectors(deployment.facets.coreViewFacet, 7);
+        _assertFacetServesAllItsSelectors(deployment.facets.coreFacet, 5);
 
-        assertEq(OwnershipFacet(diamondAddr).owner(), alice);
+        // Each ICoreViewFacet selector is served by coreViewFacet. Together with the count of 7
+        // above, and the diamond rejecting a selector added twice, this means the interface and
+        // the facet's getSelectors() list the same 7 selectors.
+        bytes4[7] memory views = [
+            ICoreViewFacet.getCycleInfo.selector,
+            ICoreViewFacet.getCycleDuration.selector,
+            ICoreViewFacet.getTransitionInfo.selector,
+            ICoreViewFacet.isAutomationEnabled.selector,
+            ICoreViewFacet.isAutomationReadyEnabled.selector,
+            ICoreViewFacet.getCycleStateDetails.selector,
+            ICoreViewFacet.getRecordMaxTaskCount.selector
+        ];
+        for (uint256 i; i < views.length; i++) {
+            assertEq(IDiamondLoupe(diamondAddr).facetAddress(views[i]), deployment.facets.coreViewFacet);
+        }
+
+        // The node's VM signer calls these three through the diamond. The values of the
+        // processTasks and removeRegisteredTask selectors are pinned by
+        // testProcessTasksSelectorIsPinned and testRemoveRegisteredTaskSelectorIsPinned
+        // (ConfigUpdateRemoval.t.sol).
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.processTasks.selector), deployment.facets.coreFacet);
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.monitorCycleEnd.selector), deployment.facets.coreFacet);
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(ICoreFacet.removeRegisteredTask.selector), deployment.facets.coreFacet);
     }
 
-    /// @dev Test to ensure 'transferOwnership' reverts if caller is not owner.
-    function testTransferOwnershipRevertsIfNotOwner() public {
+    /// @dev Asserts that `_facet` reports `_expectedCount` selectors through getSelectors() and
+    /// that the diamond routes every one of them to `_facet`.
+    function _assertFacetServesAllItsSelectors(address _facet, uint256 _expectedCount) internal view {
+        bytes4[] memory selectors = IFacetSelectors(_facet).getSelectors();
+        assertEq(selectors.length, _expectedCount);
+        for (uint256 i; i < selectors.length; i++) {
+            assertEq(IDiamondLoupe(diamondAddr).facetAddress(selectors[i]), _facet);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Two-step ownership (Entropy-Foundation/smr-moonshot#4975)
+    // ------------------------------------------------------------------------------------------
+
+    /// @dev Applies an empty diamondCut as `_caller`. diamondCut is owner-only and an empty cut
+    ///      changes nothing, so this is a side-effect-free probe of "can `_caller` act as owner".
+    function _emptyCutAs(address _caller) internal {
+        vm.prank(_caller);
+        IDiamondCut(diamondAddr).diamondCut(new IDiamondCut.FacetCut[](0), address(0), "");
+    }
+
+    /// @dev Asserts that `_caller` is refused an owner-only operation (diamondCut).
+    function _assertNotOwner(address _caller) internal {
         vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
-
-        vm.prank(alice);
-        OwnershipFacet(diamondAddr).transferOwnership(bob);
+        _emptyCutAs(_caller);
     }
 
-    /// @dev Test to ensure 'transferOwnership' reverts if the new owner is the zero address
-    /// (renouncing ownership is not supported).
-    function testTransferOwnershipRevertsIfNewOwnerIsZero() public {
-        vm.expectRevert(LibDiamond.AddressCannotBeZero.selector);
+    /// @dev Calls 'transferOwnership(_nominee)' as `_caller`.
+    function _nominateAs(address _caller, address _nominee) internal {
+        vm.prank(_caller);
+        OwnershipFacet(diamondAddr).transferOwnership(_nominee);
+    }
+
+    /// @dev Asserts that `_caller` is refused 'transferOwnership(_nominee)' as a non-owner.
+    function _assertCannotNominate(address _caller, address _nominee) internal {
+        vm.expectRevert(LibDiamond.MustBeContractOwner.selector);
+        _nominateAs(_caller, _nominee);
+    }
+
+    /// @dev Calls 'acceptOwnership()' as `_caller`.
+    function _acceptAs(address _caller) internal {
+        vm.prank(_caller);
+        OwnershipFacet(diamondAddr).acceptOwnership();
+    }
+
+    /// @dev Asserts that `_caller` is refused 'acceptOwnership()' as not the pending owner.
+    function _assertCannotAccept(address _caller) internal {
+        vm.expectRevert(LibDiamond.MustBePendingOwner.selector);
+        _acceptAs(_caller);
+    }
+
+    /// @dev Asserts the Diamond's current owner and pending owner.
+    function _assertOwners(address _owner, address _pending) internal view {
+        assertEq(OwnershipFacet(diamondAddr).owner(), _owner, "owner");
+        assertEq(OwnershipFacet(diamondAddr).pendingOwner(), _pending, "pending owner");
+    }
+
+    /// @dev No nomination is pending after deployment.
+    function testPendingOwnerIsZeroAfterDeployment() public view {
+        _assertOwners(admin, address(0));
+    }
+
+    /// @dev 'transferOwnership' only nominates: the owner and its powers are unchanged, the
+    ///      nominee is recorded, and OwnershipTransferStarted is emitted.
+    function testTransferOwnershipNominatesPendingOwner() public {
+        vm.expectEmit(true, true, false, false, diamondAddr);
+        emit IOwnable2Step.OwnershipTransferStarted(admin, alice);
+
+        _nominateAs(admin, alice);
+
+        _assertOwners(admin, alice);
+        // The current owner keeps full control until the nominee accepts ...
+        _emptyCutAs(admin);
+        // ... and the nominee has none yet.
+        _assertNotOwner(alice);
+    }
+
+    /// @dev 'acceptOwnership' by the nominee moves ownership, clears the nomination and emits
+    ///      OwnershipTransferred; the new owner can administer the Diamond, the previous one cannot.
+    function testAcceptOwnershipCompletesTransfer() public {
+        _nominateAs(admin, alice);
+
+        vm.expectEmit(true, true, false, false, diamondAddr);
+        emit LibDiamond.OwnershipTransferred(admin, alice);
+
+        _acceptAs(alice);
+
+        _assertOwners(alice, address(0));
+        _emptyCutAs(alice);
+        _assertNotOwner(admin);
+    }
+
+    /// @dev A completed nomination cannot be accepted a second time.
+    function testAcceptOwnershipCannotBeRepeated() public {
+        _nominateAs(admin, alice);
+        _acceptAs(alice);
+
+        _assertCannotAccept(alice);
+    }
+
+    /// @dev 'acceptOwnership' is refused when nothing is nominated, including for the owner itself
+    ///      and for the zero address.
+    function testAcceptOwnershipRevertsWithoutNomination() public {
+        address[3] memory callers = [alice, admin, address(0)];
+        for (uint256 i; i < callers.length; i++) {
+            _assertCannotAccept(callers[i]);
+        }
+        _assertOwners(admin, address(0));
+    }
+
+    /// @dev Only the nominee can accept; the owner and any third party are refused and the
+    ///      nomination survives their attempts.
+    function testAcceptOwnershipRevertsIfNotPendingOwner() public {
+        _nominateAs(admin, alice);
+
+        _assertCannotAccept(bob);
+        _assertCannotAccept(admin);
+
+        _assertOwners(admin, alice);
+    }
+
+    /// @dev Only the owner can nominate; neither a third party nor the pending owner can.
+    function testTransferOwnershipRevertsIfNotOwner() public {
+        _assertCannotNominate(alice, bob);
+
+        _nominateAs(admin, alice);
+        _assertCannotNominate(alice, bob);
+
+        _assertOwners(admin, alice);
+    }
+
+    /// @dev 'transferOwnership(address(0))' cancels a nomination: the former nominee can no longer
+    ///      accept, and the owner (never zero) is unchanged.
+    function testTransferOwnershipToZeroCancelsNomination() public {
+        _nominateAs(admin, alice);
+
+        vm.expectEmit(true, true, false, false, diamondAddr);
+        emit IOwnable2Step.OwnershipTransferStarted(admin, address(0));
+
+        _nominateAs(admin, address(0));
+
+        _assertOwners(admin, address(0));
+        _assertCannotAccept(alice);
+    }
+
+    /// @dev A new nomination replaces the previous one: only the latest nominee can accept.
+    function testTransferOwnershipReplacesNomination() public {
+        _nominateAs(admin, alice);
+        _nominateAs(admin, bob);
+        _assertOwners(admin, bob);
+
+        _assertCannotAccept(alice);
+
+        _acceptAs(bob);
+        _assertOwners(bob, address(0));
+    }
+
+    /// @dev Ownership can be handed on again after a completed transfer, by the new owner only.
+    function testOwnershipCanBeTransferredAgain() public {
+        _nominateAs(admin, alice);
+        _acceptAs(alice);
+
+        _assertCannotNominate(admin, admin);
+
+        _nominateAs(alice, admin);
+        _acceptAs(admin);
+
+        _assertOwners(admin, address(0));
+    }
+
+    /// @dev Nominating the current owner is harmless: accepting leaves the owner unchanged and
+    ///      clears the nomination.
+    function testOwnerCanAcceptSelfNomination() public {
+        _nominateAs(admin, admin);
+        _acceptAs(admin);
+
+        _assertOwners(admin, address(0));
+    }
+
+    /// @dev Fuzz: for any nominee, the owner stays put until that exact account accepts, any other
+    ///      caller is refused, and acceptance hands over control. The nominee is kept to accounts
+    ///      that can model a real handover: not zero, not a Foundry-reserved address (cheatcodes,
+    ///      console, default sender, the test contract) and not the Diamond itself.
+    function testFuzzTwoStepTransfer(address _nominee, address _other) public {
+        vm.assume(_nominee != address(0));
+        assumeNotForgeAddress(_nominee);
+        vm.assume(_nominee != diamondAddr);
+        vm.assume(_other != _nominee);
+
+        _nominateAs(admin, _nominee);
+        _assertOwners(admin, _nominee);
+
+        _assertCannotAccept(_other);
+
+        _acceptAs(_nominee);
+        _assertOwners(_nominee, address(0));
+        _emptyCutAs(_nominee);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Administration selectors cannot be removed (Entropy-Foundation/smr-moonshot#4975)
+    // ------------------------------------------------------------------------------------------
+
+    /// @dev The Diamond's administration selectors, with the facet each must stay routed to.
+    function _adminSelectors() internal view returns (bytes4[5] memory selectors, address[5] memory facets) {
+        selectors = [
+            IDiamondCut.diamondCut.selector,
+            IERC173.owner.selector,
+            IERC173.transferOwnership.selector,
+            IOwnable2Step.pendingOwner.selector,
+            IOwnable2Step.acceptOwnership.selector
+        ];
+        address ownership = deployment.facets.ownershipFacet;
+        facets = [deployment.facets.diamondCutFacet, ownership, ownership, ownership, ownership];
+    }
+
+    /// @dev Builds a single-entry Remove cut for `_selectors` (facet must be zero for Remove).
+    function _removeCut(bytes4[] memory _selectors) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: address(0),
+            action: IDiamondCut.FacetCutAction.Remove,
+            functionSelectors: _selectors
+        });
+    }
+
+    /// @dev A Remove action naming any administration selector is refused, and the selector stays
+    ///      routed to its facet.
+    function testRemoveAdminSelectorIsRefused() public {
+        (bytes4[5] memory selectors, address[5] memory facets) = _adminSelectors();
+        for (uint256 i; i < selectors.length; i++) {
+            bytes4[] memory one = new bytes4[](1);
+            one[0] = selectors[i];
+
+            vm.expectRevert(abi.encodeWithSelector(LibDiamond.CannotRemoveProtectedFunction.selector, selectors[i]));
+            vm.prank(admin);
+            IDiamondCut(diamondAddr).diamondCut(_removeCut(one), address(0), "");
+
+            assertEq(IDiamondLoupe(diamondAddr).facetAddress(selectors[i]), facets[i]);
+        }
+        // The administration path is intact end to end.
+        _emptyCutAs(admin);
+    }
+
+    /// @dev A Remove batch that also names an administration selector is refused as a whole: the
+    ///      ordinary selector listed before it stays routed too.
+    function testRemoveBatchContainingAdminSelectorIsRefused() public {
+        bytes4[] memory batch = new bytes4[](2);
+        batch[0] = IRegistryFacet.cancelTasks.selector;
+        batch[1] = IERC173.transferOwnership.selector;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(LibDiamond.CannotRemoveProtectedFunction.selector, IERC173.transferOwnership.selector)
+        );
+        vm.prank(admin);
+        IDiamondCut(diamondAddr).diamondCut(_removeCut(batch), address(0), "");
+
+        assertEq(
+            IDiamondLoupe(diamondAddr).facetAddress(IRegistryFacet.cancelTasks.selector),
+            deployment.facets.registryFacet
+        );
+    }
+
+    /// @dev Replace stays available for the administration selectors so a fix can still ship:
+    ///      the ownership selectors move to a new OwnershipFacet and keep working, and diamondCut
+    ///      moves to a new DiamondCutFacet that can still apply cuts.
+    function testReplaceAdminSelectorsIsAllowed() public {
+        OwnershipFacet newOwnershipFacet = new OwnershipFacet();
+        DiamondCutFacet newCutFacet = new DiamondCutFacet();
+
+        bytes4[] memory cutSelector = new bytes4[](1);
+        cutSelector[0] = IDiamondCut.diamondCut.selector;
+
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](2);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: address(newOwnershipFacet),
+            action: IDiamondCut.FacetCutAction.Replace,
+            functionSelectors: newOwnershipFacet.getSelectors()
+        });
+        cut[1] = IDiamondCut.FacetCut({
+            facetAddress: address(newCutFacet),
+            action: IDiamondCut.FacetCutAction.Replace,
+            functionSelectors: cutSelector
+        });
 
         vm.prank(admin);
-        OwnershipFacet(diamondAddr).transferOwnership(address(0));
+        IDiamondCut(diamondAddr).diamondCut(cut, address(0), "");
+
+        (bytes4[5] memory selectors, ) = _adminSelectors();
+        assertEq(IDiamondLoupe(diamondAddr).facetAddress(selectors[0]), address(newCutFacet));
+        for (uint256 i = 1; i < selectors.length; i++) {
+            assertEq(IDiamondLoupe(diamondAddr).facetAddress(selectors[i]), address(newOwnershipFacet));
+        }
+
+        // The replaced facets serve the same Diamond storage: the owner is unchanged, can still
+        // cut, and the two-step handover still works.
+        _assertOwners(admin, address(0));
+        _emptyCutAs(admin);
+        _nominateAs(admin, alice);
+        _acceptAs(alice);
+        _assertOwners(alice, address(0));
+    }
+
+    /// @dev The protected set is exactly the five administration selectors: among everything the
+    ///      Diamond routes at genesis, nothing else is protected, so ordinary selectors stay
+    ///      removable (Remove in general is covered by testRemoveSelector).
+    function testIsProtectedSelectorMatchesExactlyTheAdminSelectors() public view {
+        (bytes4[5] memory selectors, ) = _adminSelectors();
+        for (uint256 i; i < selectors.length; i++) {
+            assertTrue(LibDiamond.isProtectedSelector(selectors[i]));
+        }
+        // Every other selector the Diamond routes at genesis is not protected.
+        address[] memory facetList = IDiamondLoupe(diamondAddr).facetAddresses();
+        uint256 protectedRouted;
+        for (uint256 f; f < facetList.length; f++) {
+            bytes4[] memory routed = IDiamondLoupe(diamondAddr).facetFunctionSelectors(facetList[f]);
+            for (uint256 s; s < routed.length; s++) {
+                if (LibDiamond.isProtectedSelector(routed[s])) protectedRouted++;
+            }
+        }
+        assertEq(protectedRouted, selectors.length, "exactly the five admin selectors are protected");
+        assertFalse(LibDiamond.isProtectedSelector(IRegistryFacet.cancelTasks.selector));
+        assertFalse(LibDiamond.isProtectedSelector(bytes4(0)));
     }
 
     /// @dev Test to ensure 'diamondCut' reverts if caller is not owner.
@@ -754,7 +1089,7 @@ contract DiamondInitTest is BaseDiamondTest {
     /// @dev Test to ensure 'facets' returns all registered facets.
     function testFacets() public view {
         IDiamondLoupe.Facet[] memory facetList = IDiamondLoupe(diamondAddr).facets();
-        assertEq(facetList.length, 7);
+        assertEq(facetList.length, 8);
 
         for (uint256 i; i < facetList.length; i++) {
             assertTrue(facetList[i].facetAddress != address(0));

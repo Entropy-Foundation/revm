@@ -76,6 +76,10 @@ interface IConfigFacet {
     error UnacceptableSysRegistryMaxGasCap();
     error UnacceptableTaskCapacity();
     error UnacceptableSysTaskCapacity();
+    /// @notice grantAuthorization was given an account the registry does not accept as a task
+    /// owner (LibTaskOwner). The same error as `IRegistryFacet.UnsupportedTaskOwner`, with the same
+    /// selector, declared here too so that the ConfigFacet ABI decodes it.
+    error UnsupportedTaskOwner(address owner);
 
     // =============================================================
     //                      View functions

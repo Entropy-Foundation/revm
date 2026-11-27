@@ -1,15 +1,19 @@
 //! KZG point evaluation precompile using BLST BLS12-381 implementation.
-use crate::bls12_381::blst::{
-    p1_add_or_double, p1_from_affine, p1_scalar_mul, p1_to_affine, p2_add_or_double,
-    p2_from_affine, p2_scalar_mul, p2_to_affine, pairing_check,
+use crate::{
+    bls12_381::blst::{
+        p1_add_or_double, p1_from_affine, p1_scalar_mul, p1_to_affine, p2_add_or_double,
+        p2_from_affine, p2_scalar_mul, p2_to_affine, pairing_check,
+    },
+    bls12_381_const::TRUSTED_SETUP_TAU_G2_BYTES,
+    PrecompileHalt,
 };
-use crate::bls12_381_const::TRUSTED_SETUP_TAU_G2_BYTES;
-use crate::PrecompileError;
 use ::blst::{
-    blst_p1_affine, blst_p1_affine_in_g1, blst_p1_affine_on_curve, blst_p2_affine, blst_scalar,
-    blst_scalar_fr_check, blst_scalar_from_bendian,
+    blst_p1_affine, blst_p1_affine_in_g1, blst_p1_affine_is_inf, blst_p1_affine_on_curve,
+    blst_p2_affine, blst_p2_affine_is_inf, blst_scalar, blst_scalar_fr_check,
+    blst_scalar_from_bendian,
 };
-use std::string::ToString;
+use primitives::OnceLock;
+use std::vec::Vec;
 
 /// Verify KZG proof using BLST BLS12-381 implementation.
 ///
@@ -53,29 +57,43 @@ pub fn verify_kzg_proof(
 
     // Compute X_minus_z = [τ]G₂ - [z]G₂
     let z_g2 = p2_scalar_mul(&g2, &z_scalar);
-    let x_minus_z = p2_sub_affine(&tau_g2, &z_g2);
+    let x_minus_z = p2_sub_affine(tau_g2, &z_g2);
 
     // Verify: P - y = Q * (X - z)
     // Using pairing check: e(P - y, -G₂) * e(proof, X - z) == 1
     let neg_g2 = p2_neg(&g2);
 
-    pairing_check(&[(p_minus_y, neg_g2), (proof_point, x_minus_z)])
+    // Skip pairs containing a point at infinity: their pairing is the identity,
+    // and `pairing_check` requires infinity-free inputs (`blst_miller_loop_n`,
+    // unlike the per-pair `blst_miller_loop`, does not special-case infinity).
+    // E.g. the proof of a constant polynomial is the point at infinity.
+    let pairs: Vec<_> = [(p_minus_y, neg_g2), (proof_point, x_minus_z)]
+        .into_iter()
+        // SAFETY: both arguments are valid blst types
+        .filter(|(g1, g2)| unsafe { !blst_p1_affine_is_inf(g1) && !blst_p2_affine_is_inf(g2) })
+        .collect();
+
+    pairing_check(&pairs)
 }
 
 /// Get the trusted setup G2 point `[τ]₂` from the Ethereum KZG ceremony.
 /// This is g2_monomial_1 from trusted_setup_4096.json
-fn get_trusted_setup_g2() -> blst_p2_affine {
-    // For compressed G2, we need to decompress
-    let mut g2_affine = blst_p2_affine::default();
-    unsafe {
-        // The compressed format has x coordinate and a flag bit for y
-        // We use deserialize_compressed which handles this automatically
-        let result = blst::blst_p2_deserialize(&mut g2_affine, TRUSTED_SETUP_TAU_G2_BYTES.as_ptr());
-        if result != blst::BLST_ERROR::BLST_SUCCESS {
-            panic!("Failed to deserialize trusted setup G2 point");
+fn get_trusted_setup_g2() -> &'static blst_p2_affine {
+    static TAU_G2: OnceLock<blst_p2_affine> = OnceLock::new();
+    TAU_G2.get_or_init(|| {
+        // For compressed G2, we need to decompress
+        let mut g2_affine = blst_p2_affine::default();
+        unsafe {
+            // The compressed format has x coordinate and a flag bit for y
+            // We use uncompress which handles this automatically
+            let result =
+                blst::blst_p2_uncompress(&mut g2_affine, TRUSTED_SETUP_TAU_G2_BYTES.as_ptr());
+            if result != blst::BLST_ERROR::BLST_SUCCESS {
+                panic!("Failed to deserialize trusted setup G2 point");
+            }
         }
-    }
-    g2_affine
+        g2_affine
+    })
 }
 
 /// Get G1 generator point
@@ -89,33 +107,29 @@ fn get_g2_generator() -> blst_p2_affine {
 }
 
 /// Parse a G1 point from compressed format (48 bytes)
-fn parse_g1_compressed(bytes: &[u8; 48]) -> Result<blst_p1_affine, PrecompileError> {
+fn parse_g1_compressed(bytes: &[u8; 48]) -> Result<blst_p1_affine, PrecompileHalt> {
     let mut point = blst_p1_affine::default();
     unsafe {
-        let result = blst::blst_p1_deserialize(&mut point, bytes.as_ptr());
+        let result = blst::blst_p1_uncompress(&mut point, bytes.as_ptr());
         if result != blst::BLST_ERROR::BLST_SUCCESS {
-            return Err(PrecompileError::Other(
-                "Invalid compressed G1 point".to_string(),
-            ));
+            return Err(PrecompileHalt::KzgInvalidG1Point);
         }
 
         // Verify the point is on curve
         if !blst_p1_affine_on_curve(&point) {
-            return Err(PrecompileError::Other("G1 point not on curve".to_string()));
+            return Err(PrecompileHalt::KzgG1PointNotOnCurve);
         }
 
         // Verify the point is in the correct subgroup
         if !blst_p1_affine_in_g1(&point) {
-            return Err(PrecompileError::Other(
-                "G1 point not in correct subgroup".to_string(),
-            ));
+            return Err(PrecompileHalt::KzgG1PointNotInSubgroup);
         }
     }
     Ok(point)
 }
 
 /// Read a scalar field element from bytes and verify it's canonical
-fn read_scalar_canonical(bytes: &[u8; 32]) -> Result<blst_scalar, PrecompileError> {
+fn read_scalar_canonical(bytes: &[u8; 32]) -> Result<blst_scalar, PrecompileHalt> {
     let mut scalar = blst_scalar::default();
 
     // Read scalar from big endian bytes
@@ -124,9 +138,7 @@ fn read_scalar_canonical(bytes: &[u8; 32]) -> Result<blst_scalar, PrecompileErro
     }
 
     if unsafe { !blst_scalar_fr_check(&scalar) } {
-        return Err(PrecompileError::Other(
-            "Non-canonical scalar field element".to_string(),
-        ));
+        return Err(PrecompileHalt::NonCanonicalFp);
     }
 
     Ok(scalar)

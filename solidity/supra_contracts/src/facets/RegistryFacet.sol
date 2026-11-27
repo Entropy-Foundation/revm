@@ -66,7 +66,8 @@ contract RegistryFacet is IRegistryFacet, IFacetSelectors {
     }
 
     /// @notice Function to register a system task. Reverts if caller is not authorized.
-    /// The caller becomes the task's owner, and may be a contract such as a MultiSignatureWallet.
+    /// The caller becomes the task's owner, and may be a contract, such as a task owner contract
+    /// that a MultiSignatureWallet administers.
     /// The chain executes the task with the owner as the transaction sender, as for a user task,
     /// and a contract caller must declare `IAutomationTaskOwner` as `register` requires.
     /// @param _payloadTx Includes the target smart contract address and the data to call in abi encoded form.
