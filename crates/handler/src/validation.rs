@@ -382,7 +382,7 @@ mod tests {
             ExecutionMode::Genesis,
         ] {
             assert!(!mode.charges_gas());
-            let result = transact_eip2930(mode.clone(), 0);
+            let result = transact_eip2930(mode, 0);
             assert!(
                 matches!(result, Ok(ExecutionResult::Success { .. })),
                 "{mode:?}: {result:?}"
@@ -396,7 +396,7 @@ mod tests {
     fn base_fee_floor_applies_to_modes_that_charge_gas() {
         for mode in [ExecutionMode::User, ExecutionMode::Automated] {
             assert!(mode.charges_gas());
-            let below = transact_eip2930(mode.clone(), u128::from(BLOCK_BASE_FEE) - 1);
+            let below = transact_eip2930(mode, u128::from(BLOCK_BASE_FEE) - 1);
             assert!(
                 matches!(
                     below,
@@ -441,7 +441,7 @@ mod tests {
                 Address::ZERO
             };
             let ctx = Context::mainnet()
-                .modify_cfg_chained(|c| c.execution_mode = mode.clone())
+                .modify_cfg_chained(|c| c.execution_mode = mode)
                 .with_db(CacheDB::<EmptyDB>::default());
             let mut evm = ctx.build_mainnet();
             let result = evm
@@ -477,7 +477,7 @@ mod tests {
                 Address::ZERO
             };
             let ctx = Context::mainnet()
-                .modify_cfg_chained(|c| c.execution_mode = mode.clone())
+                .modify_cfg_chained(|c| c.execution_mode = mode)
                 .with_db(CacheDB::<EmptyDB>::default());
             let mut evm = ctx.build_mainnet();
             evm.db_mut().insert_account_info(
@@ -503,7 +503,7 @@ mod tests {
             ExecutionMode::ReadOnly,
             ExecutionMode::Genesis,
         ] {
-            let (_, result) = transact(mode.clone(), BALANCE + 1);
+            let (_, result) = transact(mode, BALANCE + 1);
             assert!(
                 matches!(
                     result,
@@ -522,7 +522,7 @@ mod tests {
             ExecutionMode::System,
             ExecutionMode::Genesis,
         ] {
-            let (caller, result) = transact(mode.clone(), BALANCE);
+            let (caller, result) = transact(mode, BALANCE);
             let outcome = result.unwrap_or_else(|error| panic!("{mode:?}: {error:?}"));
             assert!(outcome.result.is_success(), "{mode:?}: {outcome:?}");
             assert_eq!(

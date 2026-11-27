@@ -1407,7 +1407,7 @@ fn test_sender_with_code_is_refused_only_in_user_mode() {
         let result = transact_from_sender_in_mode(
             cache_db_with_sender_code(sender, code.clone()),
             sender,
-            mode.clone(),
+            mode,
         );
         assert!(
             matches!(&result, Ok(r) if r.is_success()),

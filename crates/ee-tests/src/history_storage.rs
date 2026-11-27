@@ -80,7 +80,7 @@ fn execute_commit(
     mode: ExecutionMode,
     tx: TxEnv,
 ) -> Result<ExecutionResult, TestError> {
-    evm.ctx.cfg.execution_mode = mode.clone();
+    evm.ctx.cfg.execution_mode = mode;
     if mode.is_system() {
         evm.ctx.set_tx(tx);
         let mut handler = MainnetHandler::<TestEvm, TestError, EthFrame<EthInterpreter>>::default();
@@ -360,7 +360,7 @@ fn the_system_address_is_a_sender_of_system_transactions_only() {
             let mut evm = new_evm();
             let result = execute_commit(
                 &mut evm,
-                mode.clone(),
+                mode,
                 TxEnv {
                     caller: sender,
                     kind: TxKind::Call(HISTORY_STORAGE_ADDRESS),

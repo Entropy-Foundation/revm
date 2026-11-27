@@ -11,7 +11,7 @@ use primitives::{hardfork::SpecId, Address, TxKind, U256};
 
 /// Describes execution context of the transaction.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum ExecutionMode {
     #[default]
     /// Executing user submitted transaction.

@@ -563,7 +563,7 @@ fn bytecode_at_a_reserved_address_never_executes() {
         for mode in ALL_MODES {
             let context = format!("{mode:?} transaction to {target}");
             run(
-                mode.clone(),
+                mode,
                 db_with(return_caller(), &code_accounts()),
                 target,
                 U256::ZERO,
@@ -575,7 +575,7 @@ fn bytecode_at_a_reserved_address_never_executes() {
             for op in CALL_OPS {
                 let context = format!("{mode:?} {} to {target}", opcode::OpCode::name_by_op(op));
                 let run = run(
-                    mode.clone(),
+                    mode,
                     db_with(call_and_report(op, target, U256::ZERO), &code_accounts()),
                     ENTRY,
                     U256::ZERO,
@@ -684,7 +684,7 @@ fn selfdestruct_to_a_reserved_beneficiary_is_refused_in_every_mode() {
             let context = format!("{mode:?} SELFDESTRUCT to {beneficiary}");
             let code = selfdestruct_to(beneficiary);
             let run_top = run(
-                mode.clone(),
+                mode,
                 db_with(code.clone(), &[]),
                 ENTRY,
                 U256::ZERO,
@@ -706,7 +706,7 @@ fn selfdestruct_to_a_reserved_beneficiary_is_refused_in_every_mode() {
             let context =
                 format!("{mode:?} CALL to a contract that self-destructs to {beneficiary}");
             let run_inner = run(
-                mode.clone(),
+                mode,
                 db_with(
                     call_and_report(opcode::CALL, CALLEE, U256::ZERO),
                     &[(CALLEE, code)],

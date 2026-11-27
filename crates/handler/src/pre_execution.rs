@@ -176,7 +176,7 @@ pub fn validate_against_state_and_deduct_caller<
     context: &mut CTX,
 ) -> Result<(), ERROR> {
     let (block, tx, cfg, journal, _, _) = context.all_mut();
-    let execution_mode = cfg.execution_mode().clone();
+    let execution_mode = *cfg.execution_mode();
     let updates_nonce = execution_mode.updates_nonce();
 
     // Load caller's account.
