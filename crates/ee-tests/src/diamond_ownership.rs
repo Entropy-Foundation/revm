@@ -115,7 +115,7 @@ impl Chain {
             db.insert_account_info(account, AccountInfo::from_balance(U256::from(FUNDS)));
         }
         let mut evm = Context::mainnet()
-            .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+            .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
             .modify_block_chained(|block| {
                 block.timestamp = U256::from(TIMESTAMP);
                 block.gas_limit = GAS_LIMIT;

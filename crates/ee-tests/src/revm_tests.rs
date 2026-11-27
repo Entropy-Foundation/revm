@@ -121,7 +121,7 @@ const STOP_BYTECODE: &[u8] = &[opcode::STOP];
 #[test]
 fn test_read_only_discard_does_not_revert_prior_committed_tx() {
     let mut evm = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::CANCUN))
         .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
             STOP_BYTECODE.into(),
         )))
@@ -182,7 +182,7 @@ fn test_read_only_discard_does_not_revert_prior_committed_tx() {
 fn test_read_only_discard_of_first_touch_is_fully_undone() {
     let mut evm = Context::mainnet()
         .modify_cfg_chained(|cfg| {
-            cfg.spec = SpecId::CANCUN;
+            cfg.set_spec_and_mainnet_gas_params(SpecId::CANCUN);
             cfg.execution_mode = ExecutionMode::ReadOnly;
         })
         .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
@@ -221,7 +221,7 @@ fn test_read_only_eip7702_auth_list_is_fully_discarded() {
 
     let mut evm = Context::mainnet()
         .modify_cfg_chained(|cfg| {
-            cfg.spec = SpecId::PRAGUE;
+            cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE);
             cfg.execution_mode = ExecutionMode::ReadOnly;
         })
         .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
@@ -287,7 +287,7 @@ fn test_read_only_eip7702_redelegate_restores_prior_delegation_on_discard() {
     let delegate_to_y = address!("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
     let mut evm = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
         .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
             STOP_BYTECODE.into(),
         )))
@@ -1139,7 +1139,7 @@ fn test_call_after_create_destroy_single_journal() {
     let db = funded_cache_db(BENCH_CALLER);
 
     let mut evm = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::CANCUN))
         .with_db(db)
         .build_mainnet();
 
@@ -1195,7 +1195,7 @@ fn test_call_after_create_destroy_standalone_journal() {
     let db = funded_cache_db(BENCH_CALLER);
 
     let mut evm1 = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::CANCUN))
         .with_db(db)
         .build_mainnet();
 
@@ -1215,7 +1215,7 @@ fn test_call_after_create_destroy_standalone_journal() {
     db.commit(state1);
 
     let mut evm2 = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::CANCUN))
         .with_db(db)
         .build_mainnet();
 
@@ -1293,7 +1293,7 @@ fn test_sender_extcodesize_stays_warm_after_prior_committed_tx() {
     );
 
     let mut evm = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::CANCUN))
         .with_db(db)
         .build_mainnet();
 
@@ -1360,7 +1360,7 @@ fn transact_from_sender_in_mode(
 > {
     let mut evm = Context::mainnet()
         .modify_cfg_chained(|cfg| {
-            cfg.spec = SpecId::PRAGUE;
+            cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE);
             cfg.execution_mode = mode;
         })
         .with_db(db)
@@ -1444,7 +1444,7 @@ fn test_eip7702_authorization_from_a_reserved_address_is_skipped() {
     let delegate_to = address!("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
     let mut evm = Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
         .with_db(BenchmarkDB::new_bytecode(Bytecode::new_legacy(
             STOP_BYTECODE.into(),
         )))

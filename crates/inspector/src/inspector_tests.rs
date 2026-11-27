@@ -1192,7 +1192,7 @@ mod tests {
 
         let mut plain_evm = Context::mainnet()
             .modify_cfg_chained(|cfg| {
-                cfg.spec = SpecId::PRAGUE;
+                cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE);
                 cfg.execution_mode = ExecutionMode::ReadOnly;
             })
             .with_db(BenchmarkDB::new_bytecode(bytecode.clone()))
@@ -1202,7 +1202,7 @@ mod tests {
 
         let mut inspected_evm = Context::mainnet()
             .modify_cfg_chained(|cfg| {
-                cfg.spec = SpecId::PRAGUE;
+                cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE);
                 cfg.execution_mode = ExecutionMode::ReadOnly;
             })
             .with_db(BenchmarkDB::new_bytecode(bytecode))

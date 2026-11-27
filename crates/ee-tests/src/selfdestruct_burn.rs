@@ -123,7 +123,7 @@ fn destroyed_and_reported(txs: Vec<TxEnv>) -> (U256, U256) {
     );
     let mut evm = Context::mainnet()
         .with_db(db)
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
         .build_mainnet();
     let before = total_balance(evm.ctx.db_ref());
 
