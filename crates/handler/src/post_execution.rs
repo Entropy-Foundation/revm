@@ -67,8 +67,8 @@ pub fn refund(gas_params: &GasParams, gas: &mut Gas, eip7702_refund: i64) {
 ///
 /// A transaction in an execution mode that charges no gas (see
 /// [`context_interface::ExecutionMode::charges_gas`]) pays no fee, and neither does one run with
-/// fee charging disabled. Its gas is accounted as for any other transaction, refund cap included,
-/// but no balance is reimbursed and the beneficiary is not rewarded.
+/// fee charging disabled. For such a transaction post-execution caps the refund as for any other,
+/// but reimburses no balance and rewards no beneficiary.
 #[inline]
 fn charges_fee<C: Cfg + ?Sized>(cfg: &C) -> bool {
     !cfg.is_fee_charge_disabled() && cfg.execution_mode().charges_gas()
