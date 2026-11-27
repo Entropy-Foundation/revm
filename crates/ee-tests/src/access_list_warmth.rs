@@ -50,7 +50,7 @@ fn access_list_warmth_does_not_leak_into_later_tx() {
 
     let mut evm = Context::mainnet()
         .with_db(db)
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
         .build_mainnet();
 
     // T1: access list includes `listed_addr` - pre-warms it for T1 only.

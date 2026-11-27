@@ -67,7 +67,7 @@ fn new_evm() -> TestEvm {
     let mut db = Db::default();
     db.insert_account_info(SENDER, AccountInfo::from_balance(U256::from(FUNDS)));
     Context::mainnet()
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
         .with_db(db)
         .build_mainnet()
 }

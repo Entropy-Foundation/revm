@@ -46,7 +46,7 @@ fn setup_evm(
 
     Context::mainnet()
         .with_db(db)
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::PRAGUE)
+        .modify_cfg_chained(|cfg| cfg.set_spec_and_mainnet_gas_params(SpecId::PRAGUE))
         .build_mainnet()
 }
 
