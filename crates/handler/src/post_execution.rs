@@ -63,6 +63,17 @@ pub fn refund(gas_params: &GasParams, gas: &mut Gas, eip7702_refund: i64) {
     gas.set_final_refund(gas_params.max_refund_quotient());
 }
 
+/// Returns whether the transaction was charged a fee for its gas.
+///
+/// A transaction in an execution mode that charges no gas (see
+/// [`context_interface::ExecutionMode::charges_gas`]) pays no fee, and neither does one run with
+/// fee charging disabled. For such a transaction post-execution caps the refund as for any other,
+/// but reimburses no balance and rewards no beneficiary.
+#[inline]
+fn charges_fee<C: Cfg + ?Sized>(cfg: &C) -> bool {
+    !cfg.is_fee_charge_disabled() && cfg.execution_mode().charges_gas()
+}
+
 /// Reimburses the caller for unused gas.
 #[inline]
 pub fn reimburse_caller<CTX: ContextTr>(
@@ -70,9 +81,9 @@ pub fn reimburse_caller<CTX: ContextTr>(
     gas: &Gas,
     additional_refund: U256,
 ) -> Result<(), <CTX::Db as Database>::Error> {
-    // If fee charge was disabled (e.g. eth_call simulations), no gas was
-    // deducted from the caller upfront so there is nothing to reimburse.
-    if context.cfg().is_fee_charge_disabled() {
+    // If fee charge was disabled (e.g. eth_call simulations), or the execution mode charges no
+    // gas, no gas was deducted from the caller upfront so there is nothing to reimburse.
+    if !charges_fee(context.cfg()) {
         return Ok(());
     }
     let basefee = context.block().basefee() as u128;
@@ -99,9 +110,10 @@ pub fn reward_beneficiary<CTX: ContextTr>(
     context: &mut CTX,
     gas: &Gas,
 ) -> Result<(), <CTX::Db as Database>::Error> {
-    // If fee charge was disabled (e.g. eth_call simulations), the caller was
-    // never charged for gas so there are no fees to transfer to the beneficiary.
-    if context.cfg().is_fee_charge_disabled() {
+    // If fee charge was disabled (e.g. eth_call simulations), or the execution mode charges no
+    // gas, the caller was never charged for gas so there are no fees to transfer to the
+    // beneficiary.
+    if !charges_fee(context.cfg()) {
         return Ok(());
     }
     let (block, tx, cfg, journal, _, _) = context.all_mut();

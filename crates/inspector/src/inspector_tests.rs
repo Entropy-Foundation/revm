@@ -1170,15 +1170,10 @@ mod tests {
 
     #[test]
     fn test_inspect_read_only_gas_used_matches_non_inspector_path() {
-        // Large non-zero-byte calldata pushes the EIP-7623 floor well above what this
-        // trivial STOP-only contract actually spends executing. `Handler::run` (the plain,
-        // non-inspector path) already gates `post_execution` — and with it, the floor
-        // enforcement in `eip7623_check_gas_floor` — behind `charges_gas()`, so it never
-        // applies the floor in ReadOnly mode. If `InspectorHandler` ever loses that same
-        // gate, `inspect_one_tx` would apply the floor while `transact_one` does not,
-        // making the two paths silently report different `gas_used()` for the identical
-        // transaction — exactly the divergence that matters for a caller (e.g. an
-        // automation predicate check) that trusts `gas_used()` from either path equally.
+        // Large non-zero-byte calldata puts the EIP-7623 floor above the gas this STOP-only
+        // contract spends. ReadOnly charges no gas, so validation sets its floor to zero and
+        // neither run path applies one. The inspected and plain paths report the same gas
+        // used for the same transaction.
         let calldata = Bytes::from(vec![0xffu8; 4096]);
         let tx = TxEnv::builder()
             .caller(BENCH_CALLER)
