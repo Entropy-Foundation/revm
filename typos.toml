@@ -1,5 +1,7 @@
 [default]
 extend-ignore-identifiers-re = ["[sS]imular", "ba", "mis"]
+# A string literal of hex digits is encoded data, such as a pinned encoding in a test.
+extend-ignore-re = ['"[0-9a-fA-F]+"']
 
 [files]
 extend-exclude = ["CHANGELOG.md", "tests", "solidity/supra_contracts/lib" ]

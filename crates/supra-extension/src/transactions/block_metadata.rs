@@ -21,31 +21,93 @@ pub const DEFAULT_BLOCK_METADATA_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 /// EVM system transaction generated based on the block sent for execution.
 /// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meet
 /// other `supra-evm` SC checks requiring per-block execution.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct BlockMetadata {
     /// ID of the chain in scope of which block is being executed
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub chain_id: ChainId,
+    chain_id: ChainId,
     /// Sender of the transaction. By default, will be agreed @evm_vm_signer
-    pub sender: Address,
+    sender: Address,
     /// A height of the block based on which this transaction is created
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub height: u64,
+    height: u64,
     /// Hash of the block being executed
-    pub block_hash: B256,
+    block_hash: B256,
     /// Block creation timestamp in seconds
-    pub timestamp: U256,
+    timestamp: U256,
     /// The 160-bit address of the message call’s recipient
     #[cfg_attr(feature = "serde", serde(default))]
-    pub to: Address,
+    to: Address,
     /// An unlimited size byte array specifying the
     /// input data of the message call.
-    pub input: Bytes,
+    input: Bytes,
     /// Gas limit for this transaction, resolved from `BlockMeta.blockPrologueGasCap`.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub gas_limit: u64,
+    gas_limit: u64,
+    /// Gas limit of the block, the value the `GASLIMIT` opcode returns while the block executes.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
+    block_gas_limit: u64,
+    /// Base fee per gas of the block, the value the `BASEFEE` opcode returns while the block
+    /// executes and the lowest gas price its EVM transactions pay.
+    #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
+    base_fee_per_gas: u64,
+}
+
+/// Read access to the fields of the transaction.
+impl BlockMetadata {
+    /// Id of the EVM chain the transaction was built for. [`Transaction::chain_id`] reports it as
+    /// `Some`.
+    #[inline]
+    pub fn evm_chain_id(&self) -> ChainId {
+        self.chain_id
+    }
+
+    /// Address the transaction calls. [`Transaction::kind`] reports it as [`TxKind::Call`], and
+    /// [`Transaction::to`] as `Some`.
+    #[inline]
+    pub fn target(&self) -> Address {
+        self.to
+    }
+
+    /// Sender of the transaction, [`VM_SIGNER`] for a transaction built by [`BlockMetadataBuilder`].
+    #[inline]
+    pub fn sender(&self) -> Address {
+        self.sender
+    }
+
+    /// Height of the block the transaction was built for. [`Transaction::nonce`] reports the same
+    /// value.
+    #[inline]
+    pub fn height(&self) -> u64 {
+        self.height
+    }
+
+    /// Hash of the block the transaction was built for.
+    #[inline]
+    pub fn block_hash(&self) -> B256 {
+        self.block_hash
+    }
+
+    /// Creation timestamp of the block the transaction was built for, in seconds.
+    #[inline]
+    pub fn timestamp(&self) -> U256 {
+        self.timestamp
+    }
+
+    /// Gas limit of the block, the value the `GASLIMIT` opcode returns while the block executes.
+    #[inline]
+    pub fn block_gas_limit(&self) -> u64 {
+        self.block_gas_limit
+    }
+
+    /// Base fee per gas of the block, the value the `BASEFEE` opcode returns while the block
+    /// executes.
+    #[inline]
+    pub fn base_fee_per_gas(&self) -> u64 {
+        self.base_fee_per_gas
+    }
 }
 
 impl Transaction for BlockMetadata {
@@ -164,6 +226,8 @@ pub struct BlockMetadataBuilder {
     timestamp: Option<U256>,
     chain_id: Option<ChainId>,
     gas_limit: Option<u64>,
+    block_gas_limit: Option<u64>,
+    base_fee_per_gas: Option<u64>,
 }
 
 #[allow(missing_docs)]
@@ -176,6 +240,8 @@ impl BlockMetadataBuilder {
             timestamp: None,
             chain_id: None,
             gas_limit: None,
+            block_gas_limit: None,
+            base_fee_per_gas: None,
         }
     }
 
@@ -208,6 +274,16 @@ impl BlockMetadataBuilder {
         self
     }
 
+    pub fn block_gas_limit(mut self, block_gas_limit: u64) -> Self {
+        self.block_gas_limit = Some(block_gas_limit);
+        self
+    }
+
+    pub fn base_fee_per_gas(mut self, base_fee_per_gas: u64) -> Self {
+        self.base_fee_per_gas = Some(base_fee_per_gas);
+        self
+    }
+
     pub fn build(self) -> Result<BlockMetadata, SupraExtensionError> {
         let Self {
             to,
@@ -216,12 +292,18 @@ impl BlockMetadataBuilder {
             timestamp,
             chain_id,
             gas_limit,
+            block_gas_limit,
+            base_fee_per_gas,
         } = self;
         let height = value_or_error!(BlockMetadataBuilder, "height", height);
         let block_hash = value_or_error!(BlockMetadataBuilder, "block_hash", block_hash);
         let timestamp = value_or_error!(BlockMetadataBuilder, "timestamp", timestamp);
         let chain_id = value_or_error!(BlockMetadataBuilder, "chain_id", chain_id);
         let gas_limit = value_or_error!(BlockMetadataBuilder, "gas_limit", gas_limit);
+        let block_gas_limit =
+            value_or_error!(BlockMetadataBuilder, "block_gas_limit", block_gas_limit);
+        let base_fee_per_gas =
+            value_or_error!(BlockMetadataBuilder, "base_fee_per_gas", base_fee_per_gas);
 
         Ok(BlockMetadata {
             chain_id,
@@ -232,6 +314,8 @@ impl BlockMetadataBuilder {
             to,
             input: Self::get_block_prologue(),
             gas_limit,
+            block_gas_limit,
+            base_fee_per_gas,
         })
     }
 
@@ -256,6 +340,8 @@ mod tests {
         b256!("abababababababababababababababababababababababababababababababab");
     const TIMESTAMP: u64 = 1_700_000_000;
     const GAS_LIMIT: u64 = 12_345_678;
+    const BLOCK_GAS_LIMIT: u64 = 500_000_000;
+    const BASE_FEE_PER_GAS: u64 = 100_000_000_000;
 
     fn full_builder() -> BlockMetadataBuilder {
         BlockMetadataBuilder::new(REGISTRY)
@@ -264,6 +350,8 @@ mod tests {
             .timestamp(U256::from(TIMESTAMP))
             .chain_id(CHAIN_ID)
             .gas_limit(GAS_LIMIT)
+            .block_gas_limit(BLOCK_GAS_LIMIT)
+            .base_fee_per_gas(BASE_FEE_PER_GAS)
     }
 
     // ── Builder: successful build ─────────────────────────────────────────────
@@ -272,13 +360,15 @@ mod tests {
     fn build_sets_all_fields_correctly() {
         let meta = full_builder().build().unwrap();
 
-        assert_eq!(meta.sender, VM_SIGNER);
-        assert_eq!(meta.chain_id, CHAIN_ID);
-        assert_eq!(meta.height, HEIGHT);
-        assert_eq!(meta.block_hash, BLOCK_HASH);
-        assert_eq!(meta.timestamp, U256::from(TIMESTAMP));
-        assert_eq!(meta.to, REGISTRY);
-        assert_eq!(meta.gas_limit, GAS_LIMIT);
+        assert_eq!(meta.sender(), VM_SIGNER);
+        assert_eq!(meta.evm_chain_id(), CHAIN_ID);
+        assert_eq!(meta.height(), HEIGHT);
+        assert_eq!(meta.block_hash(), BLOCK_HASH);
+        assert_eq!(meta.timestamp(), U256::from(TIMESTAMP));
+        assert_eq!(meta.target(), REGISTRY);
+        assert_eq!(meta.gas_limit(), GAS_LIMIT);
+        assert_eq!(meta.block_gas_limit(), BLOCK_GAS_LIMIT);
+        assert_eq!(meta.base_fee_per_gas(), BASE_FEE_PER_GAS);
     }
 
     #[test]
@@ -344,11 +434,90 @@ mod tests {
             .block_hash(BLOCK_HASH)
             .timestamp(U256::from(TIMESTAMP))
             .chain_id(CHAIN_ID)
+            .block_gas_limit(BLOCK_GAS_LIMIT)
+            .base_fee_per_gas(BASE_FEE_PER_GAS)
             .build()
             .unwrap_err();
         assert!(
             matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "gas_limit")
         );
+
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .block_hash(BLOCK_HASH)
+            .timestamp(U256::from(TIMESTAMP))
+            .chain_id(CHAIN_ID)
+            .gas_limit(GAS_LIMIT)
+            .base_fee_per_gas(BASE_FEE_PER_GAS)
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "block_gas_limit")
+        );
+
+        let err = BlockMetadataBuilder::new(REGISTRY)
+            .height(HEIGHT)
+            .block_hash(BLOCK_HASH)
+            .timestamp(U256::from(TIMESTAMP))
+            .chain_id(CHAIN_ID)
+            .gas_limit(GAS_LIMIT)
+            .block_gas_limit(BLOCK_GAS_LIMIT)
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, SupraExtensionError::MissingBuilderValue(_, ref f) if f == "base_fee_per_gas")
+        );
+    }
+
+    /// Fixes the serde forms of a fully populated [`BlockMetadata`]. smr-moonshot hashes the
+    /// transaction over its BCS serialization through serde. BCS is not a dependency of this crate,
+    /// so this test fixes two other serde forms:
+    /// - JSON, a human-readable form, which fixes the field names and order and the hex forms of the
+    ///   numeric fields;
+    /// - bincode, a non-human-readable form as BCS is. `alloy_serde::quantity` and `U256` serialize
+    ///   differently for the two kinds of serializer, and `alloy_serde` leaves its non-human-readable
+    ///   form unspecified.
+    ///
+    /// The test fails when a dependency upgrade (the revm 43 sync, smr-moonshot#4046, or a later
+    /// one) changes either form, and with it possibly the bytes the transaction's hash covers.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_forms_are_fixed() {
+        let meta = full_builder().build().unwrap();
+
+        let json = concat!(
+            r#"{"chainId":"0x6","#,
+            r#""sender":"0x0000000000000000000000000000000053555000","#,
+            r#""height":"0x2a","#,
+            r#""blockHash":"0xabababababababababababababababababababababababababababababababab","#,
+            r#""timestamp":"0x6553f100","#,
+            r#""to":"0x1111111111111111111111111111111111111111","#,
+            r#""input":"0x7ded091b","#,
+            r#""gasLimit":"0xbc614e","#,
+            r#""blockGasLimit":"0x1dcd6500","#,
+            r#""baseFeePerGas":"0x174876e800"}"#,
+        );
+        assert_eq!(serde_json::to_string(&meta).unwrap(), json);
+        assert_eq!(serde_json::from_str::<BlockMetadata>(json).unwrap(), meta);
+
+        let config = bincode::config::standard();
+        let binary = bincode::serde::encode_to_vec(&meta, config).unwrap();
+        let expected_binary = concat!(
+            "080000000000000006",
+            "140000000000000000000000000000000053555000",
+            "08000000000000002a",
+            "20abababababababababababababababababababababababababababababababab",
+            "20000000000000000000000000000000000000000000000000000000006553f100",
+            "141111111111111111111111111111111111111111",
+            "047ded091b",
+            "080000000000bc614e",
+            "08000000001dcd6500",
+            "08000000174876e800",
+        );
+        assert_eq!(alloy::hex::encode(&binary), expected_binary);
+        let (decoded, _) =
+            bincode::serde::decode_from_slice::<BlockMetadata, _>(&binary, config).unwrap();
+        assert_eq!(decoded, meta);
     }
 
     // ── Transaction trait impl ────────────────────────────────────────────────
@@ -382,18 +551,24 @@ mod tests {
         assert_eq!(meta.ty(), TransactionType::Eip2930 as u8);
     }
 
-    // ── BlockMetadata default ─────────────────────────────────────────────────
+    // ── Builder: values that do not set the sender or the calldata ────────────
 
     #[test]
-    fn default_produces_zero_values() {
-        let meta = BlockMetadata::default();
-        assert_eq!(meta.chain_id, 0);
-        assert_eq!(meta.sender, Address::ZERO);
-        assert_eq!(meta.height, 0);
-        assert_eq!(meta.block_hash, B256::ZERO);
-        assert_eq!(meta.timestamp, U256::ZERO);
-        assert_eq!(meta.to, Address::ZERO);
-        assert!(meta.input.is_empty());
-        assert_eq!(meta.gas_limit, 0);
+    fn build_from_zero_values_keeps_sender_and_calldata() {
+        let meta = BlockMetadataBuilder::new(Address::ZERO)
+            .height(0)
+            .block_hash(B256::ZERO)
+            .timestamp(U256::ZERO)
+            .chain_id(0)
+            .gas_limit(0)
+            .block_gas_limit(0)
+            .base_fee_per_gas(0)
+            .build()
+            .unwrap();
+        assert_eq!(meta.sender(), VM_SIGNER);
+        assert_eq!(
+            meta.input().as_ref(),
+            crate::blockPrologueCall.abi_encode().as_slice()
+        );
     }
 }
