@@ -21,7 +21,7 @@ pub const DEFAULT_BLOCK_METADATA_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 /// EVM system transaction generated based on the block sent for execution.
 /// Will trigger `BlockMeta::block_prologue` supra-evm SC API execution to meet
 /// other `supra-evm` SC checks requiring per-block execution.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct BlockMetadata {
@@ -551,20 +551,24 @@ mod tests {
         assert_eq!(meta.ty(), TransactionType::Eip2930 as u8);
     }
 
-    // ── BlockMetadata default ─────────────────────────────────────────────────
+    // ── Builder: values that do not set the sender or the calldata ────────────
 
     #[test]
-    fn default_produces_zero_values() {
-        let meta = BlockMetadata::default();
-        assert_eq!(meta.chain_id, 0);
-        assert_eq!(meta.sender, Address::ZERO);
-        assert_eq!(meta.height, 0);
-        assert_eq!(meta.block_hash, B256::ZERO);
-        assert_eq!(meta.timestamp, U256::ZERO);
-        assert_eq!(meta.to, Address::ZERO);
-        assert!(meta.input.is_empty());
-        assert_eq!(meta.gas_limit, 0);
-        assert_eq!(meta.block_gas_limit, 0);
-        assert_eq!(meta.base_fee_per_gas, 0);
+    fn build_from_zero_values_keeps_sender_and_calldata() {
+        let meta = BlockMetadataBuilder::new(Address::ZERO)
+            .height(0)
+            .block_hash(B256::ZERO)
+            .timestamp(U256::ZERO)
+            .chain_id(0)
+            .gas_limit(0)
+            .block_gas_limit(0)
+            .base_fee_per_gas(0)
+            .build()
+            .unwrap();
+        assert_eq!(meta.sender(), VM_SIGNER);
+        assert_eq!(
+            meta.input().as_ref(),
+            crate::blockPrologueCall.abi_encode().as_slice()
+        );
     }
 }

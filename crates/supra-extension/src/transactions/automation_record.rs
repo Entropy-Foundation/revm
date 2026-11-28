@@ -14,7 +14,7 @@ use context::TransactionType;
 use enum_kinds::EnumKind;
 use primitives::supra_constants::VM_SIGNER;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 /// Transaction representing automation transaction record which will trigger automation task processing
@@ -543,8 +543,13 @@ mod tests {
     /// tests below need.
     fn record_with_input(input: Bytes) -> AutomationRegistryRecord {
         AutomationRegistryRecord {
+            sender: VM_SIGNER,
+            block_height: BLOCK_HEIGHT,
+            chain_id: CHAIN_ID,
+            nonce: NONCE,
+            gas_limit: GAS_LIMIT,
+            to: REGISTRY_ADDR,
             input,
-            ..Default::default()
         }
     }
 
