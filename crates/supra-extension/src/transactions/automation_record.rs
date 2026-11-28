@@ -21,15 +21,15 @@ use primitives::supra_constants::VM_SIGNER;
 /// during cycle transitions assisting automation bookkeeping flow.
 pub struct AutomationRegistryRecord {
     /// Address of the transaction sender. By default, it will be [`VM_SIGNER`] reserved addressed by supra.
-    pub sender: Address,
+    sender: Address,
     /// Height of the block in scope of which this transaction is being executed.
-    pub block_height: u64,
+    block_height: u64,
     /// Chain id.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub chain_id: ChainId,
+    chain_id: ChainId,
     /// Index of the automation record being executed in scope of the block.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub nonce: u64,
+    nonce: u64,
     /// A scalar value equal to the maximum
     /// amount of gas that should be used in executing
     /// this transaction. Automation record execution will be gas-less, but it still will be guarded
@@ -38,20 +38,46 @@ pub struct AutomationRegistryRecord {
         feature = "serde",
         serde(with = "alloy_serde::quantity", rename = "gas", alias = "gasLimit")
     )]
-    pub gas_limit: u64,
+    gas_limit: u64,
     /// The 160-bit address of the message call’s recipient.
     /// It will correspond to the address of the automation-registry/automation-controller SC deployed
     /// by governance.
     #[cfg_attr(feature = "serde", serde(default))]
-    pub to: Address,
+    to: Address,
     /// Expected input data of the transaction
     /// - Selector of automation registry record executor
     /// - Index of the cycle for which automation registry record is scheduled for execution.
     /// - List of the task indexes to be processed
-    pub input: Bytes,
+    input: Bytes,
 }
 
 impl AutomationRegistryRecord {
+    /// Id of the EVM chain the transaction was built for. [`Transaction::chain_id`] reports it as
+    /// `Some`.
+    #[inline]
+    pub fn evm_chain_id(&self) -> ChainId {
+        self.chain_id
+    }
+
+    /// Address the transaction calls. [`Transaction::kind`] reports it as [`TxKind::Call`], and
+    /// [`Transaction::to`] as `Some`.
+    #[inline]
+    pub fn target(&self) -> Address {
+        self.to
+    }
+
+    /// Sender of the transaction, [`VM_SIGNER`] for a record built by [`AutomationRecordBuilder`].
+    #[inline]
+    pub fn sender(&self) -> Address {
+        self.sender
+    }
+
+    /// Height of the block the record was built for.
+    #[inline]
+    pub fn block_height(&self) -> u64 {
+        self.block_height
+    }
+
     /// Attempts to convert input bytes of [`AutomationRegistryRecord`] to [`AutomationRecordAction`]
     pub fn try_convert_to_action(&self) -> Result<AutomationRecordAction, SupraExtensionError> {
         if self.input.len() < SELECTOR_LEN {
@@ -512,6 +538,16 @@ mod tests {
         Bytes::from(process_task_call.abi_encode())
     }
 
+    /// A record carrying `input` as its calldata. [`AutomationRecordBuilder`] encodes the calldata
+    /// from an [`AutomationRecordAction`], so it cannot produce the malformed inputs the decoding
+    /// tests below need.
+    fn record_with_input(input: Bytes) -> AutomationRegistryRecord {
+        AutomationRegistryRecord {
+            input,
+            ..Default::default()
+        }
+    }
+
     fn base_builder() -> AutomationRecordBuilder {
         AutomationRecordBuilder::new(REGISTRY_ADDR)
             .with_chain_id(CHAIN_ID)
@@ -529,12 +565,12 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(record.sender, VM_SIGNER);
-        assert_eq!(record.chain_id, CHAIN_ID);
-        assert_eq!(record.block_height, BLOCK_HEIGHT);
+        assert_eq!(record.sender(), VM_SIGNER);
+        assert_eq!(record.evm_chain_id(), CHAIN_ID);
+        assert_eq!(record.block_height(), BLOCK_HEIGHT);
         assert_eq!(record.nonce, NONCE);
         assert_eq!(record.gas_limit, GAS_LIMIT);
-        assert_eq!(record.to, REGISTRY_ADDR);
+        assert_eq!(record.target(), REGISTRY_ADDR);
         assert!(!record.input.is_empty());
     }
 
@@ -550,12 +586,12 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(record.sender, VM_SIGNER);
-        assert_eq!(record.chain_id, CHAIN_ID);
-        assert_eq!(record.block_height, BLOCK_HEIGHT);
+        assert_eq!(record.sender(), VM_SIGNER);
+        assert_eq!(record.evm_chain_id(), CHAIN_ID);
+        assert_eq!(record.block_height(), BLOCK_HEIGHT);
         assert_eq!(record.nonce, NONCE);
         assert_eq!(record.gas_limit, GAS_LIMIT);
-        assert_eq!(record.to, REGISTRY_ADDR);
+        assert_eq!(record.target(), REGISTRY_ADDR);
         assert!(!record.input.is_empty());
     }
 
@@ -803,10 +839,7 @@ mod tests {
 
     #[test]
     fn convert_empty_input_returns_error() {
-        let record = AutomationRegistryRecord {
-            input: Bytes::default(),
-            ..Default::default()
-        };
+        let record = record_with_input(Bytes::default());
         assert!(matches!(
             record.try_convert_to_action(),
             Err(SupraExtensionError::InvalidAutomationRecord(_))
@@ -815,10 +848,7 @@ mod tests {
 
     #[test]
     fn convert_short_input_returns_error() {
-        let record = AutomationRegistryRecord {
-            input: Bytes::from(vec![0xAB, 0xCD]),
-            ..Default::default()
-        };
+        let record = record_with_input(Bytes::from(vec![0xAB, 0xCD]));
         assert!(matches!(
             record.try_convert_to_action(),
             Err(SupraExtensionError::InvalidAutomationRecord(_))
@@ -827,10 +857,7 @@ mod tests {
 
     #[test]
     fn convert_unknown_selector_returns_error() {
-        let record = AutomationRegistryRecord {
-            input: Bytes::from(vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00]),
-            ..Default::default()
-        };
+        let record = record_with_input(Bytes::from(vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00]));
         assert!(matches!(
             record.try_convert_to_action(),
             Err(SupraExtensionError::InvalidAutomationRecord(_))
@@ -870,10 +897,7 @@ mod tests {
 
     #[test]
     fn get_action_tag_empty_input_returns_error() {
-        let record = AutomationRegistryRecord {
-            input: Bytes::default(),
-            ..Default::default()
-        };
+        let record = record_with_input(Bytes::default());
         assert!(matches!(
             record.try_get_action_tag(),
             Err(SupraExtensionError::InvalidAutomationRecord(_))
@@ -882,10 +906,7 @@ mod tests {
 
     #[test]
     fn get_action_tag_unknown_selector_returns_error() {
-        let record = AutomationRegistryRecord {
-            input: Bytes::from(vec![0xFF, 0xFF, 0xFF, 0xFF]),
-            ..Default::default()
-        };
+        let record = record_with_input(Bytes::from(vec![0xFF, 0xFF, 0xFF, 0xFF]));
         assert!(matches!(
             record.try_get_action_tag(),
             Err(SupraExtensionError::InvalidAutomationRecord(_))

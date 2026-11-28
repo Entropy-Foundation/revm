@@ -27,32 +27,87 @@ pub const DEFAULT_BLOCK_METADATA_GAS_LIMIT: u64 = TX_GAS_LIMIT_CAP;
 pub struct BlockMetadata {
     /// ID of the chain in scope of which block is being executed
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub chain_id: ChainId,
+    chain_id: ChainId,
     /// Sender of the transaction. By default, will be agreed @evm_vm_signer
-    pub sender: Address,
+    sender: Address,
     /// A height of the block based on which this transaction is created
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub height: u64,
+    height: u64,
     /// Hash of the block being executed
-    pub block_hash: B256,
+    block_hash: B256,
     /// Block creation timestamp in seconds
-    pub timestamp: U256,
+    timestamp: U256,
     /// The 160-bit address of the message call’s recipient
     #[cfg_attr(feature = "serde", serde(default))]
-    pub to: Address,
+    to: Address,
     /// An unlimited size byte array specifying the
     /// input data of the message call.
-    pub input: Bytes,
+    input: Bytes,
     /// Gas limit for this transaction, resolved from `BlockMeta.blockPrologueGasCap`.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub gas_limit: u64,
+    gas_limit: u64,
     /// Gas limit of the block, the value the `GASLIMIT` opcode returns while the block executes.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub block_gas_limit: u64,
+    block_gas_limit: u64,
     /// Base fee per gas of the block, the value the `BASEFEE` opcode returns while the block
     /// executes and the lowest gas price its EVM transactions pay.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
-    pub base_fee_per_gas: u64,
+    base_fee_per_gas: u64,
+}
+
+/// Read access to the fields of the transaction.
+impl BlockMetadata {
+    /// Id of the EVM chain the transaction was built for. [`Transaction::chain_id`] reports it as
+    /// `Some`.
+    #[inline]
+    pub fn evm_chain_id(&self) -> ChainId {
+        self.chain_id
+    }
+
+    /// Address the transaction calls. [`Transaction::kind`] reports it as [`TxKind::Call`], and
+    /// [`Transaction::to`] as `Some`.
+    #[inline]
+    pub fn target(&self) -> Address {
+        self.to
+    }
+
+    /// Sender of the transaction, [`VM_SIGNER`] for a transaction built by [`BlockMetadataBuilder`].
+    #[inline]
+    pub fn sender(&self) -> Address {
+        self.sender
+    }
+
+    /// Height of the block the transaction was built for. [`Transaction::nonce`] reports the same
+    /// value.
+    #[inline]
+    pub fn height(&self) -> u64 {
+        self.height
+    }
+
+    /// Hash of the block the transaction was built for.
+    #[inline]
+    pub fn block_hash(&self) -> B256 {
+        self.block_hash
+    }
+
+    /// Creation timestamp of the block the transaction was built for, in seconds.
+    #[inline]
+    pub fn timestamp(&self) -> U256 {
+        self.timestamp
+    }
+
+    /// Gas limit of the block, the value the `GASLIMIT` opcode returns while the block executes.
+    #[inline]
+    pub fn block_gas_limit(&self) -> u64 {
+        self.block_gas_limit
+    }
+
+    /// Base fee per gas of the block, the value the `BASEFEE` opcode returns while the block
+    /// executes.
+    #[inline]
+    pub fn base_fee_per_gas(&self) -> u64 {
+        self.base_fee_per_gas
+    }
 }
 
 impl Transaction for BlockMetadata {
@@ -305,15 +360,15 @@ mod tests {
     fn build_sets_all_fields_correctly() {
         let meta = full_builder().build().unwrap();
 
-        assert_eq!(meta.sender, VM_SIGNER);
-        assert_eq!(meta.chain_id, CHAIN_ID);
-        assert_eq!(meta.height, HEIGHT);
-        assert_eq!(meta.block_hash, BLOCK_HASH);
-        assert_eq!(meta.timestamp, U256::from(TIMESTAMP));
-        assert_eq!(meta.to, REGISTRY);
-        assert_eq!(meta.gas_limit, GAS_LIMIT);
-        assert_eq!(meta.block_gas_limit, BLOCK_GAS_LIMIT);
-        assert_eq!(meta.base_fee_per_gas, BASE_FEE_PER_GAS);
+        assert_eq!(meta.sender(), VM_SIGNER);
+        assert_eq!(meta.evm_chain_id(), CHAIN_ID);
+        assert_eq!(meta.height(), HEIGHT);
+        assert_eq!(meta.block_hash(), BLOCK_HASH);
+        assert_eq!(meta.timestamp(), U256::from(TIMESTAMP));
+        assert_eq!(meta.target(), REGISTRY);
+        assert_eq!(meta.gas_limit(), GAS_LIMIT);
+        assert_eq!(meta.block_gas_limit(), BLOCK_GAS_LIMIT);
+        assert_eq!(meta.base_fee_per_gas(), BASE_FEE_PER_GAS);
     }
 
     #[test]
