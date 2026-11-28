@@ -49,7 +49,8 @@ pub struct BlockMetadata {
     /// Gas limit of the block, the value the `GASLIMIT` opcode returns while the block executes.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub block_gas_limit: u64,
-    /// Base fee per gas of the block, the price the block's EVM transactions are charged at.
+    /// Base fee per gas of the block, the value the `BASEFEE` opcode returns while the block
+    /// executes and the lowest gas price its EVM transactions pay.
     #[cfg_attr(feature = "serde", serde(with = "alloy_serde::quantity"))]
     pub base_fee_per_gas: u64,
 }
@@ -422,8 +423,8 @@ mod tests {
     ///   differently for the two kinds of serializer, and `alloy_serde` leaves its non-human-readable
     ///   form unspecified.
     ///
-    /// The test fails when a dependency upgrade (the revm 43 sync on `feature/revm-43-sync`, or a
-    /// later one) changes either form, and with it possibly the bytes the transaction's hash covers.
+    /// The test fails when a dependency upgrade (the revm 43 sync, smr-moonshot#4046, or a later
+    /// one) changes either form, and with it possibly the bytes the transaction's hash covers.
     #[cfg(feature = "serde")]
     #[test]
     fn serde_forms_are_fixed() {
